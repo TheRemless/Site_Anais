@@ -5,7 +5,7 @@
 // écrite (lien wa.me, Anaïs relit et envoie elle-même), et « Il n'a pas écrit » prépare un mot quand son message n'est jamais arrivé.
 // Sans numéro (demande plus ancienne), la réponse se copie et la référence en grand sert à retrouver la conversation.
 // Rien ne part tout seul, ni au client ni au prestataire (règle du 14.11.2026). Module « Demandes du site » ; chaque entreprise ne voit que ses demandes.
-import { etat, modifier, peut, modeTaxi, naviguer, recharger, moduleActif, entiteActive } from "../etat.mjs";
+import { etat, modifier, peut, modeTaxi, naviguer, recharger, moduleActif, entiteActive, appliquerLignes } from "../etat.mjs";
 import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
@@ -18,6 +18,7 @@ import {
 } from "../demandes-site-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
 import { boutonMessageClient } from "./message-client.mjs";
+import { relierConversationApresDemande, avertissementDossier, accordSecondDossier, boutonDelier } from "./demandes-whatsapp.mjs";
 
 let onglet = "a_traiter";
 let periode = "30";
@@ -96,14 +97,30 @@ function dejaTraitee(d) {
   const actuelle = (etat.brut.demandes_site || []).find((x) => x.id === d.id);
   return actuelle && actuelle.statut !== "nouvelle" ? actuelle : null;
 }
-function confirmer_(d, modifs = {}) {
+// Relue en base (migration 72) : l'Assistant a pu la relier à un dossier depuis WhatsApp, sur un autre appareil, sans que cet écran le sache
+// encore. Traitée : la ligne locale est mise à jour, aucun second dossier n'est créé. Base injoignable : on s'en tient à l'état local.
+async function dejaTraiteeEnBase(d) {
+  if (!etat.store.demandeSite) return null;
+  const lue = await etat.store.demandeSite(d.id).catch(() => null);
+  if (!lue || lue.statut === "nouvelle") return null;
+  await appliquerLignes(async () => ({ lignes: { demandes_site: [lue] } })).catch(() => null);
+  return lue;
+}
+async function confirmer_(d, modifs = {}) {
   const ref = d.ref || titreDemande(d);
-  if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
+  if (dejaTraitee(d) || (await dejaTraiteeEnBase(d))) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   ouvrirDemande({
     titre: Object.keys(modifs).length ? tr("Confirmer {ref} avec les changements", { ref }) : tr("Confirmer {ref}", { ref }),
     texte: texteDemande(d, modifs),
     telephone: numeroWhatsApp(d),
     prixImpose: modifs.prix ?? null,
+    // Juste avant d'écrire le dossier : la demande est-elle toujours à traiter ? Une autre demande du même client a-t-elle déjà son dossier
+    // (moins de 30 jours) ? Rend le motif d'arrêt, ou null pour créer (pas de second dossier sans l'accord de Nani).
+    avantCreer: async () => {
+      if (await dejaTraiteeEnBase(d)) return tr("Cette demande a été traitée entre-temps (depuis WhatsApp ou l'Assistant) : aucun dossier n'a été créé. Fermez cette fenêtre.");
+      if (!(await accordSecondDossier({ telephones: [numeroWhatsApp(d)], entites: [d.entite_id], exclure: d.id }))) return tr("Aucun dossier créé.");
+      return null;
+    },
     surCree: async ({ dossier, services, total }) => {
       const s = services[0] || {};
       // Plusieurs services (liste de sorties) : la réponse les reprend un par un, le total est celui de la facture.
@@ -118,11 +135,14 @@ function confirmer_(d, modifs = {}) {
         devise: (etat.db.reglages && etat.db.reglages.devise) || d.devise || "THB",
       };
       const decision = { changements: changements(d, final), final };
+      let confirmee = null;
       try {
-        await modifier("demandes_site", d.id, { statut: "confirmee", dossier_id: dossier.id, decision }, { verrou: true, version: d.updated_at });
+        confirmee = await modifier("demandes_site", d.id, { statut: "confirmee", dossier_id: dossier.id, decision }, { verrou: true, version: d.updated_at });
       } catch (err) {
         toast(err.conflit ? tr("Quelqu'un a traité cette demande pendant ce temps : le dossier {ref} est peut-être en double, vérifiez-le.", { ref: dossier.ref }) : tr("Dossier créé, mais la demande n'a pas pu être marquée confirmée : {erreur}", { erreur: err.message }), true);
       }
+      // La conversation WhatsApp du même numéro se relie au client et au dossier (migration 72), sans écraser une liaison déjà posée.
+      if (confirmee) await relierConversationApresDemande({ ...d, ...confirmee }, { dossier });
       rafraichir();
       ouvrirReponse(d, reponseConfirmation(d, final, { aujourdhui: aujourdhui() }), { titre: tr("Réponse de confirmation"), dossierId: dossier.id });
     },
@@ -296,9 +316,13 @@ function carte(d) {
           { class: "dsite-etat" },
           h("span", { class: `tag dsite-statut s-${d.statut}` }, tr(STATUTS_DEMANDE[d.statut])),
           dossier ? h("a", { href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
-          changes.length ? h("span", { class: "dsite-detail" }, pluriel(changes.length, N_("changement"), N_("changements"))) : null
+          changes.length ? h("span", { class: "dsite-detail" }, pluriel(changes.length, N_("changement"), N_("changements"))) : null,
+          // Reliée par le dossier créé depuis WhatsApp ou l'Assistant (migration 72) : pas de réponse préparée ici.
+          d.decision && d.decision.relie ? h("span", { class: "dsite-detail" }, tr("Reliée au dossier créé depuis WhatsApp ou l'Assistant")) : null
         )
       : null,
+    // Avant « Confirmer » : le même numéro a déjà un dossier récent dans cette entreprise (migration 72).
+    d.statut === "nouvelle" ? avertissementDossier(d) : null,
     d.statut === "nouvelle" && ecrit
       ? h(
           "div",
@@ -309,7 +333,9 @@ function carte(d) {
           numeroWhatsApp(d) ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirSansMessage(d) }, icone("whatsapp", 16), tr("Il n'a pas écrit")) : null,
           h("button", { class: "lien", type: "button", onclick: () => classer(d) }, tr("Classer"))
         )
-      : d.statut === "confirmee" || d.statut === "refusee"
+      : d.statut === "confirmee" && d.decision && d.decision.relie && boutonDelier(d)
+        ? h("div", { class: "dsite-actions" }, boutonDelier(d))
+      : (d.statut === "confirmee" && d.decision && d.decision.final) || d.statut === "refusee"
         ? h("div", { class: "dsite-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => revoirReponse(d) }, icone("copier", 16), tr("Revoir la réponse")))
         : null
   );
@@ -348,6 +374,16 @@ function blocChiffres(demandes) {
 
 // ---- Écran ------------------------------------------------------------------------------------------------------------------
 export async function vueDemandesSite() {
+  // « Voir la demande » (toast après un lien posé depuis l'Assistant) : « ?onglet=traitees », pris une fois puis retiré de l'adresse.
+  const voulu = new URLSearchParams(location.hash.split("?")[1] || "").get("onglet");
+  if (["a_traiter", "traitees", "toutes"].includes(voulu)) {
+    onglet = voulu;
+    try {
+      history.replaceState(null, "", "#/demandes");
+    } catch {
+      // adresse non modifiable : l'onglet reste choisi pour cet affichage
+    }
+  }
   // Une notification ouvre l'écran dans l'entreprise de la demande (« ?entite=… ») : app.mjs y passe avant d'afficher.
   const demandes = etat.db.demandes_site || [];
   const nouvelles = aTraiter(demandes);

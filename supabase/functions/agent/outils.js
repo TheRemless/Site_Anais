@@ -17,7 +17,10 @@
 //     lisent comme un client (migration 69) ; le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs
 //     résultats sont retirés de l'historique au message suivant (retirerLecturesWhatsApp) ;
 //   - contact WhatsApp de type « apporteur » (apporteur.js, PR D) : proposer_dossier note la fiche apporteur de chaque entreprise (ctx.apporteur,
-//     lue avec la session), jamais celle d'une autre ; rien de la fiche ne repart chez Claude.
+//     lue avec la session), jamais celle d'une autre ; rien de la fiche ne repart chez Claude ;
+//   - vouchers (vouchers.js, 21.11.2026) : trouver_vouchers, en lecture, proposé et exécuté seulement dans Secret ou Taxi pour qui lit les
+//     réservations de l'entreprise active (dossiers.lire, jamais « vouchers.seul ») ; ZTP n'a pas de voucher. Ni net, ni commission, ni prix,
+//     ni nom de prestataire ; l'écran fait les cartes et l'image, rien ne part sans le clic de la personne.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
@@ -25,6 +28,7 @@ import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
 import { apporteurDeCarte } from "./apporteur.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
+import { NOM_OUTIL_VOUCHERS, OUTIL_VOUCHERS, criteresVouchers, trouverVouchers as trouverVouchersLus, vouchersPermis } from "./vouchers.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
 
@@ -414,6 +418,37 @@ async function executerWhatsApp(nom, e, ctx) {
   if (nom === "lire_conversation") return { resultat: lireConversation(e, await w.conversation(e.conversation, messagesAPrendre(e)), { qui: w.qui || "Nani" }) };
   return { resultat: aFaireWhatsApp(await w.aFaire(), { maintenant: ctx.maintenant ? ctx.maintenant() : Date.now(), ...(typeof w.typeContact === "function" ? { typeContact: w.typeContact } : {}) }) };
 }
+// ---- Vouchers (21.11.2026) -------------------------------------------------------------------------------------------------------
+// ctx.vouchers n'est posé par la fonction que dans Secret ou Taxi : { permis: true, entites: [{ id, fonctionnement }] (l'entreprise active
+// d'abord, l'autre en espace unifié), candidats(criteres) } ; les lignes se lisent avec la session de la personne (RLS). Les droits se
+// contrôlent ici aussi, à la définition des outils comme à l'exécution.
+const UNIFIE_VOUCHERS = " Couvre les réservations de Secret et de Taxi : chaque ligne donne son entreprise (champ « entreprise »).";
+// Les entreprises où la personne lit les vouchers : Secret ou Taxi, avec « dossiers.lire » et sans « vouchers.seul » dans CETTE entreprise.
+export function entitesVouchers(ctx) {
+  const v = ctx && ctx.vouchers;
+  if (!v || v.permis !== true || !Array.isArray(v.entites) || !v.entites.length || typeof v.candidats !== "function") return [];
+  const liste = estUnifie(ctx) ? v.entites : v.entites.slice(0, 1);
+  return liste.filter((e) => e && e.id && vouchersPermis({ fonctionnement: e.fonctionnement, permissions: permissionsDans(ctx, e.id) }));
+}
+// L'outil n'existe que si l'entreprise active le permet elle-même (ZTP, Mook dans Taxi : jamais).
+export const peutTrouverVouchers = (ctx) => {
+  const l = entitesVouchers(ctx);
+  return l.length > 0 && l[0].id === ctx.vouchers.entites[0].id;
+};
+const jourBangkok = (ms) => new Date(ms + 7 * 3600000).toISOString().slice(0, 10);
+async function executerVouchers(e, ctx) {
+  const permises = entitesVouchers(ctx);
+  const aujourdhui = ctx.aujourdhui || jourBangkok(ctx.maintenant ? ctx.maintenant() : Date.now());
+  const c = criteresVouchers(e, aujourdhui);
+  if (c.erreur) return trouverVouchersLus(e, { aujourdhui });
+  const ids = permises.map((x) => x.id);
+  const [lus, partenaires] = await Promise.all([ctx.vouchers.candidats({ ...c, entites: ids }), ctx.charger("partenaires")]);
+  // Les noms retirés du service : les partenaires, et les compagnies des réglages (non partenaires) de l'entreprise active et, en espace
+  // unifié, de l'autre (revue de sécurité de la PR 303).
+  const compagnies = [...((ctx.reglages && ctx.reglages.compagnies) || []), ...(estUnifie(ctx) ? ctx.vouchers.compagniesAutre || [] : [])].filter((x) => typeof x === "string");
+  return trouverVouchersLus(e, { ...(lus || {}), aujourdhui, permises: new Set(ids), marque: (id) => marqueEntreprise(ctx, id), noms: [...nomsPrestataires(partenaires), ...compagnies] });
+}
+
 // Les mêmes outils en mode unifié (Secret et Taxi) : les recherches couvrent les deux entreprises et un service porte son entreprise.
 const UNIFIE = {
   chercher_catalogue: " Cherche dans les deux catalogues, Secret et Taxi : chaque ligne donne son entreprise (champ « entreprise »).",
@@ -462,15 +497,18 @@ const AJOUTS = {
 // `whatsapp` : la personne lit la boîte WhatsApp dans l'Assistant de Secret ou de Taxi (peutLireWhatsApp) ; les trois outils de lecture
 // s'ajoutent alors à la fin. Sinon ils n'existent pas pour le modèle.
 // `apporteur` : la conversation est liée à un contact apporteur (ctx.apporteur) ; proposer_reponse reçoit alors le champ « destinataire ».
-export function outilsPour(permissions = [], { unifie = false, whatsapp = false, apporteur = false } = {}) {
+// `vouchers` : la personne lit les réservations de l'entreprise active, Secret ou Taxi (peutTrouverVouchers) ; trouver_vouchers s'ajoute
+// avant les outils WhatsApp. Sinon il n'existe pas pour le modèle.
+export function outilsPour(permissions = [], { unifie = false, whatsapp = false, apporteur = false, vouchers = false } = {}) {
   const base = avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur);
   const ctx = { permissions };
-  const avecWa = (liste) => (whatsapp === true ? [...liste, ...OUTILS_WHATSAPP_LECTURE] : liste);
+  const outilVouchers = vouchers === true ? [unifie ? { ...OUTIL_VOUCHERS, description: OUTIL_VOUCHERS.description + UNIFIE_VOUCHERS } : OUTIL_VOUCHERS] : [];
+  const avecWa = (liste) => [...liste, ...outilVouchers, ...(whatsapp === true ? OUTILS_WHATSAPP_LECTURE : [])];
   if (!voitPartenaires(ctx)) return avecWa(base);
   return avecWa(base.map((o) => (AJOUTS[o.name] ? { ...o, description: o.description + AJOUTS[o.name].partenaires + (voitNets(ctx) ? AJOUTS[o.name].nets : "") } : o)));
 }
 // Les outils d'un échange, d'après le contexte (droits, mode unifié, boîte WhatsApp). Utilisé par la boucle (boucle.js).
-export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx), apporteur: !!(ctx && ctx.apporteur) });
+export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx), apporteur: !!(ctx && ctx.apporteur), vouchers: peutTrouverVouchers(ctx) });
 export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER, "proposer_course"];
 
 // La confirmation de course dont parle l'agent : le message de la personne qui commence par `debut` (espaces et casse ignorés), sinon le seul
@@ -519,7 +557,7 @@ function normaliser(schema, v, oublie = false) {
   return VIDE;
 }
 export function normaliserEntree(nom, e, { unifie = false, apporteur = false } = {}) {
-  const def = [...avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur), ...OUTILS_WHATSAPP_LECTURE].find((o) => o.name === nom);
+  const def = [...avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur), OUTIL_VOUCHERS, ...OUTILS_WHATSAPP_LECTURE].find((o) => o.name === nom);
   if (!def || !e || typeof e !== "object" || Array.isArray(e)) return null;
   const r = normaliser(def.input_schema, e);
   return r === VIDE ? null : r;
@@ -1303,9 +1341,12 @@ async function proposerImportBrochure(e, ctx) {
 // Une erreur d'outil n'arrête pas la conversation : elle repart chez Claude marquée comme telle.
 export async function executer(nom, entree, ctx, memo) {
   const whatsapp = NOMS_OUTILS_WHATSAPP.includes(nom);
-  if (!NOMS_OUTILS.includes(nom) && !whatsapp) return { contenu: { erreur: "outil_inconnu" }, erreur: true };
+  const voucher = nom === NOM_OUTIL_VOUCHERS;
+  if (!NOMS_OUTILS.includes(nom) && !whatsapp && !voucher) return { contenu: { erreur: "outil_inconnu" }, erreur: true };
   // Boîte WhatsApp : refusée à l'exécution aussi pour qui ne la lit pas, ou hors de Secret et Taxi (ZTP, Mook, boîte de préparation).
   if (whatsapp && !peutLireWhatsApp(ctx)) return { contenu: { erreur: "outil_non_permis" }, erreur: true };
+  // Vouchers : refusés à l'exécution aussi hors de Secret et Taxi, sans le droit de lire les réservations, ou avec « vouchers.seul ».
+  if (voucher && !peutTrouverVouchers(ctx)) return { contenu: { erreur: "outil_non_permis" }, erreur: true };
   const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx), apporteur: !!ctx.apporteur });
   if (!propre) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec des valeurs au bon format (textes, nombres entiers positifs, valeurs des listes fermées)." }, erreur: true };
   entree = propre;
@@ -1326,7 +1367,7 @@ export async function executer(nom, entree, ctx, memo) {
       const { resume_apporteur: resumeApporteur, ...carteGardee } = carte;
       return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(resumeApporteur ? { apporteur: resumeApporteur } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte: carteGardee };
     }
-    const f = { chercher_conversations: executerWhatsApp.bind(null, "chercher_conversations"), lire_conversation: executerWhatsApp.bind(null, "lire_conversation"), a_faire_whatsapp: executerWhatsApp.bind(null, "a_faire_whatsapp"), lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
+    const f = { chercher_conversations: executerWhatsApp.bind(null, "chercher_conversations"), lire_conversation: executerWhatsApp.bind(null, "lire_conversation"), a_faire_whatsapp: executerWhatsApp.bind(null, "a_faire_whatsapp"), lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier, [NOM_OUTIL_VOUCHERS]: executerVouchers }[nom];
     const r = await f(entree, ctx, memo);
     ajouter(r);
     // Les vols déjà notés sur les réservations du dossier lu : une source pour une carte (« même vol que l'aller »).
@@ -1337,7 +1378,9 @@ export async function executer(nom, entree, ctx, memo) {
     if (memo.internes) collecterInternes(r.resultat, memo.internes);
     // Une conversation de partenaire, de chauffeur ou d'hôtel lue : ses montants deviennent internes, son nom bloqué (revue de la PR 299).
     if (whatsapp && r.resultat && !r.resultat.erreur) retenirLecture(r.resultat, memo, nom);
-    return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };
+    // Les vouchers trouvés : l'écran en fait les cartes (même résultat que celui qui repart chez Claude, rien de plus).
+    const vouchers = voucher && r.resultat && Array.isArray(r.resultat.reservations) && r.resultat.reservations.length ? { vouchers: r.resultat } : {};
+    return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), ...vouchers, erreur: !!(r.resultat && r.resultat.erreur) };
   } catch (err) {
     // Le motif (message d'erreur, jamais une donnée de client) part avec le résultat : il reste dans l'historique pour diagnostiquer.
     const motif = err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 200) : "";

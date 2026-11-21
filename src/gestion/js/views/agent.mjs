@@ -25,6 +25,7 @@ import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
+import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -140,6 +141,7 @@ const ETAPES = {
   chercher_conversations: N_("Je cherche dans WhatsApp"),
   lire_conversation: N_("Je lis la conversation WhatsApp"),
   a_faire_whatsapp: N_("Je regarde ce qui attend dans WhatsApp"),
+  trouver_vouchers: N_("Je cherche les vouchers"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -525,6 +527,8 @@ export async function vueAgent(idOuvert = "") {
     if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte));
     if (it.genre === "pieces") return bullePieces(it.fichiers);
     if (it.genre === "planning") return frise(it.planning);
+    // Les vouchers trouvés (trouver_vouchers) : une carte par dossier, avec l'aperçu et le bouton d'envoi.
+    if (it.genre === "vouchers") return cartesVouchers(it.vouchers);
     return carte(it.carte);
   }
   // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
@@ -620,6 +624,10 @@ export async function vueAgent(idOuvert = "") {
         bulle.replaceChildren(...paragraphes(texteRecu));
       } else if (ev.t === "planning") {
         etape.before(frise(ev.planning));
+        bulle = null;
+        texteRecu = "";
+      } else if (ev.t === "vouchers") {
+        etape.before(cartesVouchers(ev.vouchers));
         bulle = null;
         texteRecu = "";
       } else if (ev.t === "carte") {
@@ -1112,6 +1120,8 @@ export async function vueAgent(idOuvert = "") {
     try {
       if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
+      // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
+      else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
       else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c);
       else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
@@ -1146,6 +1156,8 @@ export async function vueAgent(idOuvert = "") {
       else toast(tr("Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur."));
     }
     if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
+    // Migration 72 : la demande du site « nouvelle » du même numéro passe « confirmée » avec ce dossier (views/demandes-whatsapp.mjs).
+    if (dossier && c.genre === "dossier") await (await import("./demandes-whatsapp.mjs")).relierDemandesApresDossier(r.dossiers || [dossier]);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
     const res = r.reservation || null;
     // Espace unifié : chaque dossier créé garde ses apprentissages dans son entreprise, avec seulement ses services.
@@ -1212,6 +1224,8 @@ export async function vueAgent(idOuvert = "") {
     return { texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) };
   };
   async function ouvrirDossier(c) {
+    // Migration 72 : même accord qu'à la validation d'un geste avant un second dossier pour ce client.
+    if (!(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) return;
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier }) => noterReussite(c, { ok: true, dossier }) });

@@ -507,6 +507,15 @@ input.couleur { width: 72px; padding: 2px; }
 .envoi-voucher .envoi-actions { flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
 @media (max-width: 719px) { .envoi-voucher .envoi-actions { flex-direction: column; align-items: stretch; } .envoi-voucher .envoi-actions button { width: 100%; } }
 .envoi-voucher .aide { margin: 12px 0 0; }
+/* Voucher envoyé dans la conversation WhatsApp du client (voucher-whatsapp.mjs) : destinataire, image plus petite, message modifiable. */
+.wa-voucher .wa-voucher-a { margin: 0 0 12px; overflow-wrap: anywhere; }
+.wa-voucher .wa-voucher-numero { color: var(--texte-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wa-voucher .envoi-apercu img { max-height: 34vh; }
+.wa-voucher .champ { margin: 14px 0 0; }
+.wa-voucher .champ .aide { margin: 4px 0 0; }
+.wa-voucher .champ .aide.erreur-form { color: var(--danger); }
+.wa-voucher > .actions { margin-top: 14px; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 719px) { .wa-voucher > .actions { flex-direction: column-reverse; align-items: stretch; } .wa-voucher > .actions button { width: 100%; } }
 
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }
@@ -1758,6 +1767,16 @@ button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1p
 .dsite-numero.a-verifier { font-weight: 600; color: var(--danger); }
 .dsite-numero.sans { font-weight: 400; font-size: 0.85rem; color: var(--texte-2); }
 a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+/* Migration 72 : le même numéro a déjà un dossier récent (avant « Confirmer »), et le choix parmi plusieurs demandes après un dossier. */
+.dsite-deja { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; padding: 8px 12px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: 8px; color: #5a4300; font-size: 0.9rem; overflow-wrap: anywhere; }
+.dsite-deja svg { flex: none; margin-top: 2px; }
+.dsite-deja a { color: #5a4300; font-weight: 700; white-space: nowrap; }
+.dwa-liste { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.dwa-case { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--bord); border-radius: 10px; cursor: pointer; }
+.dwa-case input[type="checkbox"] { width: 22px; height: 22px; margin: 2px 0 0; }
+.dwa-case strong { display: block; color: var(--teal-700); letter-spacing: 0.02em; }
+.dwa-detail { display: block; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.dwa-case:has(input:checked) { border-color: var(--teal-600); background: var(--teal-100); }
 .dsite-chiffres .puces { margin-bottom: 12px; }
 .dsite-tableau { margin-top: 8px; }
 .dsite-tableau table { width: 100%; }
@@ -2011,6 +2030,16 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-suite { margin-top: 10px; }
 .agent-suite .cc-image img { max-width: 320px; margin: 0 0 8px; }
 .agent-carte .erreur-form { margin: 0 0 4px; }
+/* Cartes « Voucher » de l'Assistant (trouver_vouchers, 21.11.2026) : une par dossier, l'aperçu en image de chaque service puis l'envoi habituel. */
+.agent-vouchers { display: grid; gap: 12px; }
+.agent-voucher-service { padding: 10px 0 4px; border-top: 1px solid var(--bord); }
+.agent-voucher-service:first-of-type { padding-top: 0; border-top: 0; }
+.agent-voucher-titre { display: grid; gap: 2px; }
+.agent-voucher-titre small { color: var(--texte-2); }
+.agent-voucher .avertissements-voucher { margin: 0 0 8px; }
+.agent-voucher-apercu { display: block; width: 100%; max-width: 320px; min-height: 96px; margin: 0 0 8px; padding: 0; background: var(--surface-2); border: 1px solid var(--bord); border-radius: 8px; overflow: hidden; font-weight: 400; }
+.agent-voucher-apercu img { display: block; width: 100%; height: auto; }
+.agent-voucher-apercu > .aide, .agent-voucher-apercu > .erreur-form { display: block; margin: 0; padding: 36px 12px; text-align: center; }
 .agent-tout-valider { display: flex; justify-content: flex-end; padding: 8px 0 0; }
 .agent-tout-valider button { min-height: 44px; }
 .agent-bascule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }

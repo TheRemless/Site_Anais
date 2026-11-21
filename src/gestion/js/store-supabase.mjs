@@ -445,6 +445,30 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte.
       return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
     },
+    // Voucher en image dans la conversation du client (fonction « whatsapp-envoi » en multipart, migration 73). L'image part avec la demande :
+    // la fonction la dépose elle-même dans le bucket privé après tous les contrôles (aucune écriture de stockage depuis le navigateur).
+    // Rend { ok, message_id } ou { erreur, a_retirer }. Délai dépassé ou coupure : résultat inconnu, l'écran dit de vérifier dans WhatsApp.
+    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, essai_id, legende = "", numero_confirme = "", fichier }) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      const corps = new FormData();
+      corps.append("conversation_id", conversation_id);
+      corps.append("reservation_id", reservation_id);
+      corps.append("essai_id", essai_id);
+      corps.append("legende", legende);
+      if (numero_confirme) corps.append("numero_confirme", numero_confirme);
+      corps.append("fichier", fichier, fichier.name || "voucher.png");
+      let rep;
+      try {
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-envoi`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY }, body: corps, signal: AbortSignal.timeout(60_000) });
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+      const lu = await rep.json().catch(() => null);
+      if (rep.ok && lu && lu.ok) return lu;
+      return { erreur: (lu && lu.erreur) || "inconnu", a_verifier: !!(lu && lu.a_verifier), a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
+    },
     // « Préparer une réponse » (fonction whatsapp-preparer, migration 60) : 202 { ok } puis la proposition « en_cours » arrive par Realtime.
     async whatsappPreparer(conversationId) {
       const { data: s } = await sb.auth.getSession();
@@ -475,6 +499,39 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const lire = (cols) => sb.from("whatsapp_conversations").select(cols).eq("id", id).maybeSingle();
       let { data, error } = await lire("id, entite_id, client_id, dossier_id, type_contact");
       if (error && colonneAbsente(error, "type_contact")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id"));
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
+    // Demandes du site et WhatsApp reliés (migration 72). La base vérifie tout et rend { relie, motif, demande | conversation } ;
+    // null tant que la fonction manque (l'outil ne relie rien et le dit discrètement).
+    async demandeSiteRelier(demandeId, dossierId) {
+      const { data, error } = await sb.rpc("demande_site_relier", { p_demande: demandeId, p_dossier: dossierId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
+    // Défaire un lien posé d'office, dans les 24 heures : { delie, motif, demande }.
+    async demandeSiteDelier(demandeId) {
+      const { data, error } = await sb.rpc("demande_site_delier", { p_demande: demandeId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
+    async whatsappRelierApresDemande(demandeId) {
+      const { data, error } = await sb.rpc("whatsapp_relier_apres_demande", { p_demande: demandeId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
+    // Une demande du site relue en base juste avant de créer son dossier : l'Assistant ou une autre personne a pu la traiter entre-temps.
+    async demandeSite(id) {
+      const { data, error } = await sb.from("demandes_site").select("id, statut, dossier_id, updated_at").eq("id", id).maybeSingle();
       if (error) throw new Error(error.message);
       return data || null;
     },

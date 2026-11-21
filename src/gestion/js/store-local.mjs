@@ -7,7 +7,7 @@ import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
-import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
+import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
@@ -15,6 +15,7 @@ import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
+import { refusLienDemande, refusDelier, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 // /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
@@ -129,7 +130,13 @@ export function creer() {
     // Apporteurs d'affaires (migration 68) : posés une fois, aussi dans une démo déjà enregistrée.
     const sansApporteurs = !AGENCE && !data.demo_apporteurs;
     if (sansApporteurs) semerApporteurs();
-    if (neuve || sansWhatsApp || sansUnifie || sansJade || sansApporteurs) sauve();
+    // Demandes du site reliées à WhatsApp (migration 72) : posées une fois, aussi dans une démo déjà enregistrée.
+    const sansDemandesWa = !AGENCE && !data.demo_demandes_wa;
+    if (sansDemandesWa) {
+      data.demo_demandes_wa = 1;
+      data.demandes_site.push(...demandesWhatsAppDemo({ entites: data.entites, conversations: data.whatsapp_conversations, dossiers: data.dossiers, clients: data.clients, reservations: data.reservations, ajd: aujourdhui(), ajouterJours, uid }));
+    }
+    if (neuve || sansWhatsApp || sansUnifie || sansJade || sansApporteurs || sansDemandesWa) sauve();
   };
   // Le partage réciproque Secret et Taxi (migration 63) : posé par la base pour l'organisation de Zwald seulement. La démonstration le pose à la
   // première carte mixte, comme une organisation qui l'a coché dans ses réglages ; l'outil le relit aussitôt.
@@ -308,6 +315,23 @@ export function creer() {
       },
     };
   };
+  // Comme lit_demandes_site (migration 30) : un rôle qui voit tous les dossiers de l'entreprise, jamais l'écran « Nouveau voucher » seul.
+  const demandeLue = (id) => data.demandes_site.find((d) => d.id === id && accessibles().includes(d.entite_id) && droit(d.entite_id, "dossiers.lire") && voitTout(contexte(), d.entite_id) && !droit(d.entite_id, "vouchers.seul")) || null;
+  // Comme le déclencheur une_fois (migration 72) : la clé « relie » ne s'écrit que par demandeSiteRelier ; une demande traitée ne change plus
+  // de statut, de dossier (sauf s'il n'existe plus) ni de décision « final ».
+  const garderDemande = (table, ligne, patch) => {
+    if (table !== "demandes_site") return;
+    const refus = () => {
+      throw new Error(tr("Cette demande a déjà été traitée."));
+    };
+    const dec = (x) => JSON.stringify(((x || {}).relie) ?? null);
+    const fin = (x) => JSON.stringify(((x || {}).final) ?? null);
+    if ("decision" in patch && dec(patch.decision) !== dec(ligne.decision)) refus();
+    if (ligne.statut === "nouvelle") return;
+    if ("statut" in patch && patch.statut !== ligne.statut) refus();
+    if ("dossier_id" in patch && patch.dossier_id !== ligne.dossier_id && !(patch.dossier_id === null && !data.dossiers.some((x) => x.id === ligne.dossier_id))) refus();
+    if ("decision" in patch && fin(patch.decision) !== fin(ligne.decision)) refus();
+  };
   const conversationEcrite = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && ecritWhatsApp(c.entite_id)) || null;
   // Comme whatsapp_reclasser (migration 59) : les non-lus ne remontent jamais, un changement d'entreprise est « manuel » et retire le client et le
   // dossier d'une autre entreprise, puis cherche le client par le numéro dans la nouvelle.
@@ -372,6 +396,30 @@ export function creer() {
     const services = [service(course, taxi, j(2), { vol: numeroVolTape(texte) }), service(exc, secret, j(3)), service(null, null, j(4), { texte: "Sunset dinner boat pickup", libelle: "Sunset dinner boat pickup", prix: 1500, origine_prix: "saisi" })];
     if (partageReciproqueDemo(secret, taxi)) setTimeout(() => ecouteurs.forEach((f) => f()), 0);
     return { genre: "dossier", titre: "Séjour de Clara : excursion et transfert", donnees: { client: { nom: "Clara Martin", telephone: "+447700900966", hotel: "Lanta Sand Resort", langue: "en" }, adultes: 2, enfants: 0, bebes: 0, services, entreprises: ["secret", "taxi"] }, avertissements: ["entreprise_a_choisir"] };
+  }
+  // Les lignes que la fonction lirait pour trouver_vouchers (agent-vouchers.mjs) : Secret ou Taxi, avec les droits de l'écran Réservations
+  // (dossiers.lire, jamais « vouchers.seul »), les dossiers visibles seulement ; l'autre entreprise en espace unifié (droits de l'agent et agent
+  // allumé chez elle). null si l'outil n'existe pas ici (ZTP, Mook dans Taxi).
+  async function sourceVouchers(entiteId) {
+    const { vouchersPermis } = await import("./agent-vouchers.mjs");
+    const ent = data.entites.find((x) => x.id === entiteId);
+    const permis = (id) => vouchersPermis({ fonctionnement: ((data.reglages || {})[id] || {}).fonctionnement, permissions: permissionsDans(contexte(), id) });
+    if (!ent || !accessibles().includes(entiteId) || !permis(entiteId)) return null;
+    const autre = marqueUnifiee(ent) ? data.entites.find((x) => x.id !== entiteId && marqueUnifiee(x) && marqueUnifiee(x) !== marqueUnifiee(ent) && accessibles().includes(x.id) && ((data.reglages || {})[x.id] || {}).agent_ia === true && ["partenaires.lire", "dossiers.ecrire"].every((d) => droit(x.id, d))) : null;
+    const ids = [entiteId, ...(autre && permis(autre.id) ? [autre.id] : [])];
+    const dossiers = dossiersVisibles().filter((d) => ids.includes(d.entite_id));
+    const visibles = new Set(dossiers.map((d) => d.id));
+    const libelle = (id) => ({ secret: "Secret", taxi: "Taxi" })[marqueUnifiee(data.entites.find((x) => x.id === id))] || "";
+    return {
+      reservations: structuredClone(data.reservations.filter((r) => ids.includes(r.entite_id) && visibles.has(r.dossier_id))),
+      dossiers: structuredClone(dossiers),
+      clients: structuredClone(data.clients.filter((c) => dossiers.some((d) => d.client_id === c.id))),
+      prestations: data.prestations.filter((p) => ids.includes(p.entite_id)).map(({ id, famille, unite, groupe, libelle, libelle_en }) => ({ id, famille, unite, groupe, libelle, libelle_en })),
+      permises: new Set(ids),
+      marque: (id) => (autre && libelle(id) ? { entreprise: libelle(id) } : {}),
+      // Partenaires et compagnies des réglages (non partenaires), comme la fonction.
+      noms: [...data.partenaires.filter((p) => ids.includes(p.entite_id)).map((p) => p.nom), ...ids.flatMap((id) => ((data.reglages || {})[id] || {}).compagnies || [])],
+    };
   }
   // Les cartes d'un apporteur (agent-whatsapp-demo.mjs) : l'espace unifié comme carteMixteDemo (la personne travaille dans les deux).
   async function cartesApporteurDemoIci(entiteId, wc) {
@@ -688,6 +736,70 @@ export function creer() {
       const c = conversationLue(id);
       return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, ...(c.type_contact ? { type_contact: c.type_contact } : {}) } : null;
     },
+    // Demandes du site et WhatsApp reliés (migration 72), avec les contrôles de demande_site_relier et whatsapp_relier_apres_demande.
+    async demandeSite(id) {
+      const d = demandeLue(id);
+      return d ? { id: d.id, statut: d.statut, dossier_id: d.dossier_id, updated_at: d.updated_at } : null;
+    },
+    async demandeSiteRelier(demandeId, dossierId) {
+      const d = data.demandes_site.find((x) => x.id === demandeId);
+      const lue = demandeLue(demandeId);
+      const dossier = data.dossiers.find((x) => x.id === dossierId) || null;
+      const org = dossier ? (data.entites.find((e) => e.id === dossier.entite_id) || {}).organisation_id : null;
+      const telephones = telephonesDuDossier({ dossier, clients: data.clients, conversations: (data.whatsapp_conversations || []).filter((w) => w.organisation_id === org) });
+      const litDossier = !!dossier && accessibles().includes(dossier.entite_id) && droit(dossier.entite_id, "dossiers.lire");
+      const motif = refusLienDemande({ demande: d, dossier, telephones, lit: !!lue, ecrit: !!lue && droit(d.entite_id, "dossiers.ecrire"), litDossier });
+      if (motif) return { relie: false, motif, ...(motif === "deja_traitee" ? { dossier_id: d.dossier_id } : {}) };
+      const le = new Date().toISOString();
+      const decision = { ...(d.decision || {}), relie: { depuis: "dossier", le, dossier_id: dossier.id } };
+      Object.assign(d, { statut: "confirmee", dossier_id: dossier.id, decision, traitee_le: le, traitee_par: utilisateur.user_id, updated_at: le });
+      journaliser("demandes_site", "update", d, { statut: { avant: "nouvelle", apres: "confirmee" }, dossier_id: { avant: null, apres: dossier.id } });
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { relie: true, motif: "relie", demande: structuredClone(d) };
+    },
+    // Comme demande_site_delier : un lien posé d'office se défait 24 heures, la demande redevient « nouvelle », sans dossier ni traitement.
+    async demandeSiteDelier(demandeId) {
+      const d = demandeLue(demandeId);
+      const motif = refusDelier(d, { lit: !!d, ecrit: !!d && droit(d.entite_id, "dossiers.ecrire") });
+      if (motif) return { delie: false, motif };
+      const le = new Date().toISOString();
+      const { relie, ...reste } = d.decision || {};
+      Object.assign(d, { statut: "nouvelle", dossier_id: null, decision: { ...reste, delie: { le, dossier_id: d.dossier_id } }, traitee_le: null, traitee_par: null, updated_at: le });
+      journaliser("demandes_site", "update", d, { statut: { avant: "confirmee", apres: "nouvelle" }, dossier_id: { avant: relie && relie.dossier_id, apres: null } });
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { delie: true, motif: "delie", demande: structuredClone(d) };
+    },
+    async whatsappRelierApresDemande(demandeId) {
+      const d = demandeLue(demandeId);
+      if (!d) return { relie: false, motif: "introuvable" };
+      if (!droit(d.entite_id, "dossiers.ecrire")) return { relie: false, motif: "droit" };
+      const ent = data.entites.find((e) => e.id === d.entite_id);
+      const dossier = data.dossiers.find((x) => x.id === d.dossier_id && x.entite_id === d.entite_id) || null;
+      const fiche = dossier ? data.clients.find((c) => c.id === dossier.client_id) : null;
+      const r = liaisonApresDemande({
+        demande: d,
+        dossier,
+        clientEntiteId: fiche ? fiche.entite_id : null,
+        boite: !!marqueEntite(ent),
+        ecrit: ecritWhatsApp(d.entite_id),
+        conversations: conversationsDuNumero({ conversations: data.whatsapp_conversations || [], telephone: d.telephone, organisationId: ent && ent.organisation_id }),
+      });
+      if (r.action !== "relier") return { relie: r.motif === "deja_fait", motif: r.motif };
+      const w = r.conversation;
+      const le = new Date().toISOString();
+      // Comme la base : rangée pour le client d'une demande acceptée, la source est « client » ; les réponses préparées pour l'autre
+      // entreprise partent. Aucune fiche cherchée par le numéro : seule celle du dossier, si elle est de cette entreprise (patch).
+      if (r.patch.entite_id) {
+        Object.assign(w, { entite_source: "client" });
+        for (const p of data.whatsapp_propositions) if (p.conversation_id === w.id && ["a_faire", "en_cours"].includes(p.statut) && p.entite_id !== r.patch.entite_id) p.statut = "remplacee";
+      }
+      Object.assign(w, r.patch, { updated_at: le });
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { relie: true, motif: "relie", conversation: { id: w.id, entite_id: w.entite_id, entite_source: w.entite_source, client_id: w.client_id, dossier_id: w.dossier_id, updated_at: w.updated_at } };
+    },
     async whatsappProposition(id) {
       const p = data.whatsapp_propositions.find((x) => x.id === id);
       return p && conversationLue(p.conversation_id) ? { id: p.id, statut: p.statut } : null;
@@ -700,6 +812,33 @@ export function creer() {
     async whatsappEnvoyer() {
       await new Promise((r) => setTimeout(r, 200));
       return { demo: true };
+    },
+    // Voucher en image : simulé, sans appel réseau. Mêmes refus que la fonction (droit d'écrire, conversation du client du dossier, fenêtre de
+    // 24 h), puis un message image « envoyé » apparaît dans le fil de la démo, sans fichier gardé.
+    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, legende = "", numero_confirme = "", fichier }) {
+      await new Promise((r) => setTimeout(r, 400));
+      const c = conversationEcrite(conversation_id);
+      const r = data.reservations.find((x) => x.id === reservation_id && accessibles().includes(x.entite_id));
+      if (!c || !r || !adminWhatsApp(r.entite_id)) return { erreur: "droit_manquant" };
+      const { contactVoucher, legendeValide, numeroDifferent } = await import("./whatsapp-voucher-calc.mjs");
+      const { fenetre, apercuDepuisMessages } = await import("./whatsapp-calc.mjs");
+      const dossier = data.dossiers.find((d) => d.id === r.dossier_id) || null;
+      const contact = contactVoucher(c, dossier, r.entite_id);
+      if (!contact.ok) return { erreur: contact.erreur };
+      const fiche = dossier && data.clients.find((y) => y.id === dossier.client_id);
+      if (numeroDifferent(c.telephone, fiche && fiche.telephone) && numero_confirme !== c.telephone) return { erreur: "numero_a_confirmer" };
+      // Comme whatsapp_ranger_voucher (migration 73) : un envoi précédent de ce voucher au résultat inconnu bloque.
+      const enDoute = data.whatsapp_messages.some((m) => m.conversation_id === c.id && m.origine === "gestion" && m.type === "image" && (m.medias || []).some((x) => x && x.reservation_id === reservation_id) && (m.statut_envoi === "envoi" || (m.statut_envoi === "echec" && m.erreur_envoi === "sans_confirmation")));
+      if (enDoute) return { erreur: "deja_traitee", a_verifier: true };
+      if (!fenetre(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)).ouverte) return { erreur: "fenetre_fermee" };
+      if (!legendeValide(legende)) return { erreur: "legende_trop_longue" };
+      const maintenant = new Date().toISOString();
+      const texte = String(legende || "").trim() || null;
+      data.whatsapp_messages.push({ id: uid(), conversation_id: c.id, sens: "sortant", origine: "gestion", type: "image", texte, medias: [{ type: "image", mime: "image/png", taille: (fichier && fichier.size) || null, nom: (fichier && fichier.name) || "voucher.png", statut: "voucher", chemin_sortant: null, reservation_id }], envoye_le: maintenant, recu_le: maintenant, modifie_le: null, supprime_le: null, statut_envoi: "envoye", erreur_envoi: null, statut_le: maintenant });
+      Object.assign(c, { dernier_message_le: maintenant, dernier_sens: "sortant", non_lus: 0 }, apercuDepuisMessages(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)));
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { ok: true, demo: true };
     },
     // Comme whatsapp_confirmer_envoi (migration 64) : parti, le message reste et la réponse est soldée ; pas parti, il sort du fil.
     async whatsappConfirmerEnvoi(conversationId, parti) {
@@ -1025,6 +1164,25 @@ export function creer() {
         surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
         return { ok: true };
       }
+      // L'Assistant donne les vouchers (21.11.2026) : le vrai outil (agent-vouchers.mjs) sur les données de la démo, avec ses droits ; les
+      // cartes se refont dans l'écran depuis le résultat gardé dans le fil, comme avec la fonction.
+      const { questionVouchers, repondreVouchersDemo } = await import("./agent-vouchers-demo.mjs");
+      const sourceV = !wc && questionVouchers(texte) ? await sourceVouchers(e) : null;
+      if (sourceV) {
+        const { appel, resultat, phrase } = repondreVouchersDemo(texte, sourceV, aujourdhui());
+        surEvenement({ t: "etape", outil: appel.name });
+        await new Promise((ok) => setTimeout(ok, 400));
+        message("assistant", [appel]);
+        message("user", [{ type: "tool_result", tool_use_id: appel.id, content: JSON.stringify(resultat), ...(resultat.erreur ? { is_error: true } : {}) }]);
+        if (resultat.reservations && resultat.reservations.length) surEvenement({ t: "vouchers", vouchers: structuredClone(resultat) });
+        surEvenement({ t: "texte", delta: phrase });
+        message("assistant", [{ type: "text", text: phrase }]);
+        conv.apercu = phrase.replace(/\s+/g, " ").slice(0, 200);
+        conv.maj_le = maintenant();
+        sauve();
+        surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
+        return { ok: true };
+      }
       // Espace unifié (migration 63) : une demande qui mêle une excursion et un transfert donne une seule carte, chaque service avec son
       // entreprise (le troisième, hors catalogue, sans entreprise : la personne choisit), comme la fonction en mode unifié.
       const carteMixte = carteMixteDemo(e, texteGuide);
@@ -1246,6 +1404,7 @@ export function creer() {
       garderEntiteClient(table, ligne, { ...ligne, ...patch });
       garderApporteurDossier(table, ligne, { ...ligne, ...patch });
       garderBandeau(table, ligne.entite_id);
+      garderDemande(table, ligne, patch);
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
       // Comme le déclencheur de la migration 30 : un changement de statut note qui et quand.

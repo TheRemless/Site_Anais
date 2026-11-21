@@ -27,11 +27,17 @@
 // avec la session de la personne, jamais partenaires_prives. Ce qui part en plus chez Anthropic : cette consigne, la référence « A-… » et
 // les noms d'entreprise (Secret, Taxi) où la fiche manque ; jamais le nom ni le numéro de la fiche.
 //
-// Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
+// Vouchers (vouchers.js, 21.11.2026) : dans Secret ou Taxi, pour qui lit les réservations de l'entreprise active (jamais « vouchers.seul »),
+// l'outil trouver_vouchers lit avec `sb` les réservations visées (référence, date, heure, lieu, libellé, statut), leurs dossiers et leurs
+// clients. Ce qui part chez Anthropic : la référence, la date, l'heure, le service (sans nom de prestataire), le prénom et le nom du client,
+// le dossier et ce qui manque au voucher. Jamais un prix, un net, une commission ni un prestataire. L'image du voucher se fait dans le
+// navigateur ; l'envoi demande le clic de la personne.
+//
+// Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "vouchers" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, prefixeRef, refDe, retenirLectures, sansAccents, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -462,6 +468,85 @@ Deno.serve(async (req) => {
     }
     return cles.map((c) => hotelsVus.get(c)).filter(Boolean) as Record<string, any>[];
   };
+  // ---- Vouchers (trouver_vouchers, vouchers.js, 21.11.2026), lus avec la session de la personne -----------------------------------
+  // Dans Secret ou Taxi seulement (fonctionnement des réglages), pour qui lit les réservations de l'entreprise active ; outils.js contrôle les
+  // droits de chaque entreprise (dossiers.lire, jamais « vouchers.seul »). Les colonnes lues : ni montant, ni partenaire, ni net. Rien n'est
+  // écrit ; l'écran fait l'image dans le navigateur et n'envoie rien sans le clic de la personne.
+  // Comme l'écran (completerReglages) : sans fonctionnement réglé, « sur_mesure », donc pas de voucher.
+  const fonctionnementDe = (r: Record<string, unknown> | null) => (r && typeof r.fonctionnement === "string" ? r.fonctionnement : "sur_mesure");
+  const entitesVoucher = [{ id: entiteId, fonctionnement: fonctionnementDe(reglages) }, ...(unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => ({ id: e.id, fonctionnement: fonctionnementDe(reglagesAutre) })) : [])];
+  // De `details`, seulement le modèle choisi (« aucun » : pas de voucher) et le lieu de dépose (retiré du service, jamais envoyé).
+  const COL_RES_VOUCHER = "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, statut, entite_id, modele_voucher:details->>modele_voucher, drop_off:details->>drop_off";
+  const COL_DOS_VOUCHER = "id, ref, client_id, annule, entite_id";
+  const COL_CLI_VOUCHER = "id, prenom, nom, entite_id";
+  // Une ligne par sa référence courte (D-…, R-…, C-…), avec ces colonnes seulement.
+  const parRefVoucher = (table: string, ref: string, colonnes: string, filtre: (q: any) => any = (q) => dans(q)) => {
+    const p = prefixeRef(ref);
+    if (!p) return Promise.resolve([] as Record<string, any>[]);
+    return lire(filtre(sb.from(table).select(colonnes)).gte("id", `${p}-0000-0000-0000-000000000000`).lte("id", `${p}-ffff-ffff-ffff-ffffffffffff`).limit(5), table);
+  };
+  // Par lots de 100 identifiants (une adresse trop longue serait refusée). Une lecture qui atteint sa limite le note (`limite`) : le résultat
+  // dit alors « tronque » (revue de sécurité de la PR 303).
+  // `lu` : l'état d'une recherche (une par appel d'outil, même quand deux appels tournent ensemble).
+  const parLots = async (lu: { limite: boolean }, table: string, colonnes: string, colonne: string, ids: string[], plus: (q: any) => any = (q) => q, max = 500) => {
+    const tous = [...new Set(ids.filter(Boolean))];
+    if (tous.length > max) lu.limite = true;
+    const uniques = tous.slice(0, max);
+    const out: Record<string, any>[] = [];
+    for (let i = 0; i < uniques.length; i += 100) {
+      const lot = await lire(plus(sb.from(table).select(colonnes).in(colonne, uniques.slice(i, i + 100))).limit(1000), table);
+      if (lot.length >= 1000) lu.limite = true;
+      out.push(...lot);
+    }
+    return out;
+  };
+  const vouchers = {
+    permis: true,
+    entites: entitesVoucher,
+    // Les compagnies (non partenaires) des réglages de l'autre entreprise, retirées du service comme celles de l'entreprise active.
+    compagniesAutre: unifie && reglagesAutre && Array.isArray(reglagesAutre.compagnies) ? reglagesAutre.compagnies : [],
+    // Les candidats d'une recherche ; l'outil refait tout le tri (droits par entreprise, date, heure, mots du nom, annulés).
+    candidats: async (c: { client: string; dossier: string; date: string; entites: string[] }) => {
+      const ids = (c.entites || []).filter((x) => idsEntites.includes(x));
+      const lu = { limite: false };
+      if (!ids.length) return { reservations: [], dossiers: [], clients: [] };
+      const ici = (q: any, colonne = "entite_id") => q.in(colonne, ids);
+      const parDate = (q: any) => (c.date ? q.eq("date_service", c.date) : q);
+      let dossiersVises: Record<string, any>[] | null = null;
+      let reservations: Record<string, any>[] = [];
+      if (c.dossier) {
+        let ds = await parRefVoucher("dossiers", c.dossier, COL_DOS_VOUCHER, ici);
+        const sur = refSansJoker(c.dossier);
+        if (!ds.length && sur) ds = await lire(ici(sb.from("dossiers").select(COL_DOS_VOUCHER)).ilike("ref", sur).limit(5), "dossiers");
+        dossiersVises = ds;
+      }
+      if (c.client && !dossiersVises) {
+        const p = /^([RDC])-[0-9a-f]{8}$/i.exec(c.client.trim());
+        const genre = p ? p[1].toUpperCase() : "";
+        if (genre === "R") reservations = await parRefVoucher("reservations", c.client, COL_RES_VOUCHER, ici);
+        else if (genre === "D") dossiersVises = await parRefVoucher("dossiers", c.client, COL_DOS_VOUCHER, ici);
+        else if (genre === "C") {
+          // Une fiche partagée d'une autre entreprise se lit aussi (la RLS décide) ; ses dossiers, seulement ceux de Secret ou de Taxi.
+          const cs = await parRefVoucher("clients", c.client, COL_CLI_VOUCHER, (q) => q);
+          dossiersVises = await parLots(lu, "dossiers", COL_DOS_VOUCHER, "client_id", cs.map((x) => x.id), ici);
+        } else {
+          const [cs, ds] = (await chercherClients(c.client)) as [Record<string, any>[], Record<string, any>[]];
+          if (cs.length >= 250 || ds.length >= 500) lu.limite = true;
+          dossiersVises = ds.filter((d) => ids.includes(d.entite_id));
+        }
+      }
+      if (dossiersVises) reservations = await parLots(lu, "reservations", COL_RES_VOUCHER, "dossier_id", dossiersVises.map((d) => d.id), (q) => parDate(ici(q)).neq("statut", "annule"), 250);
+      else if (!c.client && c.date) {
+        reservations = await lire(ici(sb.from("reservations").select(COL_RES_VOUCHER)).eq("date_service", c.date).neq("statut", "annule").order("heure_pickup", { ascending: true }).limit(300), "reservations");
+        if (reservations.length >= 300) lu.limite = true;
+      }
+      const dossiers = await parLots(lu, "dossiers", COL_DOS_VOUCHER, "id", reservations.map((r) => r.dossier_id));
+      const clients = await parLots(lu, "clients", COL_CLI_VOUCHER, "id", dossiers.map((d) => d.client_id));
+      // La famille des services (frais et options n'ont pas de voucher) ; illisible, l'écran fait le tri seul.
+      const prestations = await parLots(lu, "prestations", "id, famille, unite, groupe, libelle, libelle_en", "id", reservations.map((r) => r.prestation_id)).catch(() => []);
+      return { reservations, dossiers, clients, prestations, limite: lu.limite };
+    },
+  };
   // ---- Boîte WhatsApp (PR A, migration 67), lue avec la session de la personne -----------------------------------------------------
   // Permise seulement dans l'Assistant de Secret ou de Taxi et pour qui administre CETTE entreprise (whatsapp_admin de l'entreprise active,
   // migration 58 : « reglages.ecrire » et toute l'entreprise). Une erreur (migration absente, droits) laisse l'Assistant sans ces outils.
@@ -777,7 +862,9 @@ Deno.serve(async (req) => {
   const droits: string[] = unifie ? permissionsOutils(unifie) : perms.data || [];
   const entreprisesUnifiees = unifie ? { entreprises: unifie.entites.map((e) => ({ nom: e.nom, slug: e.slug, reglages: e.id === entiteId ? reglages : reglagesAutre })) } : null;
   // Un contact WhatsApp apporteur (PR D) : sa consigne s'ajoute à chaque échange de la conversation liée.
-  const systemeBase = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees, whatsapp: !!whatsapp });
+  // trouver_vouchers proposé ou non : les mêmes droits que l'exécution (outils.js, peutTrouverVouchers).
+  const avecVouchers = peutTrouverVouchers({ permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), vouchers });
+  const systemeBase = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees, vouchers: avecVouchers, whatsapp: !!whatsapp });
   const systeme = systemeBase + blocApporteur(apporteur, { qui: ra.responsable || "l'équipe", unifie: !!unifie });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
@@ -825,7 +912,7 @@ Deno.serve(async (req) => {
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
-  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

@@ -188,7 +188,7 @@ test("migration 70 : rejouable, sans donnée touchée, droits et protection en b
   assert.match(sql, /new\.nom_source := case when new\.nom is null then null else 'manuel' end;/);
   assert.ok(fs.existsSync(new URL("../docs/gestion/retour-70-whatsapp-nom.sql", import.meta.url)));
   assert.ok(fs.existsSync(new URL("../docs/gestion/verif-whatsapp-nom.mjs", import.meta.url)));
-  assert.match(source(".github/workflows/ci.yml"), /verif-ia-tous-contacts verif-whatsapp-nom; do/);
+  assert.match(source(".github/workflows/ci.yml"), /verif-ia-tous-contacts verif-whatsapp-nom[ ;]/);
 });
 
 // ---- Revue de sécurité de la PR 300 -------------------------------------------------------------------------------------------------
