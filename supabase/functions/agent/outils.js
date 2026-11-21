@@ -931,11 +931,13 @@ export function ajouterNoms(memo, noms = []) {
     if (Array.isArray(memo.prestatairesApporteur) && !(conversation && conversation === memo.contactLie) && !memo.prestatairesApporteur.includes(nom)) memo.prestatairesApporteur.push(nom);
   }
 }
-export function retenirLecture(resultat, memo) {
+// `nom` : l'outil WhatsApp lu. Seule une conversation lue en entier (lire_conversation) d'un contact qui n'est ni partenaire, ni chauffeur,
+// ni hôtel peut donner un numéro de vol (revue de sécurité) : pas les extraits d'une recherche, qui mêlent les clients.
+export function retenirLecture(resultat, memo, nom = "lire_conversation") {
   // Le texte lu (messages du client) peut donner un numéro de vol : seulement pour contrôler le champ « vol » d'une carte (volSource).
   if (!Array.isArray(memo.sourcesVol)) memo.sourcesVol = [];
   // Borné : 50 000 caractères par lecture, les 20 dernières lectures.
-  memo.sourcesVol.push(textesDe(resultat).join("\n").slice(0, 50_000));
+  if (nom === "lire_conversation" && resultat && !CONTACTS_INTERNES.includes(resultat.contact) && resultat.fiche_reliee !== true) memo.sourcesVol.push(textesDe(resultat).join("\n").slice(0, 50_000));
   if (memo.sourcesVol.length > 20) memo.sourcesVol.splice(0, memo.sourcesVol.length - 20);
   const { internes, noms } = retenuDeLecture(resultat);
   if (!(memo.internes instanceof Set)) memo.internes = new Set();
@@ -954,7 +956,7 @@ export function retenirLectures(messages = [], memo) {
       for (const c of Array.isArray(b.content) ? b.content : [{ type: "text", text: String(b.content || "") }]) {
         if (!c || c.type !== "text") continue;
         try {
-          retenirLecture(JSON.parse(c.text), memo);
+          retenirLecture(JSON.parse(c.text), memo, noms.get(b.tool_use_id));
         } catch {
           /* résultat retiré ou illisible : rien à retenir */
         }
@@ -1069,9 +1071,13 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
 // Un numéro de vol : le code de la compagnie (deux caractères IATA, ou trois lettres OACI) puis 1 à 4 chiffres, avec une lettre de suffixe
 // possible : « FD3217 », « FD 3217 », « tg-225 », « 3K 542 ». Rend la forme sans espace, en majuscules, ou "" si ce n'en est pas un.
 const FORME_VOL = /^([A-Z]{2,3}|[A-Z]\d|\d[A-Z])(\d{1,4})([A-Z]?)$/;
+// Un montant préfixé d'une devise (« THB1200 », « RM300 ») ou un nombre de personnes (« PAX2 ») a la même forme : jamais un vol (revue de
+// sécurité : un net lu chez un partenaire ne doit pas s'imprimer comme « Flight THB1200 »).
+const PAS_UN_VOL = /^(?:THB|BHT|USD|EUR|CHF|GBP|MYR|RM|SGD|AUD|JPY|CNY|RMB|IDR|INR|KRW|HKD|NZD|CAD|VND|PHP|PAX|VAT|TAX|NET|TOT|NO|NR)$/;
 export function numeroVol(v) {
   const s = String(v || "").toUpperCase().replace(/[\s.-]/g, "");
-  return s.length <= 8 && FORME_VOL.test(s) ? s : "";
+  const m = s.length <= 8 ? FORME_VOL.exec(s) : null;
+  return m && !PAS_UN_VOL.test(m[1]) ? s : "";
 }
 // Le numéro est-il écrit dans l'un des textes, avec ou sans espace ou tiret entre le code et les chiffres (« fd 3217 », « FD-3217 ») ?
 export function volDansTextes(vol, textes = []) {
@@ -1087,8 +1093,9 @@ export function volSource(v, ctx = {}, memo = {}, avert = []) {
   if (!String(v || "").trim()) return "";
   const n = numeroVol(v);
   if (!n) return avert.push("vol_illisible"), "";
-  if (volDansTextes(n, [...(memo.textes || []), ...(memo.sourcesVol || [])])) return n;
-  if ((ctx.fichiers || []).length) return avert.push("vol_piece_jointe"), n;
+  if (volDansTextes(n, [...(memo.textesVol || memo.textes || []), ...(memo.sourcesVol || []), ...(memo.volsLus || [])])) return n;
+  // Seule une image ou un PDF (billet, capture) peut porter un vol ; la carte ne se valide alors pas d'un geste (views/agent.mjs).
+  if ((ctx.fichiers || []).some((f) => /^image\/|^application\/pdf$/.test(String((f && f.media_type) || "")))) return avert.push("vol_piece_jointe"), n;
   return avert.push("vol_sans_source"), "";
 }
 
@@ -1324,12 +1331,12 @@ export async function executer(nom, entree, ctx, memo) {
     ajouter(r);
     // Les vols déjà notés sur les réservations du dossier lu : une source pour une carte (« même vol que l'aller »).
     if (nom === "lire_dossier" && r.resultat && Array.isArray(r.resultat.services)) {
-      if (!Array.isArray(memo.sourcesVol)) memo.sourcesVol = [];
-      for (const s of r.resultat.services) if (s && typeof s.vol === "string" && s.vol) memo.sourcesVol.push(s.vol);
+      if (!Array.isArray(memo.volsLus)) memo.volsLus = [];
+      for (const s of r.resultat.services) if (s && typeof s.vol === "string" && s.vol && memo.volsLus.length < 200) memo.volsLus.push(s.vol);
     }
     if (memo.internes) collecterInternes(r.resultat, memo.internes);
     // Une conversation de partenaire, de chauffeur ou d'hôtel lue : ses montants deviennent internes, son nom bloqué (revue de la PR 299).
-    if (whatsapp && r.resultat && !r.resultat.erreur) retenirLecture(r.resultat, memo);
+    if (whatsapp && r.resultat && !r.resultat.erreur) retenirLecture(r.resultat, memo, nom);
     return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };
   } catch (err) {
     // Le motif (message d'erreur, jamais une donnée de client) part avec le résultat : il reste dans l'historique pour diagnostiquer.
@@ -1351,7 +1358,7 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
       if (["prix_vente", "prix_adulte", "prix_enfant", "prix", "total_vente"].includes(k) && typeof x === "number") memo.prix.add(x);
       else if (CLE_INTERNE.test(k) && typeof x === "number") memo.internes.add(x);
       // Un numéro de vol rendu par lire_dossier (déjà noté sur une réservation) est une source pour le champ « vol » d'une carte.
-      else if (k === "vol" && typeof x === "string" && numeroVol(x)) (memo.sourcesVol || (memo.sourcesVol = [])).push(x);
+      else if (k === "vol" && typeof x === "string" && numeroVol(x)) (memo.volsLus || (memo.volsLus = [])).push(x);
       else if (typeof x === "string" && heureValide(x)) memo.heures.add(x);
       else if (x && typeof x === "object") parcourir(x);
     }
@@ -1388,6 +1395,8 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
     for (const x of t.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)) memo.heures.add(`${x[1].padStart(2, "0")}:${x[2]}`);
     for (const d of dureesTapees([t])) memo.durees.add(d);
     if (t.trim()) memo.textes.push(t);
+    // Sources du numéro de vol : une conversation jointe de partenaire, de chauffeur ou d'hôtel n'en est pas une (revue de sécurité).
+    if (t.trim()) (memo.textesVol || (memo.textesVol = [])).push(conversationInterne ? sansConversation(t) : t);
   }
   // Les estimations web déjà rendues dans la conversation restent utilisables (résultats d'estimer_temps_web).
   const outils = new Map();

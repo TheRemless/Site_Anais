@@ -71,7 +71,7 @@ test("vol proposé par le modèle : gardé s'il est écrit, marqué à vérifier
   assert.equal(volSource("FD3217", {}, { textes: ["Arrivée à 14:30 à Krabi"] }, b), "");
   assert.deepEqual(b, ["vol_sans_source"]);
   const c = [];
-  assert.equal(volSource("FD3217", { fichiers: [{ id: "f", nom: "billet.pdf" }] }, { textes: ["Voici le billet"] }, c), "FD3217");
+  assert.equal(volSource("FD3217", { fichiers: [{ id: "f", nom: "billet.pdf", media_type: "application/pdf" }] }, { textes: ["Voici le billet"] }, c), "FD3217");
   assert.deepEqual(c, ["vol_piece_jointe"]);
   const d = [];
   assert.equal(volSource("14:30", {}, { textes: ["14:30"] }, d), "");
@@ -211,4 +211,23 @@ test("revue : un numéro plus court n'est pas « déjà écrit » dans un plus l
   // Le même vol lu dans l'historique (résultat d'outil enregistré) compte aussi.
   const m2 = memoDepuis([{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "lire_dossier", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: JSON.stringify({ services: [{ vol: "TG225" }] }) }] }]);
   assert.equal(volSource("TG225", {}, m2, []), "TG225");
+});
+
+test("revue de sécurité : devise et nombre de personnes ne sont pas des vols ; ni conversation interne ni extrait de recherche comme source", () => {
+  for (const v of ["THB1200", "THB 1200", "RM300", "USD50", "PAX2", "EUR 45"]) assert.equal(numeroVol(v), "", v);
+  assert.equal(numeroVol("TG225"), "TG225");
+  // Un fichier qui n'est ni une image ni un PDF ne rend pas un vol « lu sur une pièce jointe ».
+  const a = [];
+  assert.equal(volSource("FD3217", { fichiers: [{ id: "f", nom: "tarifs.xlsx", media_type: "application/vnd.ms-excel" }] }, { textes: [] }, a), "");
+  assert.deepEqual(a, ["vol_sans_source"]);
+  // Conversation d'un partenaire lue : pas une source.
+  const m = {};
+  retenirLecture({ conversation: "p", contact: "partenaire", messages: [{ texte: "Client flight AK 6203, net 900" }] }, m, "lire_conversation");
+  retenirLecture({ conversation: "h", fiche_reliee: true, messages: [{ texte: "Guest on TG 226" }] }, m, "lire_conversation");
+  retenirLecture({ conversations: [{ conversation: "x", extrait: "flight MH 788" }] }, m, "chercher_conversations");
+  for (const v of ["AK6203", "TG226", "MH788"]) assert.equal(volSource(v, {}, m, []), "", v);
+  // Conversation jointe d'un partenaire dans le message de la personne : son texte n'est pas une source, le reste du message l'est.
+  const m2 = memoDepuis([{ role: "user", content: [{ type: "text", text: "<conversation>Chauffeur : vol QZ 7512</conversation> Vol du client FD 3217" }] }], { conversationInterne: true });
+  assert.equal(volSource("QZ7512", {}, m2, []), "");
+  assert.equal(volSource("FD3217", {}, m2, []), "FD3217");
 });
