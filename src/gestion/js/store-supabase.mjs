@@ -573,6 +573,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.rpc("assistant_budget_etat");
       return error ? null : data || null;
     },
+    // Sauvegarde automatique par GitHub (migration 66) : dernier essai, dernière réussite, pour les administratrices ; null pour les autres ou sans la migration.
+    async sauvegardeEtat() {
+      const { data, error } = await sb.rpc("sauvegarde_etat");
+      return error ? null : data || null;
+    },
     async reglerPlafondAssistant(plafond, seuil) {
       const { error } = await sb.rpc("regler_plafond_assistant", { plafond, seuil });
       if (error) throw new Error(error.message);

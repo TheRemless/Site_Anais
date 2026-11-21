@@ -128,7 +128,7 @@ function selecteurEntreprise(c, prop) {
     h("div", { class: "wa-segments", role: "group", "aria-label": tr("Entreprise de la conversation") }, choix.map((e) => h("button", { type: "button", class: `wa-segment${proposee && proposee.id === e.id ? " propose" : ""}`, "aria-pressed": e.id === c.entite_id ? "true" : "false", onclick: () => ranger(e) }, e.nom))),
     c.entite_id && c.entite_source === "agent" ? h("span", { class: "wa-note" }, tr("proposé par l'assistant")) : null,
     proposee ? h("span", { class: "wa-note propose" }, tr("Suggéré : {nom}", { nom: proposee.nom })) : null,
-    reponsesDe(c) === "jamais" ? h("span", { class: "wa-jamais" }, tr("Jamais de réponse préparée")) : null
+    reponsesDe(c) === "jamais" ? h("span", { class: "wa-jamais" }, tr("Contact personnel")) : null
   );
 }
 
@@ -140,7 +140,7 @@ async function basculerReponses(c) {
   const auto = !!(c.entite_id || suggeree) && preparationAuto(reglagesDe(c.entite_id || suggeree.id));
   try {
     await modifier("whatsapp_conversations", c.id, { reponses: valeur });
-    toast(valeur === "jamais" ? tr("Plus de réponse préparée pour ce contact.") : auto ? tr("Réponses préparées automatiques pour ce contact.") : tr("Réponses sur demande pour ce contact."));
+    toast(valeur === "jamais" ? tr("Contact personnel : plus rien n'est envoyé à l'IA.") : auto ? tr("Réponses préparées automatiques pour ce contact.") : tr("Réponses sur demande pour ce contact."));
     rafraichir();
   } catch (err) {
     toast(err.message, true);
@@ -161,7 +161,7 @@ function menuConversation(c) {
       { class: "agent-menu" },
       ici && !lectureSeule ? item(client ? tr("Changer le client relié") : tr("Relier un client"), () => ouvrirRelier(c)) : null,
       client ? item(tr("Ouvrir la fiche du client"), () => naviguer(`#/client/${client.id}`)) : null,
-      etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Préparer de nouveau les réponses pour ce contact") : tr("Ne jamais préparer de réponse pour ce contact"), () => basculerReponses(c)) : null,
+      etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Contact personnel : rien envoyé à l'IA"), () => basculerReponses(c)) : null,
       wa ? h("a", { class: "bouton secondaire", href: wa, target: "_blank", rel: "noopener", onclick: () => fermer() }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null
     ),
     { feuille: true, protege: false }

@@ -646,6 +646,11 @@ export function creer() {
       data.agent_apprentissages = data.agent_apprentissages.filter((x) => x.id !== id);
       sauve();
     },
+    // Démonstration : une sauvegarde réussie cette nuit (aucun bandeau).
+    async sauvegardeEtat() {
+      const maintenant = new Date();
+      return { dernier_succes: new Date(maintenant.getTime() - 6 * 3600 * 1000).toISOString(), dernier_essai: null, dernier_echec: null, lignes: 0, message: null, maintenant: maintenant.toISOString() };
+    },
     // Crédit de l'assistant : en démonstration, la dépense du journal fictif et un plafond gardé dans le navigateur.
     async assistantBudget() {
       const admin = (utilisateur && utilisateur.super_admin) || data.entites.some((e) => {

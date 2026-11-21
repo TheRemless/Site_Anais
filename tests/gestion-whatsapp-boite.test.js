@@ -434,7 +434,7 @@ test("tri : ce que le tri a vu, en clair, seulement s'il a vu le dernier message
   const avec = (motif, le = "2026-11-20T10:00:05Z") => conv("a", { tri: { preparer: false, motif, le } });
   assert.equal(W.raisonSansReponse(avec("personnel"), messages), "Message personnel");
   assert.equal(W.raisonSansReponse(avec("remerciement"), messages), "Un remerciement");
-  assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "jamais" }, messages), "Contact réglé sur Jamais");
+  assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "jamais" }, messages), "Contact personnel");
   assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "auto" }, messages), null, "repassé sur Automatiques depuis : plus ce motif");
   assert.equal(W.raisonSansReponse(avec("partenaire"), messages), "Un partenaire");
   assert.equal(W.raisonSansReponse(avec("media_seul"), messages), "Photo ou vocal sans texte");
@@ -484,7 +484,7 @@ test("préparer une réponse : chaque erreur de whatsapp-preparer a un libellé 
   assert.match(vue, /tr\("Préparer une réponse"\)/);
   assert.match(vue, /tr\(erreurPreparer\(r && r\.erreur\)\)/);
   // Lot 2 (design n° 7) : le réglage du contact passe dans le menu « … » de l'en-tête, avec un repère visible sur « Jamais ».
-  assert.match(vue, /tr\("Ne jamais préparer de réponse pour ce contact"\)/);
+  assert.match(vue, /tr\("Contact personnel : rien envoyé à l'IA"\)/);
   assert.match(vue, /reponsesDe\(c\) === "jamais" \? h\("span", \{ class: "wa-jamais" \}/);
   assert.match(vue, /preparationAuto\(reglagesDe\(c\.entite_id \|\| suggeree\.id\)\)/, "le libellé suit le réglage que lit la fonction (entreprise de la conversation ou suggérée)");
   // Plus d'icône d'alerte quand rien n'est préparé : le bouton, et ce que le tri a vu.
