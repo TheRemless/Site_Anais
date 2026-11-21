@@ -19,9 +19,9 @@ import { tourner } from "../agent/boucle.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
 import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
-import { dateBangkok } from "../assistant/calc.js";
+import { dateBangkok, reglagesAssistant } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 // Le contact est un partenaire, un chauffeur ou un hôtel (migration 68) : réponse sur demande seulement, sans client ni dossier relié.
@@ -70,7 +70,9 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     await garderTri(db, conv.id, decision);
     // Le nom que le client a écrit (champ nom_client du même tri, aucun autre appel à l'IA) : sur la conversation, jamais un nom saisi à la
     // main ni un contact qui n'est pas un client (proposer.js, nomAEcrire ; la base protège aussi le nom manuel, migration 70).
-    const nomEcrit = nomAEcrire(conv, (decision as { nom_client?: string }).nom_client || "");
+    const nomPropose = (decision as { nom_client?: string }).nom_client || "";
+    const interdits = nomPropose && nomAEcrire(conv, nomPropose) ? await nomsInterdits(db, conv) : null;
+    const nomEcrit = interdits ? nomAEcrire(conv, nomPropose, interdits) : null;
     if (nomEcrit) await nommerConversation(db, conv, nomEcrit);
     if (!decision.preparer) return;
     // Revue de sécurité de la PR 299 : un partenaire, un chauffeur ou un hôtel n'a jamais de réponse préparée seule, même avec la case
@@ -157,10 +159,24 @@ async function garderTri(db: SupabaseClient, conversationId: string, decision: {
   if (error && error.code !== "42703") console.error("whatsapp : tri non gardé", error.message);
 }
 
+// Les noms qu'un client ne peut pas se donner (revue de sécurité de la PR 306) : fiches partenaires et contacts typés de l'organisation,
+// prénoms de l'équipe. Une lecture en échec rend null : aucun nom n'est écrit.
+async function nomsInterdits(db: SupabaseClient, conv: Conv) {
+  const ents = conv.entite_id ? { data: [{ id: conv.entite_id }], error: null } : await db.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+  if (ents.error) return null;
+  const ids = (ents.data || []).map((e: { id: string }) => e.id);
+  if (!ids.length) return null;
+  const [pa, regl, types] = await Promise.all([db.from("partenaires").select("id, nom").in("entite_id", ids).limit(2000), db.from("reglages").select("valeur").in("entite_id", ids), nomsContactsTypes(db, conv.organisation_id)]);
+  if (pa.error || regl.error || types.erreur) return null;
+  // deno-lint-ignore no-explicit-any
+  const prenoms = ["Nani", "Anaïs", ...(regl.data || []).map((r: any) => reglagesAssistant(r.valeur || {}).responsable || "")].filter(Boolean);
+  return { interdits: [...nomsABloquer((pa.data || []) as { id: string; nom: string }[]), ...types.noms], prenoms };
+}
+
 // Écrit le nom avec la clé de service : la base pose nom_source = 'whatsapp' et garde un nom manuel (whatsapp_proteger_classement). Le nom lu
-// doit être encore le même (un nom saisi par Nani entre-temps n'est pas remplacé).
+// doit être encore le même (un nom saisi par Nani entre-temps n'est pas remplacé) ; la conversation doit être encore celle d'un client.
 async function nommerConversation(db: SupabaseClient, conv: Conv, nom: string) {
-  const base = db.from("whatsapp_conversations").update({ nom }).eq("id", conv.id).or("nom_source.is.null,nom_source.eq.whatsapp");
+  const base = db.from("whatsapp_conversations").update({ nom }).eq("id", conv.id).or("nom_source.is.null,nom_source.eq.whatsapp").or("type_contact.is.null,type_contact.eq.client").is("partenaire_id", null).neq("reponses", "jamais");
   const { error } = await (conv.nom ? base.eq("nom", conv.nom) : base.is("nom", null));
   if (error && error.code !== "42703") console.error("whatsapp : nom du client non écrit", error.message);
 }
@@ -237,6 +253,8 @@ async function preparer(
   if (errProp || !prop) throw new Error(`proposition : ${errProp?.message}`);
   let statut = "ok";
   let carte: { titre?: string; donnees?: { message?: string; langue?: string }; avertissements?: string[] } | null = null;
+  // Les références des services rendus par les outils pendant la préparation : gardées sur la proposition pour l'envoi (elementServices).
+  let refsVues: string[] = [];
   try {
     // Un partenaire, un chauffeur ou un hôtel (revue de sécurité de la PR 299) : ni client ni dossier relié, donc aucun prix de vente, total
     // ni solde d'un client ne peut être lu pour lui répondre.
@@ -275,7 +293,9 @@ async function preparer(
     // conversation) et à aucun prix de vente est signalé « montant_interne » et bloque la copie dans l'écran. Le net d'un autre service du
     // catalogue n'est qu'un avertissement (montant_egal_net, faux blocage du 21.11.2026). Les nets restent ici, dans la fonction : ils ne
     // partent jamais chez Claude.
-    memo.nets = await netsPourControle(db, ids);
+    const lusNets = await netsPourControle(db, ids);
+    memo.nets = lusNets.nets;
+    memo.controleImpossible = lusNets.erreur;
     // Le dossier relié : ses services (leurs nets bloquent), ses nets, marges et commissions (bloquent aussi).
     const relie = await dossierPourControle(db, dossier ? dossier.id : null, [ent.id]);
     memo.servicesEnCours = relie.services;
@@ -312,6 +332,7 @@ async function preparer(
       debut: t0 - (DUREE_MAX_MS - DUREE_BOITE_MS),
     });
     statut = r.statut;
+    refsVues = [...(memo.refs || [])];
   } catch (err) {
     statut = estCreditEpuise(err) ? "credit_epuise" : err instanceof Anthropic.APIError ? `erreur_api${err.status ? `_${err.status}` : ""}` : "erreur";
     console.error("whatsapp : agent", statut, err instanceof Error ? err.message.slice(0, 200) : "");
@@ -321,7 +342,7 @@ async function preparer(
   // Toujours utile ? Le client a pu réécrire (son traitement prépare la suivante) ou Nani répondre depuis l'app pendant la préparation.
   const apres = await lireConversation(db, conv.id);
   const utile = !!apres && aRepondre(apres.messages, messageId);
-  const champs = !utile ? { statut: "remplacee" } : message ? { statut: "a_faire", texte: message, langue: langueSure(c?.donnees?.langue), avertissements: avertissementsSurs(c?.avertissements) } : { statut: "echec", erreur: (statut === "ok" ? "pas_de_reponse" : statut).slice(0, 200) };
+  const champs = !utile ? { statut: "remplacee" } : message ? { statut: "a_faire", texte: message, langue: langueSure(c?.donnees?.langue), avertissements: [...avertissementsSurs(c?.avertissements), ...[elementServices(refsVues)].filter(Boolean)] } : { statut: "echec", erreur: (statut === "ok" ? "pas_de_reponse" : statut).slice(0, 200) };
   // Seulement une proposition encore « en_cours » : traitée entre-temps (écho de l'app), elle le reste.
   const { data: maj } = await db.from("whatsapp_propositions").update(champs).eq("id", prop.id).eq("statut", "en_cours").select("id");
   await j.noter(ent.id, message ? statut : statut === "ok" ? "pas_de_reponse" : statut);
@@ -395,7 +416,7 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { c
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
   };
   const COL_DOSSIER = "id, ref, client_id, date_depart, date_retour, annule";
-  const COL_RESA = "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place";
+  const COL_RESA = "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place";
   // deno-lint-ignore no-explicit-any
   const lire = async (requete: any, table: string) => {
     const { data, error } = await requete;

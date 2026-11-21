@@ -10,7 +10,7 @@ import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { formatMontant, aujourdhui } from "../calc.mjs";
 import { clientPourFaits, dossierPourFaits, faitsClient } from "../whatsapp-faits-calc.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
-import { quand, bloquantsReponse, resteBloque, agentActif } from "../agent-calc.mjs";
+import { quand, bloquantsReponse, resteBloque, agentActif, CONTROLE_IMPOSSIBLE } from "../agent-calc.mjs";
 import {
   CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
@@ -20,7 +20,7 @@ import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
-  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, montantsAConfirmer, ficheAMettreAJour, LECTURE_IMPOSSIBLE, propositionCourante,
+  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, aConfirmerEnvoi, ficheAMettreAJour, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
   apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX,
 } from "../whatsapp-calc.mjs";
@@ -247,11 +247,13 @@ function titreNom(c) {
     h("button", { type: "button", class: "wa-nom-bouton", "aria-label": tr("Changer le nom de {nom}", { nom }), onclick: (e) => editerNom(c, e.currentTarget.closest(".wa-fil-titre")) }, h("span", { class: "wa-nom-texte" }, nom), icone("crayon", 16))
   );
 }
+// Un nom de source « whatsapp » est celui que le contact a écrit (tri de la fonction, 21.11.2026) : une mention discrète le dit.
 function sousTitreNom(c) {
   const client = clientDe(c);
-  if (!client) return null;
+  const ecrit = !!c.nom && c.nom_source === "whatsapp";
+  if (!client) return ecrit ? h("span", { class: "wa-nom-source" }, tr("écrit par le contact")) : null;
   if (nomSaisi(c)) return h("span", null, tr("fiche « {nom} »", { nom: nomClient(client) }));
-  return c.nom ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null;
+  return c.nom ? h("span", { class: ecrit ? "wa-nom-source" : null }, ecrit ? tr("« {nom} » écrit par le contact", { nom: c.nom }) : tr("profil « {nom} »", { nom: c.nom })) : null;
 }
 function editerNom(c, zone) {
   if (!zone) return;
@@ -769,16 +771,16 @@ async function envoyer(c, p, zone, bouton, apres) {
   let r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte: zone.value, proposition_id: p.id });
   // Un montant égal au net d'un autre service du catalogue (whatsapp-envoi, 409) : rien n'est parti. Nani confirme d'un clic, le même texte
   // repart avec cette liste, que la fonction revérifie.
-  const aConfirmer = montantsAConfirmer(r);
-  if (aConfirmer.length) {
-    const texte = zone.value;
-    if (!(await confirmer(tr("Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.", { liste: aConfirmer.join(", ") }), tr("Envoyer quand même")))) {
+  const texte = zone.value;
+  const question = aConfirmerEnvoi(r, texte);
+  if (question) {
+    if (!(await confirmer(tr(question.texte, question.vars), tr("Envoyer quand même")))) {
       bouton.disabled = false;
       toast(tr("Rien n'est parti."));
       return apres();
     }
     if (!toujoursCourante(c, p)) return perimee();
-    r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte, proposition_id: p.id, montants_confirmes: aConfirmer });
+    r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte, proposition_id: p.id, montants_confirmes: question.renvoi });
   }
   if (r && r.demo) {
     bouton.disabled = false;
@@ -798,7 +800,7 @@ async function envoyer(c, p, zone, bouton, apres) {
     // Fiches partenaires illisibles côté serveur (revue PR 298) : un message clair, rien à retirer du texte.
     // « montant_interne:1500 » ou « nom_prestataire:Jade » : la valeur seule, cherchée dans le texte (une valeur sans code reste telle quelle).
     if (code === "contenu_interne") {
-      const brut = ((r && r.a_retirer) || []).filter((x) => x !== LECTURE_IMPOSSIBLE);
+      const brut = ((r && r.a_retirer) || []).filter((x) => x !== LECTURE_IMPOSSIBLE && x !== CONTROLE_IMPOSSIBLE);
       const b = bloquantsReponse(brut);
       aRetirer.set(p.id, [...b.montants.map(String), ...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(String(x)))]);
     }
@@ -941,7 +943,7 @@ function carteProposition(c, p, messages) {
     const reste = [...new Set([...resteBloque(zone.value, bloquants), ...duServeur])];
     const incertain = envoisIncertains.has(p.id);
     alerte.hidden = !reste.length;
-    alerte.textContent = !reste.length ? "" : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") });
+    alerte.textContent = !reste.length ? "" : reste.includes(CONTROLE_IMPOSSIBLE) ? tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.") : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") });
     boutonEnvoyer.disabled = !ok.ok || reste.length > 0 || incertain;
     pourquoi.textContent = incertain ? tr(erreurEnvoi("verifier_whatsapp")) : ok.raison === "fenetre_fermee" ? tr("Envoi depuis Gestion fermé, le client a écrit il y a plus de 24 h.") : ok.raison === "vide" ? tr("La réponse est vide.") : "";
     pourquoi.hidden = !pourquoi.textContent;

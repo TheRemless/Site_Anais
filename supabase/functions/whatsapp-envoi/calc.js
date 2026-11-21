@@ -1,5 +1,5 @@
 // Fonction « whatsapp-envoi » : la logique pure (demande, message Telnyx, contrôle du texte). Tests : tests/gestion-whatsapp.test.js.
-import { controlerReponse, netsDuControle } from "../agent/outils.js";
+import { controlerReponse, montantsDuTexte, netsDuControle } from "../agent/outils.js";
 export const TEXTE_MAX_OCTETS = 4096; // limite de Telnyx pour un texte WhatsApp
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,12 +29,23 @@ export function lireEnvoi(d) {
 //     catalogue ou du dossier relié, ni un total : des prix du catalogue qui figurent aussi dans le texte, ou des services du dossier relié
 //     (comme la carte de dossier pour l'Assistant). La personne confirme d'un clic, l'écran renvoie la même liste.
 // `nets` : netsPourControle ; `servicesEnCours`, `internes`, `ventesDossier` : dossierPourControle (agent/outils.js).
-export function controleEnvoi(texte, { nets = [], servicesEnCours = new Set(), internes = new Set(), ventes = new Set(), ventesDossier = [], prestataires = [] } = {}) {
-  const n = netsDuControle({ nets, servicesEnCours });
-  const c = controlerReponse(texte, { signer: true, internes: new Set([...internes, ...n.bloquants]), ventes: new Set([...ventes, ...ventesDossier]), netsAutres: n.autres, elementsVente: [...ventes], composants: ventesDossier, prestataires });
+// Revue de sécurité de la PR 306 :
+//   - `refs` : les services de la proposition envoyée (whatsapp/proposer.js, servicesDeProposition). Leurs nets bloquent comme ceux du
+//     dossier relié, même sans dossier ;
+//   - un net bloquant n'est levé que par un prix de vente d'une réservation du dossier relié (`ventesDossier`), jamais par le catalogue ;
+//   - `masquer` : la personne n'a pas le droit de voir les nets ; le 409 ne dit pas la valeur et la confirmation porte sur tous les montants
+//     du texte ;
+//   - `controleImpossible` : les nets n'ont pas pu être relus, rien ne part ;
+//   - `portee` : « autre_service » quand des services de la demande sont connus (dossier ou proposition), sinon « catalogue ».
+const BLOQUANTS = /^(?:montant_interne|montant_illisible|nom_prestataire|controle_impossible)(?::|$)/;
+export function controleEnvoi(texte, { nets = [], refs = new Set(), servicesEnCours = new Set(), internes = new Set(), ventes = new Set(), ventesDossier = [], prestataires = [], masquer = false, controleImpossible = false } = {}) {
+  const n = netsDuControle({ nets, refs, servicesEnCours });
+  const c = controlerReponse(texte, { signer: true, internes: new Set([...internes, ...n.bloquants]), ventes: new Set([...ventes, ...ventesDossier]), leveInternes: new Set(ventesDossier), netsAutres: n.autres, elementsVente: [...ventes], composants: ventesDossier, prestataires, masquerNets: masquer, controleImpossible });
   const av = c.avertissements || [];
   const a_confirmer = [...new Set(av.filter((a) => a.startsWith("montant_egal_net:")).flatMap((a) => a.slice("montant_egal_net:".length).split(",").map(Number)))].filter(Number.isFinite).sort((x, y) => x - y);
-  return { a_retirer: av.filter((a) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire")), a_confirmer };
+  const portee = refs.size || servicesEnCours.size ? "autre_service" : "catalogue";
+  const montants = [...new Set(montantsDuTexte(c.message || ""))].filter((x) => x > 0);
+  return { a_retirer: av.filter((a) => BLOQUANTS.test(a)), a_confirmer, ...(av.includes("montant_egal_net") ? { masque: true } : {}), portee, montants };
 }
 // La même liste, l'ordre et les doublons mis à part.
 export const memesMontants = (a = [], b = []) => {
@@ -43,12 +54,15 @@ export const memesMontants = (a = [], b = []) => {
   return x.length === y.length && x.every((v, i) => v === y[i]);
 };
 // Le refus d'un envoi d'après le contrôle, ou null quand il n'y a rien à retirer et que les montants à confirmer sont exactement ceux que
-// la personne a confirmés (une liste différente, plus courte ou plus longue, redemande la confirmation).
+// la personne a confirmés (une liste différente, plus courte ou plus longue, redemande la confirmation). Valeurs masquées : la personne
+// confirme tous les montants du texte, la liste doit être exactement celle-là (aucun net n'est dit).
 export function refusEnvoi(controle, confirmes = []) {
   const aRetirer = (controle && controle.a_retirer) || [];
   const aConfirmer = (controle && controle.a_confirmer) || [];
+  const portee = (controle && controle.portee) || "catalogue";
   if (aRetirer.length) return { status: 422, corps: { erreur: "contenu_interne", a_retirer: aRetirer } };
-  if (aConfirmer.length && !memesMontants(aConfirmer, confirmes)) return { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: aConfirmer } };
+  if (controle && controle.masque) return memesMontants(controle.montants || [], confirmes) ? null : { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: [], masque: true, portee } };
+  if (aConfirmer.length && !memesMontants(aConfirmer, confirmes)) return { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: aConfirmer, portee } };
   return null;
 }
 

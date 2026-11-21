@@ -10,7 +10,7 @@ import { tr } from "../i18n.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { bloquantsReponse } from "../agent-calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
-import { lecteurWhatsApp, nomConversation, fenetre, numeroAffiche, montantsAConfirmer, LECTURE_IMPOSSIBLE } from "../whatsapp-calc.mjs";
+import { lecteurWhatsApp, nomConversation, fenetre, numeroAffiche, aConfirmerEnvoi, LECTURE_IMPOSSIBLE } from "../whatsapp-calc.mjs";
 import { conversationDuVoucher, numeroMasque, numeroDifferent, legendeValide, octets, LEGENDE_MAX_OCTETS, erreurVoucher, voucherIncertain } from "../whatsapp-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
@@ -127,17 +127,17 @@ export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende 
       return dire(tr(erreurVoucher(code)));
     }
     if (["fenetre_fermee", "coexistence_inactive", "contact_non_client", "contact_personnel", "conversation_autre_dossier", "conversation_autre_entreprise", "reservation_annulee", "droit_manquant", "deja_traitee", "image_trop_grosse", "image_trop_grande", "image_invalide"].includes(code)) bloque = true;
-    const aConfirmer = montantsAConfirmer(res);
-    if (aConfirmer.length) {
+    const question = aConfirmerEnvoi(res, zone.value.trim());
+    if (question) {
       // Rien n'est parti : Nani confirme d'un clic, la même légende repart avec cette liste (la fonction la revérifie).
       const encore = h("button", { class: "secondaire", type: "button" }, tr("Envoyer quand même"));
-      encore.addEventListener("click", () => partir(aConfirmer));
-      etatEnvoi.replaceChildren(h("p", null, h("strong", null, tr("Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.", { liste: aConfirmer.join(", ") }))), encore);
+      encore.addEventListener("click", () => partir(question.renvoi));
+      etatEnvoi.replaceChildren(h("p", null, h("strong", null, tr(question.texte, question.vars))), encore);
       etatEnvoi.hidden = false;
       return maj();
     }
     if (code === "contenu_interne") {
-      const brut = ((res && res.a_retirer) || []).filter((v) => v !== LECTURE_IMPOSSIBLE);
+      const brut = ((res && res.a_retirer) || []).filter((v) => v !== LECTURE_IMPOSSIBLE && v !== "controle_impossible");
       const b = bloquantsReponse(brut);
       const aRetirer = [...b.montants.map(String), ...b.noms];
       dire(brut.length < ((res && res.a_retirer) || []).length ? tr(erreurVoucher("partenaires_illisibles")) : aRetirer.length ? tr("À retirer du message : {liste}. Rien n'est parti.", { liste: aRetirer.join(", ") }) : tr(erreurVoucher(code)));

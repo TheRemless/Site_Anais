@@ -291,7 +291,9 @@ export function montantsDuTexte(t) {
     .replace(/\b\d{1,2}[:h.]\d{2}\b/g, " ")
     .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ");
   const out = [];
-  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:[ ,']\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,']/g, "")));
+  // Séparateurs de milliers comme montantsTapes (espace, virgule, apostrophe droite ou typographique, espaces insécables), plus le point
+  // suivi d'exactement trois chiffres (« 1.000 ») : revue de sécurité de la PR 306, « 1’000 » se lisait 0 et laissait passer un net.
+  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:(?:[ ,'’\u00a0\u202f]|\.(?=\d{3}(?!\d)))\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,'’\u00a0\u202f.]/g, "")));
   return out;
 }
 const plat = (s) =>
@@ -301,22 +303,27 @@ const plat = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-// Ce qui bloque une réponse : { montants: [nombres], noms: [textes] }, lu dans les avertissements de la carte.
+// Ce qui bloque une réponse : { montants: [nombres], noms: [textes], ferme }, lu dans les avertissements de la carte. Revue de sécurité de
+// la PR 306 : « montant_illisible:0 » (un montant lu à 0) bloque tant qu'il reste ; « controle_impossible » (nets illisibles) bloque
+// toujours, la réponse est à refaire.
+export const CONTROLE_IMPOSSIBLE = "controle_impossible";
 export function bloquantsReponse(avertissements = []) {
   const montants = new Set();
   const noms = [];
+  let ferme = false;
   for (const a of avertissements || []) {
     const [code, valeur = ""] = String(a).split(/:(.*)/s);
-    if (code === "montant_interne") for (const x of valeur.split(",")) if (x.trim() && Number.isFinite(Number(x))) montants.add(Number(x));
+    if (code === "montant_interne" || code === "montant_illisible") for (const x of valeur.split(",")) if (x.trim() && Number.isFinite(Number(x))) montants.add(Number(x));
     if (code === "nom_prestataire" && valeur.trim()) noms.push(valeur.trim());
+    if (code === CONTROLE_IMPOSSIBLE) ferme = true;
   }
-  return { montants: [...montants], noms };
+  return { montants: [...montants], noms, ...(ferme ? { ferme } : {}) };
 }
-// Ce qui reste dans le texte (montants et noms encore présents) ; vide : la copie est permise.
-export function resteBloque(texte, { montants = [], noms = [] } = {}) {
+// Ce qui reste dans le texte (montants et noms encore présents) ; vide : la copie est permise. Contrôle fermé : CONTROLE_IMPOSSIBLE.
+export function resteBloque(texte, { montants = [], noms = [], ferme = false } = {}) {
   const vus = new Set(montantsDuTexte(texte));
   const p = ` ${plat(texte)} `;
-  return [...montants.filter((n) => vus.has(n)).map(String), ...noms.filter((n) => plat(n).length >= 3 && p.includes(` ${plat(n)} `))];
+  return [...(ferme ? [CONTROLE_IMPOSSIBLE] : []), ...montants.filter((n) => vus.has(n)).map(String), ...noms.filter((n) => plat(n).length >= 3 && p.includes(` ${plat(n)} `))];
 }
 
 // ---- Lot 2 des audits du 20.11.2026 (Assistant) ---------------------------------------------------------------------------------------

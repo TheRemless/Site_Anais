@@ -342,7 +342,7 @@ test("revue 6 : la boîte WhatsApp ne charge aucun net pour les outils, seulemen
   const colonnes = ctxSrc.slice(0, ctxSrc.indexOf("};"));
   assert.doesNotMatch(colonnes, /prestations_nets:|trajets_nets:|partenaires_prives:/);
   // Revue de sécurité de la PR 299 : la lecture des nets pour le contrôle est commune à la boîte et à l'Assistant (agent/outils.js).
-  assert.match(wa, /memo\.nets = await netsPourControle\(db, ids\);/);
+  assert.match(wa, /const lusNets = await netsPourControle\(db, ids\);\n    memo\.nets = lusNets\.nets;/);
   const outilsSrc = readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8");
   assert.match(outilsSrc, /export async function netsPourControle\(db, ids = \[\]\)/);
   assert.match(outilsSrc, /toutes\("prestations_nets", "prestation_id, net, net_enfant"\), toutes\("trajets_nets", "trajet_id, net_adulte, net_enfant"\)/);

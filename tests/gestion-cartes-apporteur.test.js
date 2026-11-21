@@ -91,8 +91,8 @@ test("premier message : le numéro est celui de l'apporteur, ses messages marqu�
 
 test("fonction agent : type et fiche lus avec la session, repli sans la colonne, jamais partenaires_prives, consigne et contexte posés", () => {
   const ts = source("supabase/functions/agent/index.ts");
-  assert.match(ts, /select\("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id"\)\.eq\("id", waId\)/);
-  assert.match(ts, /if \(wc\.error && wc\.error\.code === "42703"\) wc = await sb\.from\("whatsapp_conversations"\)\.select\("id, telephone, nom, entite_id, dossier_id, reponses"\)\.eq\("id", waId\)/);
+  assert.match(ts, /select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id"\)\.eq\("id", waId\)/);
+  assert.match(ts, /if \(wc\.error && wc\.error\.code === "42703"\) wc = await sb\.from\("whatsapp_conversations"\)\.select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses"\)\.eq\("id", waId\)/);
   assert.match(ts, /select\(`\$\{COL_CONV_AGENT\}, whatsapp_conversation_id`\)/, "une conversation déjà liée retrouve son contact");
   assert.match(ts, /c\.error\.code === "42703"\) c = await sb\.from\("agent_conversations"\)\.select\(COL_CONV_AGENT\)/);
   const bloc = ts.slice(ts.indexOf("// Apporteur d'affaires (apporteur.js) :"), ts.indexOf('const anciens = await sb.from("agent_messages")'));

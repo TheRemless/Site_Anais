@@ -139,6 +139,9 @@ export const DROIT_NETS = "partenaires.nets";
 export const voitPartenaires = (ctx, entiteId) => permissionsDans(ctx, entiteId).includes(DROIT_PARTENAIRES);
 export const voitNets = (ctx, entiteId) => voitPartenaires(ctx, entiteId) && permissionsDans(ctx, entiteId).includes(DROIT_NETS);
 // Le droit dans au moins une entreprise : pour lire les tables (la RLS et voitNets par ligne font le tri ensuite).
+// Le droit de voir les nets dans chaque entreprise de la conversation (les deux en espace unifié) : sinon la valeur d'un net d'un autre
+// service ne sort pas, même dans un avertissement (revue de la PR 306).
+const voitTousLesNets = (ctx) => (estUnifie(ctx) ? ctx.entites.every((e) => voitNets(ctx, e.id)) : voitNets(ctx));
 const voitNetsQuelquePart = (ctx) => (estUnifie(ctx) ? ctx.entites.some((e) => voitNets(ctx, e.id)) : voitNets(ctx));
 const arrondi2 = (x) => Math.round(x * 100) / 100;
 // Même règle que operations-calc.mjs (commissionPrevue) : la commission attendue, ou null quand la règle ou une donnée manque.
@@ -890,7 +893,10 @@ export async function lireDossier(e, ctx) {
     const internes = champsInternes(ctx, fiche, voitNets(ctx, ed) ? chiffresService(r, nets.get(r.id)) : {}, ed);
     // Le règlement d'un service est celui de la réservation (choisi sur le document), pas le mode par défaut du partenaire.
     if (internes.reglement) internes.reglement = r.paye_sur_place ? "sur_place" : "chez_nous";
-    return { reservation: refDe("R", r.id), libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), ...(numeroVol(r.vol) ? { vol: numeroVol(r.vol) } : {}), adultes: entier(p.adultes), enfants: entier(p.enfants), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
+    // La référence de l'offre du catalogue (P-…, T-…) : le service est de la demande en cours, son net bloque dans la réponse au client
+    // (netsDuControle, revue de sécurité de la PR 306). Une référence n'est ni un net ni un nom.
+    const offre = r.prestation_id ? { ref: refDe("P", r.prestation_id) } : r.trajet_id ? { ref: refDe("T", r.trajet_id) } : {};
+    return { reservation: refDe("R", r.id), ...offre, libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), ...(numeroVol(r.vol) ? { vol: numeroVol(r.vol) } : {}), adultes: entier(p.adultes), enfants: entier(p.enfants), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
   });
   // Les totaux du dossier, services annulés exclus.
   const actifs = services.filter((s) => s.statut !== "annule");
@@ -982,10 +988,11 @@ export function retenirLecture(resultat, memo, nom = "lire_conversation") {
   const { internes, noms } = retenuDeLecture(resultat);
   if (!(memo.internes instanceof Set)) memo.internes = new Set();
   for (const n of internes) memo.internes.add(n);
-  // Une conversation de client lue en entier : les prix écrits par Nani sont des prix de vente (montantsDeNaniLus).
-  if (nom === "lire_conversation") {
+  // La conversation liée lue en entier, d'un client confirmé : les prix écrits par Nani sont des prix de vente (montantsDeNaniLus). Jamais
+  // ceux d'une autre conversation lue (un autre client, un partenaire non typé) : revue de sécurité de la PR 306.
+  if (nom === "lire_conversation" && memo.conversationClient === true && memo.conversationLiee && resultat && resultat.conversation === memo.conversationLiee) {
     if (!(memo.nani instanceof Set)) memo.nani = new Set();
-    for (const n of montantsDeNaniLus(resultat)) memo.nani.add(n);
+    for (const n of montantsDeNaniLus(resultat, { confirme: true })) memo.nani.add(n);
   }
   ajouterNoms(memo, noms);
 }
@@ -1012,16 +1019,21 @@ export function retenirLectures(messages = [], memo) {
 // Les nets de l'entreprise (des deux en espace unifié), prestations et trajets : seulement pour repérer un net dans la réponse (memo.nets).
 // Chaque entrée garde son service, { montant, prestation_id } ou { montant, trajet_id } : le net d'un service de la demande en cours bloque,
 // celui d'un autre service ne donne qu'un avertissement (netsDuControle). Lus à part avec la clé de service ; jamais rendus par un outil,
-// jamais envoyés chez Claude ni à la personne. Par pages de 1000 lignes, 20 000 au plus par table. Une lecture en erreur s'arrête : ce qui
-// est lu reste.
+// jamais envoyés chez Claude ni à la personne. Par pages de 1000 lignes, 20 000 au plus par table. Rend { nets, erreur } : une lecture en
+// erreur met `erreur` (revue de sécurité de la PR 306) et l'appelant ferme le contrôle (controle_impossible), au lieu de laisser passer
+// un net qui n'a pas pu être lu.
 export async function netsPourControle(db, ids = []) {
   const s = [];
-  if (!db || !ids.length) return s;
+  let erreur = false;
+  if (!db || !ids.length) return { nets: s, erreur };
   const toutes = async (table, colonnes) => {
     const lignes = [];
     for (let de = 0; de < 20000; de += 1000) {
       const { data, error } = await db.from(table).select(colonnes).in("entite_id", ids).range(de, de + 999);
-      if (error || !data) break;
+      if (error || !data) {
+        erreur = true;
+        break;
+      }
       lignes.push(...data);
       if (data.length < 1000) break;
     }
@@ -1031,7 +1043,7 @@ export async function netsPourControle(db, ids = []) {
   const positif = (v) => v !== null && v !== undefined && Number(v) > 0;
   for (const n of p) for (const v of [n.net, n.net_enfant]) if (positif(v)) s.push({ montant: Number(v), prestation_id: n.prestation_id || null });
   for (const n of t) for (const v of [n.net_adulte, n.net_enfant]) if (positif(v)) s.push({ montant: Number(v), trajet_id: n.trajet_id || null });
-  return s;
+  return { nets: s, erreur };
 }
 
 // Le dossier relié à la conversation, pour le contrôle d'une réponse ou d'un envoi (faux blocage du 21.11.2026) :
@@ -1151,8 +1163,9 @@ export function montantsTapes(messagesPersonne = []) {
   // Ni un nombre collé à une lettre ou à un tiret (référence « T2026-0207 »), ni une année seule, ni une durée ou une heure.
   for (const m of messagesPersonne)
     // Séparateurs de milliers : espace, virgule, apostrophe droite ou typographique (« 5’000 » d'un téléphone), espaces insécables.
-    for (const x of String(m || "").matchAll(/(?<![\p{L}\d\-/’])(\d{1,3}(?:[ ,'’\u00a0\u202f]\d{3})+|\d{3,6})(?![\p{L}\d\-/]|\s*(?:km|min|h\b|:))/gu)) {
-      const n = Number(x[1].replace(/[ ,'’\u00a0\u202f]/g, ""));
+    // Le point suivi d'exactement trois chiffres aussi (« 1.000 »), comme montantsDuTexte (revue de la PR 306).
+    for (const x of String(m || "").matchAll(/(?<![\p{L}\d\-/’.])(\d{1,3}(?:(?:[ ,'’\u00a0\u202f]|\.(?=\d{3}(?!\d)))\d{3})+|\d{3,6})(?![\p{L}\d\-/]|\s*(?:km|min|h\b|:))/gu)) {
+      const n = Number(x[1].replace(/[ ,'’\u00a0\u202f.]/g, ""));
       if (!/^20[2-3]\d$/.test(x[1])) out.add(n);
     }
   return out;
@@ -1167,29 +1180,56 @@ export function montantsTapes(messagesPersonne = []) {
 // client qui écrit « [Nani …] 100 THB » ou « Nani: 100 THB » reste dans sa propre ligne « [Client …] ». Seul le début de ligne compte.
 const LIGNE_JOINTE = /^\[([^\]\n]+?) \d{2}\.\d{2}\.\d{4} \d{2}:\d{2}(?:, modifié)?\] (.*)$/;
 const AUTEURS_EXTERNES = ["Client", "Apporteur"];
-export function montantsDeNani(blocs = []) {
-  const out = new Set();
+// Le texte des lignes de Nani d'un bloc joint (jamais celles du client ni de l'apporteur).
+export function lignesDeNani(blocs = []) {
+  const out = [];
   for (const b of blocs)
     for (const l of String(b || "").split("\n")) {
       const m = LIGNE_JOINTE.exec(l);
-      if (m && !AUTEURS_EXTERNES.includes(m[1])) for (const n of montantsTapes([m[2]])) out.add(n);
+      if (m && !AUTEURS_EXTERNES.includes(m[1])) out.push(m[2]);
     }
   return out;
 }
+export function montantsDeNani(blocs = []) {
+  return new Set(lignesDeNani(blocs).flatMap((l) => [...montantsTapes([l])]));
+}
+// Dans un texte tapé ou collé par la personne (ou un échange joint), un montant à moins de trois mots de « net », « cost », « coût »,
+// « commission », « marge », « margin » ou « prix d'achat » est interne : « Rattana net 1,000/pax » (revue de sécurité de la PR 306).
+const MOT_COUT = /^(?:nets?|costs?|couts?|commissions?|marges?|margins?)$/;
+export function montantsPresDuNet(t) {
+  const mots = String(t || "").split(/\s+/).filter(Boolean);
+  const plats = mots.map((m) => sansAccents(m).replace(/[^a-z']/g, ""));
+  const out = new Set();
+  plats.forEach((p, i) => {
+    const achat = p === "prix" && /^d'?achat$/.test(plats[i + 1] || "");
+    if (!MOT_COUT.test(p) && !achat) return;
+    const fenetre = mots.slice(Math.max(0, i - 3), (achat ? i + 1 : i) + 4).join(" ");
+    for (const n of montantsDuTexte(fenetre)) if (n > 0) out.add(n);
+  });
+  return out;
+}
+
 // Une conversation WhatsApp de client : type client ou sans type, aucune fiche partenaire reliée (PR 300), pas un contact personnel.
 export const conversationDeClient = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
-// Les messages de la base (boîte WhatsApp, reponse.ts) : sortants, écrits depuis l'app ou depuis Gestion, d'une conversation de client.
+// Un client confirmé (revue de sécurité de la PR 306) : typé « client », ou sans type mais relié à une fiche client ou à un dossier. Seule
+// une telle conversation donne des prix écrits par Nani : un partenaire jamais typé reste exclu.
+export const clientConfirme = (c) => conversationDeClient(c) && (c.type_contact === "client" || !!c.client_id || !!c.dossier_id);
+// Les messages de la base (boîte WhatsApp, reponse.ts) : sortants, écrits depuis l'app ou depuis Gestion, d'un client confirmé.
 export function montantsSortants(messages = [], conv = null) {
   const out = new Set();
-  if (!conversationDeClient(conv)) return out;
+  if (!clientConfirme(conv)) return out;
   for (const m of messages || []) if (m && m.sens === "sortant" && ["app", "gestion"].includes(m.origine) && !m.supprime_le && m.texte) for (const n of montantsTapes([String(m.texte)])) out.add(n);
   return out;
 }
 // lire_conversation d'un client (ni partenaire, ni chauffeur, ni hôtel, ni apporteur, ni fiche partenaire reliée) : les messages de Nani
 // (« de » autre que « client »). Les extraits d'une recherche ne comptent pas.
-export function montantsDeNaniLus(resultat) {
+// `confirme` : l'appelant sait déjà que la conversation est celle d'un client confirmé (clientConfirme sur la conversation liée) ; un type
+// « client » n'est pas rendu par lire_conversation.
+export function montantsDeNaniLus(resultat, { confirme = false } = {}) {
   const out = new Set();
   if (!resultat || typeof resultat !== "object" || CONTACTS_NOMMES.includes(resultat.contact) || resultat.fiche_reliee === true || !Array.isArray(resultat.messages)) return out;
+  // Un client confirmé (revue de la PR 306) : typé « client », ou relié à une fiche client ou à un dossier.
+  if (!confirme && !resultat.client && !resultat.dossier) return out;
   for (const m of resultat.messages) if (m && typeof m.de === "string" && m.de !== "client" && typeof m.texte === "string") for (const n of montantsTapes([m.texte])) out.add(n);
   return out;
 }
@@ -1220,7 +1260,9 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
   let origine = "a_fixer";
   const saisi = nombre(String(s.prix_saisi || "").replace(/[ ,']/g, ""));
   if (saisi !== null && saisi > 0) {
-    if (tapes.has(saisi)) {
+    // Un prix saisi égal à un net interne ou d'un service de la demande en cours est refusé (revue de sécurité de la PR 306).
+    if (tapes.has(saisi) && (memo.internes instanceof Set && memo.internes.has(saisi) || netsDuControle(memo).bloquants.has(saisi))) avert.push("prix_egal_net");
+    else if (tapes.has(saisi)) {
       prix = saisi;
       origine = "saisi";
     } else avert.push("prix_non_tape");
@@ -1322,7 +1364,9 @@ export function montantsDuTexte(t) {
     .replace(/\b\d{1,2}[:h.]\d{2}\b/g, " ")
     .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ");
   const out = [];
-  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:[ ,']\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,']/g, "")));
+  // Séparateurs de milliers comme montantsTapes (espace, virgule, apostrophe droite ou typographique, espaces insécables), plus le point
+  // suivi d'exactement trois chiffres (« 1.000 ») : revue de sécurité de la PR 306, « 1’000 » se lisait 0 et laissait passer un net.
+  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:(?:[ ,'’\u00a0\u202f]|\.(?=\d{3}(?!\d)))\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,'’\u00a0\u202f.]/g, "")));
   return out;
 }
 
@@ -1339,7 +1383,7 @@ export function montantsDuTexte(t) {
 // `netsAutres` : les nets des autres services du catalogue. Un montant égal à l'un d'eux, qui n'est ni un prix permis ni un total de vente,
 // donne « montant_egal_net », un avertissement qui ne bloque pas (coïncidence fréquente sur un chiffre rond).
 // `entreprises` : en mode unifié, le nom de l'autre entreprise, retiré lui aussi d'une signature.
-export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", entreprises = [], prenoms = [], internes = new Set(), ventes = new Set(), netsAutres = new Set(), elementsVente = [], composants = [] }) {
+export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", entreprises = [], prenoms = [], internes = new Set(), ventes = new Set(), netsAutres = new Set(), elementsVente = [], composants = [], leveInternes = null, masquerNets = false, controleImpossible = false }) {
   let m = texte(message, 4000) ? String(message).trim().slice(0, 4000) : "";
   const avert = [];
   if (!m) return { ok: false };
@@ -1348,16 +1392,25 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
     if (s.retire) avert.push("signature_retiree");
     m = s.message;
   }
+  // Revue de sécurité de la PR 306 : les nets n'ont pas pu être relus, le contrôle est fermé (bloquant à l'écran et à l'envoi).
+  if (controleImpossible) avert.push("controle_impossible");
   const montants = [...new Set(montantsDuTexte(m))];
-  const caches = montants.filter((n) => internes.has(n) && !ventes.has(n));
+  // Un montant lu à 0 (séparateur inconnu) ferme aussi : rien ne dit quel chiffre est écrit.
+  if (montants.some((n) => !(n > 0))) avert.push("montant_illisible:0");
+  // `leveInternes` : les prix qui lèvent un montant interne (par défaut les prix rendus par les outils, `ventes`). À l'envoi depuis Gestion,
+  // seulement les prix de vente du dossier relié (revue de la PR 306).
+  const leve = leveInternes || ventes;
+  const caches = montants.filter((n) => n > 0 && internes.has(n) && !leve.has(n));
   if (caches.length) avert.push(`montant_interne:${caches.join(",")}`);
-  const libres = montants.filter((n) => !caches.includes(n) && !permisPrix.has(n) && !ventes.has(n));
+  const libres = montants.filter((n) => n > 0 && !caches.includes(n) && !permisPrix.has(n) && !ventes.has(n));
   const presents = new Set(montants);
   const totaux = totauxDeVente(libres, [...[...elementsVente].map(Number).filter((x) => presents.has(x)), ...[...composants].map(Number)]);
   const inconnus = libres.filter((n) => !totaux.has(n));
   if (inconnus.length) avert.push(`montant_non_source:${inconnus.join(",")}`);
-  const egaux = inconnus.filter((n) => netsAutres.has(n));
-  if (egaux.length) avert.push(`montant_egal_net:${egaux.join(",")}`);
+  // Tout montant qui n'est ni caché ni un prix rendu par un outil, même tapé, écrit par Nani ou total (revue de sécurité de la PR 306).
+  const egaux = montants.filter((n) => !caches.includes(n) && !ventes.has(n) && netsAutres.has(n));
+  // Sans le droit de voir les nets (`masquerNets`), le code reste sans sa valeur : l'écran dit « un montant égal à un net interne ».
+  if (egaux.length) avert.push(masquerNets ? "montant_egal_net" : `montant_egal_net:${egaux.join(",")}`);
   const heures = [...new Set([...m.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)].map((x) => `${x[1].padStart(2, "0")}:${x[2]}`))].filter((h) => !permisHeures.has(h));
   if (heures.length) avert.push(`heure_non_source:${heures.join(",")}`);
   const interne = INTERNE.exec(m);
@@ -1453,7 +1506,7 @@ export async function proposer(nom, e, ctx, memo) {
     // Les nets du catalogue : ceux des services de la demande en cours bloquent, les autres avertissent (netsDuControle). Les totaux se
     // calculent sur les prix sourcés présents dans le texte, les lignes de la carte de dossier du même échange et les montants de Nani.
     const nets = netsDuControle(memo);
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])] });
+    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true });
     if (!c.ok) return { erreur: "message_vide" };
     const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: c.avertissements };
@@ -1572,16 +1625,22 @@ export async function executer(nom, entree, ctx, memo) {
 // et les montants tapés par la personne. Sert à contrôler la réponse au client.
 // `conversationInterne` : la conversation WhatsApp jointe ou liée est celle d'un partenaire, d'un chauffeur ou d'un hôtel ; les montants de
 // ses blocs <conversation> vont dans memo.internes (revue de sécurité de la PR 299). Dans tous les cas, ces blocs ne sont jamais « tapés ».
-// `conversationClient` : la conversation WhatsApp liée est celle d'un client (type client ou sans type, aucune fiche partenaire reliée) ;
-// les montants écrits par Nani dans ses blocs <conversation> sont alors admis comme prix (memo.nani, montantsDeNani).
-export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false } = {}) {
+// `conversationClient` : la conversation WhatsApp liée est celle d'un client confirmé (clientConfirme) ; les montants écrits par Nani
+// dans ses blocs <conversation> sont alors admis comme prix (memo.nani, montantsDeNani). `conversationLiee` : son id, seule lecture de la
+// boîte qui donne aussi des prix de Nani (retenirLecture).
+export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, conversationLiee = null } = {}) {
   // refs : les prestations et trajets rendus par les outils ; nets et servicesEnCours : posés par la fonction (netsPourControle, dossier relié).
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), nets: [], servicesEnCours: new Set(), nani: new Set(), prixCarte: [], signer, prestataires, entreprise, entreprises, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), prixCarte: [], conversationClient: conversationClient === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
+    // Un prix de carte d'origine « saisi » (tapé ou écrit par Nani) ne devient jamais un prix rendu par un outil à l'échange suivant : il
+    // lèverait un net (revue de sécurité de la PR 306). Seul un prix « catalogue » repasse.
+    const saisi = typeof v.origine === "string" && v.origine !== "catalogue";
     for (const [k, x] of Object.entries(v)) {
-      if (["prix_vente", "prix_adulte", "prix_enfant", "prix", "total_vente"].includes(k) && typeof x === "number") memo.prix.add(x);
+      if (["prix_vente", "prix_adulte", "prix_enfant", "prix", "total_vente"].includes(k) && typeof x === "number") {
+        if (!(k === "prix" && saisi)) memo.prix.add(x);
+      }
       else if (CLE_INTERNE.test(k) && typeof x === "number") memo.internes.add(x);
       else if (k === "ref" && typeof x === "string" && REF_SERVICE.test(x)) memo.refs.add(x);
       // Un numéro de vol rendu par lire_dossier (déjà noté sur une réservation) est une source pour le champ « vol » d'une carte.
@@ -1597,6 +1656,9 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   for (const m of messages) {
     const tapes = (t) => {
       memo.tapes = new Set([...memo.tapes, ...montantsTapes([sansConversation(t)])]);
+      // Seulement le texte de la personne (hors blocs joints) et les lignes de Nani d'un bloc : « cost 1,500? » écrit par un client ne rend
+      // rien interne.
+      for (const x of [sansConversation(t), ...lignesDeNani(conversationsJointes(t))]) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
       if (conversationInterne) for (const n of montantsTapes(conversationsJointes(t))) memo.internes.add(n);
       else if (conversationClient) for (const n of montantsDeNani(conversationsJointes(t))) memo.nani.add(n);
     };

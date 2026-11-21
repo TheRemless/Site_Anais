@@ -446,7 +446,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       // Sans code lisible (passerelle, coupure), le résultat est inconnu : l'écran demande de vérifier dans WhatsApp.
       // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte. « a_confirmer »
       // (montant_a_confirmer) : les montants égaux au net d'un autre service, que la personne confirme avant de renvoyer.
-      return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [], a_confirmer: montantsLus(lu) };
+      return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [], a_confirmer: montantsLus(lu), masque: !!(lu && lu.masque), portee: lu && lu.portee === "autre_service" ? "autre_service" : "catalogue" };
     },
     // Voucher en image dans la conversation du client (fonction « whatsapp-envoi » en multipart, migration 73). L'image part avec la demande :
     // la fonction la dépose elle-même dans le bucket privé après tous les contrôles (aucune écriture de stockage depuis le navigateur).
@@ -471,7 +471,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const lu = await rep.json().catch(() => null);
       if (rep.ok && lu && lu.ok) return lu;
-      return { erreur: (lu && lu.erreur) || "inconnu", a_verifier: !!(lu && lu.a_verifier), a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [], a_confirmer: montantsLus(lu) };
+      return { erreur: (lu && lu.erreur) || "inconnu", a_verifier: !!(lu && lu.a_verifier), a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [], a_confirmer: montantsLus(lu), masque: !!(lu && lu.masque), portee: lu && lu.portee === "autre_service" ? "autre_service" : "catalogue" };
     },
     // « Préparer une réponse » (fonction whatsapp-preparer, migration 60) : 202 { ok } puis la proposition « en_cours » arrive par Realtime.
     async whatsappPreparer(conversationId) {

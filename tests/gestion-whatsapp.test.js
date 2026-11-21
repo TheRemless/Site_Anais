@@ -503,5 +503,5 @@ test("migration 69 : vers un client, un nom de partenaire ou d'apporteur et un n
   assert.ok(!a.includes("nom_prestataire:Jade") && a.includes("nom_prestataire:Blue Ocean"));
   // whatsapp-envoi refuse toujours côté serveur.
   const envoi = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
-  assert.match(envoi, /const refus = refusEnvoi\(await contenuInterne\(admin, conv, demande\.texte\), demande\.montants_confirmes\);\n  if \(refus\) return json\(refus\.corps, refus\.status\);/);
+  assert.match(envoi, /const refus = refusEnvoi\(await contenuInterne\(admin, conv, demande\.texte, \{ sb, propositionId: demande\.proposition_id \}\), demande\.montants_confirmes\);\n  if \(refus\) return json\(refus\.corps, refus\.status\);/);
 });

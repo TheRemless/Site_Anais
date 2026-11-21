@@ -1,6 +1,6 @@
 // Boîte WhatsApp (phase 2) : logique pure de la réponse préparée par l'agent et du tri Secret ou Taxi. Aucune notification.
 // Aucune dépendance réseau : la fonction « whatsapp » (index.ts) et les tests (tests/gestion-whatsapp.test.js) l'importent.
-import { OUTILS, OUTILS_UNIFIES, refDe } from "../agent/outils.js";
+import { OUTILS, OUTILS_UNIFIES, partenairesCites, refDe } from "../agent/outils.js";
 import { consignes, contexteDuJour, blocApprentissages, signe } from "../agent/prompt.js";
 import { jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 
@@ -217,10 +217,14 @@ const motsNom = (s) => plat(s).split(/[^\p{L}]+/u).filter(Boolean);
 // Le nom à écrire sur la conversation, ou null. Jamais pour un contact personnel, un partenaire, un chauffeur, un hôtel, un apporteur ou une
 // fiche partenaire reliée ; jamais sur un nom saisi à la main. Seulement si le nom actuel est vide, ou n'est qu'un prénom contenu dans le
 // nouveau nom complet (« Stefan » devient « Stefan Müller ») : jamais un prénom seul à la place d'un nom complet.
-export function nomAEcrire(conv, propose) {
+// Revue de sécurité de la PR 306 : jamais un nom de partenaire ou de contact typé (`interdits`, nomsABloquer et nomsContactsTypes), ni un
+// prénom de l'équipe (`prenoms`) : un client qui écrit « I'm Nani » ou le nom d'un partenaire ne renomme pas la conversation.
+export function nomAEcrire(conv, propose, { interdits = [], prenoms = [] } = {}) {
   if (!conv || conv.reponses === "jamais" || (conv.type_contact && conv.type_contact !== "client") || conv.partenaire_id || conv.nom_source === "manuel") return null;
   const nom = nomClientSur(propose);
   if (!nom) return null;
+  const equipe = new Set(prenoms.filter(Boolean).flatMap((p) => motsNom(p)));
+  if (partenairesCites(nom, interdits).length || motsNom(nom).some((m) => equipe.has(m))) return null;
   const actuel = String(conv.nom || "").trim();
   if (!actuel) return nom;
   const a = motsNom(actuel);
@@ -268,8 +272,24 @@ export function prenomDuContact(nom = "", source = null) {
   }
   return { prenom: prenomSur(nom), libelle: "prénom WhatsApp" };
 }
-// Avertissements de la carte de l'agent, gardés tels quels (bornés).
-export const avertissementsSurs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string").map((x) => x.slice(0, 120)).slice(0, 20) : []);
+// Avertissements de la carte de l'agent, gardés tels quels (bornés). Un code « services: » venu de la carte est retiré : seul
+// servicesDeProposition le pose.
+export const avertissementsSurs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string" && !x.startsWith(PREFIXE_SERVICES)).map((x) => x.slice(0, 120)).slice(0, 19) : []);
+// Les services de la proposition (revue de sécurité de la PR 306) : les références P-… et T-… rendues par les outils pendant la préparation,
+// gardées dans les avertissements de la proposition (un élément « services:P-…,T-… », sans migration). whatsapp-envoi les relit par
+// proposition_id : leurs nets restent bloquants à l'envoi, même sans dossier relié. Une référence n'est ni un net ni un nom ; l'écran ne
+// montre pas cet élément.
+export const PREFIXE_SERVICES = "services:";
+const REF_PROPOSITION = /^[PT]-[0-9a-f]{8}$/;
+export const SERVICES_MAX = 80;
+export const elementServices = (refs = []) => {
+  const propres = [...new Set([...refs].filter((r) => typeof r === "string" && REF_PROPOSITION.test(r)))].slice(0, SERVICES_MAX);
+  return propres.length ? `${PREFIXE_SERVICES}${propres.join(",")}` : null;
+};
+export function servicesDeProposition(avertissements = []) {
+  const e = (Array.isArray(avertissements) ? avertissements : []).find((x) => typeof x === "string" && x.startsWith(PREFIXE_SERVICES));
+  return new Set(e ? e.slice(PREFIXE_SERVICES.length).split(",").filter((r) => REF_PROPOSITION.test(r)) : []);
+}
 export const langueSure = (l) => (typeof l === "string" && /^[a-z]{2}$/.test(l) ? l : null);
 
 // Tout ce qui part chez Claude pour une réponse préparée, construit comme dans l'onglet Assistant (agent/index.ts) :

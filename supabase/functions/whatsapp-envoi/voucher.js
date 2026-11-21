@@ -112,7 +112,7 @@ export async function envoyerVoucherImage(ctx, demande) {
   //    Le dossier contrôlé est celui de la réservation (étape 3 : la conversation est reliée à ce dossier ou à aucun). Un montant égal au net
   //    d'un autre service du catalogue : 409 « montant_a_confirmer », l'écran renvoie la même liste (refusEnvoi).
   if (demande.legende) {
-    const refus = refusEnvoi(await ctx.contenuInterne(admin, { ...conv, dossier_id: conv.dossier_id || d.data.id }, demande.legende), demande.montants_confirmes || []);
+    const refus = refusEnvoi(await ctx.contenuInterne(admin, { ...conv, dossier_id: conv.dossier_id || d.data.id }, demande.legende, { sb }), demande.montants_confirmes || []);
     if (refus) return rep(refus.status, refus.corps);
   }
 

@@ -30,6 +30,7 @@ const donnees = {
 const tablesNets = { prestations_nets: [{ prestation_id: P_TRANSFERT, net: 4200 }, { prestation_id: P_YACHT, net: 10000 }], trajets_nets: [] };
 const db = { from: (t) => ({ select: () => ({ in: () => ({ range: async () => ({ data: tablesNets[t] || [], error: null }) }) }) }) };
 const ctx = { permissions: [], charger: async (n) => donnees[n] || [], reglages: {} };
+const ctxSans = ctx;
 // La vraie réponse à Stefan (21.11.2026), telle quelle : elle ne cite pas le prix d'un minivan.
 const STEFAN = "2 private minivans from Donsak Lomprayah Pier to Pimalai Resort, Koh Lanta, pickup 9:30 am, 10,000 THB in total (ferry included), paid in cash to the driver";
 // L'échange WhatsApp joint à l'Assistant (agent/whatsapp.js, texteDepuisWhatsApp) : Nani a donné le prix.
@@ -43,9 +44,12 @@ const ECHANGE = [
 const joint = (messages = ECHANGE) => texteDepuisWhatsApp({ mode: "question", conv: { id: "c1", telephone: "+41790000000" }, messages, question: "Prépare la réponse à Stefan" });
 
 // Comme la boîte WhatsApp et l'Assistant : memoDepuis, puis les nets lus à part, puis le catalogue cherché, puis la réponse.
-async function conversation(message, { dossier = new Set(), avant = () => {}, recherche = "donsak pimalai", historique = [], client = false, carte = null } = {}) {
+// `voit` : la personne a le droit de voir les nets (sinon montant_egal_net sort sans sa valeur, revue de la PR 306).
+const ctxNets = { ...ctx, permissions: ["partenaires.lire", "partenaires.nets"] };
+async function conversation(message, { dossier = new Set(), avant = () => {}, recherche = "donsak pimalai", historique = [], client = false, carte = null, voit = true } = {}) {
+  const ctx = voit ? ctxNets : ctxSans;
   const memo = memoDepuis(historique, { entreprise: "Secret Travel & Tour", conversationClient: client });
-  memo.nets = await netsPourControle(db, [ENT]);
+  memo.nets = (await netsPourControle(db, [ENT])).nets;
   memo.servicesEnCours = dossier;
   avant(memo);
   if (recherche) await executer("chercher_catalogue", { recherche, famille: "tout" }, ctx, memo);
@@ -59,13 +63,16 @@ const CARTE = { titre: "Stefan", client_nom: "Stefan", client_telephone: "", hot
 test("reproduction exacte : texte de la réponse à Stefan, net de 10 000 sur une autre prestation, échange où Nani écrit « 5000x2 = 10'000 THB »", async () => {
   const { memo, avertissements } = await conversation(STEFAN, { historique: [{ role: "user", content: joint() }], client: true, recherche: "" });
   assert.ok(memo.nani.has(10000) && memo.nani.has(5000), [...memo.nani].join(","));
-  assert.deepEqual(montantsAv(avertissements), [], avertissements.join(" | "));
+  // Sourcé par Nani : ni montant_non_source ni blocage. Il reste égal au net d'un autre service : l'avertissement « info » le dit
+  // (revue de la PR 306 : tout montant qui n'est pas un prix rendu par un outil).
+  assert.deepEqual(montantsAv(avertissements), ["montant_egal_net:10000"], avertissements.join(" | "));
   assert.deepEqual(resteBloque(STEFAN, bloquantsReponse(avertissements)), [], "l'écran ne bloque pas");
 });
 
 test("reproduction exacte sans échange joint : la carte de dossier du même échange (5 000 × 2 véhicules) fait du 10 000 un total", async () => {
   const { avertissements } = await conversation(STEFAN, { recherche: "", carte: CARTE });
-  assert.deepEqual(montantsAv(avertissements), [], avertissements.join(" | "));
+  assert.deepEqual(montantsAv(avertissements), ["montant_egal_net:10000"], avertissements.join(" | "));
+  assert.deepEqual(resteBloque(STEFAN, bloquantsReponse(avertissements)), []);
   // La carte d'un échange précédent ne compte pas : memo.prixCarte n'est jamais relu de l'historique.
   assert.deepEqual(memoDepuis([{ role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: JSON.stringify({ prix: [{ prix: 5000, origine: "catalogue" }] }) }] }]).prixCarte, []);
 });
@@ -80,7 +87,10 @@ test("reproduction exacte sans échange ni carte : 10 000 donne montant_egal_net
   assert.ok(cherche.avertissements.includes("montant_egal_net:10000") && !cherche.avertissements.some((a) => a.startsWith("montant_interne")), cherche.avertissements.join(" | "));
   // Le prix du minivan cité dans le texte : 10 000 devient un total.
   const cite = await conversation(`5,000 THB per minivan, ${STEFAN}`);
-  assert.deepEqual(montantsAv(cite.avertissements), [], cite.avertissements.join(" | "));
+  assert.deepEqual(montantsAv(cite.avertissements), ["montant_egal_net:10000"], cite.avertissements.join(" | "));
+  // Sans le droit de voir les nets : le code sans la valeur.
+  const sans = await conversation(STEFAN, { recherche: "", voit: false });
+  assert.ok(sans.avertissements.includes("montant_egal_net") && !sans.avertissements.some((a) => a.startsWith("montant_egal_net:")), sans.avertissements.join(" | "));
 });
 
 test("un vrai net du service en cours reste bloquant : rendu par l'outil, ou service du dossier relié", async () => {
@@ -130,7 +140,7 @@ test("le net d'un autre service donne un avertissement non bloquant (montant_ega
   assert.deepEqual(avertissementsVisibles(["montant_egal_net:10000"], ["partenaires.lire"]), { visibles: [], masques: 1 });
   assert.deepEqual(avertissementsVisibles(["montant_egal_net:10000"], ["partenaires.lire", "partenaires.nets"]).masques, 0);
   // La carte de l'Assistant l'affiche, sans bloquer la copie.
-  assert.match(lire("src/gestion/js/views/agent.mjs"), /if \(code === "montant_egal_net"\) return tr\(/);
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /if \(code === "montant_egal_net"\) return valeur \? tr\(/);
 });
 
 test("netsDuControle : services rendus et dossier relié bloquent, les autres avertissent, un montant dans les deux bloque", () => {
@@ -233,20 +243,82 @@ test("envoi depuis Gestion : 422 pour un net du dossier relié, 409 pour le net 
   assert.deepEqual(controleEnvoi("Hi, 640 THB.", { ...base, internes: new Set([640]) }).a_retirer, ["montant_interne:640"]);
   // Le net du yacht, sans rapport : à confirmer.
   const autre = controleEnvoi("Hi Stefan, the yacht is 10,000 THB.", base);
-  assert.deepEqual(autre, { a_retirer: [], a_confirmer: [10000] });
-  assert.deepEqual(refusEnvoi(autre, []), { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: [10000] } });
-  assert.deepEqual(refusEnvoi(autre, [10000, 5]), { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: [10000] } }, "liste différente : redemandé");
+  assert.deepEqual([autre.a_retirer, autre.a_confirmer, autre.portee], [[], [10000], "autre_service"]);
+  assert.deepEqual(refusEnvoi(autre, []), { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: [10000], portee: "autre_service" } });
+  assert.equal(refusEnvoi(autre, [10000, 5]).status, 409, "liste différente : redemandé");
   assert.equal(refusEnvoi(autre, [10000]), null, "confirmation exacte : accepté");
-  // Un total des services du dossier relié (2 × 5 000) passe sans confirmation, comme la carte de dossier dans l'Assistant ; un prix de
-  // vente du catalogue aussi. Un prix du catalogue absent du texte ne fait pas un total.
-  assert.deepEqual(controleEnvoi(STEFAN, { ...base, ventesDossier: [5000] }), { a_retirer: [], a_confirmer: [] });
-  assert.deepEqual(controleEnvoi("Hi, 14,000 THB.", { ...base, nets: [{ montant: 14000, prestation_id: P_FERRY }] }), { a_retirer: [], a_confirmer: [] });
-  assert.deepEqual(controleEnvoi(STEFAN, base).a_confirmer, [10000], "5 000 du catalogue absent du texte");
-  // Sans dossier relié, aucun net n'est celui du service en cours : à confirmer, jamais bloqué d'office.
-  assert.deepEqual(controleEnvoi("Hi Stefan, 4,200 THB.", { ...base, servicesEnCours: new Set() }).a_confirmer, [4200]);
+  // Un total des services du dossier relié (2 × 5 000) n'est pas un prix rendu : égal au net du yacht, il est à confirmer, jamais bloqué.
+  assert.deepEqual(controleEnvoi(STEFAN, { ...base, ventesDossier: [5000] }).a_confirmer, [10000]);
+  assert.deepEqual(controleEnvoi(STEFAN, { ...base, ventesDossier: [5000] }).a_retirer, []);
+  // Un prix de vente du catalogue égal au net d'un autre service : rien à confirmer.
+  assert.deepEqual(controleEnvoi("Hi, 14,000 THB.", { ...base, nets: [{ montant: 14000, prestation_id: P_FERRY }] }).a_confirmer, []);
+  // Sans dossier relié ni proposition, aucun net n'est celui du service en cours : à confirmer, « net du catalogue ».
+  const seul = controleEnvoi("Hi Stefan, 4,200 THB.", { ...base, servicesEnCours: new Set() });
+  assert.deepEqual([seul.a_confirmer, seul.portee], [[4200], "catalogue"]);
+  assert.equal(refusEnvoi(seul, []).corps.portee, "catalogue");
   // Nom de partenaire : toujours bloqué.
   assert.deepEqual(controleEnvoi("Lazy Day picks you up.", base).a_retirer, ["nom_prestataire:Lazy Day"]);
   assert.ok(memesMontants([10000, 4200], [4200, 10000, 4200]) && !memesMontants([1], [1, 2]));
+});
+
+test("revue PR 306, point 2 : sans dossier relié, les nets des services de la proposition restent bloquants (422)", async () => {
+  const { elementServices, servicesDeProposition, avertissementsSurs } = await import("../supabase/functions/whatsapp/proposer.js");
+  const refs = new Set([refDe("P", P_TRANSFERT)]);
+  const nets = [{ montant: 4200, prestation_id: P_TRANSFERT }, { montant: 10000, prestation_id: P_YACHT }];
+  // Sonde 9 : envoi sans dossier, net du service de la proposition, liste « confirmée » forgée : refusé quand même.
+  const c = controleEnvoi("Minivan 4,200 THB", { nets, refs, servicesEnCours: new Set() });
+  assert.deepEqual(c.a_retirer, ["montant_interne:4200"]);
+  assert.equal(refusEnvoi(c, [4200]).status, 422);
+  // Les références voyagent dans les avertissements de la proposition (sans migration), relues par proposition_id.
+  const e = elementServices([refDe("P", P_TRANSFERT), "P-zzzz", refDe("T", P_YACHT), refDe("P", P_TRANSFERT)]);
+  assert.equal(e, `services:${refDe("P", P_TRANSFERT)},${refDe("T", P_YACHT)}`);
+  assert.deepEqual([...servicesDeProposition(["montant_non_source:1", e])], [refDe("P", P_TRANSFERT), refDe("T", P_YACHT)]);
+  assert.equal(elementServices([]), null);
+  assert.deepEqual(avertissementsSurs(["services:P-aaaaaaaa", "montant_non_source:1"]), ["montant_non_source:1"], "un élément venu de la carte est retiré");
+  assert.equal(elementServices(Array.from({ length: 200 }, (_, i) => `P-${String(i).padStart(8, "0")}`)).split(",").length, 80);
+  const rep = lire("supabase/functions/whatsapp/reponse.ts");
+  assert.match(rep, /avertissements: \[\.\.\.avertissementsSurs\(c\?\.avertissements\), \.\.\.\[elementServices\(refsVues\)\]\.filter\(Boolean\)\]/);
+  assert.match(rep, /refsVues = \[\.\.\.\(memo\.refs \|\| \[\]\)\];/);
+  const ci = lire("supabase/functions/whatsapp-envoi/index.ts");
+  assert.match(ci, /admin\.from\("whatsapp_propositions"\)\.select\("avertissements"\)\.eq\("id", propositionId\)\.eq\("conversation_id", conv\.id\)\.maybeSingle\(\)/);
+  assert.match(ci, /const refs = servicesDeProposition\(prop\.data \? prop\.data\.avertissements : \[\]\);/);
+  // L'écran ne montre jamais cet élément.
+  const W = await import("../src/gestion/js/whatsapp-calc.mjs");
+  assert.deepEqual(W.avertissements({ avertissements: [e, "signature_retiree"] }).map((a) => a.cle), ["signature_retiree"]);
+});
+
+test("revue PR 306, points 6 et 7 : un net du dossier n'est levé que par une vente du dossier ; sans droit nets, ni valeur ni liste", () => {
+  // Sonde 10 et 10b.
+  assert.deepEqual(controleEnvoi("Total 2,000 THB", { internes: new Set([2000]), ventesDossier: [2000] }).a_retirer, []);
+  assert.deepEqual(controleEnvoi("Total 2,000 THB", { internes: new Set([2000]), ventes: new Set([2000]) }).a_retirer, ["montant_interne:2000"]);
+  // Sans le droit : 409 sans valeur ; la confirmation porte sur tous les montants du texte, exactement.
+  const m = controleEnvoi("Hi, the yacht is 10,000 THB, deposit 2,000 THB.", { nets: [{ montant: 10000, prestation_id: P_YACHT }], servicesEnCours: new Set([P_TRANSFERT]), masquer: true });
+  assert.deepEqual([m.a_confirmer, m.masque], [[], true]);
+  assert.deepEqual(refusEnvoi(m, []).corps, { erreur: "montant_a_confirmer", a_confirmer: [], masque: true, portee: "autre_service" });
+  assert.equal(refusEnvoi(m, [10000]).status, 409, "pas tous les montants du texte");
+  assert.equal(refusEnvoi(m, [2000, 10000]), null);
+  assert.doesNotMatch(JSON.stringify(refusEnvoi(m, [])), /10000/);
+  const ci = lire("supabase/functions/whatsapp-envoi/index.ts");
+  assert.match(ci, /sb\.rpc\("permissions_dans", \{ e \}\)/);
+  assert.match(ci, /const masquer = droits\.some\(\(d: any\) => d\.error \|\| !Array\.isArray\(d\.data\) \|\| !d\.data\.includes\("partenaires\.lire"\) \|\| !d\.data\.includes\("partenaires\.nets"\)\);/);
+});
+
+test("revue PR 306, point 5 : nets illisibles, le contrôle se ferme partout", async () => {
+  const c = controleEnvoi("Hi, 1,000 THB.", { controleImpossible: true });
+  assert.deepEqual(c.a_retirer, ["controle_impossible"]);
+  assert.equal(refusEnvoi(c, []).status, 422);
+  const W = await import("../src/gestion/js/whatsapp-calc.mjs");
+  assert.equal(W.codeEnvoi("contenu_interne", ["controle_impossible"]), "controle_impossible");
+  assert.equal(W.envoiIncertain("controle_impossible"), false);
+  // Dans l'Assistant et la boîte : avertissement bloquant, la copie reste fermée quel que soit le texte.
+  const memo = memoDepuis([]);
+  memo.controleImpossible = true;
+  const r = await executer("proposer_reponse", { titre: "t", langue: "en", message: "Hello, see you tomorrow.", destinataire: "client" }, ctx, memo);
+  assert.ok(r.carte.avertissements.includes("controle_impossible"));
+  const b = bloquantsReponse(r.carte.avertissements);
+  assert.deepEqual(resteBloque("Hello, see you tomorrow.", b), ["controle_impossible"]);
+  assert.match(lire("supabase/functions/whatsapp-envoi/index.ts"), /controleImpossible: lusNets\.erreur \|\| !!prop\.error/);
+  assert.match(lire("supabase/functions/whatsapp/reponse.ts"), /memo\.controleImpossible = lusNets\.erreur;/);
 });
 
 test("envoi depuis Gestion : montants_confirmes lus dans la demande, le texte et la légende", () => {
@@ -261,30 +333,40 @@ test("envoi depuis Gestion : montants_confirmes lus dans la demande, le texte et
   assert.match(index, /montants_confirmes: champ\("montants_confirmes"\)/);
   const ci = index.slice(index.indexOf("async function contenuInterne"));
   assert.match(ci, /netsPourControle\(admin, ids\),\n    dossierPourControle\(admin, conv\.dossier_id \|\| null, ids\),/);
-  assert.match(ci, /return controleEnvoi\(texte, \{ nets, servicesEnCours: relie\.services, internes: relie\.internes, ventes, ventesDossier: relie\.ventes, prestataires \}\);/);
-  assert.match(lire("supabase/functions/whatsapp-envoi/voucher.js"), /refusEnvoi\(await ctx\.contenuInterne\(admin, \{ \.\.\.conv, dossier_id: conv\.dossier_id \|\| d\.data\.id \}, demande\.legende\), demande\.montants_confirmes \|\| \[\]\)/);
+  assert.match(ci, /return controleEnvoi\(texte, \{ nets: lusNets\.nets, refs, servicesEnCours: relie\.services, internes: relie\.internes, ventes, ventesDossier: relie\.ventes, prestataires, masquer, controleImpossible: lusNets\.erreur \|\| !!prop\.error \}\);/);
+  assert.match(lire("supabase/functions/whatsapp-envoi/voucher.js"), /refusEnvoi\(await ctx\.contenuInterne\(admin, \{ \.\.\.conv, dossier_id: conv\.dossier_id \|\| d\.data\.id \}, demande\.legende, \{ sb \}\), demande\.montants_confirmes \|\| \[\]\)/);
 });
 
-test("écran WhatsApp : le 409 se confirme d'un clic et repart avec la même liste ; rien n'est parti entre-temps", () => {
+test("écran WhatsApp : le 409 se confirme d'un clic et repart avec la liste attendue ; rien n'est parti entre-temps", async () => {
+  const W = await import("../src/gestion/js/whatsapp-calc.mjs");
   assert.equal(envoiIncertain("montant_a_confirmer"), false);
   assert.match(erreurEnvoi("montant_a_confirmer"), /Confirmez-le/);
   assert.deepEqual(montantsAConfirmer({ erreur: "montant_a_confirmer", a_confirmer: [10000, "x"] }), [10000]);
   assert.deepEqual(montantsAConfirmer({ erreur: "contenu_interne", a_confirmer: [10000] }), []);
+  // Autre service, catalogue, valeurs masquées : trois textes avec la liste renvoyée.
+  const autre = W.aConfirmerEnvoi({ erreur: "montant_a_confirmer", a_confirmer: [10000], portee: "autre_service" });
+  assert.match(autre.texte, /net d'un autre service/);
+  const cat = W.aConfirmerEnvoi({ erreur: "montant_a_confirmer", a_confirmer: [10000], portee: "catalogue" });
+  assert.match(cat.texte, /est aussi un net du catalogue/);
+  assert.doesNotMatch(cat.texte, /autre service/);
+  const masque = W.aConfirmerEnvoi({ erreur: "montant_a_confirmer", a_confirmer: [], masque: true }, "Yacht 10’000 THB, deposit 2,000");
+  assert.deepEqual(masque.renvoi, [10000, 2000]);
+  assert.match(masque.texte, /égal à un net interne/);
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
-  assert.match(vue, /const aConfirmer = montantsAConfirmer\(r\);/);
-  assert.match(vue, /r = await etat\.store\.whatsappEnvoyer\(\{ conversation_id: c\.id, texte, proposition_id: p\.id, montants_confirmes: aConfirmer \}\);/);
+  assert.match(vue, /const question = aConfirmerEnvoi\(r, texte\);/);
+  assert.match(vue, /r = await etat\.store\.whatsappEnvoyer\(\{ conversation_id: c\.id, texte, proposition_id: p\.id, montants_confirmes: question\.renvoi \}\);/);
   const voucher = lire("src/gestion/js/views/voucher-whatsapp.mjs");
-  assert.match(voucher, /encore\.addEventListener\("click", \(\) => partir\(aConfirmer\)\);/);
+  assert.match(voucher, /encore\.addEventListener\("click", \(\) => partir\(question\.renvoi\)\);/);
   assert.match(voucher, /montants_confirmes: confirmes, fichier/);
   assert.match(voucher, /envoyer\.addEventListener\("click", \(\) => partir\(\)\);/, "le clic ne passe pas l'événement comme liste");
   const store = lire("src/gestion/js/store-supabase.mjs");
   assert.match(store, /if \(montants_confirmes\.length\) corps\.append\("montants_confirmes", montants_confirmes\.join\(","\)\);/);
-  assert.equal((store.match(/a_confirmer: montantsLus\(lu\)/g) || []).length, 2);
+  assert.equal((store.match(/a_confirmer: montantsLus\(lu\), masque: !!\(lu && lu\.masque\)/g) || []).length, 2);
 });
 
 test("boîte WhatsApp : nets du service en cours = ceux du dossier relié à la conversation", () => {
   const wa = lire("supabase/functions/whatsapp/reponse.ts");
-  assert.match(wa, /memo\.nets = await netsPourControle\(db, ids\);\n/);
+  assert.match(wa, /const lusNets = await netsPourControle\(db, ids\);\n    memo\.nets = lusNets\.nets;\n/);
   assert.match(wa, /const relie = await dossierPourControle\(db, dossier \? dossier\.id : null, \[ent\.id\]\);\n    memo\.servicesEnCours = relie\.services;\n    for \(const n of relie\.internes\) memo\.internes\.add\(n\);/);
   // Le dossier n'est relié que pour un client de l'entreprise (jamais pour un partenaire) : const dossier = … && !partenaire.
   assert.match(wa, /const dossier = conv\.dossier_id && conv\.entite_id === ent\.id && !partenaire \?/);

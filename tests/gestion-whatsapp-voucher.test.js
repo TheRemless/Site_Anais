@@ -406,7 +406,7 @@ test("téléphone : un numéro différent de la fiche client exige numero_confir
 test("légende avec le net d'un autre service (faux blocage du 21.11.2026) : 409 à confirmer, puis envoyée avec la confirmation exacte", async () => {
   const m = monde();
   const r = await m.envoyer({ legende: "Hello Tom, total 2,200 THB." });
-  assert.deepEqual([r.status, r.corps], [409, { erreur: "montant_a_confirmer", a_confirmer: [2200] }]);
+  assert.deepEqual([r.status, r.corps], [409, { erreur: "montant_a_confirmer", a_confirmer: [2200], portee: "autre_service" }]);
   assert.equal(m.appels.depots.length, 0, "rien de déposé");
   assert.equal(m.appels.fetch.length, 0, "rien d'envoyé");
   assert.equal((await m.envoyer({ legende: "Hello Tom, total 2,200 THB.", montants_confirmes: [2200, 300] })).status, 409, "une autre liste redemande");

@@ -50,7 +50,8 @@ test("point 1 : scénario Blue Ocean, « net 1,350 per pax » joint, « Hi Tom�
   const vente = memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }], { conversationInterne: true });
   vente.prix.add(1350);
   assert.ok(!(await avert(vente, "Hi Tom, 1,350 THB per person.")).some((x) => x.startsWith("montant_interne")));
-  // La conversation d'un client : ses montants ne deviennent pas internes, mais ne sont pas sourcés non plus.
+  // La conversation d'un client : ses montants ne deviennent pas internes, même près de « net » (une ligne « [Client … », revue de la
+  // PR 306), mais ne sont pas sourcés non plus.
   const client = memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }]);
   assert.ok(!client.internes.has(1350));
   assert.ok((await avert(client, "Hi Tom, 1,350 THB per person.")).includes("montant_non_source:1350"));
@@ -105,23 +106,30 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
       }),
     }),
   };
-  const s = await netsPourControle(db, ["e1", "e2"]);
+  const { nets: s, erreur } = await netsPourControle(db, ["e1", "e2"]);
+  assert.equal(erreur, false);
   assert.deepEqual(s, [{ montant: 1100, prestation_id: "p1" }, { montant: 550, prestation_id: "p1" }, { montant: 1350, trajet_id: "t1" }]);
   assert.deepEqual(appels.map((x) => x[0]).sort(), ["prestations_nets", "trajets_nets"]);
   assert.ok(appels.every((x) => x[2] === "entite_id" && x[3].join() === "e1,e2"));
-  assert.equal((await netsPourControle(db, [])).length, 0);
+  assert.equal((await netsPourControle(db, [])).nets.length, 0);
+  // Revue de la PR 306 : une lecture en erreur le dit (le contrôle se ferme).
+  const enPanne = { from: () => ({ select: () => ({ in: () => ({ range: async () => ({ data: null, error: { message: "x" } }) }) }) }) };
+  assert.equal((await netsPourControle(enPanne, ["e1"])).erreur, true);
   // La fonction « agent » : clé de service, entreprises de la conversation (les deux en espace unifié), seulement dans memo.internes.
   const ts = lire("supabase/functions/agent/index.ts");
   assert.equal((ts.match(/netsPourControle\(/g) || []).length, 1);
-  assert.match(ts, /memo\.nets = await netsPourControle\(admin, idsEntites\);/);
-  assert.match(ts, /const relie = await dossierPourControle\(admin, conv!\.dossier_id, idsEntites\);\n  memo\.servicesEnCours = relie\.services;\n  for \(const n of relie\.internes\) memo\.internes\.add\(n\);/);
+  assert.match(ts, /const lusNets = await netsPourControle\(admin, idsEntites\);\n  memo\.nets = lusNets\.nets;/);
+  assert.match(ts, /memo\.controleImpossible = lusNets\.erreur;/);
+  assert.match(ts, /const relie = await dossierPourControle\(admin, conv!\.dossier_id, idsEntites\);/);
+  assert.match(ts, /memo\.servicesEnCours = new Set\(\[\.\.\.relie\.services, \.\.\.\(relieWa\?\.services \?\? \[\]\)\]\);/);
+  assert.match(ts, /const relieWa = waLue && waLue\.dossier_id && waLue\.dossier_id !== conv!\.dossier_id \? await dossierPourControle\(admin, waLue\.dossier_id, idsEntites\) : null;/);
   assert.match(ts, /const idsEntites = unifie \? unifie\.entites\.map\(\(e\) => e\.id\) : \[entiteId\];/);
   // memo.internes, memo.nets et memo.servicesEnCours ne partent ni dans les consignes, ni dans les messages, ni dans un résultat d'outil,
   // ni vers l'écran.
   const code = ts.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
   assert.deepEqual(code.match(/memo\.internes\S*/g), ["memo.internes.add(n);"], "memo.internes n'est que rempli");
-  assert.deepEqual(code.match(/memo\.(?:nets|servicesEnCours)\S*/g), ["memo.nets", "memo.servicesEnCours"], "memo.nets et memo.servicesEnCours ne sont que posés");
-  assert.doesNotMatch(code, /relie\.(?!services\b|internes\b)/, "le dossier relié ne sert qu'au contrôle");
+  assert.deepEqual(code.match(/memo\.(?:nets|servicesEnCours|controleImpossible)\S*/g), ["memo.nets", "memo.controleImpossible", "memo.servicesEnCours"], "memo.nets et memo.servicesEnCours ne sont que posés");
+  assert.doesNotMatch(code, /relie(?:Wa)?\??\.(?!services\b|internes\b)/, "le dossier relié ne sert qu'au contrôle");
   assert.doesNotMatch(code, /internes\s*:|\.\.\.memo\b|JSON\.stringify\(memo/);
   // La boucle ne fait que passer memo à executer.
   assert.equal((lire("supabase/functions/agent/boucle.js").match(/memo/g) || []).length, 2);
@@ -136,7 +144,7 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   const r = await repondre(memo, "Hi Tom, 1,100 THB per person.");
   assert.ok(r.avertissements.includes("montant_interne:1100"));
   const autre = await repondre(memo, "Hi Tom, 1,350 THB per person.");
-  assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net:1350"));
+  assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net"), "sans le droit nets, le code sans sa valeur");
   assert.doesNotMatch(JSON.stringify(r), /550|1350/, "aucun autre net ne sort");
 });
 

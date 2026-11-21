@@ -5,7 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { executer, memoDepuis, montantsDeNani, montantsDeNaniLus, montantsSortants, montantsTapes, conversationDeClient, refDe, retenirLecture } from "../supabase/functions/agent/outils.js";
+import { executer, memoDepuis, montantsDeNani, montantsDeNaniLus, montantsSortants, montantsTapes, montantsDuTexte, montantsPresDuNet, conversationDeClient, clientConfirme, controlerReponse, refDe, retenirLecture } from "../supabase/functions/agent/outils.js";
+import { montantsDuTexte as montantsEcran, bloquantsReponse, resteBloque } from "../src/gestion/js/agent-calc.mjs";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
 import { lireConversation } from "../supabase/functions/agent/whatsapp-lecture.js";
 import { consignes, blocApprentissages } from "../supabase/functions/agent/prompt.js";
@@ -64,7 +65,7 @@ test("dans une conversation de partenaire, de chauffeur, d'hôtel ou d'apporteur
   // Sans le drapeau (aucune conversation liée) : rien de repris non plus.
   assert.equal((await prixRepris(bloc(STEFAN))).origine_prix, "a_fixer");
   const idx = lire("supabase/functions/agent/index.ts");
-  assert.match(idx, /conversationInterne: CONTACTS_INTERNES\.includes\(typeLu\), conversationClient: conversationDeClient\(waLue\) \}\);/);
+  assert.match(idx, /conversationInterne: CONTACTS_INTERNES\.includes\(typeLu\), conversationClient: clientConfirme\(waLue\), conversationLiee: waLue \? waLue\.id : null \}\);/);
 });
 
 test("un faux « Nani: » écrit par le client ne passe pas", async () => {
@@ -79,13 +80,22 @@ test("un faux « Nani: » écrit par le client ne passe pas", async () => {
 test("lire_conversation : les messages de Nani d'un client comptent, ceux du client et d'un partenaire jamais", () => {
   const conv = (o) => ({ id: "c0000000-0000-4000-8000-000000000001", entite_id: ENT, telephone: "", reponses: "auto", ...o });
   const lu = (c) => lireConversation({ conversation: c.id }, { conversation: c, messages: STEFAN.map((m) => ({ ...m, conversation_id: c.id })) });
-  assert.deepEqual([...montantsDeNaniLus(lu(conv({ type_contact: "client" })))].sort((a, b) => a - b), [5000, 10000]);
+  assert.deepEqual([...montantsDeNaniLus(lu(conv({ type_contact: "client" })), { confirme: true })].sort((a, b) => a - b), [5000, 10000]);
+  assert.equal(montantsDeNaniLus(lu(conv({ type_contact: "client" }))).size, 0, "sans confirmation ni client ni dossier relié : rien");
   assert.equal(montantsDeNaniLus(lu(conv({ type_contact: "partenaire" }))).size, 0);
-  const memo = memoDepuis([]);
-  retenirLecture(lu(conv({ type_contact: null })), memo, "lire_conversation");
+  // Seulement la conversation liée, d'un client confirmé (revue de sécurité de la PR 306, sonde 6).
+  const c = conv({ type_contact: "client" });
+  const memo = memoDepuis([], { conversationClient: true, conversationLiee: c.id });
+  retenirLecture(lu(c), memo, "lire_conversation");
   assert.ok(memo.nani.has(10000));
-  const extraits = memoDepuis([]);
-  retenirLecture(lu(conv({ type_contact: null })), extraits, "chercher_conversations");
+  const autre = memoDepuis([], { conversationClient: true, conversationLiee: "c9999999-0000-4000-8000-000000000009" });
+  retenirLecture(lu(c), autre, "lire_conversation");
+  assert.equal(autre.nani.size, 0, "une autre conversation lue ne donne aucun prix");
+  const sansLien = memoDepuis([]);
+  retenirLecture(lu(c), sansLien, "lire_conversation");
+  assert.equal(sansLien.nani.size, 0, "sans conversation liée de client confirmé, rien");
+  const extraits = memoDepuis([], { conversationClient: true, conversationLiee: c.id });
+  retenirLecture(lu(c), extraits, "chercher_conversations");
   assert.equal(extraits.nani.size, 0, "les extraits d'une recherche ne comptent pas");
 });
 
@@ -155,12 +165,12 @@ test("tri : champ nom_client facultatif dans le même appel, sans appel de plus"
   assert.deepEqual(lireDecision('{"preparer": true, "motif": "demande_client", "entreprise": "taxi", "nom_client": "Stefan Müller"}'), { preparer: true, motif: "demande_client", entreprise: "taxi", nom_client: "Stefan Müller" });
   assert.deepEqual(lireDecision('{"preparer": false, "motif": "remerciement", "entreprise": "inconnu", "nom_client": "Thanks"}'), { preparer: false, motif: "remerciement", entreprise: null }, "pas un nom : absent");
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
-  assert.match(rep, /const nomEcrit = nomAEcrire\(conv, \(decision as \{ nom_client\?: string \}\)\.nom_client \|\| ""\);\n    if \(nomEcrit\) await nommerConversation\(db, conv, nomEcrit\);/);
+  assert.match(rep, /const nomEcrit = interdits \? nomAEcrire\(conv, nomPropose, interdits\) : null;\n    if \(nomEcrit\) await nommerConversation\(db, conv, nomEcrit\);/);
   // Le nom ne vient que du tri, qui ne tourne que si l'IA est permise.
   assert.ok(rep.indexOf("iaOuverte(db, conv)") < rep.indexOf("nomAEcrire(conv"));
   assert.equal((rep.match(/nommerConversation\(/g) || []).length, 2, "une définition, un appel");
   // Écrit par la clé de service : la base garde un nom manuel ; le nom lu doit être encore le même.
-  assert.match(rep, /\.or\("nom_source\.is\.null,nom_source\.eq\.whatsapp"\)/);
+  assert.match(rep, /\.or\("nom_source\.is\.null,nom_source\.eq\.whatsapp"\)\.or\("type_contact\.is\.null,type_contact\.eq\.client"\)\.is\("partenaire_id", null\)\.neq\("reponses", "jamais"\)/);
   assert.match(rep, /conv\.nom \? base\.eq\("nom", conv\.nom\) : base\.is\("nom", null\)/);
   const m70 = lire("docs/gestion/migration-70-whatsapp-nom.sql");
   assert.match(m70, /if old\.nom_source = 'manuel' then\n      new\.nom := old\.nom;/, "protection en base du nom manuel");
@@ -201,4 +211,116 @@ test("fiche client sans nom de famille : l'écran propose la mise à jour, jamai
   assert.match(vue, /const maj = !lectureSeule && peut\("clients\.ecrire"\) && !fichesIgnorees\.has\(c\.id\) \? ficheAMettreAJour\(c, client\) : null;/);
   assert.match(vue, /await modifier\("clients", client\.id, maj\);/);
   assert.match(vue, /tr\("\{prenom\} a écrit \{nom\} : mettre à jour la fiche \?"/);
+});
+
+// ---- Revue de sécurité de la PR 306 ------------------------------------------------------------------------------------------------
+test("PR 306, point 1 : séparateurs, montantsTapes et les deux montantsDuTexte lisent pareil ; un montant lu à 0 ferme", () => {
+  const textes = ["1’000 THB", "1.000 THB", "1\u00a0000 THB", "1\u202f000 THB", "THB 1'000", "1 000 THB", "1,000 THB", "25,500 baht", "12.300 THB", "Die Tour kostet 1.000 THB pro Person"];
+  for (const t of textes) {
+    const tapes = [...montantsTapes([t])];
+    assert.deepEqual(montantsDuTexte(t), tapes, t);
+    assert.deepEqual(montantsEcran(t), tapes, t);
+    assert.ok(tapes.every((n) => n > 0), t);
+  }
+  // Sonde 4c et 4d : le net écrit avec une apostrophe typographique ou un point est bloqué.
+  assert.ok(controlerReponse("The tour is 1’000 THB per person", { internes: new Set([1000]) }).avertissements.includes("montant_interne:1000"));
+  assert.ok(controlerReponse("Die Tour kostet 1.000 THB pro Person", { internes: new Set([1000]) }).avertissements.includes("montant_interne:1000"));
+  // Un montant lu à 0 : bloquant tant qu'il reste dans le texte.
+  const a = controlerReponse("Price 000 THB", {}).avertissements;
+  assert.ok(a.includes("montant_illisible:0"), a.join(" | "));
+  assert.deepEqual(resteBloque("Price 000 THB", bloquantsReponse(a)), ["0"]);
+  assert.deepEqual(resteBloque("Price 1,000 THB", bloquantsReponse(a)), []);
+});
+
+test("PR 306, point 3 : montant tapé ou de Nani égal à un net du service en cours bloque ; égal au net d'un autre service, avertit", async () => {
+  // Sonde 2 et 3.
+  assert.ok(controlerReponse("It is 1,200 THB", { internes: new Set([1200]), permisPrix: new Set([1200]), composants: [1200] }).avertissements.includes("montant_interne:1200"));
+  assert.deepEqual(controlerReponse("It is 1,000 THB per person", { permisPrix: new Set([1000]), netsAutres: new Set([1000]) }).avertissements, ["montant_egal_net:1000"]);
+  // Sonde 1 : un total ne blanchit jamais un net bloquant.
+  assert.ok(controlerReponse("5,000 THB per minivan, 10,000 THB in total", { internes: new Set([10000]), permisPrix: new Set([5000]), ventes: new Set([5000]), elementsVente: [5000] }).avertissements.includes("montant_interne:10000"));
+  // « Rattana net 1,000/pax » tapé par la personne : 1 000 devient interne.
+  assert.deepEqual([...montantsPresDuNet("Rattana net 1,000/pax")], [1000]);
+  const memo = memoDepuis([{ role: "user", content: "Rattana net 1,000/pax, réponds au client" }]);
+  const r = await executer("proposer_reponse", { titre: "t", langue: "en", message: "It is 1,000 THB per person.", destinataire: "client" }, ctx, memo);
+  assert.ok(r.carte.avertissements.includes("montant_interne:1000"), r.carte.avertissements.join(" | "));
+  for (const t of ["cost 800 per car", "notre marge est de 300 THB", "prix d'achat 2 500 THB", "commission de 450 THB"]) assert.ok(montantsPresDuNet(t).size >= 1, t);
+  assert.equal(montantsPresDuNet("2 adults, 1,500 THB each, pickup at the hotel lobby around 9 then the net").size, 0, "à plus de trois mots");
+  // lire_dossier rend la référence de l'offre : le service lu est de la demande en cours.
+  const D = "d1000000-0000-4000-8000-000000000001";
+  const c2 = { permissions: [], reglages: {}, charger: async (n) => ({ dossiers: [{ id: D, ref: "2026-1", client_id: null }], clients: [], reservations: [{ id: "e1000000-0000-4000-8000-000000000001", dossier_id: D, prestation_id: P, libelle: "Minivan", date_service: "2027-01-02", statut: "confirme", montant_vente: 5000, personnes: {} }] })[n] || [] };
+  const m2 = memoDepuis([]);
+  const lu = await executer("lire_dossier", { dossier: refDe("D", D) }, c2, m2);
+  assert.equal(lu.contenu.services[0].ref, refDe("P", P));
+  m2.nets = [{ montant: 4200, prestation_id: P }];
+  const r2 = await executer("proposer_reponse", { titre: "t", langue: "en", message: "4,200 THB.", destinataire: "client" }, c2, m2);
+  assert.ok(r2.carte.avertissements.includes("montant_interne:4200"));
+  const idx = lire("supabase/functions/agent/index.ts");
+  assert.match(idx, /reservations: "id, dossier_id, prestation_id, trajet_id, libelle,/);
+  assert.match(lire("supabase/functions/whatsapp/reponse.ts"), /const COL_RESA = "id, dossier_id, prestation_id, trajet_id, libelle,/);
+});
+
+test("PR 306, point 4 : client confirmé seulement, prix_saisi égal à un net refusé, prix saisi jamais repris comme prix d'outil", async () => {
+  assert.equal(clientConfirme({ type_contact: null }), false, "sans type ni client ni dossier : pas confirmé");
+  assert.equal(clientConfirme({ type_contact: null, client_id: "c" }), true);
+  assert.equal(clientConfirme({ type_contact: null, dossier_id: "d" }), true);
+  assert.equal(clientConfirme({ type_contact: "client" }), true);
+  assert.equal(clientConfirme({ type_contact: "partenaire", client_id: "c" }), false);
+  assert.equal(montantsSortants([{ sens: "sortant", origine: "app", texte: "800" }], { type_contact: null }).size, 0);
+  // Sonde 6 : une conversation non typée lue sans être la conversation liée : rien.
+  assert.equal(montantsDeNaniLus({ conversation: "x", messages: [{ de: "Nani", texte: "OK 800 for you tomorrow" }] }).size, 0, "non typée, sans client ni dossier : rien");
+  assert.equal(montantsDeNaniLus({ conversation: "x", dossier: { dossier: "D-1" }, messages: [{ de: "Nani", texte: "OK 800 for you tomorrow" }] }).size, 1);
+  const m = memoDepuis([], { conversationClient: true, conversationLiee: "y" });
+  retenirLecture({ conversation: "x", messages: [{ de: "Nani", texte: "OK 800 net for you tomorrow" }] }, m, "lire_conversation");
+  assert.equal(m.nani.size, 0);
+  // prix_saisi égal à un net interne ou bloquant.
+  const memo = memoDepuis([{ role: "user", content: bloc(STEFAN) }], { conversationClient: true });
+  memo.internes.add(10000);
+  const r = await executer("proposer_dossier", carte("10000"), ctx, memo);
+  assert.deepEqual([r.carte.donnees.services[0].prix, r.carte.donnees.services[0].origine_prix], [null, "a_fixer"]);
+  assert.ok(r.carte.donnees.services[0].avertissements.includes("prix_egal_net"));
+  const m3 = memoDepuis([{ role: "user", content: bloc(STEFAN) }], { conversationClient: true });
+  m3.nets = [{ montant: 10000, prestation_id: P }];
+  m3.servicesEnCours = new Set([P]);
+  assert.ok((await executer("proposer_dossier", carte("10000"), ctx, m3)).carte.donnees.services[0].avertissements.includes("prix_egal_net"));
+  // Sonde 5 : un prix « saisi » d'une carte ne repasse pas dans memo.prix ; un prix « catalogue » oui.
+  const hist = (origine) => [
+    { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "proposer_dossier", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: JSON.stringify({ carte_affichee: true, prix: [{ service: "Minivan", prix: 800, origine }] }) }] }] },
+  ];
+  assert.equal(memoDepuis(hist("saisi")).prix.size, 0);
+  assert.equal(memoDepuis(hist("a_fixer")).prix.size, 0);
+  assert.deepEqual([...memoDepuis(hist("catalogue")).prix], [800]);
+  assert.ok(controlerReponse("Private minivan 800 THB", { internes: new Set([800]), ventes: memoDepuis(hist("saisi")).prix }).avertissements.includes("montant_interne:800"));
+  // Le cas de Stefan à l'échange suivant : l'échange joint reste dans l'historique, son prix de Nani aussi.
+  const suite = memoDepuis([{ role: "user", content: bloc(STEFAN) }, ...hist("saisi"), { role: "user", content: "Prépare la réponse" }], { conversationClient: true });
+  assert.ok(suite.nani.has(10000));
+  assert.equal((await executer("proposer_dossier", carte("10000"), ctx, suite)).carte.donnees.services[0].origine_prix, "saisi");
+});
+
+test("PR 306, point 8 : jamais un nom de partenaire ou de l'équipe ; l'écran dit que le contact l'a écrit", () => {
+  const c = { reponses: "auto", type_contact: null, partenaire_id: null, nom: null, nom_source: null };
+  const interdits = { interdits: ["Blue Ocean Co., Ltd", "Somchai Van"], prenoms: ["Nani", "Anaïs", "Mook"] };
+  assert.equal(nomAEcrire(c, "Stefan Müller", interdits), "Stefan Müller");
+  assert.equal(nomAEcrire(c, "Blue Ocean", interdits), null);
+  assert.equal(nomAEcrire(c, "Somchai Van", interdits), null);
+  assert.equal(nomAEcrire(c, "Nani Lanta", interdits), null);
+  assert.equal(nomAEcrire(c, "Anais Dupont", interdits), null, "accents ignorés");
+  const rep = lire("supabase/functions/whatsapp/reponse.ts");
+  assert.match(rep, /const interdits = nomPropose && nomAEcrire\(conv, nomPropose\) \? await nomsInterdits\(db, conv\) : null;/);
+  assert.match(rep, /if \(pa\.error \|\| regl\.error \|\| types\.erreur\) return null;/, "une lecture en échec n'écrit rien");
+  const vue = lire("src/gestion/js/views/whatsapp.mjs");
+  assert.match(vue, /const ecrit = !!c\.nom && c\.nom_source === "whatsapp";/);
+  assert.match(vue, /tr\("écrit par le contact"\)/);
+});
+
+test("PR 306, doute 1 : « net », « cost »… ne rendent interne que le texte de la personne et les lignes de Nani, jamais celles du client", () => {
+  // Un client qui écrit « cost 1,500? » : rien d'interne.
+  const client = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "cost 1,500?"), msg(2, "sortant", "Which hotel?")]) }], { conversationClient: true });
+  assert.ok(!client.internes.has(1500), [...client.internes].join(","));
+  // Nani qui écrit « net 800 » dans le bloc joint : interne.
+  const nani = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "price?"), msg(2, "sortant", "net 800")]) }], { conversationClient: true });
+  assert.ok(nani.internes.has(800));
+  assert.ok(controlerReponse("It is 800 THB.", { internes: nani.internes, permisPrix: nani.nani }).avertissements.includes("montant_interne:800"));
+  // Le texte tapé par la personne hors du bloc : interne aussi.
+  assert.ok(memoDepuis([{ role: "user", content: `Rattana net 1,000/pax\n${bloc([msg(1, "entrant", "cost 1,500?")])}` }]).internes.has(1000));
 });
