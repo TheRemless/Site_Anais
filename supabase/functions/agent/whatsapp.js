@@ -66,8 +66,8 @@ const neutre = (t) => masquer(String(t || "")).replace(/[\[\]<>]/g, (c) => ({ "[
 // `apporteur` (PR D, migration 68) : le contact est un apporteur d'affaires (apporteur.js, contactApporteur). Son numéro n'est jamais celui
 // d'un client, ses messages sont marqués « Apporteur » ; la consigne détaillée est dans le prompt système (blocApporteur).
 export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui = "Nani", dossier = null, joints = 0, ecartes = 0, max = 8000, question = "", lectureSeule = false, apporteur = false }) {
-  // Le nom saisi par Nani (migration 70) est dit comme tel ; c'est une donnée, neutralisée comme le texte des messages.
-  const nom = conv && conv.nom ? ` (${conv.nom_source === "manuel" ? `nom noté par ${qui}` : "nom WhatsApp"} : ${neutre(conv.nom).slice(0, 60)})` : "";
+  // Le nom saisi par l'équipe (migration 70) est dit comme tel ; c'est une donnée, neutralisée comme le texte des messages.
+  const nom = conv && conv.nom ? ` (${conv.nom_source === "manuel" ? "nom noté par l'équipe" : "nom WhatsApp"} : ${neutre(conv.nom).slice(0, 60)})` : "";
   const tel = conv && conv.telephone ? (apporteur ? `Numéro WhatsApp de l'apporteur, jamais celui d'un client : ${conv.telephone}${nom}.` : `Numéro WhatsApp du client : ${conv.telephone}${nom}.`) : "";
   const q = String(question || "").replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›")).trim().slice(0, QUESTION_MAX);
   const consigne =

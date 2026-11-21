@@ -55,6 +55,9 @@ export const contactPersonnel = (c) => !c || c.reponses === "jamais";
 export const CONTACTS_INTERNES = ["partenaire", "chauffeur", "hotel"];
 export const CONTACTS_NOMMES = [...CONTACTS_INTERNES, "apporteur"];
 const contactDe = (conv) => (conv && CONTACTS_NOMMES.includes(conv.type_contact) ? conv.type_contact : null);
+// Revue de sécurité de la PR 300 : une conversation reliée à une fiche partenaire (partenaire_id) sans type nommé. Son nom (souvent saisi
+// par l'équipe, migration 70) est bloqué vers un client comme celui d'un contact typé ; ses montants restent ceux d'un client.
+const marqueContact = (conv) => (contactDe(conv) ? { contact: contactDe(conv) } : conv && conv.partenaire_id ? { fiche_reliee: true } : {});
 
 // ---- Numéros ------------------------------------------------------------------------------------------------------------------------
 // Les 9 derniers chiffres d'un numéro : un numéro noté « 081 234 5678 » ou « +66 81 234 5678 » donne la même clé (fiches apporteur,
@@ -181,9 +184,9 @@ function ligneConversation(conv, { clients, dossiers, entites }) {
     conversation: conv.id,
     lien: lienDe(conv),
     nom: nomDe(conv, client),
-    // Le nom saisi par Nani (migration 70) est dit comme tel ; un nom de profil à côté d'un client relié reste « nom_whatsapp ».
-    ...(nomSaisi(conv) ? { nom_saisi_par_nani: true } : conv.nom && client ? { nom_whatsapp: neutre(conv.nom, 60) } : {}),
-    ...(contactDe(conv) ? { contact: contactDe(conv) } : {}),
+    // Le nom saisi par l'équipe (migration 70) est dit comme tel ; un nom de profil à côté d'un client relié reste « nom_whatsapp ».
+    ...(nomSaisi(conv) ? { nom_saisi_par_equipe: true } : conv.nom && client ? { nom_whatsapp: neutre(conv.nom, 60) } : {}),
+    ...marqueContact(conv),
     entreprise: entrepriseDe(conv, entites),
     client: client ? { client: refCourte("C", client.id), nom: neutre([client.prenom, client.nom].filter(Boolean).join(" "), 80) } : null,
     dossier: dossier ? { dossier: refCourte("D", dossier.id), reference: neutre(dossier.ref, 30) } : null,
@@ -377,7 +380,7 @@ export function aFaireWhatsApp(d = {}, { maintenant = Date.now(), typeContact = 
   const toutes = (d.conversations || []).filter((c) => c && idSur(c.id));
   const convs = toutes.filter((c) => !contactPersonnel(c));
   const permises = new Map(convs.map((c) => [c.id, c]));
-  const base = (c, messageId = "") => ({ conversation: c.id, lien: lienDe(c, messageId), nom: nomDe(c, c.client_id ? clients.get(c.client_id) : null), ...(contactDe(c) ? { contact: contactDe(c) } : {}), entreprise: entrepriseDe(c, entites) });
+  const base = (c, messageId = "") => ({ conversation: c.id, lien: lienDe(c, messageId), nom: nomDe(c, c.client_id ? clients.get(c.client_id) : null), ...marqueContact(c), entreprise: entrepriseDe(c, entites) });
   const elements = [];
 
   // 1. Les apporteurs (PR C), puis les clients qui attendent une réponse.

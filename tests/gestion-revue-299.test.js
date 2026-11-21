@@ -166,9 +166,10 @@ test("point 3 : le nom d'une conversation typée lue ou jointe est bloqué ; l'a
 test("point 3 : whatsapp-envoi et la réponse préparée bloquent les noms des conversations typées de l'organisation", async () => {
   const lignes = [{ id: "a", nom: "Blue Ocean", type_contact: "partenaire" }, { id: "b", nom: "Jade", type_contact: "apporteur" }, { id: "c", nom: " ", type_contact: "hotel" }, { id: "d", nom: "Blue Ocean", type_contact: "chauffeur" }];
   let filtre = null;
-  const db = (resultat) => ({ from: () => ({ select: () => ({ eq: (k, v) => ({ in: (col, types) => ((filtre = [k, v, col, types]), { limit: async () => resultat }) }) }) }) });
+  // Revue de la PR 300 : aussi les conversations reliées à une fiche partenaire (partenaire_id), sans type nommé.
+  const db = (resultat) => ({ from: () => ({ select: () => ({ eq: (k, v) => ({ or: (expr) => ((filtre = [k, v, expr]), { limit: async () => resultat }) }) }) }) });
   assert.deepEqual(await nomsContactsTypes(db({ data: lignes, error: null }), "org"), { noms: ["Blue Ocean", "Jade"], erreur: false });
-  assert.deepEqual(filtre, ["organisation_id", "org", "type_contact", ["partenaire", "chauffeur", "hotel", "apporteur"]]);
+  assert.deepEqual(filtre, ["organisation_id", "org", "type_contact.in.(partenaire,chauffeur,hotel,apporteur),partenaire_id.not.is.null"]);
   assert.deepEqual((await nomsContactsTypes(db({ data: lignes, error: null }), "org", { sauf: "b" })).noms, ["Blue Ocean"], "l'apporteur à qui l'on répond");
   assert.deepEqual(await nomsContactsTypes(db({ data: null, error: { code: "42703" } }), "org"), { noms: [], erreur: false }, "migration 68 absente");
   assert.deepEqual(await nomsContactsTypes(db({ data: null, error: { code: "500" } }), "org"), { noms: [], erreur: true });

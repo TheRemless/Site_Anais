@@ -320,13 +320,11 @@ export function creer() {
     if (table !== "whatsapp_conversations") return;
     if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
     for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom"].includes(k)) delete patch[k];
-    // Nom saisi à la main (migration 70, whatsapp_proteger_classement) : nettoyé, 60 caractères, source « manuel » ; vidé, plus de nom.
+    // Nom saisi à la main (migration 70, whatsapp_nom_manuel) : dès que « nom » est écrit, même à l'identique, il est nettoyé et devient
+    // manuel (60 caractères, sans caractère invisible) ; vide après nettoyage, plus de nom ni de source.
     if ("nom" in patch) {
-      if ((patch.nom ?? null) === (ligne.nom ?? null)) delete patch.nom;
-      else {
-        const nom = nettoyerNom(patch.nom);
-        Object.assign(patch, { nom, nom_source: nom ? "manuel" : null });
-      }
+      const nom = nettoyerNom(patch.nom);
+      Object.assign(patch, { nom, nom_source: nom ? "manuel" : null });
     }
     // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
     if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;

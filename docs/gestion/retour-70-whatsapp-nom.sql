@@ -10,6 +10,8 @@ begin;
 
 drop trigger if exists whatsapp_nom_insertion on whatsapp_conversations;
 drop function if exists whatsapp_nom_insertion();
+drop trigger if exists whatsapp_nom_manuel on whatsapp_conversations;
+drop function if exists whatsapp_nom_manuel();
 
 create or replace function whatsapp_proteger_classement() returns trigger language plpgsql security definer set search_path = public as $$
 begin

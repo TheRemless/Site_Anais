@@ -420,7 +420,10 @@ test("fonction « agent » : lecture avec la session de la personne, jamais avec
   assert.match(bloc, /\{ count: "exact", head: true \}/, "messages restants comptés par la base");
   assert.match(bloc, /order\("envoye_le", \{ ascending: !!depuis \}\)/, "« depuis » lit les plus anciens d'abord");
   assert.doesNotMatch(bloc, /storage|download|createSignedUrl/, "aucun fichier");
-  assert.doesNotMatch(bloc, /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
+  // Revue de la PR 300 : partenaire_id est lu seulement dans les colonnes des conversations, pour marquer « fiche_reliee » (nom bloqué vers
+  // un client). L'identifiant ne sort jamais de la lecture (tests/gestion-whatsapp-nom.test.js) ; aucune table de partenaire n'est lue.
+  assert.doesNotMatch(bloc.replace(/const NIVEAUX_CONV = \[[^\n]*\];/, ""), /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
+  assert.doesNotMatch(bloc, /from\("partenaires"\)/);
   assert.match(ts, /whatsapp: !!whatsapp \}\);/, "les consignes savent si la boîte est lisible");
   assert.match(ts, /\.\.\.\(whatsapp \? \{ whatsapp \} : \{\}\)/);
   // Aucun appel à l'IA dans les outils : ils sont du SQL et du JS.

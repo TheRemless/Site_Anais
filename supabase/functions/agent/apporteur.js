@@ -139,8 +139,10 @@ export function nomsABloquer(partenaires = [], exemptes = new Set()) {
 // bloqués comme des noms de partenaires dans une réponse au client (whatsapp-envoi, réponse préparée). `sauf` : la conversation de
 // l'apporteur à qui l'on répond, dont le nom reste permis vers lui (PR 298). Rend { noms, erreur } ; sans la colonne type_contact (migration
 // 68 absente), aucun nom et pas d'erreur.
+// Revue de sécurité de la PR 300 : aussi une conversation reliée à une fiche partenaire (partenaire_id) sans type nommé ; son nom est souvent
+// saisi à la main par l'équipe (migration 70), « Mr Brown » par exemple.
 export async function nomsContactsTypes(db, organisationId, { sauf = null } = {}) {
-  const { data, error } = await db.from("whatsapp_conversations").select("id, nom, type_contact").eq("organisation_id", organisationId).in("type_contact", CONTACTS_NOMMES).limit(2000);
+  const { data, error } = await db.from("whatsapp_conversations").select("id, nom, type_contact").eq("organisation_id", organisationId).or(`type_contact.in.(${CONTACTS_NOMMES.join(",")}),partenaire_id.not.is.null`).limit(2000);
   if (error) return { noms: [], erreur: !(error.code === "42703" || error.code === "PGRST204") };
   return { noms: [...new Set((data || []).filter((c) => c && c.id !== sauf && typeof c.nom === "string" && c.nom.trim()).map((c) => c.nom.trim()))], erreur: false };
 }

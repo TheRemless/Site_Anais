@@ -10,11 +10,14 @@
 --      un administrateur de l'entreprise de la conversation, ou d'une des deux pour une conversation à trier. En lecture seule (administrateur
 --      de l'autre entreprise) et pour Mook : aucune ligne modifiée.
 --   3. whatsapp_proteger_classement (migrations 60 et 68) est étendu :
---      - une personne connectée qui écrit le nom : espaces et caractères de contrôle nettoyés, 60 caractères au plus, nom_source = 'manuel' ;
---        un nom vidé efface le nom manuel (nom et nom_source vides). nom_source ne s'écrit jamais directement (pas de droit sur la colonne) ;
+--      - une personne connectée qui écrit le nom (whatsapp_nom_manuel, déclencheur « before update of nom ») : caractères invisibles
+--        (U+200B à U+200F, U+202A à U+202E, U+2060 à U+2069, U+FEFF) retirés, espaces et caractères de contrôle nettoyés, 60 caractères au
+--        plus, nom_source = 'manuel' dès que « nom » figure dans l'UPDATE, même retapé à l'identique. Un nom vide après nettoyage efface le
+--        nom manuel (nom et nom_source vides). nom_source ne s'écrit jamais directement (pas de droit sur la colonne) ;
 --      - sans personne connectée (la fonction « whatsapp », clé de service) : un nom manuel ne change jamais, ni le nom ni nom_source. Un nom
 --        vide ou de profil peut encore être rempli par whatsapp_ranger si Telnyx en envoie un jour un : nom_source = 'whatsapp'.
 --   4. whatsapp_nom_insertion : une conversation créée par la fonction avec un nom de profil reçoit nom_source = 'whatsapp'.
+--   Les fonctions de déclencheur ne s'exécutent pas en direct : execute retiré à public, anon et authenticated.
 --   5. whatsapp_rechercher (migration 67) trouve aussi une conversation par son nom (mots et préfixes, configuration « simple ») : la
 --      recherche de Gestion (palette) la montre avec son dernier message. Même signature, mêmes droits, contact personnel toujours écarté.
 -- L'Assistant lit ce nom comme le reste (outils chercher_conversations, lire_conversation, a_faire_whatsapp), sauf pour un contact personnel.
@@ -81,20 +84,32 @@ begin
   else
     -- Une personne ne réécrit pas la décision du tri (elle vient de la fonction).
     new.tri := old.tri;
-    -- Migration 70 : le nom écrit par une personne est nettoyé et devient le nom manuel ; vidé, il n'y a plus de nom.
-    if new.nom is distinct from old.nom then
-      new.nom := nullif(btrim(left(btrim(regexp_replace(coalesce(new.nom, ''), '[[:space:][:cntrl:]]+', ' ', 'g')), 60)), '');
-      new.nom_source := case when new.nom is null then null else 'manuel' end;
-    else
-      new.nom_source := old.nom_source;
-    end if;
+    -- Migration 70 : le nom écrit par une personne est traité par whatsapp_nom_manuel (« before update of nom », passé avant celui-ci).
   end if;
   return new;
 end
 $$;
-revoke all on function whatsapp_proteger_classement() from public, anon;
+revoke all on function whatsapp_proteger_classement() from public, anon, authenticated;
 drop trigger if exists whatsapp_proteger_classement on whatsapp_conversations;
 create trigger whatsapp_proteger_classement before update on whatsapp_conversations for each row execute function whatsapp_proteger_classement();
+
+-- 3 bis. Le nom écrit par une personne connectée : dès que « nom » figure dans l'UPDATE (même valeur), il est nettoyé et devient manuel.
+-- Caractères invisibles (catégorie Cf : U+200B à U+200F, U+202A à U+202E, U+2060 à U+2069, U+FEFF) retirés, espaces et caractères de
+-- contrôle réduits à une espace, 60 caractères au plus. Vide après nettoyage : plus de nom ni de source. Sans personne connectée (la
+-- fonction « whatsapp »), rien ici : whatsapp_proteger_classement garde le nom manuel. Le nom fait passer ce déclencheur avant
+-- whatsapp_proteger_classement (ordre alphabétique des déclencheurs BEFORE).
+create or replace function whatsapp_nom_manuel() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null then
+    new.nom := nullif(btrim(left(btrim(regexp_replace(regexp_replace(coalesce(new.nom, ''), '[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]', '', 'g'), '[[:space:][:cntrl:]]+', ' ', 'g')), 60)), '');
+    new.nom_source := case when new.nom is null then null else 'manuel' end;
+  end if;
+  return new;
+end
+$$;
+revoke all on function whatsapp_nom_manuel() from public, anon, authenticated;
+drop trigger if exists whatsapp_nom_manuel on whatsapp_conversations;
+create trigger whatsapp_nom_manuel before update of nom on whatsapp_conversations for each row execute function whatsapp_nom_manuel();
 
 -- 4. Une conversation créée avec un nom de profil (whatsapp_ranger) : nom_source = 'whatsapp'. Une source déjà donnée (restauration d'une
 -- sauvegarde) est gardée.
@@ -108,7 +123,7 @@ begin
   return new;
 end
 $$;
-revoke all on function whatsapp_nom_insertion() from public, anon;
+revoke all on function whatsapp_nom_insertion() from public, anon, authenticated;
 drop trigger if exists whatsapp_nom_insertion on whatsapp_conversations;
 create trigger whatsapp_nom_insertion before insert on whatsapp_conversations for each row execute function whatsapp_nom_insertion();
 
@@ -181,14 +196,23 @@ begin
       order by c.id, m.envoye_le desc
     ),
     par_nom as (
-      -- Migration 70 : le nom de la conversation (saisi par Nani ou de profil), tous les mots ; son dernier message, pour l'ouvrir.
-      select distinct on (c.id) c.id as conversation_id, m.id as message_id, m.envoye_le, m.texte, m.medias
-      from whatsapp_conversations c
-      join whatsapp_messages m on m.conversation_id = c.id and m.supprime_le is null and m.type <> 'reaction'
-      where requete is not null and c.nom is not null
-        and c.organisation_id = org and c.reponses <> 'jamais'
-        and to_tsvector('simple'::regconfig, c.nom) @@ requete
-      order by c.id, m.envoye_le desc
+      -- Migration 70 : le nom de la conversation (saisi par l'équipe ou de profil), tous les mots ; n conversations au plus, les plus
+      -- récentes, et pour chacune son dernier message seulement (lecture bornée), pour l'ouvrir.
+      select c.id as conversation_id, m.id as message_id, m.envoye_le, m.texte, m.medias
+      from (
+        select c0.id from whatsapp_conversations c0
+        where requete is not null and c0.nom is not null
+          and c0.organisation_id = org and c0.reponses <> 'jamais'
+          and to_tsvector('simple'::regconfig, c0.nom) @@ requete
+        order by c0.dernier_message_le desc nulls last
+        limit n
+      ) c
+      join lateral (
+        select m0.id, m0.envoye_le, m0.texte, m0.medias from whatsapp_messages m0
+        where m0.conversation_id = c.id and m0.supprime_le is null and m0.type <> 'reaction'
+        order by m0.envoye_le desc
+        limit 1
+      ) m on true
     ),
     tout as (
       select t.conversation_id, t.message_id, t.envoye_le, t.texte, t.medias from par_mots t

@@ -253,7 +253,7 @@ async function preparer(
       return "";
     });
     const unifieConsignes = unifie && autre ? { entreprises: [{ nom: ent.nom, slug: ent.slug, reglages }, { nom: autre.nom, slug: autre.slug, reglages: reglagesAutre }] } : null;
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lignesAppris, messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? conv.type_contact || null : null });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? conv.type_contact || null : null });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });

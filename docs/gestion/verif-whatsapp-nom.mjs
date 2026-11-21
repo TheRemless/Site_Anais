@@ -1,5 +1,6 @@
 // Vérifie la migration 70 (nom d'un contact WhatsApp saisi à la main) sur un Postgres en mémoire : schema.sql puis toutes les migrations.
-// Un administrateur écrit le nom (nettoyé, 60 caractères) et nom_source passe à « manuel » ; la clé de service ne l'écrase pas mais remplit
+// Un administrateur écrit le nom (nettoyé, sans caractère invisible, 60 caractères) et nom_source passe à « manuel », même retapé à
+// l'identique ; la clé de service ne l'écrase pas mais remplit
 // un nom vide ; un lecteur seul (administrateur de l'autre entreprise sur une conversation rangée) et Mook ne l'écrivent pas ;
 // whatsapp_rechercher trouve la conversation par son nom, jamais un contact personnel ; la migration se rejoue ; retour en arrière.
 //   GESTION_SQL=<repo>/docs/gestion/ node verif-whatsapp-nom.mjs
@@ -65,6 +66,10 @@ const droits = (await db.query("select privilege_type from information_schema.co
 ok(droits.includes("UPDATE"), "authenticated peut écrire la colonne nom (grant de colonne)");
 const droitsSource = (await db.query("select privilege_type from information_schema.column_privileges where table_name = 'whatsapp_conversations' and column_name = 'nom_source' and grantee = 'authenticated' and privilege_type = 'UPDATE'")).rows;
 ok(droitsSource.length === 0, "personne ne peut écrire nom_source directement");
+for (const f of ["whatsapp_nom_insertion()", "whatsapp_nom_manuel()", "whatsapp_proteger_classement()"]) {
+  const x = await un(`select has_function_privilege('authenticated', '${f}', 'execute') a, has_function_privilege('anon', '${f}', 'execute') b`);
+  ok(x.a === false && x.b === false, `${f} : execute retiré à authenticated et anon`);
+}
 
 // ---- Création par la fonction -------------------------------------------------------------------------------------------------------
 const tom = await ranger("+447700900311", null, "We want the ferry to Koh Phi Phi");
@@ -87,8 +92,20 @@ r = await essaie(u.nani, "update whatsapp_conversations set nom_source = 'whatsa
 ok(!r.ok, "Nani ne peut pas écrire nom_source elle-même (pas de droit sur la colonne)");
 r = await essaie(u.nani, "update whatsapp_conversations set reponses = 'auto' where id = $1 returning nom, nom_source", [tom]);
 ok(r.ok && r.rows[0].nom === "Tom Baker" && r.rows[0].nom_source === "manuel", "changer un autre réglage ne touche pas au nom manuel");
+// Revue de la PR 300 : caractères invisibles (catégorie Cf) retirés ; un nom qui n'en contient que des invisibles est vide.
+r = await essaie(u.nani, "update whatsapp_conversations set nom = $1 where id = $2 returning nom, nom_source", ["\u200BTom\u200F \u202ABa\u2060ker\u202E\uFEFF", tom]);
+ok(r.ok && r.rows[0].nom === "Tom Baker" && r.rows[0].nom_source === "manuel", "caractères invisibles retirés (U+200B, U+200F, U+202A, U+2060, U+202E, U+FEFF)" + (r.ok ? ` (${JSON.stringify(r.rows[0].nom)})` : ` (${r.err})`));
+const vide = await ranger("+12025550188", null, "Hi");
+await essaie(u.nani, "update whatsapp_conversations set nom = 'Avant' where id = $1", [vide]);
+r = await essaie(u.nani, "update whatsapp_conversations set nom = $1 where id = $2 returning nom, nom_source", ["\u200B \u2060\uFEFF\u200E", vide]);
+ok(r.ok && r.rows[0].nom === null && r.rows[0].nom_source === null, "un nom fait seulement d'invisibles est vide : nom manuel effacé");
+// Revue de la PR 300 : un nom de profil retapé à l'identique devient manuel (protégé de la fonction).
+r = await essaie(u.nani, "update whatsapp_conversations set nom = 'Jade Profil' where id = $1 returning nom, nom_source", [profil]);
+ok(r.ok && r.rows[0].nom === "Jade Profil" && r.rows[0].nom_source === "manuel", "un nom de profil retapé à l'identique devient manuel");
+await ranger("+12025550199", "Autre Profil", "Hello again");
+ok((await conv(profil)).nom === "Jade Profil", "… et la fonction ne le remplace plus");
 r = await essaie(u.nani, "update whatsapp_conversations set nom = 'Jade' where id = $1 returning nom, nom_source", [profil]);
-ok(r.ok && r.rows[0].nom === "Jade" && r.rows[0].nom_source === "manuel", "Nani remplace un nom de profil : il devient manuel");
+ok(r.ok && r.rows[0].nom === "Jade" && r.rows[0].nom_source === "manuel", "Nani change un nom manuel");
 
 // ---- La clé de service n'écrase pas un nom manuel ----------------------------------------------------------------------------------------
 await ranger("+447700900311", "Thomas from WhatsApp", "Any news?");

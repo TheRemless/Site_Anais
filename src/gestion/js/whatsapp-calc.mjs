@@ -61,14 +61,17 @@ export { nomSaisi };
 export function nomConversation(conv, client = null) {
   return nomContact(conv, client) || numeroAffiche((conv && conv.telephone) || "");
 }
-// Le nom tel que la base le garde (déclencheur whatsapp_proteger_classement, migration 70) : espaces et caractères de contrôle réduits à une
-// espace, 60 caractères au plus. Vide : null (le nom manuel est effacé).
+// Le nom tel que la base le garde (déclencheur whatsapp_nom_manuel, migration 70) : caractères invisibles (U+200B à U+200F, U+202A à U+202E,
+// U+2060 à U+2069, U+FEFF) retirés, espaces et caractères de contrôle réduits à une espace, 60 caractères au plus. Vide : null (le nom
+// manuel est effacé).
 export const NOM_MAX = 60;
+export const INVISIBLES = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
 export function nettoyerNom(v) {
-  const t = Array.from(String(v ?? "").replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim()).slice(0, NOM_MAX).join("").trim();
+  const t = Array.from(String(v ?? "").replace(INVISIBLES, "").replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim()).slice(0, NOM_MAX).join("").trim();
   return t || null;
 }
-// Ce que l'écran envoie à la base, ou null s'il n'y a rien à changer : le même nom manuel, ou un champ vide sans nom manuel.
+// Ce que l'écran envoie à la base, ou null s'il n'y a rien à changer : le même nom manuel, ou un champ vide sans nom manuel. Un nom de profil
+// retapé à l'identique s'envoie : la base le marque alors manuel (protégé de la fonction « whatsapp »).
 export function patchNom(conv, saisie) {
   const nom = nettoyerNom(saisie);
   if (nom === (nomSaisi(conv) || null)) return null;

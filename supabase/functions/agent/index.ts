@@ -475,7 +475,7 @@ Deno.serve(async (req) => {
       const COL_CONV = "id, created_at, organisation_id, telephone, nom, entite_id, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus, reponses, tri, paiement_signale, promesse_le";
       // Colonnes des migrations 70 (source du nom), 68 (type du contact) et 65 (aperçu, attente) : sans elles, l'outil lit ce qui existe (le
       // nom se lit comme un nom de profil, le type reste vide, l'attente se lit au sens du dernier message).
-      const NIVEAUX_CONV = [`${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact, nom_source`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis`];
+      const NIVEAUX_CONV = [`${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact, partenaire_id, nom_source`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact, partenaire_id`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis`];
       let niveauConv = 0;
       const conversations = async (filtre: (q: any) => any) => {
         const q = (cols: string) => filtre(sb.from("whatsapp_conversations").select(cols).eq("organisation_id", orgWa)).order("dernier_message_le", { ascending: false, nullsFirst: false });
@@ -810,6 +810,9 @@ Deno.serve(async (req) => {
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;
   if (CONTACTS_NOMMES.includes(typeLu) && waLue && waLue.nom) ajouterNoms(memo, [{ conversation: waLue.id, nom: String(waLue.nom) }]);
+  // Revue de sécurité de la PR 300 : une conversation reliée à une fiche partenaire sans type nommé (nom saisi par l'équipe, migration 70)
+  // garde son nom bloqué vers un client, comme un contact typé.
+  if (!CONTACTS_NOMMES.includes(typeLu) && waLue && waLue.partenaire_id && waLue.nom) ajouterNoms(memo, [{ conversation: waLue.id, nom: String(waLue.nom) }]);
   // Les lectures de la boîte des échanges précédents (montants internes et noms lus), avant leur retrait pour Claude.
   retenirLectures(gardes, memo);
   // Les nets de l'entreprise (des deux en espace unifié), lus avec la clé de service comme la boîte (whatsapp/reponse.ts) : seulement pour

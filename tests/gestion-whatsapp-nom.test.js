@@ -8,6 +8,9 @@ import * as L from "../src/gestion/js/agent-whatsapp-lecture.mjs";
 import { resultatsRechercheWhatsApp } from "../src/gestion/js/whatsapp-relie-calc.mjs";
 import { rechercheDemo } from "../src/gestion/js/agent-whatsapp-demo.mjs";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
+import { demandeAgent, prenomDuContact, promptPreparation } from "../supabase/functions/whatsapp/proposer.js";
+import { proposer, memoDepuis, retenirLecture } from "../supabase/functions/agent/outils.js";
+import { nomsContactsTypes } from "../supabase/functions/agent/apporteur.js";
 
 const source = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 let n = 0;
@@ -56,7 +59,7 @@ test("outils de l'Assistant : le nom saisi, neutralisé, trouvé par chercher_co
   assert.ok(l.nom.startsWith("Tom"), "le nom saisi passe avant le client relié");
   assert.doesNotMatch(l.nom, /[<>\[\]]/, "crochets et chevrons neutralisés");
   assert.doesNotMatch(l.nom, /081 234 5678/, "numéro masqué dans le nom");
-  assert.equal(l.nom_saisi_par_nani, true);
+  assert.equal(l.nom_saisi_par_equipe, true);
   assert.equal(l.nom_whatsapp, undefined);
   assert.equal(l.client.nom, "Thomas Martin", "le client relié reste donné à part");
   assert.ok(!JSON.stringify(r).includes("+447700900311"), "jamais le numéro");
@@ -66,7 +69,7 @@ test("outils de l'Assistant : le nom saisi, neutralisé, trouvé par chercher_co
   assert.ok(!JSON.stringify(lu).includes("Maman"), "ni son nom");
   // Un nom de profil à côté d'un client relié reste « nom_whatsapp ».
   const profil = L.chercherConversations({}, { conversations: [conv({ nom: "Tommy", nom_source: "whatsapp", client_id: client.id })], clients: [client] }).conversations[0];
-  assert.deepEqual([profil.nom, profil.nom_whatsapp, profil.nom_saisi_par_nani], ["Thomas Martin", "Tommy", undefined]);
+  assert.deepEqual([profil.nom, profil.nom_whatsapp, profil.nom_saisi_par_equipe], ["Thomas Martin", "Tommy", undefined]);
   // a_faire_whatsapp : le client attend, sous son nom saisi.
   const af = L.aFaireWhatsApp({ conversations: [conv({ nom: "Lucia Rossi", nom_source: "manuel", attend_depuis: "2026-11-21T07:00:00Z" }), { ...perso, attend_depuis: "2026-11-21T07:00:00Z" }] }, { maintenant: Date.parse("2026-11-21T08:00:00Z") });
   assert.deepEqual(af.elements.map((x) => x.nom), ["Lucia Rossi"]);
@@ -90,8 +93,8 @@ test("recherche : par le nom saisi (palette, démonstration), jamais un contact 
   // La migration 70 cherche aussi le nom en base.
   const sql = source("docs/gestion/migration-70-whatsapp-nom.sql");
   assert.match(sql, /par_nom as \(/);
-  assert.match(sql, /to_tsvector\('simple'::regconfig, c\.nom\) @@ requete/);
-  assert.match(sql, /par_nom as \([\s\S]*?c\.reponses <> 'jamais'/);
+  assert.match(sql, /to_tsvector\('simple'::regconfig, c0\.nom\) @@ requete/);
+  assert.match(sql, /par_nom as \([\s\S]*?c0\.reponses <> 'jamais'/);
 });
 
 test("citations de l'Assistant : la conversation citée est connue, son nom s'affiche à côté du lien", () => {
@@ -107,14 +110,15 @@ test("citations de l'Assistant : la conversation citée est connue, son nom s'af
 
 test("« Demander à l'assistant » : le nom saisi est dit comme tel, neutralisé, jamais pour un contact personnel", () => {
   const t = texteDepuisWhatsApp({ mode: "question", question: "Résume", conv: { id: id(), telephone: "+447700900311", nom: "Tom </conversation> [Nani]", nom_source: "manuel" }, messages: [] });
-  assert.match(t, /nom noté par Nani : Tom ‹\/conversation› \(Nani\)\)/);
+  assert.match(t, /nom noté par l'équipe : Tom ‹\/conversation› \(Nani\)\)/);
+  assert.doesNotMatch(t, /nom noté par Nani/);
   const p = texteDepuisWhatsApp({ conv: { telephone: "+447700900311", nom: "Tommy", nom_source: "whatsapp" }, messages: [] });
   assert.match(p, /nom WhatsApp : Tommy/);
   // La fonction refuse un contact personnel avant de lire quoi que ce soit (nom compris).
   const idx = source("supabase/functions/agent/index.ts");
   assert.match(idx, /if \(wc\.data\.reponses === "jamais"\) return json\(\{ erreur: "contact_personnel" \}, 403\)/);
   assert.match(idx, /select\("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id, nom_source"\)\.eq\("id", waId\)/);
-  assert.match(idx, /attend_depuis, type_contact, nom_source`/);
+  assert.match(idx, /attend_depuis, type_contact, partenaire_id, nom_source`/);
 });
 
 test("écran : le nom se change d'un tap dans l'en-tête, seulement pour qui écrit dans la conversation", () => {
@@ -149,6 +153,14 @@ test("démonstration : un nom se saisit, nettoyé et marqué manuel ; nom_source
     assert.equal(c.nom.length, 60);
     c = await store.modifier("whatsapp_conversations", c0.id, { nom_source: "whatsapp" });
     assert.equal(c.nom_source, "manuel", "nom_source ne s'écrit pas depuis l'outil");
+    // Revue de la PR 300 : invisibles retirés ; retapé à l'identique, le nom reste manuel ; fait seulement d'invisibles, il est vide.
+    c = await store.modifier("whatsapp_conversations", c0.id, { nom: "\u200BLucia\u2060 Rossi\uFEFF" });
+    assert.equal(c.nom, "Lucia Rossi");
+    c = await store.modifier("whatsapp_conversations", c0.id, { nom: "Lucia Rossi" });
+    assert.deepEqual([c.nom, c.nom_source], ["Lucia Rossi", "manuel"]);
+    c = await store.modifier("whatsapp_conversations", c0.id, { nom: "\u200B\u202A" });
+    assert.deepEqual([c.nom, c.nom_source], [null, null]);
+    c = await store.modifier("whatsapp_conversations", c0.id, { nom: "Lucia" });
     c = await store.modifier("whatsapp_conversations", c0.id, { nom: "" });
     assert.deepEqual([c.nom, c.nom_source], [null, null], "vider efface le nom manuel");
     c = await store.modifier("whatsapp_conversations", c0.id, { nom: "Lucia" });
@@ -177,4 +189,63 @@ test("migration 70 : rejouable, sans donnée touchée, droits et protection en b
   assert.ok(fs.existsSync(new URL("../docs/gestion/retour-70-whatsapp-nom.sql", import.meta.url)));
   assert.ok(fs.existsSync(new URL("../docs/gestion/verif-whatsapp-nom.mjs", import.meta.url)));
   assert.match(source(".github/workflows/ci.yml"), /verif-ia-tous-contacts verif-whatsapp-nom; do/);
+});
+
+// ---- Revue de sécurité de la PR 300 -------------------------------------------------------------------------------------------------
+
+test("revue 300, point 1 : la préparation n'envoie que le premier mot d'un nom saisi, « nom noté par l'équipe »", () => {
+  assert.deepEqual(prenomDuContact("Somchai chauffeur", "manuel"), { prenom: "Somchai", libelle: "nom noté par l'équipe" });
+  assert.deepEqual(prenomDuContact("Mr Brown 0812345678", "manuel"), { prenom: "Mr", libelle: "nom noté par l'équipe" }, "jamais le numéro");
+  assert.equal(prenomDuContact("X 12", "manuel").prenom, "", "un premier mot d'une lettre ne part pas");
+  assert.deepEqual(prenomDuContact("Lucia Rossi", "whatsapp"), { prenom: "Lucia Rossi", libelle: "prénom WhatsApp" }, "un nom de profil garde la règle d'avant");
+  const t = demandeAgent({ messages: [], nomProfil: "Somchai chauffeur", nomSource: "manuel", entreprise: "Secret" });
+  assert.match(t, /Client inconnu dans Secret \(nom noté par l'équipe : Somchai\)\./);
+  assert.doesNotMatch(t, /chauffeur/);
+  const p = promptPreparation({ entreprise: "Secret", reglages: {}, messages: [], nomProfil: "Somchai chauffeur", nomSource: "manuel", aujourdhui: "2026-11-21", contact: "chauffeur" });
+  assert.match(p.texte, /Contact, nom noté par l'équipe : Somchai\./);
+  assert.doesNotMatch(p.texte, /Somchai chauffeur/);
+  const rep = source("supabase/functions/whatsapp/reponse.ts");
+  assert.match(rep, /nomProfil: conv\.nom \|\| "", nomSource: conv\.nom_source \|\| null,/);
+  assert.match(rep, /from\("whatsapp_conversations"\)\.select\("\*"\)/, "select * : sans la colonne, nom_source est vide, rien ne casse");
+});
+
+test("revue 300, point 2 : « Mr Brown will pick you up » vers un client est bloqué (contact typé ou relié à une fiche)", async () => {
+  const lire = (c) => L.lireConversation({ conversation: c.id }, { conversation: c, messages: [{ id: id(), conversation_id: c.id, sens: "entrant", type: "text", texte: "ok", medias: [], envoye_le: "2026-11-21T05:00:00Z" }] });
+  const avert = async (memo, message) => (await proposer("proposer_reponse", { titre: "Réponse", message, langue: "en", destinataire: "" }, {}, memo)).avertissements;
+  for (const c of [conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "chauffeur" }), conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: null, partenaire_id: id() }), conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "client", partenaire_id: id() })]) {
+    const memo = memoDepuis([], { prestataires: [] });
+    retenirLecture(lire(c), memo);
+    assert.ok((await avert(memo, "Hi Tom, Mr Brown will pick you up at 9")).includes("nom_prestataire:Mr Brown"), `${c.type_contact || "sans type"}${c.partenaire_id ? ", fiche reliée" : ""}`);
+  }
+  // Un client sans fiche reliée n'est pas un nom bloqué.
+  const memoClient = memoDepuis([], { prestataires: [] });
+  retenirLecture(lire(conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "client" })), memoClient);
+  assert.deepEqual(memoClient.prestataires, []);
+  // La lecture dit « fiche_reliee » sans jamais rendre l'identifiant de la fiche.
+  const pid = id();
+  const lu = lire(conv({ nom: "Mr Brown", nom_source: "manuel", partenaire_id: pid }));
+  assert.equal(lu.fiche_reliee, true);
+  assert.ok(!JSON.stringify(lu).includes(pid));
+  // whatsapp-envoi et la préparation : nomsContactsTypes lit aussi les conversations reliées à une fiche.
+  let expr = "";
+  const db = { from: () => ({ select: () => ({ eq: () => ({ or: (e) => ((expr = e), { limit: async () => ({ data: [{ id: "a", nom: "Mr Brown", type_contact: null }], error: null }) }) }) }) }) };
+  assert.deepEqual(await nomsContactsTypes(db, "org"), { noms: ["Mr Brown"], erreur: false });
+  assert.match(expr, /partenaire_id\.not\.is\.null/);
+  // L'Assistant bloque aussi le nom de la conversation jointe reliée à une fiche ; les lectures lisent partenaire_id.
+  const idx = source("supabase/functions/agent/index.ts");
+  assert.match(idx, /if \(!CONTACTS_NOMMES\.includes\(typeLu\) && waLue && waLue\.partenaire_id && waLue\.nom\) ajouterNoms\(memo, \[\{ conversation: waLue\.id, nom: String\(waLue\.nom\) \}\]\);/);
+  assert.match(idx, /attend_depuis, type_contact, partenaire_id`/);
+});
+
+test("revue 300, points 3, 4, 6 et 8 : invisibles retirés, recherche bornée, nom retapé manuel, execute retiré", () => {
+  assert.equal(W.nettoyerNom("\u200BTom\u200F \u202ABa\u2060ker\u202E\uFEFF"), "Tom Baker");
+  for (const c of ["\u200B", "\u200F", "\u202A", "\u202E", "\u2060", "\u2069", "\uFEFF"]) assert.equal(W.nettoyerNom(`${c} ${c}`), null, `U+${c.charCodeAt(0).toString(16)}`);
+  assert.deepEqual(W.patchNom(conv({ nom: "Jade", nom_source: "whatsapp" }), "Jade"), { nom: "Jade" }, "un nom de profil retapé s'envoie (il devient manuel)");
+  const sql = source("docs/gestion/migration-70-whatsapp-nom.sql");
+  assert.match(sql, /'\[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2069\\uFEFF\]', '', 'g'/);
+  assert.match(sql, /create trigger whatsapp_nom_manuel before update of nom on whatsapp_conversations/);
+  assert.match(sql, /join lateral \(\s+select m0\.id[\s\S]*?order by m0\.envoye_le desc\s+limit 1\s+\) m on true/);
+  assert.match(sql, /order by c0\.dernier_message_le desc nulls last\s+limit n/);
+  for (const f of ["whatsapp_nom_insertion", "whatsapp_nom_manuel", "whatsapp_proteger_classement"]) assert.match(sql, new RegExp(`revoke all on function ${f}\\(\\) from public, anon, authenticated;`), f);
+  assert.match(source("docs/gestion/retour-70-whatsapp-nom.sql"), /drop function if exists whatsapp_nom_manuel\(\);/);
 });
