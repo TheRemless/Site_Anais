@@ -180,9 +180,11 @@ Deno.serve(async (req) => {
   // La conversation WhatsApp jointe ou liée telle que la personne la lit, même sans droit d'écrire (revue de sécurité de la PR 299) : son
   // réglage (Contact personnel : l'échange joint plus tôt ne repart plus), son type et son nom (contrôle de la réponse au client).
   let waLue: Record<string, any> | null = null;
-  // Les colonnes de la migration 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est pas typé).
+  // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
+  // pas typé, son nom est lu comme un nom de profil).
   const lireWa = async (id: string) => {
-    const r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
+    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", id).maybeSingle();
+    if (r.error && r.error.code === "42703") r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
     return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
   };
   // La personne n'administre pas l'entreprise de la conversation (whatsapp_peut_ecrire, migration 63) : la question passe en lecture seule,
@@ -193,7 +195,8 @@ Deno.serve(async (req) => {
     // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
     // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
     // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
-    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
+    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", waId).maybeSingle();
+    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
     if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", waId).maybeSingle();
     if (wc.error) return json({ erreur: "base" }, 500);
     if (!wc.data) return json({ erreur: "whatsapp_introuvable" }, 404);
@@ -470,9 +473,9 @@ Deno.serve(async (req) => {
       const entitesWa = (await lire(sb.from("entites").select("id, slug").eq("organisation_id", orgWa).in("slug", ENTREPRISES_UNIFIEES), "entites")) as { id: string; slug: string }[];
       const idsWa = entitesWa.map((e) => e.id);
       const COL_CONV = "id, created_at, organisation_id, telephone, nom, entite_id, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus, reponses, tri, paiement_signale, promesse_le";
-      // Colonnes des migrations 68 (type du contact) et 65 (aperçu, attente) : sans elles, l'outil lit ce qui existe (le type reste vide,
-      // l'attente se lit au sens du dernier message).
-      const NIVEAUX_CONV = [`${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis`];
+      // Colonnes des migrations 70 (source du nom), 68 (type du contact) et 65 (aperçu, attente) : sans elles, l'outil lit ce qui existe (le
+      // nom se lit comme un nom de profil, le type reste vide, l'attente se lit au sens du dernier message).
+      const NIVEAUX_CONV = [`${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact, nom_source`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis`];
       let niveauConv = 0;
       const conversations = async (filtre: (q: any) => any) => {
         const q = (cols: string) => filtre(sb.from("whatsapp_conversations").select(cols).eq("organisation_id", orgWa)).order("dernier_message_le", { ascending: false, nullsFirst: false });

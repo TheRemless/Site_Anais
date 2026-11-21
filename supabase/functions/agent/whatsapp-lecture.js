@@ -13,6 +13,8 @@
 //     contact ni le numéro d'une fiche partenaire n'écartent plus une conversation. Seul le réglage « Contact personnel » coupe l'IA ;
 //   - le texte d'un message est une donnée : numéros, comptes et IBAN masqués sur le texte entier AVANT toute coupe (masquer, même règle que
 //     whatsapp/proposer.js), crochets et chevrons remplacés, comme texteDepuisWhatsApp (agent/whatsapp.js) ;
+//   - le nom de la conversation (saisi par Nani depuis la migration 70, sinon le client relié, sinon le nom de profil) est une donnée lui
+//     aussi : masqué et neutralisé comme le texte. Jamais le numéro de téléphone ;
 //   - aucun fichier ni lien de média : son type et sa légende seulement. Les pièces jointes ne partent chez Claude que cochées par la personne ;
 //   - aucun net, aucune commission, aucune marge : ces lignes n'en lisent pas. Le texte écrit par un client ou par un partenaire peut citer
 //     un prix ou un net, il reste une donnée (jamais une source pour la réponse au client, outils.js, memoDepuis). Une réponse au client qui
@@ -160,10 +162,16 @@ const entrepriseDe = (conv, entites) => {
   const e = (entites || []).find((x) => x.id === conv.entite_id);
   return (e && marqueWhatsApp(e.slug)) || "autre";
 };
-const nomDe = (conv, client) => {
-  const n = client ? [client.prenom, client.nom].filter(Boolean).join(" ") : "";
-  return neutre(n || (conv && conv.nom) || "", 60) || "Contact sans nom";
-};
+// ---- Nom du contact (migration 70) ------------------------------------------------------------------------------------------------
+// Telnyx n'envoie aucun nom : Nani l'écrit à la main dans l'en-tête de la conversation (nom_source = 'manuel'). L'ordre, partout où la
+// conversation apparaît (écran, palette, Assistant, ces outils) : le nom saisi à la main, sinon le client relié, sinon le nom de profil
+// WhatsApp. L'écran ajoute le numéro en dernier (whatsapp-calc.mjs, nomConversation) ; ces outils ne l'envoient jamais.
+const espaces = (t) => String(t || "").replace(/\s+/g, " ").trim();
+export const nomSaisi = (conv) => (conv && conv.nom_source === "manuel" && typeof conv.nom === "string" ? espaces(conv.nom) : "");
+export function nomContact(conv, client = null) {
+  return nomSaisi(conv) || (client ? espaces([client.prenom, client.nom].filter(Boolean).join(" ")) : "") || (conv && typeof conv.nom === "string" ? espaces(conv.nom) : "");
+}
+const nomDe = (conv, client) => neutre(nomContact(conv, client), 60) || "Contact sans nom";
 // La conversation telle qu'elle part chez Claude : jamais le numéro de téléphone.
 function ligneConversation(conv, { clients, dossiers, entites }) {
   const client = conv.client_id ? clients.get(conv.client_id) : null;
@@ -173,7 +181,8 @@ function ligneConversation(conv, { clients, dossiers, entites }) {
     conversation: conv.id,
     lien: lienDe(conv),
     nom: nomDe(conv, client),
-    ...(conv.nom && client ? { nom_whatsapp: neutre(conv.nom, 60) } : {}),
+    // Le nom saisi par Nani (migration 70) est dit comme tel ; un nom de profil à côté d'un client relié reste « nom_whatsapp ».
+    ...(nomSaisi(conv) ? { nom_saisi_par_nani: true } : conv.nom && client ? { nom_whatsapp: neutre(conv.nom, 60) } : {}),
     ...(contactDe(conv) ? { contact: contactDe(conv) } : {}),
     entreprise: entrepriseDe(conv, entites),
     client: client ? { client: refCourte("C", client.id), nom: neutre([client.prenom, client.nom].filter(Boolean).join(" "), 80) } : null,

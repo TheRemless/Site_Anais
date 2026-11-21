@@ -13,7 +13,7 @@ import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
-import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages } from "./whatsapp-calc.mjs";
+import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -319,7 +319,15 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom"].includes(k)) delete patch[k];
+    // Nom saisi à la main (migration 70, whatsapp_proteger_classement) : nettoyé, 60 caractères, source « manuel » ; vidé, plus de nom.
+    if ("nom" in patch) {
+      if ((patch.nom ?? null) === (ligne.nom ?? null)) delete patch.nom;
+      else {
+        const nom = nettoyerNom(patch.nom);
+        Object.assign(patch, { nom, nom_source: nom ? "manuel" : null });
+      }
+    }
     // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
     if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;
     // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
@@ -1188,6 +1196,8 @@ export function creer() {
       out.whatsapp_suivi_disponible = !AGENCE;
       // Contacts typés et apporteurs (migration 68).
       out.whatsapp_contacts_disponible = !AGENCE;
+      // Nom saisi à la main (migration 70).
+      out.whatsapp_nom_disponible = !AGENCE;
       out.apporteurs_disponible = true;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());

@@ -2180,6 +2180,15 @@ button.agent-joint { cursor: pointer; }
 .wa-retour { flex: none; width: 44px; height: 44px; }
 .wa-fil-titre { flex: 1; min-width: 0; }
 .wa-fil-titre h2 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nom du contact saisi à la main (migration 70) : le nom est un bouton, un tap ouvre le champ sur place. */
+.wa-nom-bouton { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.wa-nom-texte { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-nom-bouton svg { flex: none; color: var(--texte-2); }
+.wa-nom-bouton:hover svg, .wa-nom-bouton:focus-visible svg { color: var(--teal-700); }
+.wa-nom-form { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wa-nom-form input { flex: 1; min-width: 0; min-height: 40px; font-size: 16px; }
+.wa-nom-form .principal { flex: none; min-height: 40px; }
+.wa-nom-form .bouton-icone { flex: none; width: 40px; height: 40px; }
 .wa-numero { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0; font-size: 0.85rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
 .wa-ouvrir-tete { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 .wa-ouvrir-tete svg, .wa-ouvrir svg { color: #128c4a; }

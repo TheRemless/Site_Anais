@@ -90,7 +90,8 @@ test("citations cliquables : seulement la forme exacte des liens de l'outil", ()
   const c = id();
   const m = id();
   const morceaux = morceauxCitations(`- Lucia attend depuis 2 h #/whatsapp?c=${c}&m=${m}\n- rien ici`);
-  assert.deepEqual(morceaux.filter((x) => x.lien), [{ lien: `#/whatsapp?c=${c}&m=${m}`, message: true }]);
+  // La conversation citée sert à mettre son nom à côté du lien (migration 70).
+  assert.deepEqual(morceaux.filter((x) => x.lien), [{ lien: `#/whatsapp?c=${c}&m=${m}`, message: true, conversation: c }]);
   assert.equal(morceaux.map((x) => x.texte || x.lien).join(""), `- Lucia attend depuis 2 h #/whatsapp?c=${c}&m=${m}\n- rien ici`);
   for (const faux of ["#/whatsapp?c=abc", `#/dossier/${c}`, `https://x.test/#/whatsapp?c=${c}x`, `#/whatsapp?c=${c}&next=evil`]) assert.ok(!morceauxCitations(faux).some((x) => x.lien && x.lien.length > 50 && !faux.startsWith(x.lien)), faux);
   assert.ok(!morceauxCitations(`#/whatsapp?c=${c}&next=evil`).some((x) => x.lien), "un paramètre en plus : pas un lien de l'outil");

@@ -7,8 +7,9 @@ import { aFaireWhatsApp, chercherConversations, lireConversation, sansAccents } 
 export const questionWhatsApp = (texte) => /whatsapp|conversation (?:de|d'|avec)|qui (?:m'|nous )?a [ée]crit|qu(?:i|'est-ce qui) attend|pas (?:encore )?r[ée]pondu/i.test(String(texte || ""));
 const demandeAFaire = (texte) => /[àa] faire|attend|en retard|promesse|urgent|pas r[ée]pondu|qui (?:m'|nous |a )?(?:a )?[ée]crit|to do|needs doing|waiting|pending/i.test(String(texte || ""));
 
-// Même recherche que whatsapp_rechercher (migration 67), en mémoire : chaque mot de 3 lettres ou plus en préfixe d'un mot du message
-// (texte et légende), un mot de 2 lettres en entier, six chiffres ou plus dans les chiffres du message. Les contacts « jamais », les messages supprimés et les réactions n'y sont jamais.
+// Même recherche que whatsapp_rechercher (migrations 67 et 70), en mémoire : chaque mot de 3 lettres ou plus en préfixe d'un mot du message
+// (texte et légende) ou du nom de la conversation, un mot de 2 lettres en entier, six chiffres ou plus dans les chiffres du message. Les
+// contacts « jamais », les messages supprimés et les réactions n'y sont jamais.
 export function rechercheDemo(q, conversations = [], messages = [], lim = 50) {
   const propre = String(q || "").slice(0, 100);
   const mots = sansAccents(propre).split(/\s+/).map((m) => m.replace(/[^\p{L}\p{N}]+/gu, "")).filter((m) => m.length >= 2).slice(0, 6);
@@ -16,13 +17,21 @@ export function rechercheDemo(q, conversations = [], messages = [], lim = 50) {
   if (!mots.length && chiffres.length < 6) return [];
   const permises = new Map(conversations.filter((c) => c && c.reponses !== "jamais").map((c) => [c.id, c]));
   const doc = (m) => `${m.texte || ""} ${(Array.isArray(m.medias) && m.medias[0] && m.medias[0].legende) || ""}`;
-  return messages
-    .filter((m) => m && permises.has(m.conversation_id) && !m.supprime_le && m.type !== "reaction")
+  const jetonsDe = (t) => sansAccents(t).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const couvre = (jetons) => mots.length > 0 && mots.every((x) => jetons.some((j) => (x.length >= 3 ? j.startsWith(x) : j === x)));
+  const lisibles = messages.filter((m) => m && permises.has(m.conversation_id) && !m.supprime_le && m.type !== "reaction");
+  // Migration 70 : le nom de la conversation (saisi par Nani ou de profil), tous les mots ; son dernier message, pour l'ouvrir.
+  const parNom = new Set();
+  for (const c of permises.values()) {
+    if (!c.nom || !couvre(jetonsDe(c.nom))) continue;
+    const dernier = lisibles.filter((m) => m.conversation_id === c.id).sort((a, b) => String(b.envoye_le).localeCompare(String(a.envoye_le)))[0];
+    if (dernier) parNom.add(dernier.id);
+  }
+  return lisibles
     .filter((m) => {
-      const jetons = sansAccents(doc(m)).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-      const parMots = mots.length > 0 && mots.every((x) => jetons.some((j) => (x.length >= 3 ? j.startsWith(x) : j === x)));
+      const parMots = couvre(jetonsDe(doc(m)));
       const parChiffres = chiffres.length >= 6 && String(m.texte || "").replace(/\D/g, "").includes(chiffres);
-      return parMots || parChiffres;
+      return parMots || parChiffres || parNom.has(m.id);
     })
     .sort((a, b) => String(b.envoye_le).localeCompare(String(a.envoye_le)))
     .slice(0, lim)

@@ -133,6 +133,18 @@ Lire un partenaire ne doit jamais faire passer ce qu'il écrit dans une réponse
 | Promesses | La tâche d'une promesse faite à un partenaire, un chauffeur ou un hôtel ne garde aucun chiffre dans ce qui est promis (`sansChiffres`). |
 | Historique de l'Assistant | Si la conversation WhatsApp liée passe « Contact personnel », l'échange joint plus tôt est retiré au chargement (`retirerConversationsJointes`). |
 
+## Nom du contact saisi à la main (migration 70, 21.11.2026)
+
+Constaté en production : aucune des 25 conversations n'avait de nom. Telnyx n'envoie dans `message.received` que `from.phone_number`, `carrier` et `line_type`. Demande de Jérémy : « Oui faisons le nom à la main ».
+
+- **Écran.** Dans l'en-tête d'une conversation, un tap sur le nom (ou le petit crayon) ouvre un champ sur place ; Entrée ou OK enregistre, Échap ou la croix annule. 60 caractères au plus, espaces nettoyés. Vider le champ efface le nom saisi. En lecture seule (conversation de l'autre entreprise), ni bouton ni crayon. Sans la migration 70, le crayon n'apparaît pas.
+- **Ordre du nom, partout** (liste, « À faire », palette, Assistant, citations, outils de l'agent) : le nom saisi à la main, sinon le client relié, sinon le nom de profil WhatsApp, sinon le numéro (l'écran seulement : les outils de l'agent n'envoient jamais le numéro). Une seule fonction : `nomContact` (`agent-whatsapp-lecture.mjs`), reprise par `nomConversation` (`whatsapp-calc.mjs`).
+- **Droits.** `grant update (nom)`, sous la politique « ranger une conversation WhatsApp » (migration 63, `whatsapp_ecrit`) : un administrateur de l'entreprise de la conversation, ou d'une des deux pour une conversation à trier. Mook ne voit rien. `nom_source` ne s'écrit jamais depuis l'outil.
+- **Protection.** `whatsapp_proteger_classement` met `nom_source = 'manuel'` quand une personne écrit le nom (nettoyé en base) ; sans personne connectée (la fonction « whatsapp »), un nom manuel ne change jamais. Un nom vide ou de profil se remplit encore si Telnyx en envoie un jour un (`nom_source = 'whatsapp'`, aussi à la création par `whatsapp_nom_insertion`).
+- **Recherche.** `whatsapp_rechercher` trouve aussi une conversation par son nom (mots et préfixes) et rend son dernier message : la palette la montre. L'outil `chercher_conversations` la trouve par `nom` comme avant. Un contact personnel n'est jamais trouvé.
+- **Ce qui part chez Anthropic** : le nom saisi, comme le reste de la conversation, sauf pour un contact personnel. C'est une donnée : masqué (numéros) et neutralisé (crochets, chevrons). Les outils disent `nom_saisi_par_nani`, « Demander à l'assistant » dit « nom noté par Nani ». Le contrôle bloquant des réponses ne change pas.
+- **Fonction à redéployer** : `agent`. Contrôle : `verif-whatsapp-nom.mjs`. Retour : `retour-70-whatsapp-nom.sql` (les noms saisis restent dans `nom`, sans leur source).
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature

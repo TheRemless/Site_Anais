@@ -66,7 +66,8 @@ const neutre = (t) => masquer(String(t || "")).replace(/[\[\]<>]/g, (c) => ({ "[
 // `apporteur` (PR D, migration 68) : le contact est un apporteur d'affaires (apporteur.js, contactApporteur). Son numéro n'est jamais celui
 // d'un client, ses messages sont marqués « Apporteur » ; la consigne détaillée est dans le prompt système (blocApporteur).
 export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui = "Nani", dossier = null, joints = 0, ecartes = 0, max = 8000, question = "", lectureSeule = false, apporteur = false }) {
-  const nom = conv && conv.nom ? ` (nom WhatsApp : ${neutre(conv.nom).slice(0, 60)})` : "";
+  // Le nom saisi par Nani (migration 70) est dit comme tel ; c'est une donnée, neutralisée comme le texte des messages.
+  const nom = conv && conv.nom ? ` (${conv.nom_source === "manuel" ? `nom noté par ${qui}` : "nom WhatsApp"} : ${neutre(conv.nom).slice(0, 60)})` : "";
   const tel = conv && conv.telephone ? (apporteur ? `Numéro WhatsApp de l'apporteur, jamais celui d'un client : ${conv.telephone}${nom}.` : `Numéro WhatsApp du client : ${conv.telephone}${nom}.`) : "";
   const q = String(question || "").replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›")).trim().slice(0, QUESTION_MAX);
   const consigne =
@@ -110,7 +111,7 @@ export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui =
 }
 
 // Le titre de la conversation de l'Assistant ouverte depuis WhatsApp (lot 2 du 20.11.2026, design n° 4) : le nom du contact, pour que trois
-// clients ne donnent plus trois « Dossier depuis WhatsApp » identiques. Sans nom de profil, le numéro.
+// clients ne donnent plus trois « Dossier depuis WhatsApp » identiques. Le nom saisi par Nani ou de profil (migration 70), sinon le numéro.
 export function titreWhatsApp(conv) {
   const nom = conv && conv.nom ? neutre(conv.nom).slice(0, 60) : "";
   if (nom) return nom;
