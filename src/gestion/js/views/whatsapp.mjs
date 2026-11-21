@@ -27,6 +27,9 @@ import {
 import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
 import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-calc.mjs";
 import { blocApporteurWhatsApp } from "./apporteurs.mjs";
+// Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
+import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
+import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -294,7 +297,9 @@ function blocFaits(c, prop) {
   const r = dossier && dossier.entite_id === etat.entiteId ? resumeDossier(dossier.id) : null;
   const taxi = !!dossier && marqueEntite(entite(dossier.entite_id)) === "taxi";
   const lignes = faitsClient({ dossier, reservations: etat.brut.reservations || [], resume: r, aujourdhui: aujourdhui(), taxi, jour: jourCourt, montant: (n, d) => formatMontant(n, d || undefined), intervalle: (a, b) => tr("{debut} au {fin}", { debut: a, fin: b }) });
-  const actions = actionsDossier(c, prop, dossier);
+  // En lecture seule, « Demander à l'assistant » reste quand l'Assistant de l'entreprise de la conversation est permis (PR B).
+  const demanderSeul = lectureSeule ? boutonDemander(c, prop) : null;
+  const actions = actionsDossier(c, prop, dossier) || (demanderSeul ? h("div", { class: "wa-actions-dossier", "data-pas-saisie": "" }, demanderSeul) : null);
   if (!dossier && !client && !actions) return null;
   const tete = h(
     "div",
@@ -415,13 +420,58 @@ async function versAssistant(c, prop) {
   const pieces = await choisirPieces(c);
   if (pieces === null) return;
   try {
-    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces }));
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces, le: Date.now() }));
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
   if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
   naviguer("#/agent/nouvelle");
 }
+// ---- Demander à l'assistant (PR B, 21.11.2026) ----------------------------------------------------------------------------------------
+// L'Assistant s'ouvre lié à cette conversation (agent_conversations.whatsapp_conversation_id, comme « Créer le dossier »), dans l'entreprise de
+// la conversation, sinon celle proposée par le tri. Une conversation de l'Assistant déjà liée est rouverte. Rien ne part avant que la
+// personne tape ou choisisse sa question ; la fonction joint alors les derniers messages. Jamais pour un contact personnel.
+function boutonDemander(c, prop) {
+  if (!demandePermise(c)) return null;
+  const possible = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
+  return possible ? h("button", { type: "button", class: "secondaire petit wa-demander", onclick: () => demanderAssistant(c, prop) }, icone("assistant", 16), tr("Demander à l'assistant")) : null;
+}
+async function demanderAssistant(c, prop) {
+  if (!demandePermise(c)) return;
+  let entiteId = c.entite_id;
+  if (!entiteId) {
+    const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
+    const entreprise = entreprisePourAssistant({ conv: c, prop, choix, activeId: etat.entiteId }) || (await choisirEntreprise(c, prop));
+    if (!entreprise) return;
+    entiteId = entreprise.id;
+  }
+  let liee = null;
+  try {
+    liee = conversationLiee(await etat.store.agentConversations(entiteId), c.id);
+  } catch {
+    liee = null;
+  }
+  try {
+    // Datée (valable deux minutes) ; `lecture` : conversation d'une entreprise que la personne n'administre pas.
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: "question", entite: entiteId, le: Date.now(), ...(peutEcrire(c) ? {} : { lecture: true }), ...(liee ? { agent: liee.id } : {}) }));
+  } catch {
+    return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
+  }
+  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
+}
+
+// Aller au message (#/whatsapp?c=…&m=…) : le message cité est amené au centre et mis en évidence deux secondes, une fois par adresse.
+let messageMontre = "";
+function montrerMessage(racine, id) {
+  const cible = id ? [...racine.querySelectorAll(".wa-bulle[data-message]")].find((b) => b.dataset.message === id) : null;
+  if (!cible) return false;
+  cible.scrollIntoView({ block: "center", behavior: "auto" });
+  cible.classList.add("wa-bulle-ciblee");
+  setTimeout(() => cible.classList.remove("wa-bulle-ciblee"), SURBRILLANCE_MS);
+  return true;
+}
+
 // Le voucher du dossier relié (Booking confirmation chez Taxi), par l'écran d'envoi habituel (partage de l'image sur iPhone).
 async function envoyerVoucherDuDossier(dossierId) {
   const [{ courseDuDossier }, { envoyerVoucher }] = await Promise.all([import("./creation-course.mjs"), import("./voucher-envoi.mjs")]);
@@ -433,6 +483,7 @@ async function envoyerVoucherDuDossier(dossierId) {
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
   if (lectureSeule) return null;
+  const demander = boutonDemander(c, prop);
   const ici = !c.entite_id || c.entite_id === etat.entiteId;
   const relie = c.entite_id === etat.entiteId ? dossierDe(c) : null;
   const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
@@ -440,6 +491,7 @@ function actionsDossier(c, prop, dossier = null) {
   const boutons = [
     assistant && ici ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), relie ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,
     voucherDe ? h("button", { type: "button", class: "secondaire petit", onclick: () => envoyerVoucherDuDossier(voucherDe.id) }, icone("whatsapp", 16), modeTaxi() ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher")) : null,
+    demander,
   ].filter(Boolean);
   return boutons.length ? h("div", { class: "wa-actions-dossier", "data-pas-saisie": "" }, boutons) : null;
 }
@@ -548,7 +600,7 @@ function bulle(m) {
   const meta = [heureBangkok(m.envoye_le), m.sens === "sortant" && ORIGINES[m.origine] ? tr(ORIGINES[m.origine]) : "", m.modifie_le ? tr("modifié") : ""].filter(Boolean).join(" · ");
   return h(
     "div",
-    { class: `wa-bulle ${m.sens}${m.supprime_le ? " supprime" : ""}${m.type === "reaction" ? " reaction" : ""}${statut && statut.cle === "echec" ? " non-remis" : ""}` },
+    { class: `wa-bulle ${m.sens}${m.supprime_le ? " supprime" : ""}${m.type === "reaction" ? " reaction" : ""}${statut && statut.cle === "echec" ? " non-remis" : ""}`, "data-message": m.id },
     m.supprime_le ? h("p", { class: "wa-supprime" }, tr("Supprimé par le client")) : null,
     medias.map(blocMedia),
     texte ? h("p", { class: "wa-texte" }, m.type === "reaction" ? `${tr("Réaction")} ${texte}` : texte) : !medias.length ? h("p", { class: "wa-texte wa-type" }, tr(libelleType(m.type))) : null,
@@ -825,7 +877,8 @@ async function fil(c, prop) {
   let messages = [];
   let erreur = null;
   try {
-    messages = await etat.store.whatsappMessages(c.id);
+    // Le message cité par l'adresse est chargé même s'il est ancien (PR B).
+    messages = await etat.store.whatsappMessages(c.id, { inclure: messageCible(lireAdresse(location.hash)) });
   } catch (err) {
     erreur = err;
   }
@@ -931,8 +984,12 @@ export async function vueWhatsApp() {
   const liste = filtrer(conversations, filtre);
   const nombres = chiffresFiltres(conversations, propositions, marqueDe);
   const reglage = (etat.brut.whatsapp_reglages || [])[0] || null;
+  // « À faire » (PR B) : tout ce qui attend, trié par urgence, sans IA. Placé après « Toutes ».
+  const aFaireBoite = aFaireDeLaBoite(entitesWhatsApp());
+  nombres.a_faire = aFaireBoite.nombre;
+  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...FILTRES.slice(1)];
 
-  const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: FILTRES.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
+  const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: filtres.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
     "section",
     { class: "wa-liste", "aria-label": tr("Conversations") },
@@ -947,7 +1004,9 @@ export async function vueWhatsApp() {
     reglage && reglage.reception_active === false ? h("p", { class: "bandeau-info", role: "status" }, tr("Réception coupée dans les Réglages. Les nouveaux messages n'arrivent plus ici.")) : null,
     etat.brut.whatsapp_propositions_disponible === false ? h("p", { class: "bandeau-info", role: "status" }, tr("Les réponses préparées arriveront avec la migration 59.")) : null,
     choix.noeud,
-    liste.length
+    filtre === "a_faire"
+      ? listeAFaire(aFaireBoite, { entites: entitesWhatsApp(), idOuvert })
+      : liste.length
       ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
@@ -965,12 +1024,18 @@ export async function vueWhatsApp() {
     racine.dataset.conversation = ouverte.id;
     racine.dataset.dernier = dernier;
     const replacer = !avant || avant.dataset.conversation !== ouverte.id || avant.dataset.dernier !== dernier;
+    // Le message cité par l'adresse (PR B), montré une seule fois pour cette adresse : un redessin ne ramène pas Nani dessus.
+    const cible = messageCible(lireAdresse(location.hash));
+    const cle = cible ? `${ouverte.id}|${cible}` : "";
+    if (!cible) messageMontre = "";
     // Les derniers messages et la réponse préparée en vue, après le placement du défilement par app.mjs (deux images d'affichage, comme lui).
     const placer = () => {
       if (!racine.isConnected) return;
       const zone = racine.querySelector(".wa-messages");
       const colonne = racine.querySelector(".wa-liste");
       if (colonne && defilListe) colonne.scrollTop = defilListe;
+      // Montré, le message quitte l'adresse : un rechargement ou un redessin ne ramène plus dessus.
+      if (cle && cle !== messageMontre && montrerMessage(racine, cible)) return void ((messageMontre = cle), history.replaceState(null, "", adresseConversation(ouverte)));
       if (!replacer) return void (zone && (zone.scrollTop = defilMessages));
       if (window.matchMedia("(min-width: 900px)").matches) zone && (zone.scrollTop = zone.scrollHeight);
       else {

@@ -7,6 +7,7 @@ import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { lireRetourLien } from "./compte-calc.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { estCoupure, delaiReabonnement, doitReabonner } from "./direct-reprise-calc.mjs";
+import { FENETRE_MESSAGE, fusionnerFenetre } from "./whatsapp-relie-calc.mjs";
 
 // La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
 const effacerCopieHorsLigne = () => {
@@ -382,12 +383,34 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     chargerWhatsApp: () => lireWhatsApp(),
     // Les messages d'une conversation, les 500 plus récents, dans l'ordre d'envoi.
     // statut_envoi, erreur_envoi (migration 64) : relus sans eux tant que la migration n'est pas appliquée.
-    async whatsappMessages(conversationId) {
-      const requete = (colonnes) => sb.from("whatsapp_messages").select(colonnes).eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(500);
+    // `inclure` (PR B, « aller au message ») : un message plus ancien que les 500 derniers est chargé quand même, avec une fenêtre autour de
+    // lui (FENETRE_MESSAGE avant et après), ajoutée aux 500 derniers. Aussi ancien soit-il, il est trouvé.
+    async whatsappMessages(conversationId, { inclure = "" } = {}) {
       const base = "id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le";
-      let r = await requete(`${base}, statut_envoi, erreur_envoi, statut_le`);
-      if (colonneAbsente(r.error, "statut_envoi")) r = await requete(base);
-      return verifie(r).reverse();
+      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`;
+      const requete = (cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId);
+      let r = await requete(colonnes).order("envoye_le", { ascending: false }).limit(500);
+      if (colonneAbsente(r.error, "statut_envoi")) r = await requete((colonnes = base)).order("envoye_le", { ascending: false }).limit(500);
+      const lus = verifie(r).reverse();
+      if (!inclure || lus.length < 500 || lus.some((m) => m.id === inclure)) return lus;
+      const cible = await sb.from("whatsapp_messages").select("envoye_le").eq("id", inclure).eq("conversation_id", conversationId).maybeSingle();
+      if (cible.error || !cible.data) return lus;
+      const t = cible.data.envoye_le;
+      const [avant, apres] = await Promise.all([
+        requete(colonnes).lte("envoye_le", t).order("envoye_le", { ascending: false }).limit(FENETRE_MESSAGE + 1),
+        requete(colonnes).gt("envoye_le", t).order("envoye_le", { ascending: true }).limit(FENETRE_MESSAGE),
+      ]);
+      return fusionnerFenetre(lus, [...verifie(avant).reverse(), ...verifie(apres)]);
+    },
+    // Recherche plein texte dans les messages (whatsapp_rechercher, migration 67, PR B) pour la recherche de Gestion. La base applique les droits
+    // (whatsapp_lit) et écarte les contacts personnels. Sans la migration, ou en cas d'erreur, rien : la recherche marche sans WhatsApp.
+    async whatsappRechercher(q, { lim = 20 } = {}) {
+      const { data, error } = await sb.rpc("whatsapp_rechercher", { q: String(q || "").slice(0, 100), lim });
+      if (error) {
+        if (!["PGRST202", "42883"].includes(error.code)) console.warn("whatsapp_rechercher", error.message);
+        return [];
+      }
+      return data || [];
     },
     // Lien court (5 minutes) vers une photo ou un document copié dans le stockage privé « whatsapp ». null si le fichier n'est plus là.
     async whatsappLienMedia(media, { telecharger = false } = {}) {
