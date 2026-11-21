@@ -21,6 +21,7 @@ import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
 import { espaceUnifie, carteUnifiee, avecCorrections, entrepriseSuivante, badgeModifiable, planCreation, creerDossiersLies, lierDossiers, carteDeLEntreprise, ouvrirDansEntreprise, conversationsDesDeux, ordreEnvois, marqueUnifiee, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
 import { CLE_DEMANDE_AGENT, demandeAgent, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "../whatsapp-suivi-calc.mjs";
+import { morceauxCitations } from "../whatsapp-calc.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -127,6 +128,9 @@ const ETAPES = {
   lire_reglages: N_("Je lis les réglages"),
   proposer_reglage: N_("Je prépare le réglage"),
   proposer_amelioration: N_("Je prépare la demande d'amélioration"),
+  chercher_conversations: N_("Je cherche dans WhatsApp"),
+  lire_conversation: N_("Je lis la conversation WhatsApp"),
+  a_faire_whatsapp: N_("Je regarde ce qui attend dans WhatsApp"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -447,7 +451,9 @@ export async function vueAgent(idOuvert = "") {
     if (it.genre === "planning") return frise(it.planning);
     return carte(it.carte);
   }
-  const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l]))));
+  // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
+  const avecCitations = (l) => morceauxCitations(l).map((m) => (m.lien ? h("a", { class: "agent-citation", href: m.lien }, m.message ? tr("voir le message") : tr("voir la conversation")) : m.texte));
+  const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), ...avecCitations(l)] : avecCitations(l)))));
   function bulleWhatsApp(echange, { nom = conv ? titreDe(conv) : "" } = {}) {
     const n = echange.messages.length;
     return h(

@@ -10,6 +10,12 @@
 // « partenaires.lire » et « dossiers.ecrire » dans l'autre, le catalogue, les clients et les dossiers se lisent dans les deux entreprises,
 // toujours avec sa session (la RLS limite ce qu'elle voit). La conversation reste sous l'entreprise active. ZTP n'y entre jamais.
 //
+// Boîte WhatsApp (whatsapp-lecture.js, migration 67) : dans l'Assistant de Secret ou de Taxi, pour qui lit la boîte (whatsapp_lit, lu avec
+// sa session), trois outils de lecture : chercher_conversations, lire_conversation, a_faire_whatsapp. Toujours avec `sb`, jamais avec la clé
+// de service : la RLS de la migration 63 décide. Un contact réglé « jamais » n'est ni cherché ni lu. Ce qui part alors chez Anthropic : le
+// nom de profil et le client relié (prénom, nom), la référence du dossier relié, le texte des messages lus (numéros, comptes et IBAN
+// masqués), le type et la légende des médias. Jamais un numéro de téléphone, un fichier, un net, une commission ni un partenaire.
+//
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -17,6 +23,7 @@ import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, 
 import { choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
+import { MARQUE_PROMESSE, dateBangkok as jourBangkok, whatsappPermis } from "./whatsapp-lecture.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
@@ -368,6 +375,123 @@ Deno.serve(async (req) => {
     }
     return cles.map((c) => hotelsVus.get(c)).filter(Boolean) as Record<string, any>[];
   };
+  // ---- Boîte WhatsApp (PR A, migration 67), lue avec la session de la personne -----------------------------------------------------
+  // Permise seulement dans l'Assistant de Secret ou de Taxi et pour qui lit la boîte (whatsapp_lit, administrateur de Secret ou de Taxi).
+  // Une erreur (migration absente, droits) laisse l'Assistant sans ces outils.
+  let whatsapp: Record<string, unknown> | null = null;
+  const orgWa = ent.data?.organisation_id || null;
+  if (ent.data && ENTREPRISES_UNIFIEES.includes(ent.data.slug) && orgWa) {
+    const lit = await sb.rpc("whatsapp_lit", { e: null, org: orgWa });
+    if (lit.error) console.error("agent : whatsapp_lit", lit.error.message);
+    if (!lit.error && whatsappPermis({ slug: ent.data.slug, lit: lit.data === true })) {
+      const entitesWa = (await lire(sb.from("entites").select("id, slug").eq("organisation_id", orgWa).in("slug", ENTREPRISES_UNIFIEES), "entites")) as { id: string; slug: string }[];
+      const idsWa = entitesWa.map((e) => e.id);
+      const COL_CONV = "id, created_at, organisation_id, telephone, nom, entite_id, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus, reponses, tri, paiement_signale, promesse_le";
+      // La migration 65 (aperçu, attente) : sans elle, l'attente se lit au sens du dernier message.
+      let avec65 = true;
+      const conversations = async (filtre: (q: any) => any) => {
+        const q = (cols: string) => filtre(sb.from("whatsapp_conversations").select(cols).eq("organisation_id", orgWa)).order("dernier_message_le", { ascending: false, nullsFirst: false });
+        if (avec65) {
+          const r = await q(`${COL_CONV}, dernier_texte, dernier_type, attend_depuis`);
+          if (!r.error) return (r.data || []) as Record<string, any>[];
+          if (r.error.code !== "42703") throw new Error(`whatsapp_conversations : ${r.error.message}`);
+          avec65 = false;
+        }
+        return lire(q(COL_CONV), "whatsapp_conversations");
+      };
+      // Par lots de 100 identifiants (une adresse trop longue serait refusée).
+      const parIds = async (table: string, colonnes: string, colonne: string, ids: string[], plus: (q: any) => any = (q) => q) => {
+        const uniques = [...new Set(ids.filter(Boolean))].slice(0, 500);
+        const out: Record<string, any>[] = [];
+        for (let i = 0; i < uniques.length; i += 100) out.push(...(await lire(plus(sb.from(table).select(colonnes).in(colonne, uniques.slice(i, i + 100))).limit(1000), table)));
+        return out;
+      };
+      const autour = async (convs: Record<string, any>[]) => {
+        const [clients, dossiers] = await Promise.all([
+          parIds("clients", "id, prenom, nom", "id", convs.map((c) => c.client_id)),
+          parIds("dossiers", "id, ref, annule, entite_id", "id", convs.map((c) => c.dossier_id)),
+        ]);
+        return { clients, dossiers, entites: entitesWa };
+      };
+      const intervalle = (p: string) => [`${p.slice(0, 8)}-0000-0000-0000-000000000000`, `${p.slice(0, 8)}-ffff-ffff-ffff-ffffffffffff`];
+      whatsapp = {
+        permis: true,
+        slug: ent.data.slug,
+        qui: "Nani",
+        // Les conversations candidates : la base filtre ce qui est simple (client, dossier, non-lus, période), l'outil refait tout le tri.
+        candidats: async (e: Record<string, any>) => {
+          const texte = String(e.texte || "").trim().slice(0, 100);
+          let trouves: Record<string, any>[] = [];
+          if (texte.length >= 2) {
+            const r = await sb.rpc("whatsapp_rechercher", { q: texte, lim: 50 });
+            if (r.error) console.error("agent : whatsapp_rechercher", r.error.message);
+            else trouves = r.data || [];
+          }
+          const pc = prefixeRef(e.client);
+          const pd = prefixeRef(e.dossier);
+          let dossiersRef: string[] | null = null;
+          if (!pd && String(e.dossier || "").trim()) dossiersRef = (await lire(sb.from("dossiers").select("id").in("entite_id", idsWa).ilike("ref", String(e.dossier).trim().slice(0, 30).replace(/[\\%_]/g, "\\$&")).limit(20), "dossiers")).map((d) => d.id);
+          if (dossiersRef && !dossiersRef.length) return { conversations: [], trouves, ...(await autour([])) };
+          const filtres = (q: any) => {
+            q = q.neq("reponses", "jamais");
+            if (pc) q = q.gte("client_id", intervalle(pc)[0]).lte("client_id", intervalle(pc)[1]);
+            if (pd) q = q.gte("dossier_id", intervalle(pd)[0]).lte("dossier_id", intervalle(pd)[1]);
+            if (dossiersRef) q = q.in("dossier_id", dossiersRef);
+            if (e.non_lus) q = q.gt("non_lus", 0);
+            if (typeof e.du === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.du)) q = q.gte("dernier_message_le", `${e.du}T00:00:00+07:00`);
+            if (typeof e.au === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.au)) q = q.lte("created_at", `${e.au}T23:59:59.999+07:00`);
+            return q;
+          };
+          let convs: Record<string, any>[] = [];
+          if (texte.length < 2) convs = await conversations((q) => filtres(q).limit(200));
+          else {
+            const mots = sansAccents(texte).split(/\s+/).filter((m) => m.length >= 2).slice(0, 5);
+            const chiffres = texte.replace(/\D/g, "");
+            const parNom = mots.length ? await lire(mots.reduce((r: any, m) => r.or(`prenom.ilike.${motifNom(m)},nom.ilike.${motifNom(m)}`), sb.from("clients").select("id").in("entite_id", idsWa)).limit(100), "clients") : [];
+            const ids = [...new Set(trouves.map((t) => t.conversation_id).filter((x) => UUID.test(String(x))))].slice(0, 100);
+            const conds = [
+              ...(mots.length ? [`and(${mots.map((m) => `nom.ilike.${motifNom(m)}`).join(",")})`] : []),
+              ...(chiffres.length >= 6 ? [`telephone.ilike.${motifTelephone(chiffres)}`] : []),
+              ...(ids.length ? [`id.in.(${ids.join(",")})`] : []),
+              ...(parNom.length ? [`client_id.in.(${parNom.map((c) => c.id).join(",")})`] : []),
+            ];
+            if (conds.length) convs = await conversations((q) => filtres(q).or(conds.join(",")).limit(200));
+          }
+          return { conversations: convs, trouves, ...(await autour(convs)) };
+        },
+        // Une conversation et ses messages. Un contact « jamais » : ses messages ne sont pas même lus.
+        conversation: async (id: string, { depuis = "", derniers = 40 }: { depuis?: string; derniers?: number } = {}) => {
+          if (!UUID.test(String(id || ""))) return { conversation: null };
+          const convs = await conversations((q) => q.eq("id", id).limit(1));
+          const conv = convs[0] || null;
+          if (!conv || conv.reponses === "jamais") return { conversation: conv, messages: [] };
+          let q = sb.from("whatsapp_messages").select("id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", id).is("supprime_le", null);
+          if (depuis) q = q.gte("envoye_le", `${depuis}T00:00:00+07:00`);
+          const messages = await lire(q.order("envoye_le", { ascending: false }).limit(Math.min(200, Math.max(1, Number(derniers) || 40))), "whatsapp_messages");
+          return { conversation: conv, messages, ...(await autour([conv])) };
+        },
+        // Ce qui attend : conversations à suivre, promesses échues, paiements et ferrys des dossiers reliés.
+        aFaire: async () => {
+          const convs = await conversations((q) => q.limit(300));
+          const suivies = convs.filter((c) => c.reponses !== "jamais");
+          const dossierIds = suivies.map((c) => c.dossier_id).filter(Boolean);
+          const [taches, resumes, paiements, reservations, entour] = await Promise.all([
+            lire(sb.from("taches").select("id, entite_id, dossier_id, titre, description, echeance, fait, created_at").in("entite_id", idsWa).eq("fait", false).eq("description", MARQUE_PROMESSE).lt("echeance", jourBangkok(Date.now())).limit(100), "taches"),
+            parIds("dossiers_resume", "dossier_id, total, recu, devise", "dossier_id", dossierIds),
+            parIds("paiements", "dossier_id, created_at", "dossier_id", dossierIds),
+            parIds("reservations", "id, dossier_id, libelle, statut, date_service, trajet_id, prestation_id", "dossier_id", dossierIds, (q) => q.neq("statut", "annule")),
+            autour(suivies),
+          ]);
+          const [trajets, prestations] = await Promise.all([
+            parIds("trajets", "id, mode", "id", reservations.map((r) => r.trajet_id)),
+            parIds("prestations", "id, famille", "id", reservations.map((r) => r.prestation_id)),
+          ]);
+          return { conversations: convs, taches, resumes, paiements, reservations, trajets, prestations, ...entour };
+        },
+      };
+    }
+  }
+
   // Lieux et itinéraires calculés plus vieux que six mois : relus comme absents, donc recalculés (et réécrits par-dessus).
   const valideDepuis = new Date(Date.now() - VALIDITE_JOURS * 86_400_000).toISOString();
   // Ce qui vient de Google ne se garde que 30 jours (conditions de Google Maps Platform).
@@ -524,7 +648,7 @@ Deno.serve(async (req) => {
   // les lignes de l'entreprise où la personne a le droit : outils.js).
   const droits: string[] = unifie ? permissionsOutils(unifie) : perms.data || [];
   const entreprisesUnifiees = unifie ? { entreprises: unifie.entites.map((e) => ({ nom: e.nom, slug: e.slug, reglages: e.id === entiteId ? reglages : reglagesAutre })) } : null;
-  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees });
+  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees, whatsapp: !!whatsapp });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   const gardes = completerOrphelins(historique(debutValide([...(anciens.data || [])].reverse())));
@@ -550,7 +674,7 @@ Deno.serve(async (req) => {
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
-  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

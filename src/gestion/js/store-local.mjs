@@ -11,7 +11,7 @@ import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
-import { whatsappDemo } from "./demo-whatsapp.mjs";
+import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp } from "./whatsapp-calc.mjs";
 
@@ -110,11 +110,22 @@ export function creer() {
       data.taches = [...(data.taches || []).filter((t) => !String(t.titre || "").startsWith("WhatsApp, ")), ...tachesWa];
     }
     for (const t of TABLES_WHATSAPP_DEMO) data[t] = data[t] || [];
+    // Jade, travel planner (PR A du 21.11.2026) : ajoutée une fois aussi à une démo déjà enregistrée.
+    const sansJade = !AGENCE && !data.demo_jade;
+    if (sansJade) {
+      data.demo_jade = 1;
+      const secretJ = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
+      if (secretJ && !data.whatsapp_conversations.some((c) => c.telephone === "+447700900955")) {
+        const j = conversationJade({ secret: secretJ, uid, organisation: ORG_DEMO });
+        data.whatsapp_conversations.push(...j.whatsapp_conversations);
+        data.whatsapp_messages.push(...j.whatsapp_messages);
+      }
+    }
     // Espace unifié Secret et Taxi (migration 63) : fiches partagées dans les deux sens, deux dossiers liés, une fiche en double et une
     // conversation de l'Assistant dans chaque entreprise. Posé une fois, aussi dans une démo déjà enregistrée.
     const sansUnifie = !AGENCE && !data.demo_unifie;
     if (sansUnifie) semerUnifie();
-    if (neuve || sansWhatsApp || sansUnifie) sauve();
+    if (neuve || sansWhatsApp || sansUnifie || sansJade) sauve();
   };
   // Le partage réciproque Secret et Taxi (migration 63) : posé par la base pour l'organisation de Zwald seulement. La démonstration le pose à la
   // première carte mixte, comme une organisation qui l'a coché dans ses réglages ; l'outil le relit aussitôt.
@@ -184,6 +195,56 @@ export function creer() {
   const litWhatsApp = (entiteId) => (!entiteId || (data.entites.find((e) => e.id === entiteId) || {}).organisation_id === monOrg()) && adminUneDesDeux();
   const ecritWhatsApp = (entiteId) => (entiteId ? adminWhatsApp(entiteId) : adminUneDesDeux());
   const conversationLue = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && litWhatsApp(c.entite_id)) || null;
+  // L'Assistant lit la boîte (PR A, agent-whatsapp-lecture.mjs) : les mêmes lignes que la base rendrait à la fonction « agent » avec la
+  // session de la personne. Seulement dans l'Assistant de Secret ou de Taxi et pour qui lit la boîte, comme whatsapp_lit ; sinon null.
+  const sourceWhatsApp = (entiteId) => {
+    const active = data.entites.find((e) => e.id === entiteId);
+    if (!active || !marqueEntite(active) || !litWhatsApp(null)) return null;
+    const entitesWa = data.entites.filter((e) => e.organisation_id === monOrg() && marqueEntite(e)).map((e) => ({ id: e.id, slug: marqueEntite(e) }));
+    const visibles = () => data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
+    const autour = (convs) => ({
+      clients: structuredClone(data.clients.filter((c) => convs.some((v) => v.client_id === c.id))),
+      dossiers: structuredClone(data.dossiers.filter((d) => convs.some((v) => v.dossier_id === d.id))),
+      entites: entitesWa,
+    });
+    return {
+      permis: true,
+      slug: marqueEntite(active),
+      qui: "Nani",
+      candidats: async (e) => {
+        const { rechercheDemo } = await import("./agent-whatsapp-demo.mjs");
+        const convs = visibles().filter((c) => c.reponses !== "jamais");
+        const ids = new Set(convs.map((c) => c.id));
+        return { conversations: structuredClone(convs), trouves: rechercheDemo(e.texte, convs, data.whatsapp_messages.filter((m) => ids.has(m.conversation_id))), ...autour(convs) };
+      },
+      conversation: async (id) => {
+        const c = conversationLue(id);
+        if (!c || c.reponses === "jamais") return { conversation: c ? structuredClone(c) : null, messages: [] };
+        return { conversation: structuredClone(c), messages: structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === id)), ...autour([c]) };
+      },
+      aFaire: async () => {
+        const { MARQUE_PROMESSE } = await import("./agent-whatsapp-lecture.mjs");
+        const convs = visibles();
+        const ids = new Set(convs.filter((c) => c.reponses !== "jamais" && c.dossier_id).map((c) => c.dossier_id));
+        const lisibles = new Set(dossiersVisibles().map((d) => d.id));
+        const reservations = data.reservations.filter((r) => ids.has(r.dossier_id) && r.statut !== "annule");
+        return {
+          conversations: structuredClone(convs),
+          taches: structuredClone((data.taches || []).filter((t) => entitesWa.some((x) => x.id === t.entite_id) && !t.fait && t.description === MARQUE_PROMESSE)),
+          paiements: structuredClone(data.paiements.filter((p) => ids.has(p.dossier_id))),
+          // dossiers_resume : seulement avec « finances.voir », comme la base.
+          resumes: data.dossiers.filter((d) => ids.has(d.id) && lisibles.has(d.id) && financesDe(d.entite_id)).map((d) => {
+            const r = avecResume(d, true);
+            return { dossier_id: d.id, total: r.total, recu: r.recu, devise: r.devise };
+          }),
+          reservations: structuredClone(reservations),
+          trajets: structuredClone(data.trajets.filter((t) => reservations.some((r) => r.trajet_id === t.id))),
+          prestations: structuredClone(data.prestations.filter((p) => reservations.some((r) => r.prestation_id === p.id))),
+          ...autour(convs.filter((c) => c.reponses !== "jamais")),
+        };
+      },
+    };
+  };
   const conversationEcrite = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && ecritWhatsApp(c.entite_id)) || null;
   // Comme whatsapp_reclasser (migration 59) : les non-lus ne remontent jamais, un changement d'entreprise est « manuel » et retire le client et le
   // dossier d'une autre entreprise, puis cherche le client par le numéro dans la nouvelle.
@@ -808,6 +869,27 @@ export function creer() {
         conv.maj_le = maintenant();
         sauve();
         surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
+        return { ok: true };
+      }
+      // L'Assistant lit la boîte WhatsApp (PR A) : en démonstration, les vrais outils sur les données de la démo, puis une réponse qui cite
+      // chaque point avec son lien.
+      const sourceWa = sourceWhatsApp(e);
+      const { questionWhatsApp, repondreWhatsAppDemo } = await import("./agent-whatsapp-demo.mjs");
+      if (sourceWa && !wc && questionWhatsApp(texte)) {
+        const evs = await repondreWhatsAppDemo(texte, sourceWa);
+        let dernierWa = "";
+        for (const ev of evs) {
+          await new Promise((ok) => setTimeout(ok, ev.t === "etape" ? 400 : 120));
+          if (ev.t === "texte") {
+            message("assistant", [{ type: "text", text: ev.delta }]);
+            dernierWa = ev.delta;
+          }
+          surEvenement(ev);
+        }
+        conv.apercu = (dernierWa || texte).replace(/\s+/g, " ").slice(0, 200);
+        conv.maj_le = maintenant();
+        sauve();
+        surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "simulation" });
         return { ok: true };
       }
       const { repondreDemo } = await import("./agent-demo.mjs");

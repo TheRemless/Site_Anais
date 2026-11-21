@@ -158,8 +158,8 @@ test("erreurs d'envoi : chaque code de whatsapp-envoi a son message, un code inc
 });
 
 test("adresse d'une conversation : « #/whatsapp?c=…&entite=… » l'ouvre directement", () => {
-  assert.deepEqual(W.lireAdresse("#/whatsapp?c=abc&entite=t"), { conversation: "abc", entite: "t" });
-  assert.deepEqual(W.lireAdresse("#/whatsapp"), { conversation: "", entite: "" });
+  assert.deepEqual(W.lireAdresse("#/whatsapp?c=abc&entite=t"), { conversation: "abc", entite: "t", message: "" });
+  assert.deepEqual(W.lireAdresse("#/whatsapp"), { conversation: "", entite: "", message: "" });
   assert.equal(W.adresseConversation({ id: "abc", entite_id: "t" }), "#/whatsapp?c=abc&entite=t");
   assert.equal(W.adresseConversation({ id: "abc", entite_id: null }), "#/whatsapp?c=abc");
   assert.ok(ecranDeLecture("#/whatsapp") && ecranDeLecture("#/whatsapp?c=abc&entite=t"), "écran de lecture : redessiné en direct");
@@ -173,14 +173,14 @@ test("état du compte Telnyx en clair", () => {
   assert.deepEqual(W.etatCompte("QUELQUE_CHOSE").vars, { code: "QUELQUE_CHOSE" });
 });
 
-test("démo : cinq conversations inventées, des propositions dans plusieurs statuts, numéros de fiction", () => {
+test("démo : six conversations inventées (Jade comprise), des propositions dans plusieurs statuts, numéros de fiction", () => {
   let n = 0;
   const uid = () => `id${++n}`;
   const entites = [{ id: "e2", slug: "excursions" }, { id: "e3", slug: "taxi" }];
   const clients = [{ id: "c1", entite_id: "e3", prenom: "Tom", nom: "Démo" }];
   const dossiers = [{ id: "d1", entite_id: "e3", client_id: "c1", ref: "T-1", annule: false }];
   const d = whatsappDemo({ entites, clients, dossiers, uid, organisation: "org", maintenant: Date.parse("2026-11-20T12:00:00Z") });
-  assert.equal(d.whatsapp_conversations.length, 5);
+  assert.equal(d.whatsapp_conversations.length, 6);
   assert.ok(d.whatsapp_conversations.some((c) => c.reponses === "jamais" && c.tri.preparer === false), "un contact réglé sur Jamais, sans réponse préparée");
   const connu = d.whatsapp_conversations.find((c) => c.client_id === "c1");
   assert.equal(connu.dossier_id, "d1", "un client connu de Taxi avec son dossier");
@@ -204,7 +204,7 @@ test("démo : droits comme la base, marquer lu, ranger, traiter, rien n'est envo
     const store = creer();
     const brut = await store.charger();
     assert.equal(brut.whatsapp_disponible, true);
-    assert.equal(brut.whatsapp_conversations.length, 5, "l'administratrice voit tout");
+    assert.equal(brut.whatsapp_conversations.length, 6, "l'administratrice voit tout");
     const nonLue = brut.whatsapp_conversations.find((c) => c.non_lus > 0 && c.entite_id);
     const lue = await store.modifier("whatsapp_conversations", nonLue.id, { non_lus: 0 });
     assert.equal(lue.non_lus, 0);

@@ -4,7 +4,9 @@
 //   2. un inconnu à trier qui demande une excursion, réponse prête préparée pour Secret, l'entreprise que l'agent propose ;
 //   3. une conversation déjà répondue depuis l'app, fenêtre de 24 h fermée, une photo expirée ;
 //   4. un client rangé par Nani dans Taxi, réponse en préparation ;
-//   5. un chauffeur réglé sur « Jamais » (migration 60) : son message n'a pas de réponse préparée, « Préparer une réponse » en fait une.
+//   5. un chauffeur réglé sur « Jamais » (migration 60) : son message n'a pas de réponse préparée, « Préparer une réponse » en fait une ;
+//   6. Jade, travel planner et amie de Nani, qui envoie deux clients dans un même message (conversationJade). Elle sert aux PR suivantes
+//      (contacts typés : apporteur ; deux dossiers depuis un message).
 // Suivi (migrations 61 et 62) : résumé en trois lignes, signal de paiement et promesse en tâche, sur la conversation 3 reliée à un
 // dossier de Secret non soldé (`suivi` : { dossier, client, ajd, ajouterJours }). Rend aussi `taches` à ajouter à la démo.
 import { apercuDepuisMessages } from "./whatsapp-calc.mjs";
@@ -100,6 +102,13 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     proposition(c, m, { statut: "en_cours" });
   }
 
+  // 6. Jade, travel planner, envoie deux clients d'un coup.
+  if (secret) {
+    const j = conversationJade({ secret, uid, organisation, maintenant });
+    out.whatsapp_conversations.push(...j.whatsapp_conversations);
+    out.whatsapp_messages.push(...j.whatsapp_messages);
+  }
+
   // 5. Un chauffeur, contact réglé sur « Jamais » : le tri n'a rien préparé, le message reste non lu.
   if (taxi) {
     const c = conversation({ telephone: "+447700900844", nom: "Driver Somchai", entite_id: taxi.id, entite_source: "manuel", reponses: "jamais", non_lus: 1 });
@@ -108,4 +117,25 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     c.tri = { preparer: false, motif: "contact_jamais", entreprise: "taxi", le: il_y_a(42) };
   }
   return out;
+}
+
+// Jade, travel planner et amie de Nani : elle envoie deux clients dans un même message (un couple pour une excursion, une famille pour un
+// taxi depuis l'aéroport). Rangée chez Secret par Nani, réponses « automatiques » (ce n'est pas un contact personnel : l'Assistant la lit).
+// Ajoutée aussi aux démos déjà enregistrées (store-local.mjs). Numéros de fiction (+44 7700 900…), aucun vrai client.
+export function conversationJade({ secret, uid, organisation, maintenant = Date.now() }) {
+  const il_y_a = (minutes) => new Date(maintenant - minutes * 60000).toISOString();
+  const c = { id: uid(), created_at: il_y_a(60 * 24 * 30), updated_at: il_y_a(35), organisation_id: organisation, telephone: "+447700900955", nom: "Jade, travel planner", entite_id: secret ? secret.id : null, entite_source: "manuel", client_id: null, dossier_id: null, dernier_message_le: null, dernier_sens: null, non_lus: 1, reponses: "auto", tri: { preparer: true, motif: "demande_client", entreprise: "secret", le: il_y_a(34) } };
+  const messages = [
+    { minutes: 60 * 24 * 6, sens: "entrant", texte: "Hi Nani! Hope the season started well 😊" },
+    { minutes: 60 * 24 * 6 - 20, sens: "sortant", texte: "Hi Jade! Yes, busy already. Send me your people anytime." },
+    {
+      minutes: 35,
+      sens: "entrant",
+      texte:
+        "Two bookings for you!\n1) Emma and Paul, 2 adults, staying at Long Beach from Tuesday. They would love a snorkelling day, Koh Rok if possible. Emma's WhatsApp: +44 7700 900412\n2) My client Marco, family of 4 (2 kids, 5 and 8), lands at Krabi airport on Friday at 14:00 and needs a taxi to Klong Nin.\nCan you take care of both? Thank you so much!",
+    },
+  ].map((x) => ({ id: uid(), conversation_id: c.id, sens: x.sens, origine: x.sens === "entrant" ? "client" : "app", type: "text", texte: x.texte, medias: [], envoye_le: il_y_a(x.minutes), recu_le: il_y_a(x.minutes), modifie_le: null, supprime_le: null }));
+  const dernier = messages[messages.length - 1];
+  Object.assign(c, { dernier_message_le: dernier.envoye_le, dernier_sens: dernier.sens }, apercuDepuisMessages(messages));
+  return { whatsapp_conversations: [c], whatsapp_messages: messages };
 }
