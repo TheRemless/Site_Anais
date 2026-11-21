@@ -397,6 +397,30 @@ export function creer() {
     if (partageReciproqueDemo(secret, taxi)) setTimeout(() => ecouteurs.forEach((f) => f()), 0);
     return { genre: "dossier", titre: "Séjour de Clara : excursion et transfert", donnees: { client: { nom: "Clara Martin", telephone: "+447700900966", hotel: "Lanta Sand Resort", langue: "en" }, adultes: 2, enfants: 0, bebes: 0, services, entreprises: ["secret", "taxi"] }, avertissements: ["entreprise_a_choisir"] };
   }
+  // Les lignes que la fonction lirait pour trouver_vouchers (agent-vouchers.mjs) : Secret ou Taxi, avec les droits de l'écran Réservations
+  // (dossiers.lire, jamais « vouchers.seul »), les dossiers visibles seulement ; l'autre entreprise en espace unifié (droits de l'agent et agent
+  // allumé chez elle). null si l'outil n'existe pas ici (ZTP, Mook dans Taxi).
+  async function sourceVouchers(entiteId) {
+    const { vouchersPermis } = await import("./agent-vouchers.mjs");
+    const ent = data.entites.find((x) => x.id === entiteId);
+    const permis = (id) => vouchersPermis({ fonctionnement: ((data.reglages || {})[id] || {}).fonctionnement, permissions: permissionsDans(contexte(), id) });
+    if (!ent || !accessibles().includes(entiteId) || !permis(entiteId)) return null;
+    const autre = marqueUnifiee(ent) ? data.entites.find((x) => x.id !== entiteId && marqueUnifiee(x) && marqueUnifiee(x) !== marqueUnifiee(ent) && accessibles().includes(x.id) && ((data.reglages || {})[x.id] || {}).agent_ia === true && ["partenaires.lire", "dossiers.ecrire"].every((d) => droit(x.id, d))) : null;
+    const ids = [entiteId, ...(autre && permis(autre.id) ? [autre.id] : [])];
+    const dossiers = dossiersVisibles().filter((d) => ids.includes(d.entite_id));
+    const visibles = new Set(dossiers.map((d) => d.id));
+    const libelle = (id) => ({ secret: "Secret", taxi: "Taxi" })[marqueUnifiee(data.entites.find((x) => x.id === id))] || "";
+    return {
+      reservations: structuredClone(data.reservations.filter((r) => ids.includes(r.entite_id) && visibles.has(r.dossier_id))),
+      dossiers: structuredClone(dossiers),
+      clients: structuredClone(data.clients.filter((c) => dossiers.some((d) => d.client_id === c.id))),
+      prestations: data.prestations.filter((p) => ids.includes(p.entite_id)).map(({ id, famille, unite, groupe, libelle, libelle_en }) => ({ id, famille, unite, groupe, libelle, libelle_en })),
+      permises: new Set(ids),
+      marque: (id) => (autre && libelle(id) ? { entreprise: libelle(id) } : {}),
+      // Partenaires et compagnies des réglages (non partenaires), comme la fonction.
+      noms: [...data.partenaires.filter((p) => ids.includes(p.entite_id)).map((p) => p.nom), ...ids.flatMap((id) => ((data.reglages || {})[id] || {}).compagnies || [])],
+    };
+  }
   // Les cartes d'un apporteur (agent-whatsapp-demo.mjs) : l'espace unifié comme carteMixteDemo (la personne travaille dans les deux).
   async function cartesApporteurDemoIci(entiteId, wc) {
     const ent = data.entites.find((x) => x.id === entiteId);
@@ -789,6 +813,33 @@ export function creer() {
       await new Promise((r) => setTimeout(r, 200));
       return { demo: true };
     },
+    // Voucher en image : simulé, sans appel réseau. Mêmes refus que la fonction (droit d'écrire, conversation du client du dossier, fenêtre de
+    // 24 h), puis un message image « envoyé » apparaît dans le fil de la démo, sans fichier gardé.
+    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, legende = "", numero_confirme = "", fichier }) {
+      await new Promise((r) => setTimeout(r, 400));
+      const c = conversationEcrite(conversation_id);
+      const r = data.reservations.find((x) => x.id === reservation_id && accessibles().includes(x.entite_id));
+      if (!c || !r || !adminWhatsApp(r.entite_id)) return { erreur: "droit_manquant" };
+      const { contactVoucher, legendeValide, numeroDifferent } = await import("./whatsapp-voucher-calc.mjs");
+      const { fenetre, apercuDepuisMessages } = await import("./whatsapp-calc.mjs");
+      const dossier = data.dossiers.find((d) => d.id === r.dossier_id) || null;
+      const contact = contactVoucher(c, dossier, r.entite_id);
+      if (!contact.ok) return { erreur: contact.erreur };
+      const fiche = dossier && data.clients.find((y) => y.id === dossier.client_id);
+      if (numeroDifferent(c.telephone, fiche && fiche.telephone) && numero_confirme !== c.telephone) return { erreur: "numero_a_confirmer" };
+      // Comme whatsapp_ranger_voucher (migration 73) : un envoi précédent de ce voucher au résultat inconnu bloque.
+      const enDoute = data.whatsapp_messages.some((m) => m.conversation_id === c.id && m.origine === "gestion" && m.type === "image" && (m.medias || []).some((x) => x && x.reservation_id === reservation_id) && (m.statut_envoi === "envoi" || (m.statut_envoi === "echec" && m.erreur_envoi === "sans_confirmation")));
+      if (enDoute) return { erreur: "deja_traitee", a_verifier: true };
+      if (!fenetre(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)).ouverte) return { erreur: "fenetre_fermee" };
+      if (!legendeValide(legende)) return { erreur: "legende_trop_longue" };
+      const maintenant = new Date().toISOString();
+      const texte = String(legende || "").trim() || null;
+      data.whatsapp_messages.push({ id: uid(), conversation_id: c.id, sens: "sortant", origine: "gestion", type: "image", texte, medias: [{ type: "image", mime: "image/png", taille: (fichier && fichier.size) || null, nom: (fichier && fichier.name) || "voucher.png", statut: "voucher", chemin_sortant: null, reservation_id }], envoye_le: maintenant, recu_le: maintenant, modifie_le: null, supprime_le: null, statut_envoi: "envoye", erreur_envoi: null, statut_le: maintenant });
+      Object.assign(c, { dernier_message_le: maintenant, dernier_sens: "sortant", non_lus: 0 }, apercuDepuisMessages(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)));
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { ok: true, demo: true };
+    },
     // Comme whatsapp_confirmer_envoi (migration 64) : parti, le message reste et la réponse est soldée ; pas parti, il sort du fil.
     async whatsappConfirmerEnvoi(conversationId, parti) {
       const c = conversationEcrite(conversationId);
@@ -1108,6 +1159,25 @@ export function creer() {
           surEvenement({ t: "carte", carte: structuredClone(carte) });
         }
         conv.apercu = phrase.slice(0, 200);
+        conv.maj_le = maintenant();
+        sauve();
+        surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
+        return { ok: true };
+      }
+      // L'Assistant donne les vouchers (21.11.2026) : le vrai outil (agent-vouchers.mjs) sur les données de la démo, avec ses droits ; les
+      // cartes se refont dans l'écran depuis le résultat gardé dans le fil, comme avec la fonction.
+      const { questionVouchers, repondreVouchersDemo } = await import("./agent-vouchers-demo.mjs");
+      const sourceV = !wc && questionVouchers(texte) ? await sourceVouchers(e) : null;
+      if (sourceV) {
+        const { appel, resultat, phrase } = repondreVouchersDemo(texte, sourceV, aujourdhui());
+        surEvenement({ t: "etape", outil: appel.name });
+        await new Promise((ok) => setTimeout(ok, 400));
+        message("assistant", [appel]);
+        message("user", [{ type: "tool_result", tool_use_id: appel.id, content: JSON.stringify(resultat), ...(resultat.erreur ? { is_error: true } : {}) }]);
+        if (resultat.reservations && resultat.reservations.length) surEvenement({ t: "vouchers", vouchers: structuredClone(resultat) });
+        surEvenement({ t: "texte", delta: phrase });
+        message("assistant", [{ type: "text", text: phrase }]);
+        conv.apercu = phrase.replace(/\s+/g, " ").slice(0, 200);
         conv.maj_le = maintenant();
         sauve();
         surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });

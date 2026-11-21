@@ -57,6 +57,15 @@ export function filDepuis(messages = [], cartes = []) {
             // résultat illisible : rien à montrer
           }
         }
+        // Les vouchers trouvés (trouver_vouchers, agent-vouchers.mjs) : les cartes se refont à chaque ouverture, avec les données du moment.
+        if (b.type === "tool_result" && outils.get(b.tool_use_id) === "trouver_vouchers" && !b.is_error) {
+          try {
+            const r = JSON.parse(typeof b.content === "string" ? b.content : (b.content || []).map((c) => c.text || "").join(""));
+            if (r && Array.isArray(r.reservations) && r.reservations.length) items.push({ genre: "vouchers", vouchers: r, t });
+          } catch {
+            // résultat illisible : rien à montrer
+          }
+        }
       }
     }
   }
