@@ -47,6 +47,12 @@ export const MARQUE_PROMESSE = "Promesse faite dans WhatsApp (tâche créée par
 // qui ouvre l'Assistant de Secret avec un autre rôle n'a pas les outils. ZTP et Mook ne les voient jamais.
 export const whatsappPermis = ({ slug = "", admin = false } = {}) => admin === true && ENTREPRISES_WHATSAPP.includes(marqueWhatsApp(slug));
 export const contactPersonnel = (c) => !c || c.reponses === "jamais";
+// Contacts typés (migration 68). Revue de sécurité de la PR 299 : on lit un partenaire comme un client, mais ce qu'il écrit reste interne.
+// Les montants de sa conversation comptent comme des nets (montant_interne) et son nom comme un nom de partenaire (nom_prestataire) dans le
+// contrôle de la réponse au client (agent/outils.js, retenirLecture). L'apporteur ne parle pas de nets : seul son nom est retenu.
+export const CONTACTS_INTERNES = ["partenaire", "chauffeur", "hotel"];
+export const CONTACTS_NOMMES = [...CONTACTS_INTERNES, "apporteur"];
+const contactDe = (conv) => (conv && CONTACTS_NOMMES.includes(conv.type_contact) ? conv.type_contact : null);
 
 // ---- Numéros ------------------------------------------------------------------------------------------------------------------------
 // Les 9 derniers chiffres d'un numéro : un numéro noté « 081 234 5678 » ou « +66 81 234 5678 » donne la même clé (fiches apporteur,
@@ -168,6 +174,7 @@ function ligneConversation(conv, { clients, dossiers, entites }) {
     lien: lienDe(conv),
     nom: nomDe(conv, client),
     ...(conv.nom && client ? { nom_whatsapp: neutre(conv.nom, 60) } : {}),
+    ...(contactDe(conv) ? { contact: contactDe(conv) } : {}),
     entreprise: entrepriseDe(conv, entites),
     client: client ? { client: refCourte("C", client.id), nom: neutre([client.prenom, client.nom].filter(Boolean).join(" "), 80) } : null,
     dossier: dossier ? { dossier: refCourte("D", dossier.id), reference: neutre(dossier.ref, 30) } : null,
@@ -361,7 +368,7 @@ export function aFaireWhatsApp(d = {}, { maintenant = Date.now(), typeContact = 
   const toutes = (d.conversations || []).filter((c) => c && idSur(c.id));
   const convs = toutes.filter((c) => !contactPersonnel(c));
   const permises = new Map(convs.map((c) => [c.id, c]));
-  const base = (c, messageId = "") => ({ conversation: c.id, lien: lienDe(c, messageId), nom: nomDe(c, c.client_id ? clients.get(c.client_id) : null), entreprise: entrepriseDe(c, entites) });
+  const base = (c, messageId = "") => ({ conversation: c.id, lien: lienDe(c, messageId), nom: nomDe(c, c.client_id ? clients.get(c.client_id) : null), ...(contactDe(c) ? { contact: contactDe(c) } : {}), entreprise: entrepriseDe(c, entites) });
   const elements = [];
 
   // 1. Les apporteurs (PR C), puis les clients qui attendent une réponse.
@@ -488,5 +495,18 @@ export function retirerLecturesWhatsApp(messages = []) {
   return (messages || []).map((m) => {
     if (!m || m.role !== "user" || !Array.isArray(m.content) || !m.content.some((b) => b && b.type === "tool_result" && NOMS_OUTILS_WHATSAPP.includes(noms.get(b.tool_use_id)))) return m;
     return { ...m, content: m.content.map((b) => (b && b.type === "tool_result" && NOMS_OUTILS_WHATSAPP.includes(noms.get(b.tool_use_id)) ? { ...b, content: RESULTAT_RETIRE } : b)) };
+  });
+}
+
+// La conversation WhatsApp liée à une conversation de l'Assistant est passée « jamais » (Contact personnel) : l'échange joint plus tôt
+// (« Créer le dossier », « Demander à l'assistant », bloc <conversation>) ne repart plus chez Claude. Chaque texte de la personne qui le
+// contient est remplacé par RESULTAT_RETIRE au chargement de l'historique (fonction « agent »). Rend un nouveau tableau.
+const A_UN_ECHANGE = /<conversation>/;
+export function retirerConversationsJointes(messages = []) {
+  return (messages || []).map((m) => {
+    if (!m || m.role !== "user") return m;
+    if (typeof m.content === "string") return A_UN_ECHANGE.test(m.content) ? { ...m, content: RESULTAT_RETIRE } : m;
+    if (!Array.isArray(m.content) || !m.content.some((b) => b && b.type === "text" && A_UN_ECHANGE.test(String(b.text || "")))) return m;
+    return { ...m, content: m.content.map((b) => (b && b.type === "text" && A_UN_ECHANGE.test(String(b.text || "")) ? { ...b, text: RESULTAT_RETIRE } : b)) };
   });
 }

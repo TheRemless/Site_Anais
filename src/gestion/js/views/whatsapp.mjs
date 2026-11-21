@@ -761,17 +761,17 @@ function carteVerifier(c, doute) {
 
 // Aucune réponse préparée pour le dernier message du client : l'état normal depuis le 20.11.2026 (réponses sur demande). « Préparer une
 // réponse » est le geste principal (lot 2, design n° 3) : bouton plein, collé en bas sous le pouce comme Copier. Ce que le tri a vu passe
-// au-dessus, en petit.
+// au-dessus, en petit. Jamais pour un Contact personnel : rien de lui n'est envoyé à l'IA (revue de sécurité de la PR 299).
 function ligneSansReponse(c, messages) {
   const dernier = messages.length ? messages[messages.length - 1] : null;
-  const bouton = !lectureSeule && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "principal wa-preparer", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, icone("assistant", 20), tr("Préparer une réponse")) : null;
+  const bouton = !lectureSeule && reponsesDe(c) !== "jamais" && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "principal wa-preparer", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, icone("assistant", 20), tr("Préparer une réponse")) : null;
   const raison = raisonSansReponse(c, messages);
   if (!bouton && !raison) return null;
   return h("div", { class: `wa-sans-reponse${bouton ? " avec-bouton" : ""}` }, raison ? h("p", { class: "wa-note" }, tr(raison)) : null, bouton);
 }
 
 function carteProposition(c, p, messages) {
-  // Le client attend et aucune réponse n'est préparée (tri, contact réglé sur « Jamais », agent qui n'a pas su trier) : on le dit.
+  // Le client attend et aucune réponse n'est préparée (tri, Contact personnel, agent qui n'a pas su trier) : on le dit.
   if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse(c, messages) : null;
   if (p.statut === "envoi") {
     // Moins de 30 secondes : l'appel est peut-être encore en cours. Au-delà, la carte « Vérifiez dans WhatsApp » du fil prend le relais ;

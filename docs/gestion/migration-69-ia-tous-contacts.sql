@@ -3,6 +3,9 @@
 --
 -- À lancer AVANT, en lecture seule, pour savoir combien de conversations vont changer :
 --   select type_contact, count(*) from whatsapp_conversations where type_contact in ('partenaire','chauffeur','hotel') and reponses = 'jamais' group by 1;
+-- Puis la liste, à faire confirmer par Nani avant d'exécuter (revue de sécurité de la PR 299) : les lignes typées vont repasser à « auto » ;
+-- les lignes sans type (Contact personnel) restent « jamais », elles sont là pour qu'elle vérifie qu'aucun partenaire n'y est rangé par erreur :
+--   select id, nom, type_contact, reponses, updated_at from whatsapp_conversations where (type_contact in ('partenaire','chauffeur','hotel') and reponses = 'jamais') or (type_contact is null and reponses = 'jamais') order by type_contact nulls last, updated_at desc;
 --
 -- Ce qui change dans le code (fonctions agent et whatsapp, écran WhatsApp) :
 --   1. Partenaire, chauffeur, hôtel et apporteur se lisent comme un client : outils de l'Assistant, tri, suivi, « Préparer une réponse ».

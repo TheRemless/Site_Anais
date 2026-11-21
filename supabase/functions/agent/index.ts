@@ -31,10 +31,10 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, prefixeRef, refDe, retenirLectures, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
-import { MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
+import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
@@ -177,6 +177,9 @@ Deno.serve(async (req) => {
   let waConv: { nom: string | null; telephone: string } | null = null;
   // La conversation WhatsApp liée (celle de la demande, ou celle d'une conversation de l'Assistant déjà liée), pour l'apporteur (PR D).
   let waLiee: Record<string, any> | null = null;
+  // La conversation WhatsApp jointe ou liée telle que la personne la lit, même sans droit d'écrire (revue de sécurité de la PR 299) : son
+  // réglage (Contact personnel : l'échange joint plus tôt ne repart plus), son type et son nom (contrôle de la réponse au client).
+  let waLue: Record<string, any> | null = null;
   // Les colonnes de la migration 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est pas typé).
   const lireWa = async (id: string) => {
     const r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
@@ -236,6 +239,7 @@ Deno.serve(async (req) => {
     controle = verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
     waConv = wc.data;
+    waLue = wc.data;
     // En lecture seule, aucune carte : l'apporteur ne sert pas.
     if (waEcrit) waLiee = wc.data;
   }
@@ -258,6 +262,7 @@ Deno.serve(async (req) => {
       const [w, peutLiee] = await Promise.all([lireWa(lieeId), sb.rpc("whatsapp_peut_ecrire", { p_conversation: lieeId })]);
       if (w.error) console.error("agent : conversation WhatsApp liée", w.error.message);
       if (peutLiee.error) console.error("agent : whatsapp_peut_ecrire (conversation liée)", peutLiee.error.message);
+      if (!w.error) waLue = w.data || null;
       if (!w.error && !peutLiee.error && peutLiee.data === true) waLiee = w.data || null;
     }
   } else {
@@ -774,7 +779,10 @@ Deno.serve(async (req) => {
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   // Les lectures de la boîte WhatsApp des messages précédents ne repartent pas (whatsapp-lecture.js, retirerLecturesWhatsApp) : l'agent
   // relit avec l'outil, sous les règles du moment (un contact passé en « jamais » n'est plus renvoyé).
-  const gardes = completerOrphelins(historique(debutValide([...(anciens.data || [])].reverse())));
+  // Revue de sécurité de la PR 299 : la conversation WhatsApp liée est passée « Contact personnel » depuis : l'échange joint plus tôt
+  // (bloc <conversation>) est retiré, comme les lectures de la boîte (retirerConversationsJointes).
+  const gardesBruts = completerOrphelins(historique(debutValide([...(anciens.data || [])].reverse())));
+  const gardes = waLue && waLue.reponses === "jamais" ? retirerConversationsJointes(gardesBruts) : gardesBruts;
   const messages = historiquePourClaude(retirerLecturesWhatsApp(gardes), donnees);
   // Les corrections de l'équipe dans cette entreprise, d'avant l'ouverture de la conversation (le bloc reste le même d'un message à l'autre,
   // donc en cache). Sans la migration 54 ou en cas d'erreur : rien, l'agent marche comme avant.
@@ -791,8 +799,20 @@ Deno.serve(async (req) => {
   if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
   const lignesAppris = autreEnt ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.data?.nom || "", nomAutre: autreEnt.nom }) : lus.data || [];
   const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte });
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+  // Le contrôle de la réponse au client (revue de sécurité de la PR 299). Une conversation jointe ou liée de partenaire, de chauffeur ou
+  // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne.
+  const typeLu = waLue && typeof waLue.type_contact === "string" ? waLue.type_contact : "";
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu) });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
+  // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
+  (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;
+  if (CONTACTS_NOMMES.includes(typeLu) && waLue && waLue.nom) ajouterNoms(memo, [{ conversation: waLue.id, nom: String(waLue.nom) }]);
+  // Les lectures de la boîte des échanges précédents (montants internes et noms lus), avant leur retrait pour Claude.
+  retenirLectures(gardes, memo);
+  // Les nets de l'entreprise (des deux en espace unifié), lus avec la clé de service comme la boîte (whatsapp/reponse.ts) : seulement pour
+  // le contrôle « montant_interne ». Ils ne vont que dans memo.internes : ni dans les consignes, ni dans les messages, ni dans un résultat
+  // d'outil, ni dans le flux vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
+  for (const n of await netsPourControle(admin, idsEntites)) memo.internes.add(n);
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange

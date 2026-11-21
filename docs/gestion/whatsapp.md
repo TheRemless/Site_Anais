@@ -60,7 +60,7 @@ La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne s
 Demande de Jérémy du 20.11.2026 : ne jamais toucher à ce que Nani a classé, et ne pas préparer de réponse à tous les messages.
 
 - **Classement protégé.** La fonction ne change jamais l'entreprise, le client, le dossier ni l'interrupteur d'une conversation déjà posés : le déclencheur `whatsapp_proteger_classement` remet l'ancienne valeur. Une conversation rangée à la main reste rangée. Seule Nani change son classement depuis l'outil. Les étiquettes de l'app WhatsApp Business ne passent pas par Gestion (Meta ne les transmet pas en coexistence) : Gestion ne les lit ni ne les modifie.
-- **Interrupteur par contact** (`reponses`) : « Automatiques » (« Sur demande » tant que la préparation automatique est décochée) ou « Jamais pour ce contact », le Contact personnel (ami, famille : ni tri par Claude, ni résumé, ni promesse, ni lecture par l'Assistant ; Nani peut toujours demander une réponse). Depuis la migration 69, un partenaire, un chauffeur ou un hôtel n'est plus mis sur « jamais » par son type.
+- **Interrupteur par contact** (`reponses`) : « Automatiques » (« Sur demande » tant que la préparation automatique est décochée) ou « Jamais pour ce contact », le Contact personnel (ami, famille : ni tri par Claude, ni résumé, ni promesse, ni lecture par l'Assistant, ni « Préparer une réponse » : le bouton est masqué et `whatsapp-preparer` répond `contact_personnel`, revue de sécurité de la PR 299). Depuis la migration 69, un partenaire, un chauffeur ou un hôtel n'est plus mis sur « jamais » par son type.
 - **Tri, du moins cher au plus cher.** Une réponse n'est préparée seule que si le réglage automatique est coché et que tout passe :
   1. le contact n'est pas réglé sur « jamais » (Contact personnel) ;
   2. le message n'est pas une réaction, un emoji seul, un « ok », un merci, ni une photo ou un vocal sans texte (aucun appel à Claude) ;
@@ -68,7 +68,7 @@ Demande de Jérémy du 20.11.2026 : ne jamais toucher à ce que Nani a classé, 
   4. Claude Haiku lit les derniers messages et répond en JSON : préparer ou non, motif, entreprise suggérée. Il faut à la fois « oui » et un motif de demande (`demande_client` ou `suivi_reservation`) ; dans le doute, non.
 
   Jusqu'à la migration 69, le numéro d'une fiche partenaire arrêtait le tri avant Haiku (motif « partenaire »). Ce n'est plus le cas : Haiku lit la conversation d'un partenaire comme celle d'un client et peut encore répondre « partenaire » quand le message n'attend pas de réponse préparée. Le motif reste affiché pour les anciennes lignes.
-- **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran à côté du bouton, sans ton d'anomalie (« Demande de client », « Message personnel »…). Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites.
+- **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran à côté du bouton, sans ton d'anomalie (« Demande de client », « Message personnel »…). Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites, sauf pour un Contact personnel.
 
 ## Le ton de Nani (20.11.2026)
 
@@ -76,7 +76,7 @@ Demande de Jérémy : les réponses préparées doivent avoir le ton de Nani, ap
 
 - À chaque réponse préparée, l'agent reçoit jusqu'à 8 de ses vraies réponses envoyées depuis l'app, avec le message du client juste avant, dans les conversations de la même entreprise. Les situations proches du message en cours passent d'abord, puis les plus récentes.
 - Il reçoit aussi jusqu'à 5 de ses réécritures : la réponse préparée par l'agent, puis ce que Nani a vraiment envoyé à la place (dans les 6 heures, assez différent). Plus elle corrige, plus les réponses se rapprochent des siennes.
-- Ces exemples servent au ton, à la longueur, aux formules et aux emoji. Les faits (prix, heures, disponibilités) viennent toujours des outils. Numéros et IBAN masqués ; un exemple qui parle de net, de commission ou de compte bancaire est écarté.
+- Ces exemples servent au ton, à la longueur, aux formules et aux emoji. Les faits (prix, heures, disponibilités) viennent toujours des outils. Numéros et IBAN masqués ; un exemple qui parle de net, de commission ou de compte bancaire est écarté. Un Contact personnel ne sert jamais d'exemple (revue de sécurité de la PR 299).
 
 ## Fiabilité (migration 64, lot 3 des audits du 20.11.2026)
 
@@ -116,6 +116,22 @@ Demande de Jérémy : « enlève moi cette règle que les trucs ne sont pas envo
 - **Données.** La migration 69 repasse à « auto » les conversations typées partenaire, chauffeur ou hôtel restées sur « jamais » par l'ancien couplage de l'écran. Un contact sans type (Personnel), un client et un apporteur ne changent pas.
 - **Ce qui ne change pas.** Le Contact personnel est respecté partout (tri, suivi, outils de l'agent, `whatsapp_rechercher`, « Demander à l'assistant »). Le contrôle bloquant des réponses (`controlerReponse`, `nom_prestataire`, `montant_interne`, `contenu_interne` de `whatsapp-envoi`) reste : aucun net, aucune commission, aucune marge, aucun nom de partenaire ni d'apporteur ne part vers un client, sauf la réponse à l'apporteur lui-même (PR 298). Numéros, comptes et IBAN restent masqués. Les nets ne se lisent dans les tables qu'avec `partenaires.nets` ; Mook ne voit rien de nouveau ; ZTP reste à part.
 - **Ce qui part en plus chez Anthropic** : le texte des conversations des partenaires, chauffeurs et hôtels (masqué), dans les mêmes limites qu'un client. Un net, une commission ou un nom de partenaire écrits dans ces messages peuvent donc partir avec le texte.
+
+### Revue de sécurité de la PR 299
+
+Lire un partenaire ne doit jamais faire passer ce qu'il écrit dans une réponse au client.
+
+| Point | Règle |
+|---|---|
+| Montants « tapés » | Un bloc `<conversation>` joint n'est jamais compté comme tapé par la personne (`memoDepuis`, `sansConversation`). Seuls son texte et sa `<question>` comptent. |
+| Montants d'un partenaire | Les montants d'une conversation partenaire, chauffeur ou hôtel jointe, liée ou lue par un outil (`retenirLecture`, `retenirLectures` pour l'historique) vont dans `memo.internes` : `montant_interne` bloquant, sauf égal à un prix de vente rendu par un outil. Les lectures renvoient le champ `contact` (type du contact). |
+| Nets dans l'Assistant | La fonction « agent » lit les nets de l'entreprise (des deux en espace unifié) avec la clé de service (`netsPourControle`, comme la boîte). Ils ne servent qu'au contrôle : jamais dans les consignes, les messages, un résultat d'outil ni le flux vers l'écran. |
+| Noms | Le nom d'une conversation typée partenaire, chauffeur, hôtel ou apporteur lue ou jointe est bloqué comme un nom de partenaire. `whatsapp-envoi` et la réponse préparée bloquent les noms de toutes les conversations typées de l'organisation (`nomsContactsTypes`). Chaque nom se compare aussi sans « co, ltd, company, tour, travel » (« Blue Ocean » cite « Blue Ocean Co., Ltd »). L'exemption de la PR 298 reste limitée à la réponse à l'apporteur lui-même. |
+| Ton de Nani | Un Contact personnel ne sert jamais d'exemple (`tonDeNani`). |
+| « Préparer une réponse » | Refusé pour un Contact personnel (`contact_personnel`, 403), bouton masqué. |
+| Réponse à un partenaire | Ni client ni dossier relié, consigne « destinataire partenaire : jamais un prix de vente, un total, un solde ni une marge du client ». Jamais préparée seule, même avec la case cochée : sur demande seulement. |
+| Promesses | La tâche d'une promesse faite à un partenaire, un chauffeur ou un hôtel ne garde aucun chiffre dans ce qui est promis (`sansChiffres`). |
+| Historique de l'Assistant | Si la conversation WhatsApp liée passe « Contact personnel », l'échange joint plus tôt est retiré au chargement (`retirerConversationsJointes`). |
 
 ## Étapes de Jérémy (une seule fois)
 

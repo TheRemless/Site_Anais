@@ -283,6 +283,7 @@ export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" &&
 export const ERREURS_PREPARER = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas de préparer une réponse pour cette conversation."),
+  contact_personnel: N_("Contact personnel : rien n'est envoyé à l'IA. Répondez depuis l'app."),
   rien_a_repondre: N_("Le dernier message n'est pas du client. Rien à préparer."),
   limite: N_("Limite atteinte (plafond du mois ou limite du jour). Répondez depuis l'app."),
   agent_eteint: N_("L'assistant est éteint pour cette entreprise. Allumez-le dans les Réglages."),

@@ -280,11 +280,11 @@ test("réponse à l'apporteur lui-même : « Hi Jade » passe vers Jade ; vers E
   // Les trois chemins s'en servent : la préparation de la boîte, l'envoi et l'agent dans une conversation liée.
   const rep = source("supabase/functions/whatsapp/reponse.ts");
   assert.match(rep, /const exemptes = contactApporteur\(conv\) && conv\.partenaire_id \? fichesDuContact\(conv,/);
-  assert.match(rep, /const prestataires = nomsABloquer\(\(await ctx\.charger\("partenaires"\)\) as \{ id: string; nom: string \}\[\], exemptes\);/);
+  assert.match(rep, /const prestataires = \[\.\.\.new Set\(\[\.\.\.nomsABloquer\(\(await ctx\.charger\("partenaires"\)\) as \{ id: string; nom: string \}\[\], exemptes\), \.\.\.types\.noms\]\)\];/);
   const envoi = source("supabase/functions/whatsapp-envoi/index.ts");
   assert.match(envoi, /select\("id, organisation_id, telephone, entite_id, reponses, type_contact, partenaire_id"\)/);
   assert.match(envoi, /if \(lue\.error && lue\.error\.code === "42703"\) lue = await sb\.from\("whatsapp_conversations"\)\.select\("id, organisation_id, telephone, entite_id"\)/);
-  assert.match(envoi, /const prestataires = nomsABloquer\(pa\.data \|\| \[\], fichesDuContact\(conv, pa\.data \|\| \[\]\)\);/);
+  assert.match(envoi, /const prestataires = \[\.\.\.new Set\(\[\.\.\.nomsABloquer\(pa\.data \|\| \[\], fichesDuContact\(conv, pa\.data \|\| \[\]\)\), \.\.\.types\.noms\]\)\];/);
   const idx = source("supabase/functions/agent/index.ts");
   assert.match(idx, /const prestataires = nomsABloquer\(partenairesLus\);/, "agent : tous les noms bloqués par défaut");
   assert.match(idx, /const prestatairesVersApporteur = apporteur \? nomsABloquer\(partenairesLus, new Set\(/);

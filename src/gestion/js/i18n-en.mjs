@@ -4431,6 +4431,7 @@ export const EN = {
   "Apporteur actuel": "Current referrer",
   "Contact noté : rien envoyé à l'IA": "Contact saved: nothing sent to the AI",
   "Contact noté : l'assistant peut lire": "Contact saved: the assistant can read",
+  "Contact personnel : rien n'est envoyé à l'IA. Répondez depuis l'app.": "Personal contact: nothing is sent to the AI. Reply from the app.",
   // Cartes de l'Assistant pour un apporteur (PR D).
   "Envoyé par {nom}": "Sent by {nom}",
   "Apporteur : pas de fiche chez {nom}": "Referrer: no record at {nom}",

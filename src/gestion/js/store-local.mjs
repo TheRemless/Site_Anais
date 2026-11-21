@@ -643,10 +643,12 @@ export function creer() {
       return rechercheDemo(q, convs, data.whatsapp_messages.filter((m) => ids.has(m.conversation_id)), Math.min(50, Math.max(1, lim)));
     },
     // « Préparer une réponse » en démonstration : une proposition « en_cours » tout de suite, puis une réponse fictive après un court délai,
-    // annoncées comme le ferait Realtime. Prépare même pour un contact réglé sur « Jamais » ou un message que le tri a écarté, comme la fonction.
+    // annoncées comme le ferait Realtime. Prépare même pour un message que le tri a écarté, comme la fonction ; jamais pour un Contact personnel
+    // (contact_personnel, revue de sécurité de la PR 299).
     async whatsappPreparer(conversationId, { delai = 1500 } = {}) {
       const c = conversationEcrite(conversationId);
       if (!c) return { erreur: "droit_manquant" };
+      if (c.reponses === "jamais") return { erreur: "contact_personnel" };
       const derniers = data.whatsapp_messages.filter((m) => m.conversation_id === c.id).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
       const dernier = derniers[derniers.length - 1];
       if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };

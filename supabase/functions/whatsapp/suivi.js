@@ -1,6 +1,7 @@
 // Boîte WhatsApp, suivi (migration 62) : résumé de la conversation, signal de paiement, promesses de Nani. Logique pure, sans réseau : la
 // fonction « whatsapp » (suivi.ts) et les tests (tests/gestion-whatsapp-suivi.test.js) l'importent.
 import { masquer } from "./proposer.js";
+import { CONTACTS_INTERNES } from "../agent/whatsapp-lecture.js";
 
 export const MODELE_SUIVI = "claude-haiku-5-5";
 const court = (t, n) => {
@@ -101,8 +102,21 @@ export function lirePromesse(reponse, aujourdhui) {
 export const lendemain = (iso) => new Date(Date.parse(`${iso}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
 // La tâche créée : jamais le numéro, le prénom de la conversation et ce qui est promis. whatsapp_conversation_id (migration 67) : la
 // conversation de la promesse, pour que l'Assistant la relie sans deviner et l'écarte si le contact passe en « jamais ».
+// Revue de sécurité de la PR 299 : la promesse faite à un partenaire, un chauffeur ou un hôtel ne garde aucun chiffre dans ce qui est promis
+// (un net ou une commission dite dans la conversation). Les montants et les nombres sont retirés, le reste du texte est gardé.
+export function sansChiffres(t) {
+  const x = String(t || "")
+    .replace(/(?:[฿$€]\s*)?\d[\d\s.,':h]*(?:\s*(?:thb|bahts?|chf|eur|usd|฿|€|\$|k|pax|pp|%)(?![\p{L}]))?/giu, " ")
+    .replace(/\d/g, "")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,.;:–-]+|[\s,;:–-]+$/g, "")
+    .trim();
+  return x || "revenir vers le contact";
+}
 export function tachePromesse({ conv, quoi, echeance, prenom = "" }) {
   const qui = prenom || (conv && conv.nom ? court(conv.nom, 30) : `…${String((conv && conv.telephone) || "").slice(-4)}`);
+  if (conv && CONTACTS_INTERNES.includes(conv.type_contact)) quoi = sansChiffres(quoi);
   return { entite_id: conv.entite_id, dossier_id: conv.dossier_id || null, titre: court(`WhatsApp, ${qui} : ${quoi}`, 120), description: "Promesse faite dans WhatsApp (tâche créée par Gestion).", echeance, ...(conv && conv.id ? { whatsapp_conversation_id: conv.id } : {}) };
 }
 // Sans la migration 67, la colonne n'existe pas : la tâche s'écrit sans elle (42703 en base, PGRST204 chez PostgREST).
