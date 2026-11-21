@@ -1,6 +1,31 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Migration 72 : demandes du site et conversations WhatsApp reliées (21.11.2026)
+  "Cette demande a été traitée entre-temps (depuis WhatsApp ou l'Assistant) : aucun dossier n'a été créé. Fermez cette fenêtre.": "This request was handled in the meantime (from WhatsApp or the Assistant): no file was created. Close this window.",
+  "Reliée au dossier créé depuis WhatsApp ou l'Assistant": "Linked to the file created from WhatsApp or the Assistant",
+  "La liaison entre les demandes du site et WhatsApp n'est pas encore en place (migration 72) : rien n'a été relié.": "Linking website requests and WhatsApp is not set up yet (migration 72): nothing was linked.",
+  "La demande du site {ref} avait déjà été traitée : elle garde son dossier.": "Website request {ref} had already been handled: it keeps its file.",
+  "Dossier créé. Votre rôle ne permet pas de relier la demande du site {ref}.": "File created. Your role does not allow linking website request {ref}.",
+  "Dossier créé, mais la demande du site {ref} n'a pas pu être reliée : {message}": "File created, but website request {ref} could not be linked: {message}",
+  "Dossier créé. La demande du site {ref} n'a pas été reliée.": "File created. Website request {ref} was not linked.",
+  "Demande du site {ref} reliée au dossier {dossier} : elle passe « confirmée ».": "Website request {ref} linked to file {dossier}: it is now “confirmed”.",
+  "Cochez au moins une demande, ou touchez « Ne rien relier ».": "Tick at least one request, or tap “Link nothing”.",
+  "1 demande du site reliée au dossier {dossier}.": "1 website request linked to file {dossier}.",
+  "{n} demandes du site reliées au dossier {dossier}.": "{n} website requests linked to file {dossier}.",
+  "Voir les demandes": "See the requests",
+  "Demandes du site de ce client": "This client's website requests",
+  "{n} demandes du site viennent du même numéro. Cochez celles que le dossier {dossier} couvre : elles passent « confirmée ». Les autres restent à traiter.": "{n} website requests come from the same number. Tick the ones file {dossier} covers: they become “confirmed”. The others stay to handle.",
+  "Relier la sélection": "Link the selection",
+  "Ne rien relier": "Link nothing",
+  "La conversation WhatsApp n'a pas été reliée : votre rôle ne le permet pas.": "The WhatsApp chat was not linked: your role does not allow it.",
+  "Contact personnel : sa conversation WhatsApp n'est pas reliée.": "Personal contact: their WhatsApp chat is not linked.",
+  "La conversation WhatsApp garde le client et le dossier déjà reliés.": "The WhatsApp chat keeps the client and file already linked.",
+  "Plusieurs conversations WhatsApp ont ce numéro : reliez la bonne depuis l'écran WhatsApp.": "Several WhatsApp chats have this number: link the right one from the WhatsApp screen.",
+  "La conversation WhatsApp de ce numéro est rangée dans l'autre entreprise : elle n'est pas reliée.": "The WhatsApp chat for this number is filed under the other business: it is not linked.",
+  "La conversation WhatsApp n'a pas pu être reliée : {message}": "The WhatsApp chat could not be linked: {message}",
+  "Ce client a déjà un dossier :": "This client already has a file:",
+  "Ce client a déjà {n} dossiers récents :": "This client already has {n} recent files:",
   // Lot 2 des audits du 20.11.2026 (confort de Nani : WhatsApp et Assistant)
   "Nom du client ou dossier": "Client name or file",
   "Chercher une conversation": "Search a conversation",

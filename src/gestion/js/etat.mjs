@@ -442,6 +442,23 @@ async function modifierBrut(table, id, patch, { verrou = false, version = undefi
 }
 export const modifier = (...a) => ecrire(() => modifierBrut(...a));
 
+// Une écriture faite par une fonction de la base (migration 72 : demande_site_relier, whatsapp_relier_apres_demande). `fn` rend
+// { resultat, lignes: { table: [lignes] } } : les lignes rendues (complètes ou en partie) remplacent les anciennes, comme modifier.
+export const appliquerLignes = (fn) =>
+  ecrire(async () => {
+    const r = await fn();
+    for (const [table, lignes] of Object.entries((r && r.lignes) || {})) {
+      if (!Array.isArray(etat.brut[table])) continue;
+      for (const l of lignes) {
+        const i = etat.brut[table].findIndex((x) => x.id === l.id);
+        if (i >= 0) etat.brut[table][i] = { ...etat.brut[table][i], ...l };
+        else etat.brut[table].push(l);
+      }
+    }
+    rebatir();
+    return r;
+  });
+
 // Nom de la personne qui a modifié une ligne en dernier (colonne `modifie_par`), vide si inconnue.
 export function nomModificateur(ligne) {
   const p = ligne && ligne.modifie_par ? etat.brut.profils.find((x) => x.user_id === ligne.modifie_par) : null;

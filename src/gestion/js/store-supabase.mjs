@@ -478,6 +478,30 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (error) throw new Error(error.message);
       return data || null;
     },
+    // Demandes du site et WhatsApp reliés (migration 72). La base vérifie tout et rend { relie, motif, demande | conversation } ;
+    // null tant que la fonction manque (l'outil ne relie rien et le dit discrètement).
+    async demandeSiteRelier(demandeId, dossierId) {
+      const { data, error } = await sb.rpc("demande_site_relier", { p_demande: demandeId, p_dossier: dossierId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
+    async whatsappRelierApresDemande(demandeId) {
+      const { data, error } = await sb.rpc("whatsapp_relier_apres_demande", { p_demande: demandeId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
+    // Une demande du site relue en base juste avant de créer son dossier : l'Assistant ou une autre personne a pu la traiter entre-temps.
+    async demandeSite(id) {
+      const { data, error } = await sb.from("demandes_site").select("id, statut, dossier_id, updated_at").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
     // Un envoi au résultat inconnu, vérifié par Nani dans WhatsApp (migration 64) : parti (le message reste, la réponse est soldée) ou pas
     // parti (le message sort du fil, la réponse redevient à faire).
     async whatsappConfirmerEnvoi(conversationId, parti) {

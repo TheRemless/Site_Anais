@@ -1146,6 +1146,8 @@ export async function vueAgent(idOuvert = "") {
       else toast(tr("Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur."));
     }
     if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
+    // Migration 72 : la demande du site « nouvelle » du même numéro passe « confirmée » avec ce dossier (views/demandes-whatsapp.mjs).
+    if (dossier && c.genre === "dossier") await (await import("./demandes-whatsapp.mjs")).relierDemandesApresDossier(r.dossiers || [dossier]);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
     const res = r.reservation || null;
     // Espace unifié : chaque dossier créé garde ses apprentissages dans son entreprise, avec seulement ses services.

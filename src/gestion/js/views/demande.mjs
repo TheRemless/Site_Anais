@@ -83,9 +83,10 @@ function lignesSite(d) {
   ].filter(Boolean);
 }
 
-// `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
+// `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, avantCreer, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
 // de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
-// la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
+// la réponse au client se prépare après la création) ; `avantCreer()` (migration 72) relit la demande juste avant d'écrire et rend false si elle
+// a été traitée entre-temps (rien n'est créé) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
 // `depuisItineraire` (écran « Prix et horaires », carte de l'onglet Assistant) : { texte, d, services, surCree? } déjà prêts, un service par trajet dont l'horaire est choisi, avec l'hôtel
 // de départ (`hotelDepart`) comme lieu de pickup. Le message du client est repris tel quel, les services ne sont pas relus.
 // `options` (carte de l'agent) : { titre, auto, surCree, essai, clientId, clientAVenir }. `auto` crée sans afficher la fiche et rend { ok, dossier } ; s'il manque quelque
@@ -513,6 +514,12 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     creation = true;
     btn.disabled = true;
     btn.textContent = tr("Création…");
+    if (depuisSite && depuisSite.avantCreer && !(await depuisSite.avantCreer().catch(() => true))) {
+      creation = false;
+      btn.disabled = false;
+      majTotal();
+      return (erreur.textContent = tr("Cette demande a été traitée entre-temps (depuis WhatsApp ou l'Assistant) : aucun dossier n'a été créé. Fermez cette fenêtre."));
+    }
     try {
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
