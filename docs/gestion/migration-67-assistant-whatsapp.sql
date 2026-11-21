@@ -187,4 +187,30 @@ revoke all on function taches_whatsapp_lien() from public, anon, authenticated;
 drop trigger if exists taches_whatsapp_lien on taches;
 create trigger taches_whatsapp_lien before insert or update of whatsapp_conversation_id on taches for each row execute function taches_whatsapp_lien();
 
+-- 5. « Demander à l'assistant » sur une conversation encore à trier (PR 297) : la migration 61 exigeait que la conversation WhatsApp soit
+-- rangée dans l'entreprise de la conversation de l'Assistant ; à trier (entite_id null), l'égalité était toujours fausse et l'insertion
+-- échouait. Une conversation à trier se lie maintenant à une conversation de l'Assistant de Secret ou de Taxi de la même organisation,
+-- toujours seulement si la personne la lit (whatsapp_lit, migration 63). Une conversation rangée garde la règle de la 61.
+create or replace function agent_whatsapp_lisible() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.whatsapp_conversation_id is not null and (tg_op = 'INSERT' or new.whatsapp_conversation_id is distinct from old.whatsapp_conversation_id) then
+    if auth.uid() is not null and not exists (
+      select 1 from whatsapp_conversations c
+      where c.id = new.whatsapp_conversation_id
+        and whatsapp_lit(c.entite_id, c.organisation_id)
+        and (
+          c.entite_id = new.entite_id
+          or (c.entite_id is null and exists (
+            select 1 from entites e where e.id = new.entite_id and e.organisation_id = c.organisation_id and e.slug in ('secret', 'taxi')
+          ))
+        )
+    ) then
+      raise exception 'Conversation WhatsApp introuvable.' using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end
+$$;
+revoke all on function agent_whatsapp_lisible() from public, anon;
+
 commit;

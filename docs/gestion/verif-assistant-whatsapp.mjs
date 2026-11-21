@@ -212,5 +212,24 @@ ok((await db.query("select whatsapp_partenaires_parmi($1::text[]) p", [tels])).r
 const plan = (await db.query("select indexdef from pg_indexes where indexname = 'whatsapp_messages_recherche'")).rows[0];
 ok(plan && /gin/i.test(plan.indexdef) && /simple/.test(plan.indexdef), "index GIN, configuration « simple »");
 
+// « Demander à l'assistant » sur une conversation à trier (PR 297) : la liaison est permise vers Secret ou Taxi, jamais vers une
+// conversation rangée dans une autre entreprise que celle de l'Assistant.
+{
+  const aTrier = (await msg("+12025550999", "Hello, a tour for 2 on Monday?", { nom: "Inconnu" })).conversation_id;
+  const rangeeTaxi = (await msg("+12025550888", "Taxi to the pier please", { nom: "Taxi client" })).conversation_id;
+  await db.exec(`update whatsapp_conversations set entite_id = '${ent.taxi}' where id = '${rangeeTaxi}'`);
+  ok((await db.query("select entite_id from whatsapp_conversations where id = $1", [aTrier])).rows[0].entite_id === null, "une conversation neuve est à trier");
+  const lier = (user, entite, conv) => essaie(u[user], "insert into agent_conversations (entite_id, user_id, whatsapp_conversation_id) values ($1, $2, $3) returning id", [entite, u[user], conv]);
+  let x = await lier("adminSecret", ent.secret, aTrier);
+  if (!x.ok) console.log("    (détail)", x.err);
+  ok(x.ok, "à trier : liée à l'Assistant de Secret (le déclencheur ne refuse plus)");
+  x = await lier("adminSecret", ent.secret, rangeeTaxi);
+  ok(!x.ok, "rangée chez Taxi : refusée depuis l'Assistant de Secret");
+  x = await lier("mook", ent.secret, aTrier);
+  ok(!x.ok, "Mook (sans whatsapp_lit) : refusée");
+  const sql = fs.readFileSync(W + "migration-67-assistant-whatsapp.sql", "utf8");
+  ok(/c\.entite_id is null and exists \(\s*select 1 from entites e where e\.id = new\.entite_id and e\.organisation_id = c\.organisation_id and e\.slug in \('secret', 'taxi'\)/.test(sql), "à trier : seulement Secret ou Taxi de la même organisation");
+}
+
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);
