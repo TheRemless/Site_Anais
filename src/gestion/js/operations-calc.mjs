@@ -834,8 +834,6 @@ export function dureeTexte(duree) {
 // Prix affiché par personne seulement quand la prestation se vend à la personne (adulte, enfant) ou qu'elle n'est pas connue (trajet).
 export const venduParPersonne = (prestation) => !prestation || !prestation.unite || ["pp", "ad", "ch", "pers"].includes(prestation.unite);
 
-// Un transfert qui parle d'aéroport ou de vol a une ligne « numéro de vol », les autres non.
-export const concerneUnVol = (...textes) => /airport|aéroport|aeroport|flight|vol\b/i.test(textes.filter(Boolean).join(" "));
 
 // Type de transfert d'après le groupe de la prestation.
 export function typeTransfert(prestation, reservation) {

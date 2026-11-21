@@ -109,6 +109,8 @@ export function propositionDepuisCarte(donnees = {}) {
       confiance: s.offre ? "haute" : "moyenne",
       prix_libre: !s.offre && s.origine_prix === "saisi" && s.prix !== null && s.prix !== undefined ? Number(s.prix) : null,
       lieu_pickup: s.lieu_pickup || "",
+      // Le numéro de vol lu par l'agent (contrôlé par la fonction) : posé sur la réservation du transfert, modifiable dans la fenêtre.
+      vol: s.vol || "",
     })),
     remarques: (donnees.services || [])
       .map((s) => s.remarque)
@@ -131,6 +133,7 @@ export function reservationDepuisCarte(donnees = {}) {
     montant_vente: s.prix ?? null,
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
+    ...(s.vol ? { details: { vol: s.vol } } : {}),
     notes: s.remarque || "",
   };
 }
@@ -151,6 +154,9 @@ export function reservationModifiee(r, donnees = {}) {
       return { ...r, personnes: { ...p, adultes: Number(v) || 0 } };
     case "enfants":
       return { ...r, personnes: { ...p, enfants: Number(v) || 0 } };
+    // Le numéro de vol : dans `details.vol`, ce que le voucher et la Booking confirmation impriment (le reste de `details` est gardé).
+    case "vol":
+      return { ...r, details: { ...(r.details || {}), vol: String(v || "").trim() } };
     case "remarque":
       return { ...r, notes: [r.notes, v].filter(Boolean).join("\n") };
     // Annulation : le formulaire habituel pose ensuite sa question (retirer de la facture, ou garder) si le service est facturé.

@@ -155,7 +155,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const lieuFinal = lieu || (sv.zonePickup && hotelPickup ? hotelPickup : "");
     // Les champs du voucher remplis dans la fenêtre l'emportent ; un lieu laissé vide reste celui de la demande.
     const v = sv.saisie || saisieVide();
-    return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details: nonVides(v.details), zonePickup: sv.zonePickup || null };
+    // Un numéro de vol ne reste que sur un transfert : une offre changée pour une excursion ne le garde pas caché.
+    const details = nonVides(v.details);
+    if (details.vol && !modeTaxi() && !sv.transfertLibre && !sv.retourDepart && offre && !estTransfert(offre)) delete details.vol;
+    return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details, zonePickup: sv.zonePickup || null };
   }
 
   const coches = () => services.filter((sv) => sv.coche);
@@ -231,6 +234,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
     // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
     if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
+    // Numéro de vol lu par l'Assistant (carte « dossier ») : dans le bloc du voucher, comme celui du formulaire du site.
+    if (sv.vol) sv.saisie.details = { ...sv.saisie.details, vol: sv.vol };
     if (sv.transfertLibre) {
       sv.saisie.lieu = sv.transfertLibre.de || d.hotel || "";
       sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: sv.transfertLibre.vers || "" }) };
@@ -632,7 +637,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, hotelDepart: t.hotelDepart || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }

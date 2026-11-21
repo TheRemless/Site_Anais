@@ -6,9 +6,9 @@ import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, re
 import { voucherExempleDonnees } from "../exemples.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { rolesDuService, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
+import { rolesDuService, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
-import { estTaxi, estBookingSecret, estBookingConfirmation, bagagesBooking } from "../taxi-calc.mjs";
+import { estTaxi, estBookingSecret, estBookingConfirmation, bagagesBooking, volDejaDans } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
@@ -185,8 +185,10 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const retourDepart = estRetourDepart(r);
   const programmeTrajet = retourDepart ? String(dt.programme_trajet || "").trim() : "";
   const dureeTrajet = retourDepart ? dureeAnglais(dt.duree_h) : "";
-  const vol = dt.vol ? [dt.vol] : null; // jamais déduit des notes internes : « Payé 1200 THB » n'est pas un vol
-  const avecVol = !!dt.vol || concerneUnVol(r.libelle, dropOff, pickupTransfert, r.notes);
+  // Le numéro de vol (21.11.2026) : imprimé seulement s'il est rempli, et pas une seconde fois s'il est déjà écrit dans le pickup ou le
+  // drop-off (« Krabi Airport, flight FD3217 »). Jamais déduit des notes internes, plus de ligne vide parce que le libellé parle d'aéroport.
+  const volTexte = String(dt.vol || "").trim();
+  const avecVol = !!volTexte && !volDejaDans(pickupTransfert, volTexte) && !volDejaDans(retourDepart ? "" : dropOff, volTexte);
   const bagages = dt.bagages || "";
   // Sur les vouchers de Secret, la même lecture que la ligne LUGGAGE de la Booking confirmation : « 3 pieces », « Yes », jamais « yes ».
   const bagagesTexte = bagagesBooking(bagages);
@@ -221,7 +223,7 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
       : type === "bateau"
       ? [ligne(t("nom_tour"), titrePrestation), ligne(t("date"), dateTexte(r.date_service, "en")), horaires ? ligne(t("horaires"), horaires) : null, bateauTexte ? ligne(t("bateau"), bateauTexte) : null, bq.quai ? ligne(t("quai"), bq.quai) : null, ligne(t("heure_pickup"), r.heure_pickup), ligne(t("lieu_pickup"), r.lieu_pickup || hotel), passagers(t("passagers")), h("p", { class: "v-ligne" }, cle(t("type_tour")), case_(!prive, t("join")), " ", case_(prive, t("prive"))), ligneOperateur, ligneSi(t("remarques"), remarques)]
       : type === "transfert"
-        ? [ligne(t("date"), dateTexte(r.date_service, "en")), ligne(t("heure_pickup"), r.heure_pickup), ...(retourDepart ? [ligne(t("pickup_retour"), pickupTransfert), ligne(t("programme_trajet"), programmeTrajet), ligneSi(t("duree"), dureeTrajet)] : [ligne(t("lieu_pickup"), pickupTransfert), ligne(t("drop_off"), dropOff)]), avecVol ? ligne(t("vol"), vol ? vol[0] : "") : null, ligne(t("passagers"), "", cle(t("adultes")), nbp(a), espace(), cle(t("enfants")), nbp(en_), siegesVoucher(dt.sieges), ...cleEnLigne(t("bagages"), bagagesTexte)), h("p", { class: "v-ligne" }, cle(t("type_transfert")), ...[["taxi", t("taxi_prive")], ["minivan", t("minivan_prive")], ["partage", t("minivan_partage")]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligneOperateur, ligneSi(t("remarques"), remarques)]
+        ? [ligne(t("date"), dateTexte(r.date_service, "en")), ligne(t("heure_pickup"), r.heure_pickup), ...(retourDepart ? [ligne(t("pickup_retour"), pickupTransfert), ligne(t("programme_trajet"), programmeTrajet), ligneSi(t("duree"), dureeTrajet)] : [ligne(t("lieu_pickup"), pickupTransfert), ligne(t("drop_off"), dropOff)]), avecVol ? ligne(t("vol"), volTexte) : null, ligne(t("passagers"), "", cle(t("adultes")), nbp(a), espace(), cle(t("enfants")), nbp(en_), siegesVoucher(dt.sieges), ...cleEnLigne(t("bagages"), bagagesTexte)), h("p", { class: "v-ligne" }, cle(t("type_transfert")), ...[["taxi", t("taxi_prive")], ["minivan", t("minivan_prive")], ["partage", t("minivan_partage")]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligneOperateur, ligneSi(t("remarques"), remarques)]
         : type === "location"
           ? [ligne(t("vehicule"), titrePrestation), typeVehicule ? ligne(t("type_moteur"), typeVehicule) : null, ligne(t("prise"), [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne(t("lieu_pickup"), r.lieu_pickup || hotel), ligne(t("retour"), [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne(t("lieu_retour"), dt.retour_lieu || r.lieu_pickup || hotel), jours ? ligne(t("duree_location"), `${jours} ${jours > 1 ? t("jours") : t("jour")}`) : null, ligne(t("conducteur"), nomClient), ligneSi(t("permis"), dt.permis), ligneSi(t("equipement"), dt.equipement), ligneOperateur, ligneSi(t("remarques"), remarques)]
           : [ligne(t("activite"), titrePrestation), programme ? ligne(t("programme"), programme) : null, ligne(t("date_heure"), [dateTexte(r.date_service, "en"), dt.heure_service || horaires].filter(Boolean).join(", ")), duree ? ligne(t("duree"), duree) : null, ligneSi(t("heure_pickup"), r.heure_pickup), ligneSi(t("lieu_pickup"), r.lieu_pickup || hotel), passagers(t("invites")), ligneOperateur, ligneSi(t("remarques"), remarques)];
