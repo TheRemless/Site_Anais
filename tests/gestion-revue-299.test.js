@@ -277,7 +277,7 @@ test("point 9 : conversation WhatsApp liée passée « jamais » : l'échange jo
   const ts = lire("supabase/functions/agent/index.ts");
   assert.match(ts, /const gardes = waLue && waLue\.reponses === "jamais" \? retirerConversationsJointes\(gardesBruts\) : gardesBruts;/);
   assert.match(ts, /if \(!w\.error\) waLue = w\.data \|\| null;/, "la conversation liée est relue même sans droit d'écrire");
-  assert.ok(ts.indexOf("const gardes = waLue") < ts.indexOf("const messages = historiquePourClaude(retirerLecturesWhatsApp(gardes)"), "avant tout envoi");
+  assert.ok(ts.indexOf("const gardes = waLue") < ts.indexOf("const messages = sansReflexionPassee(historiquePourClaude(retirerLecturesWhatsApp(gardes)"), "avant tout envoi");
   assert.ok(ts.indexOf("const gardes = waLue") < ts.indexOf("const premierTexte"), "avant les apprentissages");
 });
 
