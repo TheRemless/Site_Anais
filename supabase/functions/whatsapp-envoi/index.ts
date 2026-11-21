@@ -10,7 +10,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { lireEnvoi, corpsTelnyx, lireReponseTelnyx } from "./calc.js";
 import { fenetreOuverte } from "../whatsapp/proposer.js";
 import { controlerReponse } from "../agent/outils.js";
-import { fichesDuContact, nomsABloquer } from "../agent/apporteur.js";
+import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 function entetes(req: Request) {
@@ -140,8 +140,10 @@ Deno.serve(async (req) => {
 
 // Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte. Le contact est un apporteur : ses propres
 // fiches sortent de la liste des noms (agent/apporteur.js, fichesDuContact), la réponse lui est adressée ; tout autre nom reste bloqué.
+// Revue de sécurité de la PR 299 : aussi les noms des conversations typées de l'organisation (partenaire, chauffeur, hôtel, apporteur), sauf
+// celui de l'apporteur à qui l'on répond. Chaque nom se compare aussi sans « co, ltd, company, tour, travel » (partenairesCites, agent/outils.js).
 // deno-lint-ignore no-explicit-any
-async function contenuInterne(admin: any, conv: { organisation_id: string; entite_id: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string) {
+async function contenuInterne(admin: any, conv: { id?: string; organisation_id: string; entite_id: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string) {
   let ids: string[] = conv.entite_id ? [conv.entite_id] : [];
   if (!ids.length) {
     const { data } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
@@ -155,12 +157,15 @@ async function contenuInterne(admin: any, conv: { organisation_id: string; entit
     admin.from("trajets").select("prix_adulte, prix_enfant").in("entite_id", ids).limit(5000),
     admin.from("partenaires").select("id, nom, categorie, contact").in("entite_id", ids).limit(2000),
   ]);
-  // Revue de la PR 298 : sans les fiches partenaires, aucun nom ne peut être contrôlé. On ferme : rien ne part.
+  // Revue de la PR 298 : sans les fiches partenaires, aucun nom ne peut être contrôlé. On ferme : rien ne part. Même chose sans les noms
+  // des conversations typées (revue de la PR 299).
   if (pa.error) return ["nom_prestataire:lecture_impossible"];
+  const types = await nomsContactsTypes(admin, conv.organisation_id, { sauf: contactApporteur(conv) ? (conv as { id?: string }).id || null : null });
+  if (types.erreur) return ["nom_prestataire:lecture_impossible"];
   const nombres = (lignes: Record<string, unknown>[] | null, cles: string[]) => new Set((lignes || []).flatMap((l) => cles.map((k) => Number(l[k]))).filter((n) => Number.isFinite(n) && n > 0));
   const internes = new Set([...nombres(pn.data, ["net", "net_enfant"]), ...nombres(tn.data, ["net_adulte", "net_enfant"])]);
   const ventes = new Set([...nombres(pr.data, ["prix_vente"]), ...nombres(tr.data, ["prix_adulte", "prix_enfant"])]);
-  const prestataires = nomsABloquer(pa.data || [], fichesDuContact(conv, pa.data || []));
+  const prestataires = [...new Set([...nomsABloquer(pa.data || [], fichesDuContact(conv, pa.data || [])), ...types.noms])];
   const c = controlerReponse(texte, { signer: true, internes, ventes, prestataires });
   return (c.avertissements || []).filter((a: string) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire"));
 }

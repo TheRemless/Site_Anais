@@ -1,5 +1,6 @@
 // Fonction « whatsapp-preparer » : « Préparer une réponse » touché par Nani dans la boîte WhatsApp, pour un message que le tri a laissé de
-// côté (message jugé personnel, contact réglé sur « jamais ») ou après une panne. Appelée avec la session de la personne (verify_jwt) :
+// côté (message jugé personnel, partenaire, réponses sur demande) ou après une panne. Jamais pour un Contact personnel (reponses = 'jamais') :
+// rien de lui ne part chez Anthropic, la fonction répond contact_personnel (403, revue de sécurité de la PR 299). Appelée avec la session de la personne (verify_jwt) :
 // la conversation se lit avec cette session, donc seulement par un administrateur de Secret ou de Taxi (RLS, migrations 58 et 59).
 // Répond 202 tout de suite ; la proposition « en_cours » apparaît par Realtime, puis « a_faire ». Mêmes limites de budget que le tri
 // automatique (whatsapp/reponse.ts, preparerALaDemande).
@@ -18,7 +19,7 @@ function entetes(req: Request) {
     "Content-Type": "application/json",
   };
 }
-const STATUTS: Record<string, number> = { droit_manquant: 403, rien_a_repondre: 409, a_trier: 409, limite: 429, agent_eteint: 403, non_configure: 503 };
+const STATUTS: Record<string, number> = { droit_manquant: 403, contact_personnel: 403, rien_a_repondre: 409, a_trier: 409, limite: 429, agent_eteint: 403, non_configure: 503 };
 
 Deno.serve(async (req) => {
   const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: entetes(req) });

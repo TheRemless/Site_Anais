@@ -13,7 +13,7 @@ import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
-import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages } from "./whatsapp-calc.mjs";
+import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -252,19 +252,17 @@ export function creer() {
   const conversationLue = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && litWhatsApp(c.entite_id)) || null;
   // L'Assistant lit la boîte (PR A, agent-whatsapp-lecture.mjs) : les mêmes lignes que la base rendrait à la fonction « agent » avec la
   // session de la personne. Seulement dans l'Assistant de Secret ou de Taxi et pour qui administre CETTE entreprise (whatsapp_admin) ;
-  // sinon null. Les conversations des fiches partenaires (sauf « apporteur ») sont écartées, comme la fonction.
+  // sinon null. Seuls les contacts personnels (reponses = 'jamais') sont écartés, comme la fonction (migration 69 : partenaire, chauffeur,
+  // hôtel et apporteur se lisent comme un client).
   const sourceWhatsApp = async (entiteId) => {
     const active = data.entites.find((e) => e.id === entiteId);
     if (!active || !marqueEntite(active) || !adminWhatsApp(entiteId)) return null;
-    const { numerosAExclure } = await import("./agent-whatsapp-lecture.mjs");
-    const exclus = numerosAExclure((data.partenaires || []).filter((p) => data.entites.some((e) => e.id === p.entite_id && e.organisation_id === monOrg())));
     const entitesWa = data.entites.filter((e) => e.organisation_id === monOrg() && marqueEntite(e)).map((e) => ({ id: e.id, slug: marqueEntite(e) }));
     const visibles = () => data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
     const autour = (convs) => ({
       clients: structuredClone(data.clients.filter((c) => convs.some((v) => v.client_id === c.id))),
       dossiers: structuredClone(data.dossiers.filter((d) => convs.some((v) => v.dossier_id === d.id))),
       entites: entitesWa,
-      exclus,
     });
     return {
       permis: true,
@@ -321,7 +319,13 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom"].includes(k)) delete patch[k];
+    // Nom saisi à la main (migration 70, whatsapp_nom_manuel) : dès que « nom » est écrit, même à l'identique, il est nettoyé et devient
+    // manuel (60 caractères, sans caractère invisible) ; vide après nettoyage, plus de nom ni de source.
+    if ("nom" in patch) {
+      const nom = nettoyerNom(patch.nom);
+      Object.assign(patch, { nom, nom_source: nom ? "manuel" : null });
+    }
     // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
     if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;
     // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
@@ -645,10 +649,12 @@ export function creer() {
       return rechercheDemo(q, convs, data.whatsapp_messages.filter((m) => ids.has(m.conversation_id)), Math.min(50, Math.max(1, lim)));
     },
     // « Préparer une réponse » en démonstration : une proposition « en_cours » tout de suite, puis une réponse fictive après un court délai,
-    // annoncées comme le ferait Realtime. Prépare même pour un contact réglé sur « Jamais » ou un message que le tri a écarté, comme la fonction.
+    // annoncées comme le ferait Realtime. Prépare même pour un message que le tri a écarté, comme la fonction ; jamais pour un Contact personnel
+    // (contact_personnel, revue de sécurité de la PR 299).
     async whatsappPreparer(conversationId, { delai = 1500 } = {}) {
       const c = conversationEcrite(conversationId);
       if (!c) return { erreur: "droit_manquant" };
+      if (c.reponses === "jamais") return { erreur: "contact_personnel" };
       const derniers = data.whatsapp_messages.filter((m) => m.conversation_id === c.id).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
       const dernier = derniers[derniers.length - 1];
       if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
@@ -1188,6 +1194,8 @@ export function creer() {
       out.whatsapp_suivi_disponible = !AGENCE;
       // Contacts typés et apporteurs (migration 68).
       out.whatsapp_contacts_disponible = !AGENCE;
+      // Nom saisi à la main (migration 70).
+      out.whatsapp_nom_disponible = !AGENCE;
       out.apporteurs_disponible = true;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());

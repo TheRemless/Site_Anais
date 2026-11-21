@@ -186,7 +186,7 @@ test("Assistant I6 : un appel d'outil sans résultat reçoit un résultat « int
   // Suivi d'une autre réponse de Claude (deux onglets) : un message de résultats est inséré entre les deux.
   const r3 = completerOrphelins([{ role: "assistant", content: [appel("y")] }, { role: "assistant", content: [{ type: "text", text: "ok" }] }]);
   assert.deepEqual(r3.map((m) => m.role), ["assistant", "user", "assistant"]);
-  assert.match(lire("supabase/functions/agent/index.ts"), /const gardes = completerOrphelins\(historique\(debutValide\(/);
+  assert.match(lire("supabase/functions/agent/index.ts"), /const gardesBruts = completerOrphelins\(historique\(debutValide\(/);
 });
 
 test("Assistant I7 : une coupure du flux (iPhone en arrière-plan) rend « coupure » et rallume l'écran", () => {

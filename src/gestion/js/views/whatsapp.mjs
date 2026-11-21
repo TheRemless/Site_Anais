@@ -22,7 +22,7 @@ import {
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
-  apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant,
+  apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX,
 } from "../whatsapp-calc.mjs";
 import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
 import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-calc.mjs";
@@ -138,10 +138,10 @@ function selecteurEntreprise(c, prop) {
   );
 }
 
-// Type du contact (migration 68), d'un tap : client, apporteur, partenaire, chauffeur, hôtel ou personnel. Le tap règle aussi les réponses :
-// client et apporteur ouvrent l'assistant, partenaire, chauffeur et hôtel le ferment (ils parlent de nets et de commissions), personnel le ferme
-// sans type. Le réglage des réponses reste dans le menu « … ». La fonction « whatsapp » ne change jamais un type posé ici. Une conversation
-// typée « apporteur » propose de créer ou de relier sa fiche apporteur.
+// Type du contact (migration 68), d'un tap : client, apporteur, partenaire, chauffeur, hôtel ou personnel. Depuis la migration 69, le type ne
+// coupe plus l'IA : partenaire, chauffeur, hôtel et apporteur se lisent comme un client. Seul « Personnel » ferme (rien envoyé à l'IA) et
+// vide le type ; quitter « Personnel » pour un type rouvre (patchType). Le réglage des réponses reste dans le menu « … ». La fonction
+// « whatsapp » ne change jamais un type posé ici. Une conversation typée « apporteur » propose de créer ou de relier sa fiche apporteur.
 function selecteurType(c) {
   if (etat.brut.whatsapp_contacts_disponible !== true) return null;
   const actuel = typeContact(c);
@@ -150,9 +150,9 @@ function selecteurType(c) {
   const choisir = async (t) => {
     if (t === actuel) return;
     try {
-      await modifier("whatsapp_conversations", c.id, patchType(t));
-      // Le toast dit si l'IA lit ce contact désormais : client et apporteur oui, les autres non.
-      toast(tr(toastType(t)));
+      await modifier("whatsapp_conversations", c.id, patchType(t, c));
+      // Le toast dit si l'IA lit ce contact désormais : oui pour tout type, sauf « Personnel » ou un contact réglé « rien envoyé à l'IA ».
+      toast(tr(toastType(t, c)));
       rafraichir();
     } catch (err) {
       toast(err.message, true);
@@ -166,8 +166,8 @@ function selecteurType(c) {
   );
 }
 
-// Réponses préparées pour ce contact (migration 60) : sur demande ou automatiques (selon Réglages), ou jamais (ami, famille, partenaire,
-// chauffeur). Rangé dans le menu « … » de l'en-tête (lot 2, design n° 7) : il ne sert que pour quelques contacts. Seule Nani le change.
+// Réponses préparées pour ce contact (migration 60) : sur demande ou automatiques (selon Réglages), ou jamais (Contact personnel : ami,
+// famille). Rangé dans le menu « … » de l'en-tête (lot 2, design n° 7) : il ne sert que pour quelques contacts. Seule Nani le change.
 async function basculerReponses(c) {
   const valeur = reponsesDe(c) === "jamais" ? "auto" : "jamais";
   const suggeree = !c.entite_id && c.tri ? entitesWhatsApp().find((e) => marqueEntite(e) === c.tri.entreprise) : null;
@@ -233,6 +233,72 @@ function ouvrirRelier(c) {
   );
 }
 
+// ---- Nom du contact (migration 70) -------------------------------------------------------------------------------------------------
+// Telnyx n'envoie aucun nom : Nani l'écrit ici. Un tap sur le nom (ou le crayon) le change en champ, Entrée ou OK enregistre, Échap ou la
+// croix annule. Vider le champ efface le nom saisi. Mêmes droits que pour ranger la conversation : en lecture seule, ni bouton ni crayon.
+// La base nettoie le nom (60 caractères) et le protège de la fonction « whatsapp » (nom_source = 'manuel').
+const nomModifiable = () => !lectureSeule && etat.brut.whatsapp_nom_disponible === true;
+function titreNom(c) {
+  const nom = nomConversation(c, clientDe(c));
+  if (!nomModifiable()) return h("h2", null, nom);
+  return h(
+    "h2",
+    null,
+    h("button", { type: "button", class: "wa-nom-bouton", "aria-label": tr("Changer le nom de {nom}", { nom }), onclick: (e) => editerNom(c, e.currentTarget.closest(".wa-fil-titre")) }, h("span", { class: "wa-nom-texte" }, nom), icone("crayon", 16))
+  );
+}
+function sousTitreNom(c) {
+  const client = clientDe(c);
+  if (!client) return null;
+  if (nomSaisi(c)) return h("span", null, tr("fiche « {nom} »", { nom: nomClient(client) }));
+  return c.nom ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null;
+}
+function editerNom(c, zone) {
+  if (!zone) return;
+  const avant = [...zone.childNodes];
+  const champNom = h("input", { id: "wa-nom", type: "text", value: nomSaisi(c), maxlength: NOM_MAX, placeholder: tr("Nom du contact"), "aria-label": tr("Nom du contact"), autocomplete: "off", autocapitalize: "words", enterkeyhint: "done", spellcheck: "false" });
+  let fini = false;
+  const annuler = () => {
+    if (fini) return;
+    fini = true;
+    zone.replaceChildren(...avant);
+    const b = zone.querySelector(".wa-nom-bouton");
+    if (b) b.focus();
+  };
+  const enregistrer = async (e) => {
+    e.preventDefault();
+    if (fini) return;
+    const patch = patchNom(c, champNom.value);
+    if (!patch) return annuler();
+    fini = true;
+    ok.disabled = true;
+    try {
+      await modifier("whatsapp_conversations", c.id, patch);
+      toast(patch.nom ? tr("Nom enregistré.") : tr("Nom effacé."));
+      rafraichir();
+    } catch (err) {
+      fini = false;
+      ok.disabled = false;
+      toast(err.message, true);
+    }
+  };
+  const ok = h("button", { class: "principal petit", type: "submit" }, tr("OK"));
+  champNom.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") (e.preventDefault(), annuler());
+  });
+  zone.replaceChildren(
+    h(
+      "form",
+      { class: "wa-nom-form", onsubmit: enregistrer, "data-pas-saisie": "" },
+      champNom,
+      ok,
+      h("button", { class: "bouton-icone secondaire petit", type: "button", "aria-label": tr("Annuler"), onclick: annuler }, icone("fermer", 18))
+    )
+  );
+  champNom.focus();
+  champNom.select();
+}
+
 function enTete(c, prop) {
   // Sur téléphone, seule la ligne du nom reste collée en haut : l'entreprise et les faits défilent avec les messages.
   // Les réglages tiennent sur une ligne (lot 2, design n° 6 et 7) : l'entreprise en segments, le reste dans le menu « … ».
@@ -241,7 +307,7 @@ function enTete(c, prop) {
       "header",
       { class: "wa-fil-tete" },
       h("a", { class: "bouton-icone lien wa-retour", href: "#/whatsapp", "aria-label": tr("Retour aux conversations") }, icone("retour", 22)),
-      h("div", { class: "wa-fil-titre" }, h("h2", null, nomConversation(c, clientDe(c))), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), c.nom && clientDe(c) ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null)),
+      h("div", { class: "wa-fil-titre" }, titreNom(c), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), sousTitreNom(c))),
       h("button", { class: "bouton-icone secondaire wa-menu", type: "button", "aria-label": tr("Options de la conversation"), onclick: () => menuConversation(c) }, icone("ellipsis", 20))
     ),
     h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), selecteurType(c)),
@@ -761,17 +827,17 @@ function carteVerifier(c, doute) {
 
 // Aucune réponse préparée pour le dernier message du client : l'état normal depuis le 20.11.2026 (réponses sur demande). « Préparer une
 // réponse » est le geste principal (lot 2, design n° 3) : bouton plein, collé en bas sous le pouce comme Copier. Ce que le tri a vu passe
-// au-dessus, en petit.
+// au-dessus, en petit. Jamais pour un Contact personnel : rien de lui n'est envoyé à l'IA (revue de sécurité de la PR 299).
 function ligneSansReponse(c, messages) {
   const dernier = messages.length ? messages[messages.length - 1] : null;
-  const bouton = !lectureSeule && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "principal wa-preparer", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, icone("assistant", 20), tr("Préparer une réponse")) : null;
+  const bouton = !lectureSeule && reponsesDe(c) !== "jamais" && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "principal wa-preparer", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, icone("assistant", 20), tr("Préparer une réponse")) : null;
   const raison = raisonSansReponse(c, messages);
   if (!bouton && !raison) return null;
   return h("div", { class: `wa-sans-reponse${bouton ? " avec-bouton" : ""}` }, raison ? h("p", { class: "wa-note" }, tr(raison)) : null, bouton);
 }
 
 function carteProposition(c, p, messages) {
-  // Le client attend et aucune réponse n'est préparée (tri, contact réglé sur « Jamais », agent qui n'a pas su trier) : on le dit.
+  // Le client attend et aucune réponse n'est préparée (tri, Contact personnel, agent qui n'a pas su trier) : on le dit.
   if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse(c, messages) : null;
   if (p.statut === "envoi") {
     // Moins de 30 secondes : l'appel est peut-être encore en cours. Au-delà, la carte « Vérifiez dans WhatsApp » du fil prend le relais ;

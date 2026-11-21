@@ -97,7 +97,7 @@ test("WhatsApp commun en lecture : écrire seulement dans l'entreprise qu'on adm
   assert.equal(U.ecritConversation({ entite_id: null }, []), false);
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /tr\("Lecture seule : conversation de \{entreprise\}"/);
-  for (const garde of ["if (lectureSeule) return null;", "lectureSeule ? null : h(\"div\", { class: \"wa-prop-suite\" }", "!lectureSeule && dernier && dernier.sens === \"entrant\"", "if (!peutEcrire(c)) return false;"]) assert.ok(vue.includes(garde), garde);
+  for (const garde of ["if (lectureSeule) return null;", "lectureSeule ? null : h(\"div\", { class: \"wa-prop-suite\" }", "!lectureSeule && reponsesDe(c) !== \"jamais\" && dernier && dernier.sens === \"entrant\"", "if (!peutEcrire(c)) return false;"]) assert.ok(vue.includes(garde), garde);
 });
 
 test("doublons Secret et Taxi : même téléphone ou même nom, la plus ancienne d'abord ; fusion réservée à l'administration", () => {

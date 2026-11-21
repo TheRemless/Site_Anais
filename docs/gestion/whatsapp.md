@@ -38,7 +38,7 @@ Les messages envoyés depuis l'app restent gratuits. `message.echo` n'arrive que
 | Messages et conversations | 365 jours après le dernier message |
 | Message supprimé par le client | texte et médias effacés tout de suite |
 
-La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne sert à entraîner un modèle. L'IA ne reçoit jamais de net, de commission ni de coordonnées bancaires.
+La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne sert à entraîner un modèle. L'IA ne reçoit jamais de coordonnées bancaires (numéros de compte et IBAN masqués), ni de net ou de commission lus dans les tables de Gestion. Depuis la migration 69, un net ou une commission écrits dans un message par un partenaire, un chauffeur ou un hôtel partent avec le texte de sa conversation.
 
 ## Boîte WhatsApp (phase 2, migration 59)
 
@@ -52,7 +52,7 @@ La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne s
 - **Copier puis répondre depuis l'app.** Gros bouton « Copier », lien qui ouvre la conversation dans WhatsApp. Dès que Nani répond depuis l'app (`message.echo`), la proposition passe « traitée ». Une réponse devenue inutile pendant la préparation (le client a réécrit, Nani a déjà répondu) n'est ni proposée ni annoncée.
 - **Envoi depuis Gestion** (secondaire) : fonction `whatsapp-envoi`, session de la personne, dans les 24 h qui suivent le dernier message du client (règle de Meta), numéro `active` chez Telnyx et `TELNYX_API_KEY` posée. Verrou contre le double envoi : la proposition passe « envoi » avant l'appel à Telnyx ; un délai dépassé répond `verifier_whatsapp` (le message est peut-être parti) et rien ne repart sans vérification.
 - **Coût et limites.** Chaque préparation compte dans le plafond du mois de l'assistant (`assistant_journal`, usage « whatsapp », coût noté à chaque tour). En plus : 15 $ par mois au plus pour la boîte (`WHATSAPP_PLAFOND_MOIS_USD`), 6 réponses par conversation et 80 pour toute la boîte sur 24 h, 75 secondes par préparation. Une lecture du budget impossible ferme la préparation. Agent éteint (`agent_ia`) : pas de réponse.
-- **Ce qui part chez Anthropic** : le texte des 30 derniers messages de la conversation (ceux du client et de Nani), les numéros de téléphone, de compte et les IBAN masqués ; le prénom du client ; le dossier relié (services, dates, heures, prix de vente, prénom) ; ce que rendent le catalogue, les horaires et les durées. Jamais un numéro de téléphone, un nom de famille, un net, une commission ni un nom de partenaire. L'API Anthropic n'entraîne pas ses modèles sur ces données.
+- **Ce qui part chez Anthropic** : le texte des 30 derniers messages de la conversation (ceux du contact et de Nani), les numéros de téléphone, de compte et les IBAN masqués ; le prénom du client ; le dossier relié (services, dates, heures, prix de vente, prénom) ; ce que rendent le catalogue, les horaires et les durées. Jamais un numéro de téléphone, un nom de famille, ni un net, une commission ou un nom de partenaire lus dans les tables. Depuis la migration 69, la conversation d'un partenaire, d'un chauffeur ou d'un hôtel part comme celle d'un client : ce qu'il écrit (un net, une commission, un nom) peut y figurer. La réponse préparée reste bloquée tant qu'elle contient un net de l'entreprise ou un nom de partenaire. L'API Anthropic n'entraîne pas ses modèles sur ces données.
 - **Conservation** : une proposition part avec sa conversation, au plus tard 90 jours après sa création. Une préparation interrompue passe « échec » après 3 minutes.
 
 ## Tri des messages et classement protégé (migration 60)
@@ -60,14 +60,15 @@ La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne s
 Demande de Jérémy du 20.11.2026 : ne jamais toucher à ce que Nani a classé, et ne pas préparer de réponse à tous les messages.
 
 - **Classement protégé.** La fonction ne change jamais l'entreprise, le client, le dossier ni l'interrupteur d'une conversation déjà posés : le déclencheur `whatsapp_proteger_classement` remet l'ancienne valeur. Une conversation rangée à la main reste rangée. Seule Nani change son classement depuis l'outil. Les étiquettes de l'app WhatsApp Business ne passent pas par Gestion (Meta ne les transmet pas en coexistence) : Gestion ne les lit ni ne les modifie.
-- **Interrupteur par contact** (`reponses`) : « Automatiques » (« Sur demande » tant que la préparation automatique est décochée) ou « Jamais pour ce contact » (ami, famille, partenaire, chauffeur : ni tri par Claude, ni résumé, ni promesse ; Nani peut toujours demander une réponse).
+- **Interrupteur par contact** (`reponses`) : « Automatiques » (« Sur demande » tant que la préparation automatique est décochée) ou « Jamais pour ce contact », le Contact personnel (ami, famille : ni tri par Claude, ni résumé, ni promesse, ni lecture par l'Assistant, ni « Préparer une réponse » : le bouton est masqué et `whatsapp-preparer` répond `contact_personnel`, revue de sécurité de la PR 299). Depuis la migration 69, un partenaire, un chauffeur ou un hôtel n'est plus mis sur « jamais » par son type.
 - **Tri, du moins cher au plus cher.** Une réponse n'est préparée seule que si le réglage automatique est coché et que tout passe :
-  1. le contact n'est pas réglé sur « jamais » ;
+  1. le contact n'est pas réglé sur « jamais » (Contact personnel) ;
   2. le message n'est pas une réaction, un emoji seul, un « ok », un merci, ni une photo ou un vocal sans texte (aucun appel à Claude) ;
-  3. le numéro n'est pas celui d'une fiche partenaire (téléphones du contact) ;
-  4. le budget et les limites du jour le permettent ;
-  5. Claude Haiku lit les derniers messages et répond en JSON : préparer ou non, motif, entreprise suggérée. Il faut à la fois « oui » et un motif de demande (`demande_client` ou `suivi_reservation`) ; dans le doute, non.
-- **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran à côté du bouton, sans ton d'anomalie (« Demande de client », « Message personnel »…). Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites.
+  3. le budget et les limites du jour le permettent ;
+  4. Claude Haiku lit les derniers messages et répond en JSON : préparer ou non, motif, entreprise suggérée. Il faut à la fois « oui » et un motif de demande (`demande_client` ou `suivi_reservation`) ; dans le doute, non.
+
+  Jusqu'à la migration 69, le numéro d'une fiche partenaire arrêtait le tri avant Haiku (motif « partenaire »). Ce n'est plus le cas : Haiku lit la conversation d'un partenaire comme celle d'un client et peut encore répondre « partenaire » quand le message n'attend pas de réponse préparée. Le motif reste affiché pour les anciennes lignes.
+- **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran à côté du bouton, sans ton d'anomalie (« Demande de client », « Message personnel »…). Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites, sauf pour un Contact personnel.
 
 ## Le ton de Nani (20.11.2026)
 
@@ -75,7 +76,7 @@ Demande de Jérémy : les réponses préparées doivent avoir le ton de Nani, ap
 
 - À chaque réponse préparée, l'agent reçoit jusqu'à 8 de ses vraies réponses envoyées depuis l'app, avec le message du client juste avant, dans les conversations de la même entreprise. Les situations proches du message en cours passent d'abord, puis les plus récentes.
 - Il reçoit aussi jusqu'à 5 de ses réécritures : la réponse préparée par l'agent, puis ce que Nani a vraiment envoyé à la place (dans les 6 heures, assez différent). Plus elle corrige, plus les réponses se rapprochent des siennes.
-- Ces exemples servent au ton, à la longueur, aux formules et aux emoji. Les faits (prix, heures, disponibilités) viennent toujours des outils. Numéros et IBAN masqués ; un exemple qui parle de net, de commission ou de compte bancaire est écarté.
+- Ces exemples servent au ton, à la longueur, aux formules et aux emoji. Les faits (prix, heures, disponibilités) viennent toujours des outils. Numéros et IBAN masqués ; un exemple qui parle de net, de commission ou de compte bancaire est écarté. Un Contact personnel ne sert jamais d'exemple (revue de sécurité de la PR 299).
 
 ## Fiabilité (migration 64, lot 3 des audits du 20.11.2026)
 
@@ -97,13 +98,64 @@ Dans l'onglet Assistant de Secret ou de Taxi, l'agent a trois outils de lecture 
 | `lire_conversation` | les messages dans l'ordre (40 par défaut, 200 au plus, 20 000 caractères), « depuis » un jour ou « avant » un jour, le reste compté ; médias décrits par leur type et leur légende |
 | `a_faire_whatsapp` | clients qui attendent (durée), promesses de Nani échues, paiements signalés pas encore notés, trajets en ferry ou en speedboat d'un dossier relié pas encore payés, trié par urgence |
 
-- **Droits.** Les outils ne sont proposés et exécutés que pour qui administre l'entreprise active, Secret ou Taxi (`whatsapp_admin`). Tout se lit avec la session de la personne, jamais avec la clé de service ; les numéros des fiches partenaires sont reconnus par `whatsapp_partenaires_parmi`, sans être lus. ZTP et Mook ne les voient pas. La préparation automatique des réponses ne les reçoit jamais.
-- **Contact personnel et partenaires.** Un contact réglé « jamais » et la conversation d'un numéro de fiche partenaire (sauf catégorie « apporteur ») ne sont ni cherchés ni lus : rien d'eux ne part chez Anthropic. Les résultats de ces outils ne repartent pas au message suivant : l'agent relit, sous les règles du moment.
+- **Droits.** Les outils ne sont proposés et exécutés que pour qui administre l'entreprise active, Secret ou Taxi (`whatsapp_admin`). Tout se lit avec la session de la personne, jamais avec la clé de service. ZTP et Mook ne les voient pas. La préparation automatique des réponses ne les reçoit jamais.
+- **Contact personnel.** Un contact réglé « jamais » n'est ni cherché ni lu : rien de lui ne part chez Anthropic. Partenaire, chauffeur, hôtel et apporteur se lisent comme un client depuis la migration 69 (avant, la conversation d'un numéro de fiche partenaire était écartée). Les résultats de ces outils ne repartent pas au message suivant : l'agent relit, sous les règles du moment.
 - **Recherche.** Préfixe dès 3 lettres, chiffres cherchés sur les 90 derniers jours, 3 secondes au plus. La base rend le texte entier : l'agent masque d'abord, coupe ensuite.
 - **Promesses.** `taches.whatsapp_conversation_id` relie la tâche à sa conversation ; une promesse sans conversation retrouvée n'est jamais envoyée.
 - **Citations.** Chaque conversation et chaque message rendu porte son lien `#/whatsapp?c=…&m=…&entite=…`. L'agent cite ses sources avec ces liens, une ligne par point ; l'écran de l'Assistant les rend cliquables.
 - **Contenu non fiable.** Le texte des messages est masqué (numéros, comptes, IBAN), neutralisé (crochets, chevrons) et traité comme une donnée. Il n'est jamais une source de prix ni d'heure pour une réponse au client.
-- **Ce qui part chez Anthropic** : le nom de profil, le client relié (prénom, nom), la référence du dossier relié, le texte des messages lus et des extraits (un prix écrit par le client peut y figurer), le type et la légende des médias, le titre des promesses échues, le libellé et la date des trajets en bateau, le solde dû. Jamais un numéro de téléphone, un fichier, un net, une commission ni une fiche partenaire. Les pièces jointes ne partent que cochées par la personne (« Créer le dossier »).
+- **Ce qui part chez Anthropic** : le nom de profil, le client relié (prénom, nom), la référence du dossier relié, le texte des messages lus et des extraits (un prix écrit par le client, ou un net et une commission écrits par un partenaire, peuvent y figurer), le type et la légende des médias, le titre des promesses échues, le libellé et la date des trajets en bateau, le solde dû. Jamais un numéro de téléphone, un fichier, ni un net, une commission ou une fiche partenaire lus dans les tables. Les pièces jointes ne partent que cochées par la personne (« Créer le dossier »).
+
+## Tous les contacts lus par l'IA (migration 69, 21.11.2026)
+
+Demande de Jérémy : « enlève moi cette règle que les trucs ne sont pas envoyés à l'IA si ce n'est pas un client ».
+
+- **Plus de coupure par type.** Partenaire, chauffeur, hôtel et apporteur se lisent comme un client : outils de l'Assistant (`chercher_conversations`, `lire_conversation`, `a_faire_whatsapp`), tri, résumé et promesse du suivi, « Préparer une réponse », « Demander à l'assistant ».
+- **Plus de coupure par numéro.** Le numéro d'une fiche partenaire n'écarte plus une conversation (`numerosPartenaires`, `partenairesDe` et `numerosAExclure` retirés des fonctions). La fonction SQL `whatsapp_partenaires_parmi` (migration 67) ne sert plus : elle reste en base sans appel ; la 69 ne la supprime pas.
+- **Le type ne touche plus les réponses.** Taper Partenaire, Chauffeur, Hôtel, Client ou Apporteur dans l'écran WhatsApp écrit seulement `type_contact`. Seule la puce « Personnel » ferme l'IA (`reponses = 'jamais'`, type vide) ; la quitter pour un type la rouvre. Un contact typé que Nani règle « rien envoyé à l'IA » dans le menu « … » le reste.
+- **Données.** La migration 69 repasse à « auto » les conversations typées partenaire, chauffeur ou hôtel restées sur « jamais » par l'ancien couplage de l'écran. Un contact sans type (Personnel), un client et un apporteur ne changent pas.
+- **Ce qui ne change pas.** Le Contact personnel est respecté partout (tri, suivi, outils de l'agent, `whatsapp_rechercher`, « Demander à l'assistant »). Le contrôle bloquant des réponses (`controlerReponse`, `nom_prestataire`, `montant_interne`, `contenu_interne` de `whatsapp-envoi`) reste : aucun net, aucune commission, aucune marge, aucun nom de partenaire ni d'apporteur ne part vers un client, sauf la réponse à l'apporteur lui-même (PR 298). Numéros, comptes et IBAN restent masqués. Les nets ne se lisent dans les tables qu'avec `partenaires.nets` ; Mook ne voit rien de nouveau ; ZTP reste à part.
+- **Ce qui part en plus chez Anthropic** : le texte des conversations des partenaires, chauffeurs et hôtels (masqué), dans les mêmes limites qu'un client. Un net, une commission ou un nom de partenaire écrits dans ces messages peuvent donc partir avec le texte.
+
+### Revue de sécurité de la PR 299
+
+Lire un partenaire ne doit jamais faire passer ce qu'il écrit dans une réponse au client.
+
+| Point | Règle |
+|---|---|
+| Montants « tapés » | Un bloc `<conversation>` joint n'est jamais compté comme tapé par la personne (`memoDepuis`, `sansConversation`). Seuls son texte et sa `<question>` comptent. |
+| Montants d'un partenaire | Les montants d'une conversation partenaire, chauffeur ou hôtel jointe, liée ou lue par un outil (`retenirLecture`, `retenirLectures` pour l'historique) vont dans `memo.internes` : `montant_interne` bloquant, sauf égal à un prix de vente rendu par un outil. Les lectures renvoient le champ `contact` (type du contact). |
+| Nets dans l'Assistant | La fonction « agent » lit les nets de l'entreprise (des deux en espace unifié) avec la clé de service (`netsPourControle`, comme la boîte). Ils ne servent qu'au contrôle : jamais dans les consignes, les messages, un résultat d'outil ni le flux vers l'écran. |
+| Noms | Le nom d'une conversation typée partenaire, chauffeur, hôtel ou apporteur lue ou jointe est bloqué comme un nom de partenaire. `whatsapp-envoi` et la réponse préparée bloquent les noms de toutes les conversations typées de l'organisation (`nomsContactsTypes`). Chaque nom se compare aussi sans « co, ltd, company, tour, travel » (« Blue Ocean » cite « Blue Ocean Co., Ltd »). L'exemption de la PR 298 reste limitée à la réponse à l'apporteur lui-même. |
+| Ton de Nani | Un Contact personnel ne sert jamais d'exemple (`tonDeNani`). |
+| « Préparer une réponse » | Refusé pour un Contact personnel (`contact_personnel`, 403), bouton masqué. |
+| Réponse à un partenaire | Ni client ni dossier relié, consigne « destinataire partenaire : jamais un prix de vente, un total, un solde ni une marge du client ». Jamais préparée seule, même avec la case cochée : sur demande seulement. |
+| Promesses | La tâche d'une promesse faite à un partenaire, un chauffeur ou un hôtel ne garde aucun chiffre dans ce qui est promis (`sansChiffres`). |
+| Historique de l'Assistant | Si la conversation WhatsApp liée passe « Contact personnel », l'échange joint plus tôt est retiré au chargement (`retirerConversationsJointes`). |
+
+## Nom du contact saisi à la main (migration 70, 21.11.2026)
+
+Constaté en production : aucune des 25 conversations n'avait de nom. Telnyx n'envoie dans `message.received` que `from.phone_number`, `carrier` et `line_type`. Demande de Jérémy : « Oui faisons le nom à la main ».
+
+- **Écran.** Dans l'en-tête d'une conversation, un tap sur le nom (ou le petit crayon) ouvre un champ sur place ; Entrée ou OK enregistre, Échap ou la croix annule. 60 caractères au plus, espaces nettoyés. Vider le champ efface le nom saisi. En lecture seule (conversation de l'autre entreprise), ni bouton ni crayon. Sans la migration 70, le crayon n'apparaît pas.
+- **Ordre du nom, partout** (liste, « À faire », palette, Assistant, citations, outils de l'agent) : le nom saisi à la main, sinon le client relié, sinon le nom de profil WhatsApp, sinon le numéro (l'écran seulement : les outils de l'agent n'envoient jamais le numéro). Une seule fonction : `nomContact` (`agent-whatsapp-lecture.mjs`), reprise par `nomConversation` (`whatsapp-calc.mjs`).
+- **Droits.** `grant update (nom)`, sous la politique « ranger une conversation WhatsApp » (migration 63, `whatsapp_ecrit`) : un administrateur de l'entreprise de la conversation, ou d'une des deux pour une conversation à trier. Mook ne voit rien. `nom_source` ne s'écrit jamais depuis l'outil.
+- **Protection.** `whatsapp_nom_manuel` met `nom_source = 'manuel'` quand une personne écrit le nom (nettoyé en base) ; `whatsapp_proteger_classement` fait que, sans personne connectée (la fonction « whatsapp »), un nom manuel ne change jamais. Un nom vide ou de profil se remplit encore si Telnyx en envoie un jour un (`nom_source = 'whatsapp'`, aussi à la création par `whatsapp_nom_insertion`).
+- **Recherche.** `whatsapp_rechercher` trouve aussi une conversation par son nom (mots et préfixes) et rend son dernier message : la palette la montre. L'outil `chercher_conversations` la trouve par `nom` comme avant. Un contact personnel n'est jamais trouvé.
+- **Ce qui part chez Anthropic** : le nom saisi, comme le reste de la conversation, sauf pour un contact personnel. C'est une donnée : masqué (numéros) et neutralisé (crochets, chevrons). Les outils disent `nom_saisi_par_equipe`, « Demander à l'assistant » dit « nom noté par l'équipe ». Pour une réponse préparée, seul le premier mot d'un nom saisi part (« Somchai chauffeur » donne « Somchai »), avec le libellé « nom noté par l'équipe ».
+
+### Revue de sécurité de la PR 300
+
+| Point | Règle |
+|---|---|
+| Préparation de la boîte | `whatsapp/reponse.ts` lit `nom_source` (`select *`, sans erreur si la colonne manque). Nom manuel : premier mot seulement (`prenomDuContact`, `whatsapp/proposer.js`). Contact personnel : rien, la préparation est refusée (PR 299). |
+| Nom d'un contact typé | Le nom manuel d'une conversation typée partenaire, chauffeur, hôtel ou apporteur, ou reliée à une fiche (`partenaire_id`), est bloqué vers un client : Assistant (`memo.prestataires`, champ `fiche_reliee` des lectures, conversation jointe), préparation et `whatsapp-envoi` (`nomsContactsTypes`). Seul l'apporteur à qui l'on répond garde le sien (PR 298). |
+| Caractères invisibles | U+200B à U+200F, U+202A à U+202E, U+2060 à U+2069 et U+FEFF retirés en base (`whatsapp_nom_manuel`) et à l'écran (`nettoyerNom`). Un nom vide après nettoyage est effacé. |
+| Recherche par nom | `par_nom` : n conversations au plus, les plus récentes, et leur dernier message par `join lateral … limit 1`. |
+| Nom retapé | Dès que `nom` figure dans l'UPDATE d'une personne, il devient manuel, même identique (déclencheur « before update of nom »). |
+| Fonctions de déclencheur | `execute` retiré à public, anon et authenticated. |
+
+- **Fonctions à redéployer** : `agent`, `whatsapp` et `whatsapp-envoi`. Contrôle : `verif-whatsapp-nom.mjs`. Retour : `retour-70-whatsapp-nom.sql` (les noms saisis restent dans `nom`, sans leur source).
 
 ## Étapes de Jérémy (une seule fois)
 

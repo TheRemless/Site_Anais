@@ -4,6 +4,7 @@
 // Logique pure, testée par tests/gestion-whatsapp-boite.test.js.
 import { N_ } from "./i18n.mjs";
 import { numeroAffiche } from "./demandes-site-calc.mjs";
+import { nomContact, nomSaisi } from "./agent-whatsapp-lecture.mjs";
 
 export { numeroAffiche };
 
@@ -54,10 +55,28 @@ export function lienWhatsApp(tel, texte = "") {
 // Une réponse en plusieurs messages courts (lot 2) : l'agent sépare ses messages par une ligne vide. Chaque morceau se copie seul.
 export const morceauxReponse = (texte) => String(texte || "").split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
 
-// Nom affiché : le client relié d'abord (fiche de Gestion), sinon le nom du profil WhatsApp, sinon le numéro.
+// Nom affiché (migration 70) : le nom saisi à la main par Nani, sinon le client relié (fiche de Gestion), sinon le nom du profil WhatsApp,
+// sinon le numéro. Même ordre que l'Assistant (agent-whatsapp-lecture.mjs, nomContact), qui n'envoie jamais le numéro.
+export { nomSaisi };
 export function nomConversation(conv, client = null) {
-  const nomClient = client ? [client.prenom, client.nom].filter(Boolean).join(" ").trim() : "";
-  return nomClient || (conv && conv.nom ? String(conv.nom).trim() : "") || numeroAffiche((conv && conv.telephone) || "");
+  return nomContact(conv, client) || numeroAffiche((conv && conv.telephone) || "");
+}
+// Le nom tel que la base le garde (déclencheur whatsapp_nom_manuel, migration 70) : caractères invisibles (U+200B à U+200F, U+202A à U+202E,
+// U+2060 à U+2069, U+FEFF) retirés, espaces et caractères de contrôle réduits à une espace, 60 caractères au plus. Vide : null (le nom
+// manuel est effacé).
+export const NOM_MAX = 60;
+export const INVISIBLES = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+export function nettoyerNom(v) {
+  const t = Array.from(String(v ?? "").replace(INVISIBLES, "").replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim()).slice(0, NOM_MAX).join("").trim();
+  return t || null;
+}
+// Ce que l'écran envoie à la base, ou null s'il n'y a rien à changer : le même nom manuel, ou un champ vide sans nom manuel. Un nom de profil
+// retapé à l'identique s'envoie : la base le marque alors manuel (protégé de la fonction « whatsapp »).
+export function patchNom(conv, saisie) {
+  const nom = nettoyerNom(saisie);
+  if (nom === (nomSaisi(conv) || null)) return null;
+  if (nom === null && !nomSaisi(conv)) return null;
+  return { nom };
 }
 
 // ---- Propositions -----------------------------------------------------------------------------------------------------------------
@@ -283,6 +302,7 @@ export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" &&
 export const ERREURS_PREPARER = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas de préparer une réponse pour cette conversation."),
+  contact_personnel: N_("Contact personnel : rien n'est envoyé à l'IA. Répondez depuis l'app."),
   rien_a_repondre: N_("Le dernier message n'est pas du client. Rien à préparer."),
   limite: N_("Limite atteinte (plafond du mois ou limite du jour). Répondez depuis l'app."),
   agent_eteint: N_("L'assistant est éteint pour cette entreprise. Allumez-le dans les Réglages."),
@@ -325,7 +345,8 @@ export function morceauxCitations(texte = "") {
   let i = 0;
   for (const m of t.matchAll(LIEN_CITATION)) {
     if (m.index > i) out.push({ texte: t.slice(i, m.index) });
-    out.push({ lien: m[0], message: /&m=/.test(m[0]) });
+    // La conversation citée (migration 70) : l'écran met son nom à côté du lien.
+    out.push({ lien: m[0], message: /&m=/.test(m[0]), conversation: m[0].slice(m[0].indexOf("c=") + 2, m[0].indexOf("c=") + 38).toLowerCase() });
     i = m.index + m[0].length;
   }
   if (i < t.length || !out.length) out.push({ texte: t.slice(i) });

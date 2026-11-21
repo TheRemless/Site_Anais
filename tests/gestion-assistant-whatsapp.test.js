@@ -4,7 +4,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as L from "../supabase/functions/agent/whatsapp-lecture.js";
-import { masquer as masquerProposer, outilsWhatsapp, cleNumero as cleProposer, numerosPartenaires as numerosProposer, ligneMessage } from "../supabase/functions/whatsapp/proposer.js";
+import * as P from "../supabase/functions/whatsapp/proposer.js";
+import { masquer as masquerProposer, outilsWhatsapp, ligneMessage } from "../supabase/functions/whatsapp/proposer.js";
 import { tachePromesse, sansColonneConversation, parametresResume, parametresPromesse } from "../supabase/functions/whatsapp/suivi.js";
 import { OUTILS, OUTILS_WHATSAPP_LECTURE, executer, memoDepuis, normaliserEntree, outilsDuContexte, outilsPour, peutLireWhatsApp, proposer } from "../supabase/functions/agent/outils.js";
 import { consignes } from "../supabase/functions/agent/prompt.js";
@@ -89,7 +90,8 @@ test("citations cliquables : seulement la forme exacte des liens de l'outil", ()
   const c = id();
   const m = id();
   const morceaux = morceauxCitations(`- Lucia attend depuis 2 h #/whatsapp?c=${c}&m=${m}\n- rien ici`);
-  assert.deepEqual(morceaux.filter((x) => x.lien), [{ lien: `#/whatsapp?c=${c}&m=${m}`, message: true }]);
+  // La conversation citée sert à mettre son nom à côté du lien (migration 70).
+  assert.deepEqual(morceaux.filter((x) => x.lien), [{ lien: `#/whatsapp?c=${c}&m=${m}`, message: true, conversation: c }]);
   assert.equal(morceaux.map((x) => x.texte || x.lien).join(""), `- Lucia attend depuis 2 h #/whatsapp?c=${c}&m=${m}\n- rien ici`);
   for (const faux of ["#/whatsapp?c=abc", `#/dossier/${c}`, `https://x.test/#/whatsapp?c=${c}x`, `#/whatsapp?c=${c}&next=evil`]) assert.ok(!morceauxCitations(faux).some((x) => x.lien && x.lien.length > 50 && !faux.startsWith(x.lien)), faux);
   assert.ok(!morceauxCitations(`#/whatsapp?c=${c}&next=evil`).some((x) => x.lien), "un paramètre en plus : pas un lien de l'outil");
@@ -408,17 +410,20 @@ test("fonction « agent » : lecture avec la session de la personne, jamais avec
   assert.match(bloc, /sb\.rpc\("whatsapp_rechercher"/);
   assert.match(bloc, /\.neq\("reponses", "jamais"\)/);
   assert.match(bloc, /conv\.reponses === "jamais"\) return \{ conversation: conv, messages: \[\] \}/, "les messages d'un contact personnel ne sont pas même lus");
-  assert.match(bloc, /if \(contactExclu\(conv, liste\)\) return \{ conversation: conv, messages: \[\], exclus: liste \}/, "ni ceux d'un partenaire");
-  // Jamais la clé de service : les fiches partenaires sont reconnues par la base (whatsapp_partenaires_parmi), sans être lues.
+  // Migration 69 : plus d'exclusion par numéro de fiche partenaire, whatsapp_partenaires_parmi n'est plus appelée (elle reste en base).
+  assert.doesNotMatch(bloc, /contactExclu|exclusPour|whatsapp_partenaires_parmi|numerosAExclure/, "aucune exclusion par numéro de fiche partenaire");
+  assert.match(bloc, /const suivies = convs\.filter\(\(c\) => c\.reponses !== "jamais"\);/, "à faire : seuls les contacts personnels sont écartés");
+  // Jamais la clé de service.
   assert.doesNotMatch(bloc, /\badmin\./);
-  assert.match(bloc, /sb\.rpc\("whatsapp_partenaires_parmi", \{ tels: lot \}\)/);
-  assert.match(bloc, /if \(r\.error\) throw new Error\(`fiches partenaires/, "une réponse impossible ferme les outils");
   assert.match(bloc, /if \(clientId\) q = q\.eq\("client_id", clientId\)/, "un client par son identifiant complet");
   assert.match(bloc, /mots\.map\(\(m\) => rechercher\(m, m\)\)/, "chaque mot cherché seul aussi");
   assert.match(bloc, /\{ count: "exact", head: true \}/, "messages restants comptés par la base");
   assert.match(bloc, /order\("envoye_le", \{ ascending: !!depuis \}\)/, "« depuis » lit les plus anciens d'abord");
   assert.doesNotMatch(bloc, /storage|download|createSignedUrl/, "aucun fichier");
-  assert.doesNotMatch(bloc, /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
+  // Revue de la PR 300 : partenaire_id est lu seulement dans les colonnes des conversations, pour marquer « fiche_reliee » (nom bloqué vers
+  // un client). L'identifiant ne sort jamais de la lecture (tests/gestion-whatsapp-nom.test.js) ; aucune table de partenaire n'est lue.
+  assert.doesNotMatch(bloc.replace(/const NIVEAUX_CONV = \[[^\n]*\];/, ""), /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
+  assert.doesNotMatch(bloc, /from\("partenaires"\)/);
   assert.match(ts, /whatsapp: !!whatsapp \}\);/, "les consignes savent si la boîte est lisible");
   assert.match(ts, /\.\.\.\(whatsapp \? \{ whatsapp \} : \{\}\)/);
   // Aucun appel à l'IA dans les outils : ils sont du SQL et du JS.
@@ -549,38 +554,53 @@ test("historique : les lectures WhatsApp des messages précédents sont retirée
   assert.match(ts, /const messages = historiquePourClaude\(retirerLecturesWhatsApp\(gardes\), donnees\);/, "appliqué au chargement de l'historique, avant l'envoi à Claude");
 });
 
-test("partenaires : leur conversation n'est ni cherchée, ni lue, ni à faire ; un apporteur reste lisible", () => {
-  const fiches = [
-    { categorie: "Ferries et speedboats", contact: { telephones: [{ numero: "+44 7700 900666" }] } },
-    { categorie: "Apporteur d'affaires", contact: { telephones: ["+44 7700 900955"] } },
-  ];
-  const exclus = L.numerosAExclure(fiches);
-  assert.deepEqual([...exclus], ["700900666"]);
-  assert.ok(L.estApporteur({ categorie: "apporteurs" }) && L.estApporteur({ categorie: "Apporteur" }) && !L.estApporteur({ categorie: "Excursions bateaux" }));
-  const prestataire = conv({ nom: "Speedboat", telephone: "+447700900666", dernier_texte: "Net 700, commission 200", attend_depuis: il_y_a(300), dossier_id: null, paiement_signale: null });
-  const jade = conv({ nom: "Jade, travel planner", telephone: "+447700900955", attend_depuis: il_y_a(35) });
-  const d = { conversations: [prestataire, jade], entites: ENTITES, exclus, trouves: [{ conversation_id: prestataire.id, message_id: id(), extrait: "net 700", envoye_le: il_y_a(5) }] };
-  for (const e of [VIDE, { ...VIDE, texte: "net" }, { ...VIDE, texte: "Speedboat" }, { ...VIDE, attend_reponse: true }]) {
-    const r = L.chercherConversations(e, d);
-    assert.ok(!JSON.stringify(r).includes(prestataire.id), JSON.stringify(e));
+test("migration 69 : partenaire, chauffeur, hôtel et apporteur sont cherchés, lus et à faire comme un client ; un contact personnel jamais", () => {
+  const SECRET_ID = SECRET.id;
+  const prestataire = conv({ nom: "Speedboat", type_contact: "partenaire", telephone: "+447700900666", entite_id: SECRET_ID, dernier_texte: "Boat ready at 9", attend_depuis: il_y_a(300) });
+  const chauffeur = conv({ nom: "Driver Lek", type_contact: "chauffeur", telephone: "+447700900667", dernier_texte: "Pickup done", attend_depuis: il_y_a(200) });
+  const hotel = conv({ nom: "Lanta Sand", type_contact: "hotel", telephone: "+447700900668", entite_id: SECRET_ID, dernier_texte: "Room 12 for the guests", attend_depuis: il_y_a(100) });
+  const jade = conv({ nom: "Jade, travel planner", type_contact: "apporteur", telephone: "+447700900955", entite_id: SECRET_ID, attend_depuis: il_y_a(35) });
+  // Un contact personnel, même typé partenaire (réglé « rien envoyé à l'IA » dans le menu « … ») : jamais.
+  const maman = conv({ nom: "Maman", reponses: "jamais", type_contact: null, telephone: "+447700900669", dernier_texte: "Dinner tonight?" });
+  const amiPartenaire = conv({ nom: "Ami bateau", reponses: "jamais", type_contact: "partenaire", telephone: "+447700900670", dernier_texte: "Private stuff" });
+  const lisibles = [prestataire, chauffeur, hotel, jade];
+  const d = { conversations: [...lisibles, maman, amiPartenaire], entites: ENTITES, trouves: [{ conversation_id: prestataire.id, message_id: id(), extrait: "boat ready", envoye_le: il_y_a(5) }, { conversation_id: maman.id, message_id: id(), extrait: "dinner", envoye_le: il_y_a(5) }] };
+  const vus = L.chercherConversations(VIDE, d).conversations.map((x) => x.conversation).sort();
+  assert.deepEqual(vus, lisibles.map((c) => c.id).sort(), "les quatre types sont rendus, aucun contact personnel");
+  assert.deepEqual(L.chercherConversations({ ...VIDE, texte: "boat" }, d).conversations.map((x) => x.conversation), [prestataire.id], "la recherche trouve un partenaire");
+  for (const e of [VIDE, { ...VIDE, texte: "dinner" }, { ...VIDE, texte: "Maman" }, { ...VIDE, texte: "Private" }, { ...VIDE, attend_reponse: true }]) {
+    const r = JSON.stringify(L.chercherConversations(e, d));
+    assert.ok(!r.includes(maman.id) && !r.includes(amiPartenaire.id) && !/Maman|Dinner|Private/.test(r), JSON.stringify(e));
   }
-  assert.deepEqual(L.chercherConversations(VIDE, d).conversations.map((x) => x.nom), ["Jade, travel planner"], "l'apporteur reste lisible");
-  assert.equal(L.lireConversation({ conversation: prestataire.id }, { conversation: prestataire, messages: [msg(prestataire, 1, "entrant", "net 700")], exclus }).erreur, "contact_partenaire");
-  assert.doesNotMatch(JSON.stringify(L.lireConversation({ conversation: prestataire.id }, { conversation: prestataire, messages: [msg(prestataire, 1, "entrant", "net 700")], exclus })), /700|Speedboat/);
-  assert.ok(!L.lireConversation({ conversation: jade.id }, { conversation: jade, messages: [msg(jade, 1, "entrant", "Two bookings")], exclus }).erreur);
-  const t = JSON.stringify(L.aFaireWhatsApp({ ...d, taches: [{ id: id(), entite_id: TAXI.id, titre: "WhatsApp, Speedboat : prix", description: L.MARQUE_PROMESSE, echeance: "2026-11-19", fait: false, whatsapp_conversation_id: prestataire.id }] }, { maintenant: MAINTENANT }));
-  assert.ok(!t.includes(prestataire.id) && !/Speedboat|commission/.test(t));
-  assert.match(t, /Jade/);
-  // Même comparaison que la boîte (whatsapp/proposer.js) : même code, même résultat.
-  const code = (src, debut, fin) => src.slice(src.indexOf(debut), src.indexOf(fin, src.indexOf(debut)));
-  const lect = lireFichier("supabase/functions/agent/whatsapp-lecture.js");
-  const prop = lireFichier("supabase/functions/whatsapp/proposer.js");
-  assert.equal(code(lect, "export const cleNumero", "\n};\n"), code(prop, "export const cleNumero", "\n};\n"));
-  assert.equal(code(lect, "export function numerosPartenaires", "\n  return out;"), code(prop, "export function numerosPartenaires", "\n  return out;"));
-  assert.deepEqual([...L.numerosPartenaires(fiches)], [...numerosProposer(fiches)]);
-  assert.equal(L.cleNumero("081 234 5678"), cleProposer("081 234 5678"));
+  for (const c of lisibles) {
+    const r = L.lireConversation({ conversation: c.id }, { conversation: c, messages: [msg(c, 1, "entrant", "Net 700 for 2 pax")] });
+    assert.ok(!r.erreur, c.nom);
+    assert.match(JSON.stringify(r), /Net 700/, `${c.nom} : le texte part tel quel (masqué), comme un client`);
+  }
+  for (const c of [maman, amiPartenaire]) {
+    const r = L.lireConversation({ conversation: c.id }, { conversation: c, messages: [msg(c, 1, "entrant", "secret")] });
+    assert.equal(r.erreur, "contact_personnel");
+    assert.doesNotMatch(JSON.stringify(r), /secret|Maman|Ami/);
+  }
+  const taches = [prestataire, maman].map((c) => ({ id: id(), entite_id: TAXI.id, titre: `WhatsApp, ${c.nom} : rappeler`, description: L.MARQUE_PROMESSE, echeance: "2026-11-19", fait: false, whatsapp_conversation_id: c.id }));
+  const t = L.aFaireWhatsApp({ ...d, taches }, { maintenant: MAINTENANT, typeContact: (c) => c.type_contact || null });
+  const parConv = t.elements.map((x) => `${x.genre}:${x.conversation}`);
+  for (const c of [prestataire, chauffeur, hotel]) assert.ok(parConv.includes(`client_attend:${c.id}`), `${c.nom} attend une réponse`);
+  assert.ok(parConv.includes(`apporteur:${jade.id}`), "l'apporteur est à faire");
+  assert.ok(parConv.includes(`promesse:${prestataire.id}`), "la promesse faite à un partenaire est à faire");
+  assert.ok(!JSON.stringify(t).includes(maman.id) && !JSON.stringify(t).includes(amiPartenaire.id) && !/Maman|Ami bateau/.test(JSON.stringify(t)), "jamais un contact personnel");
+  // Le code ne porte plus l'exclusion par numéro : ni dans la lecture, ni dans la boîte.
+  for (const f of ["supabase/functions/agent/whatsapp-lecture.js", "supabase/functions/whatsapp/proposer.js", "supabase/functions/whatsapp/reponse.ts", "supabase/functions/whatsapp/suivi.ts", "supabase/functions/agent/index.ts", "src/gestion/js/store-local.mjs"]) {
+    assert.doesNotMatch(lireFichier(f), /numerosAExclure|numerosPartenaires|partenairesDe|contactExclu|exclusPour|whatsapp_partenaires_parmi\(|rpc\("whatsapp_partenaires_parmi"/, f);
+  }
+  assert.equal(L.numerosAExclure, undefined);
+  assert.equal(P.numerosPartenaires, undefined);
+  assert.equal(L.cleNumero("081 234 5678"), "812345678", "la clé de numéro reste pour les fiches apporteur");
   // L'invite et le commentaire disent ce qui part.
-  assert.match(consignes({ entreprise: "Secret", reglages: { fonctionnement: "excursions" }, whatsapp: true }), /la conversation d'un partenaire \(numéro d'une fiche partenaire, sauf un apporteur\) ne sont jamais lus/);
+  const invite = consignes({ entreprise: "Secret", reglages: { fonctionnement: "excursions" }, whatsapp: true });
+  assert.match(invite, /Un contact personnel \(réglé « rien envoyé à l'IA »\) n'est jamais lu/);
+  assert.match(invite, /La conversation d'un partenaire, d'un chauffeur, d'un hôtel ou d'un apporteur se lit comme celle d'un client\. Un net, une commission, une marge ou un nom de partenaire que tu y lis reste entre toi et l'équipe : jamais dans une réponse au client\./);
+  assert.doesNotMatch(invite, /numéro d'une fiche partenaire/);
   assert.match(lireFichier("supabase/functions/agent/index.ts"), /Ce qui part alors chez Anthropic/);
 });
 

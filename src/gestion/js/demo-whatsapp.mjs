@@ -4,7 +4,7 @@
 //   2. un inconnu à trier qui demande une excursion, réponse prête préparée pour Secret, l'entreprise que l'agent propose ;
 //   3. une conversation déjà répondue depuis l'app, fenêtre de 24 h fermée, une photo expirée ;
 //   4. un client rangé par Nani dans Taxi, réponse en préparation ;
-//   5. un chauffeur réglé sur « Jamais » (migration 60) : son message n'a pas de réponse préparée, « Préparer une réponse » en fait une ;
+//   5. un chauffeur réglé « Contact personnel » (migration 60) : rien n'est envoyé à l'IA, pas de bouton « Préparer une réponse » ;
 //   6. Jade, travel planner et amie de Nani, qui envoie deux clients dans un même message (conversationJade). Elle sert aux PR suivantes
 //      (contacts typés : apporteur ; deux dossiers depuis un message).
 // Suivi (migrations 61 et 62) : résumé en trois lignes, signal de paiement et promesse en tâche, sur la conversation 3 reliée à un

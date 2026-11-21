@@ -7,37 +7,50 @@ import fs from "node:fs";
 
 const source = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 const A = await import("../src/gestion/js/apporteurs-calc.mjs");
-test("type du contact : le tap couple l'IA, la base garde les deux indépendants", () => {
+test("type du contact : le type ne touche plus les réponses, seul « Personnel » ferme l'IA (migration 69)", () => {
   assert.equal(A.typeContact({ reponses: "jamais", type_contact: null }), "personnel");
   assert.equal(A.typeContact({ reponses: "jamais", type_contact: "chauffeur" }), "chauffeur", "un type existe avec « jamais »");
   assert.equal(A.typeContact({ reponses: "auto", type_contact: "apporteur" }), "apporteur");
   assert.equal(A.typeContact({ reponses: "auto", type_contact: null }), null);
   assert.equal(A.typeContact({ reponses: "auto", type_contact: "ami" }), null, "une valeur inconnue ne s'affiche pas");
-  // Client et apporteur : l'assistant peut lire. Partenaire, chauffeur, hôtel : rien envoyé à l'IA. Personnel : rien envoyé, pas de type.
-  assert.deepEqual(A.patchType("client"), { type_contact: "client", reponses: "auto" });
-  assert.deepEqual(A.patchType("apporteur"), { type_contact: "apporteur", reponses: "auto" });
-  for (const t of ["partenaire", "chauffeur", "hotel"]) assert.deepEqual(A.patchType(t), { type_contact: t, reponses: "jamais" }, t);
+  // Tout type stocké : seulement type_contact, jamais `reponses` (l'IA lit partenaire, chauffeur, hôtel et apporteur comme un client).
+  const ouvert = { reponses: "auto", type_contact: null };
+  for (const t of ["client", "apporteur", "partenaire", "chauffeur", "hotel"]) {
+    assert.deepEqual(A.patchType(t), { type_contact: t }, t);
+    assert.deepEqual(A.patchType(t, ouvert), { type_contact: t }, `${t} sur un contact ouvert`);
+    assert.deepEqual(A.patchType(t, { reponses: "auto", type_contact: "client" }), { type_contact: t }, `${t} depuis un autre type`);
+    assert.equal(A.toastType(t, ouvert), "Contact noté : l'assistant peut lire", t);
+  }
+  // Personnel : rien envoyé à l'IA, pas de type. Le quitter pour un type rouvre (c'est cette puce qui avait fermé).
   assert.deepEqual(A.patchType("personnel"), { reponses: "jamais", type_contact: null });
+  assert.deepEqual(A.patchType("personnel", { reponses: "auto", type_contact: "partenaire" }), { reponses: "jamais", type_contact: null });
+  assert.equal(A.toastType("personnel", ouvert), "Contact noté : rien envoyé à l'IA");
+  const personnel = { reponses: "jamais", type_contact: null };
+  assert.deepEqual(A.patchType("partenaire", personnel), { type_contact: "partenaire", reponses: "auto" });
+  assert.equal(A.toastType("chauffeur", personnel), "Contact noté : l'assistant peut lire");
+  // Un contact typé que Nani a réglé « rien envoyé à l'IA » dans le menu « … » : retyper ne le rouvre pas, le toast le dit.
+  const fermeTyped = { reponses: "jamais", type_contact: "hotel" };
+  assert.deepEqual(A.patchType("partenaire", fermeTyped), { type_contact: "partenaire" });
+  assert.equal(A.toastType("partenaire", fermeTyped), "Contact noté : rien envoyé à l'IA");
   assert.throws(() => A.patchType("ami"));
-  assert.equal(A.toastType("client"), "Contact noté : l'assistant peut lire");
-  assert.equal(A.toastType("hotel"), "Contact noté : rien envoyé à l'IA");
-  assert.equal(A.toastType("personnel"), "Contact noté : rien envoyé à l'IA");
+  // L'écran passe la conversation à patchType et au toast.
+  const vue = source("src/gestion/js/views/whatsapp.mjs");
+  assert.match(vue, /modifier\("whatsapp_conversations", c\.id, patchType\(t, c\)\)/);
+  assert.match(vue, /toast\(tr\(toastType\(t, c\)\)\)/);
   assert.deepEqual(A.TYPES_CONTACT.map(([k]) => k), ["client", "apporteur", "partenaire", "chauffeur", "hotel", "personnel"]);
   const sql = source("docs/gestion/migration-68-contacts-apporteurs.sql");
   assert.doesNotMatch(sql, /add constraint whatsapp_conversations_personnel_check/, "aucune contrainte ne lie le type aux réponses");
   assert.doesNotMatch(sql.slice(sql.indexOf("create or replace function whatsapp_type_coherent")), /new\.reponses :=/, "le déclencheur ne rouvre jamais l'IA");
 });
 
-test("une fiche apporteur ne coupe pas l'IA : son numéro n'est pas un numéro de partenaire", async () => {
-  const { numerosPartenaires, triSansAppel } = await import("../supabase/functions/whatsapp/proposer.js");
-  const n = numerosPartenaires([{ categorie: "Excursions bateaux", contact: { telephones: [{ numero: "+66 81 234 5678" }] } }, { categorie: "apporteur", contact: { telephones: [{ numero: "+44 7700 900611" }] } }]);
-  assert.ok(n.has("812345678"), "un prestataire reste exclu du tri");
-  assert.ok(!n.has("700900611"), "l'apporteur n'est pas exclu");
-  const conv = { reponses: "auto", telephone: "+447700900611" };
-  assert.equal(triSansAppel({ conv, messages: [{ type: "text", texte: "Two clients for a snorkelling day on Friday?", envoye_le: "2026-11-21T08:00:00Z" }], numerosPartenaires: n }), null, "le tri par Haiku a lieu");
-  // La lecture des fiches porte la catégorie (tri, iaPermise du suivi et réponse partagent partenairesDe).
-  assert.match(source("supabase/functions/whatsapp/reponse.ts"), /from\("partenaires"\)\.select\("contact, categorie"\)/);
-  assert.match(source("supabase/functions/whatsapp/suivi.ts"), /partenairesDe\(db, conv\.organisation_id\)/);
+test("aucune fiche ne coupe l'IA : ni un apporteur ni un prestataire (migration 69)", async () => {
+  const P = await import("../supabase/functions/whatsapp/proposer.js");
+  assert.equal(P.numerosPartenaires, undefined, "plus de liste de numéros à écarter");
+  const question = [{ type: "text", texte: "Two clients for a snorkelling day on Friday?", envoye_le: "2026-11-21T08:00:00Z" }];
+  for (const type_contact of ["apporteur", "partenaire", null]) assert.equal(P.triSansAppel({ conv: { reponses: "auto", telephone: "+447700900611", type_contact }, messages: question }), null, `${type_contact} : le tri par Haiku a lieu`);
+  // Plus aucune lecture des fiches partenaires pour le tri ni pour le suivi.
+  assert.doesNotMatch(source("supabase/functions/whatsapp/reponse.ts"), /partenairesDe|from\("partenaires"\)\.select\("contact, categorie"\)/);
+  assert.doesNotMatch(source("supabase/functions/whatsapp/suivi.ts"), /partenairesDe/);
 });
 
 test("fiches apporteur hors des listes de prestataires et du chauffeur Taxi", async () => {
@@ -127,13 +140,17 @@ test("démo : Jade, travel planner de Secret, sans rémunération, deux dossiers
     const conv = d.whatsapp_conversations.find((c) => c.partenaire_id === jade.id);
     assert.ok(conv && A.typeContact(conv) === "apporteur" && conv.reponses === "auto" && conv.entite_id === secret.id);
 
-    // Le réglage des réponses se change à part, le type reste ; typer « chauffeur » ferme l'IA.
-    let c = await store.modifier("whatsapp_conversations", conv.id, { reponses: "jamais" });
-    assert.equal(c.type_contact, "apporteur");
-    c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("chauffeur"));
-    assert.deepEqual([c.type_contact, c.reponses], ["chauffeur", "jamais"]);
-    c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("apporteur"));
-    assert.deepEqual([c.type_contact, c.reponses], ["apporteur", "auto"]);
+    // Migration 69 : typer « chauffeur » ne ferme plus l'IA. Le réglage des réponses se change à part, le type reste ; retyper ne le touche pas.
+    let c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("chauffeur", conv));
+    assert.deepEqual([c.type_contact, c.reponses], ["chauffeur", "auto"]);
+    c = await store.modifier("whatsapp_conversations", conv.id, { reponses: "jamais" });
+    assert.equal(c.type_contact, "chauffeur");
+    c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("apporteur", c));
+    assert.deepEqual([c.type_contact, c.reponses], ["apporteur", "jamais"], "un contact réglé « rien envoyé à l'IA » le reste");
+    c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("personnel", c));
+    assert.deepEqual([c.type_contact, c.reponses], [null, "jamais"]);
+    c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("apporteur", c));
+    assert.deepEqual([c.type_contact, c.reponses], ["apporteur", "auto"], "quitter « Personnel » rouvre");
     await assert.rejects(store.modifier("whatsapp_conversations", conv.id, { type_contact: "ami" }));
     // Une fiche de Taxi ne se relie pas à une conversation de Secret.
     const fTaxi = await store.inserer("partenaires", { entite_id: taxi.id, nom: "Jade", categorie: "apporteur", contact: {}, regles: {}, contrat: {}, actif: true });
@@ -158,8 +175,6 @@ test("démo : Jade, travel planner de Secret, sans rémunération, deux dossiers
 test("écrans : type d'un tap dans WhatsApp, apporteur sur le dossier sans l'effacer, aucune rémunération affichée", async () => {
   const wa = source("src/gestion/js/views/whatsapp.mjs");
   assert.match(wa, /h\("div", \{ class: "wa-fil-infos" \}, selecteurEntreprise\(c, prop\), selecteurType\(c\)\)/);
-  assert.match(wa, /modifier\("whatsapp_conversations", c\.id, patchType\(t\)\)/);
-  assert.match(wa, /toast\(tr\(toastType\(t\)\)\)/);
   const dossier = source("src/gestion/js/views/dossier.mjs");
   assert.match(dossier, /\.\.\.patchApporteur\(apporteur, d\)/);
   assert.match(dossier, /blocResumeApporteur\(d\)/);

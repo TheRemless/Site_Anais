@@ -13,9 +13,9 @@
 //   - espace unifié Secret et Taxi (unifie.js, migration 63) : chaque ligne porte son entreprise, ses nets et son partenaire suivent les
 //     droits de la personne dans l'entreprise de CETTE ligne, chaque service d'une carte porte son entreprise. Sans ce mode, rien ne change ;
 //   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui administre
-//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ni la conversation d'un partenaire (sauf un apporteur) ;
-//     le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs résultats sont retirés de l'historique au
-//     message suivant (retirerLecturesWhatsApp) ;
+//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ; partenaire, chauffeur, hôtel et apporteur se
+//     lisent comme un client (migration 69) ; le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs
+//     résultats sont retirés de l'historique au message suivant (retirerLecturesWhatsApp) ;
 //   - contact WhatsApp de type « apporteur » (apporteur.js, PR D) : proposer_dossier note la fiche apporteur de chaque entreprise (ctx.apporteur,
 //     lue avec la session), jamais celle d'une autre ; rien de la fiche ne repart chez Claude.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
@@ -24,7 +24,7 @@ import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.
 import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
 import { apporteurDeCarte } from "./apporteur.js";
-import { ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
+import { CONTACTS_INTERNES, CONTACTS_NOMMES, ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
 
@@ -887,6 +887,96 @@ export async function lireDossier(e, ctx) {
   };
 }
 
+// ---- Contacts typés lus par l'agent (revue de sécurité de la PR 299) -------------------------------------------------------------------
+// Une conversation jointe (bloc <conversation>, agent/whatsapp.js) n'est jamais « tapée » par la personne : ses montants ne deviennent pas
+// une source pour la réponse au client (memoDepuis). Seuls le texte de la personne et sa <question> comptent.
+const BLOC_CONVERSATION = /<conversation>[\s\S]*?(?:<\/conversation>|$)/g;
+export const sansConversation = (t) => String(t || "").replace(BLOC_CONVERSATION, " ");
+export const conversationsJointes = (t) => [...String(t || "").matchAll(BLOC_CONVERSATION)].map((m) => m[0]);
+// Ce que le contrôle retient d'une lecture de la boîte (chercher_conversations, lire_conversation, a_faire_whatsapp) : pour chaque
+// conversation typée partenaire, chauffeur ou hôtel, ses montants (des nets possibles : montant_interne, sauf égaux à un prix de vente
+// rendu par un outil) ; pour ces types et l'apporteur, son nom (nom_prestataire). Rien n'est renvoyé à Claude.
+const CLES_SANS_TEXTE = new Set(["conversation", "lien", "message", "le", "depuis", "client", "dossier", "entreprise", "contact", "genre", "niveau"]);
+const textesDe = (v, out = []) => {
+  if (typeof v === "string") out.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => textesDe(x, out));
+  else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) if (!CLES_SANS_TEXTE.has(k)) textesDe(x, out);
+  return out;
+};
+export function retenuDeLecture(resultat) {
+  const internes = new Set();
+  const noms = [];
+  const voir = (v) => {
+    if (Array.isArray(v)) return v.forEach(voir);
+    if (!v || typeof v !== "object") return;
+    // Revue de la PR 300 : une conversation reliée à une fiche partenaire sans type nommé (fiche_reliee) : son nom aussi.
+    if (CONTACTS_NOMMES.includes(v.contact) || v.fiche_reliee === true) {
+      for (const n of [v.nom_whatsapp, v.nom]) if (typeof n === "string" && n.trim() && n !== "Contact sans nom") noms.push({ conversation: v.conversation || null, nom: n.trim() });
+      if (CONTACTS_INTERNES.includes(v.contact)) for (const x of montantsTapes(textesDe(v))) internes.add(x);
+      return;
+    }
+    for (const x of Object.values(v)) if (x && typeof x === "object") voir(x);
+  };
+  voir(resultat);
+  return { internes, noms };
+}
+// Ajoute des noms lus aux noms bloqués. memo.contactLie : la conversation WhatsApp de l'apporteur liée à l'Assistant ; son nom reste permis
+// dans une réponse adressée à l'apporteur (PR 298), tout autre nom lu y est bloqué aussi.
+export function ajouterNoms(memo, noms = []) {
+  if (!Array.isArray(memo.prestataires)) memo.prestataires = [];
+  for (const { conversation, nom } of noms) {
+    if (!nom) continue;
+    if (!memo.prestataires.includes(nom)) memo.prestataires.push(nom);
+    if (Array.isArray(memo.prestatairesApporteur) && !(conversation && conversation === memo.contactLie) && !memo.prestatairesApporteur.includes(nom)) memo.prestatairesApporteur.push(nom);
+  }
+}
+export function retenirLecture(resultat, memo) {
+  const { internes, noms } = retenuDeLecture(resultat);
+  if (!(memo.internes instanceof Set)) memo.internes = new Set();
+  for (const n of internes) memo.internes.add(n);
+  ajouterNoms(memo, noms);
+}
+// Les lectures de la boîte des échanges précédents, avant qu'elles soient retirées pour Claude (retirerLecturesWhatsApp) : le contrôle
+// garde ce qu'elles ont montré (un net lu hier chez un partenaire reste interne aujourd'hui).
+export function retenirLectures(messages = [], memo) {
+  const noms = new Map();
+  for (const m of messages || []) for (const b of m && m.role === "assistant" && Array.isArray(m.content) ? m.content : []) if (b && b.type === "tool_use") noms.set(b.id, b.name);
+  for (const m of messages || []) {
+    if (!m || m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (!b || b.type !== "tool_result" || !NOMS_OUTILS_WHATSAPP.includes(noms.get(b.tool_use_id))) continue;
+      for (const c of Array.isArray(b.content) ? b.content : [{ type: "text", text: String(b.content || "") }]) {
+        if (!c || c.type !== "text") continue;
+        try {
+          retenirLecture(JSON.parse(c.text), memo);
+        } catch {
+          /* résultat retiré ou illisible : rien à retenir */
+        }
+      }
+    }
+  }
+}
+// Les nets de l'entreprise (des deux en espace unifié), prestations et trajets, en nombres : seulement pour repérer un montant interne dans
+// la réponse (memo.internes). Lus à part avec la clé de service ; jamais rendus par un outil, jamais envoyés chez Claude ni à la personne.
+// Par pages de 1000 lignes, 20 000 au plus par table. Une lecture en erreur s'arrête : ce qui est lu reste.
+export async function netsPourControle(db, ids = []) {
+  const s = new Set();
+  if (!db || !ids.length) return s;
+  const toutes = async (table, colonnes) => {
+    const lignes = [];
+    for (let de = 0; de < 20000; de += 1000) {
+      const { data, error } = await db.from(table).select(colonnes).in("entite_id", ids).range(de, de + 999);
+      if (error || !data) break;
+      lignes.push(...data);
+      if (data.length < 1000) break;
+    }
+    return lignes;
+  };
+  const [p, t] = await Promise.all([toutes("prestations_nets", "net, net_enfant"), toutes("trajets_nets", "net_adulte, net_enfant")]);
+  for (const n of [...p, ...t]) for (const v of [n.net, n.net_enfant, n.net_adulte]) if (v !== null && v !== undefined && Number(v) > 0) s.add(Number(v));
+  return s;
+}
+
 // ---- Propositions (cartes) -------------------------------------------------------------------------------------------------------
 
 // Les montants que la personne a tapés dans la conversation : seuls montants admis en plus de ceux des outils.
@@ -1030,12 +1120,16 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
 }
 
 // Les noms de partenaires cités dans un texte, en mots entiers, accents et casse ignorés (« Lazy Day » oui, « Ann » dans « Annual » non).
+// Revue de sécurité de la PR 299 : aussi le nom sans « co, ltd, company, tour, travel » (cleNom, comme l'import de brochure) : « boat by Blue
+// Ocean » cite la fiche « Blue Ocean Co., Ltd ». Le nom court doit garder quatre lettres (« Lanta Tour » ne bloque pas « Koh Lanta »).
 export function partenairesCites(t, noms = []) {
   const plat = ` ${sansAccents(t).replace(/[^a-z0-9]+/g, " ")} `;
   const vus = new Set();
   return noms.filter((n) => {
     const k = sansAccents(n).replace(/[^a-z0-9]+/g, " ").trim();
-    if (k.length < 3 || vus.has(k) || !plat.includes(` ${k} `)) return false;
+    if (k.length < 3 || vus.has(k)) return false;
+    const c = cleNom(n);
+    if (!plat.includes(` ${k} `) && !(c.length >= 4 && c !== k && plat.includes(` ${c} `))) return false;
     vus.add(k);
     return true;
   });
@@ -1191,6 +1285,8 @@ export async function executer(nom, entree, ctx, memo) {
     const r = await f(entree, ctx, memo);
     ajouter(r);
     if (memo.internes) collecterInternes(r.resultat, memo.internes);
+    // Une conversation de partenaire, de chauffeur ou d'hôtel lue : ses montants deviennent internes, son nom bloqué (revue de la PR 299).
+    if (whatsapp && r.resultat && !r.resultat.erreur) retenirLecture(r.resultat, memo);
     return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };
   } catch (err) {
     // Le motif (message d'erreur, jamais une donnée de client) part avec le résultat : il reste dans l'historique pour diagnostiquer.
@@ -1201,7 +1297,9 @@ export async function executer(nom, entree, ctx, memo) {
 
 // Ce que la conversation sait déjà : les prix et heures rendus par les outils des échanges précédents (relus depuis les messages enregistrés)
 // et les montants tapés par la personne. Sert à contrôler la réponse au client.
-export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [] } = {}) {
+// `conversationInterne` : la conversation WhatsApp jointe ou liée est celle d'un partenaire, d'un chauffeur ou d'un hôtel ; les montants de
+// ses blocs <conversation> vont dans memo.internes (revue de sécurité de la PR 299). Dans tous les cas, ces blocs ne sont jamais « tapés ».
+export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false } = {}) {
   const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), signer, prestataires, entreprise, entreprises, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
@@ -1218,10 +1316,14 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   const nomsAppels = new Map();
   for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "assistant" && b && b.type === "tool_use") nomsAppels.set(b.id, b.name);
   for (const m of messages) {
-    if (m.role === "user" && typeof m.content === "string") memo.tapes = new Set([...memo.tapes, ...montantsTapes([m.content])]);
+    const tapes = (t) => {
+      memo.tapes = new Set([...memo.tapes, ...montantsTapes([sansConversation(t)])]);
+      if (conversationInterne) for (const n of montantsTapes(conversationsJointes(t))) memo.internes.add(n);
+    };
+    if (m.role === "user" && typeof m.content === "string") tapes(m.content);
     if (m.role === "user" && Array.isArray(m.content)) {
       for (const b of m.content) {
-        if (b.type === "text") memo.tapes = new Set([...memo.tapes, ...montantsTapes([b.text])]);
+        if (b.type === "text") tapes(b.text);
         if (b.type === "tool_result" && !NOMS_OUTILS_WHATSAPP.includes(nomsAppels.get(b.tool_use_id))) {
           for (const c of Array.isArray(b.content) ? b.content : [{ type: "text", text: String(b.content || "") }]) {
             if (c.type !== "text") continue;

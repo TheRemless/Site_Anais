@@ -10,7 +10,7 @@
 // Les fiches : celle reliée à la conversation (partenaire_id, toujours dans l'entreprise de la conversation, whatsapp_type_coherent) et, pour
 // l'autre entreprise de l'espace unifié, la fiche « apporteur » de cette entreprise au même numéro que la conversation (un nom seul ne suffit pas). Une par entreprise au plus ;
 // sans fiche dans une entreprise, rien n'est posé sur ses dossiers (le déclencheur controler_apporteur_dossier refuse une fiche d'ailleurs).
-import { cleNumero } from "./whatsapp-lecture.js";
+import { CONTACTS_NOMMES, cleNumero } from "./whatsapp-lecture.js";
 
 export const CATEGORIE_APPORTEUR = "apporteur";
 // Exactement la catégorie que contrôle la base (controler_apporteur_dossier, migration 68).
@@ -134,4 +134,15 @@ export function fichesDuContact(conv, partenaires = []) {
 export function nomsABloquer(partenaires = [], exemptes = new Set()) {
   const ids = exemptes instanceof Set ? exemptes : new Set(exemptes || []);
   return (partenaires || []).filter((p) => p && !ids.has(p.id)).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
+}
+// Revue de sécurité de la PR 299 : les noms des conversations WhatsApp typées (partenaire, chauffeur, hôtel, apporteur) de l'organisation,
+// bloqués comme des noms de partenaires dans une réponse au client (whatsapp-envoi, réponse préparée). `sauf` : la conversation de
+// l'apporteur à qui l'on répond, dont le nom reste permis vers lui (PR 298). Rend { noms, erreur } ; sans la colonne type_contact (migration
+// 68 absente), aucun nom et pas d'erreur.
+// Revue de sécurité de la PR 300 : aussi une conversation reliée à une fiche partenaire (partenaire_id) sans type nommé ; son nom est souvent
+// saisi à la main par l'équipe (migration 70), « Mr Brown » par exemple.
+export async function nomsContactsTypes(db, organisationId, { sauf = null } = {}) {
+  const { data, error } = await db.from("whatsapp_conversations").select("id, nom, type_contact").eq("organisation_id", organisationId).or(`type_contact.in.(${CONTACTS_NOMMES.join(",")}),partenaire_id.not.is.null`).limit(2000);
+  if (error) return { noms: [], erreur: !(error.code === "42703" || error.code === "PGRST204") };
+  return { noms: [...new Set((data || []).filter((c) => c && c.id !== sauf && typeof c.nom === "string" && c.nom.trim()).map((c) => c.nom.trim()))], erreur: false };
 }
