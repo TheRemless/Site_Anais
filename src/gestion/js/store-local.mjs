@@ -630,10 +630,8 @@ export function creer() {
       const { rechercheDemo } = await import("./agent-whatsapp-demo.mjs");
       const convs = data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id) && c.reponses !== "jamais");
       const ids = new Set(convs.map((c) => c.id));
-      const messages = data.whatsapp_messages.filter((m) => ids.has(m.conversation_id));
-      // La base centre l'extrait sur le mot trouvé (ts_headline) : ici le texte entier, que l'écran centre de la même façon (extraitAutour).
-      const textes = new Map(messages.map((m) => [m.id, `${m.texte || ""} ${(Array.isArray(m.medias) && m.medias[0] && m.medias[0].legende) || ""}`.trim()]));
-      return rechercheDemo(q, convs, messages, Math.min(50, Math.max(1, lim))).map((t) => ({ ...t, extrait: textes.get(t.message_id) || t.extrait }));
+      // Le texte entier, comme la base : l'écran le masque puis le coupe autour du mot (extraitAutour).
+      return rechercheDemo(q, convs, data.whatsapp_messages.filter((m) => ids.has(m.conversation_id)), Math.min(50, Math.max(1, lim)));
     },
     // « Préparer une réponse » en démonstration : une proposition « en_cours » tout de suite, puis une réponse fictive après un court délai,
     // annoncées comme le ferait Realtime. Prépare même pour un contact réglé sur « Jamais » ou un message que le tri a écarté, comme la fonction.
@@ -885,15 +883,28 @@ export function creer() {
       const pieces = Array.isArray(corps.fichiers) ? corps.fichiers : [];
       // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61), comme la fonction : la conversation est lue
       // avec les droits de la personne, le message est construit depuis l'échange. En démonstration, seulement le texte des messages du client.
-      const wc = corps.whatsapp_conversation_id && !corps.conversation_id ? conversationLue(corps.whatsapp_conversation_id) : null;
       const modeWa = corps.whatsapp_mode === "maj" ? "maj" : corps.whatsapp_mode === "question" ? "question" : "creer";
+      // Une question dans une conversation de l'Assistant déjà liée (revue de la PR 297, point 4) : l'échange frais est joint aussi.
+      const suiteWa = !!corps.whatsapp_conversation_id && !!corps.conversation_id && modeWa === "question";
+      const avecWa = !!corps.whatsapp_conversation_id && (!corps.conversation_id || suiteWa);
+      const wc = avecWa ? conversationLue(corps.whatsapp_conversation_id) : null;
       // « Demander à l'assistant » (PR B) : la question de la personne, puis l'échange joint, comme la fonction (texteDepuisWhatsApp).
       const question = modeWa === "question" ? texte : "";
       let texteDemo = "";
-      if (corps.whatsapp_conversation_id && !corps.conversation_id) {
+      // Comme whatsapp_peut_ecrire : sans l'administration de l'entreprise de la conversation, une question en lecture seule, rien d'autre.
+      let waEcrit = false;
+      if (avecWa) {
         // Comme la fonction : la conversation est rangée dans l'entreprise de l'Assistant, ou encore à trier (lot 2). Les pièces cochées
         // (whatsapp_pieces) ne sont pas lues en démonstration.
         if (!wc || (wc.entite_id !== e && wc.entite_id !== null)) return { erreur: "whatsapp_introuvable" };
+        // Contact personnel : refusé dans tous les modes, avant de lire un seul message.
+        if (wc.reponses === "jamais") return { erreur: "contact_personnel" };
+        if (suiteWa) {
+          const lie = data.agent_conversations.find((c) => c.id === corps.conversation_id && c.user_id === utilisateur.user_id);
+          if (!lie || lie.entite_id !== e || lie.whatsapp_conversation_id !== wc.id) return { erreur: "conversation_introuvable" };
+        }
+        waEcrit = !!conversationEcrite(wc.id);
+        if (!waEcrit && modeWa !== "question") return { erreur: "whatsapp_lecture_seule" };
         if (modeWa === "maj" && !data.dossiers.some((d) => d.id === wc.dossier_id)) return { erreur: "dossier_introuvable" };
         if (modeWa === "question" && (!question || question.length > 2000)) return { erreur: "message_invalide" };
         const lignes = data.whatsapp_messages.filter((m) => m.conversation_id === wc.id && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte);
@@ -914,7 +925,7 @@ export function creer() {
         const { titreDepuis } = await import("./agent-calc.mjs");
         // Lot 2 : le titre est le nom du contact WhatsApp, comme la fonction (agent/whatsapp.js, titreWhatsApp).
         const titre = wc ? (wc.nom ? String(wc.nom).slice(0, 60) : `WhatsApp ${wc.telephone || ""}`.trim()) : titreDepuis(texte || (pieces[0] && pieces[0].nom) || "");
-        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre, apercu: "", dossier_id: (wc && modeWa === "maj" ? wc.dossier_id : null) || corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {}, ...(wc ? { whatsapp_conversation_id: wc.id } : {}) };
+        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre, apercu: "", dossier_id: (wc && modeWa === "maj" ? wc.dossier_id : null) || corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {}, ...(wc && waEcrit ? { whatsapp_conversation_id: wc.id } : {}) };
         data.agent_conversations.push(conv);
       }
       const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant() });
@@ -948,10 +959,10 @@ export function creer() {
       // dossiers » continue avec l'échange du client, comme « Créer le dossier ».
       const waLie = wc ? (modeWa === "question" ? wc.id : null) : conv.whatsapp_conversation_id || null;
       if (waLie) {
-        const sourceLie = sourceWhatsApp(e);
+        const sourceLie = await sourceWhatsApp(e);
         const { repondreQuestionWhatsAppDemo } = await import("./agent-whatsapp-demo.mjs");
         const q = wc ? question : texte;
-        const r = await repondreQuestionWhatsAppDemo(q, sourceLie, waLie, { libre: !!wc });
+        const r = await repondreQuestionWhatsAppDemo(q, sourceLie, waLie, { libre: !!wc, lectureSeule: !!wc && !waEcrit });
         if (r && r.evenements) {
           let dernier = "";
           for (const ev of r.evenements) {

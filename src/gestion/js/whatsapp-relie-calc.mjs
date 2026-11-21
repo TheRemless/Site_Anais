@@ -7,8 +7,9 @@
 // Règles tenues ici : un contact réglé sur « jamais » (contact personnel) n'apparaît ni dans « À faire » ni dans la recherche ; un lien vient
 // toujours de lienWhatsApp (identifiants contrôlés), jamais d'un texte libre. Testé par tests/gestion-assistant-whatsapp-ecran.test.js.
 import { N_ } from "./i18n.mjs";
-import { aFaireWhatsApp, contactPersonnel, lienWhatsApp, MARQUE_PROMESSE, sansAccents } from "./agent-whatsapp-lecture.mjs";
+import { aFaireWhatsApp, contactPersonnel, extraitAutour, lienWhatsApp, MARQUE_PROMESSE, sansAccents } from "./agent-whatsapp-lecture.mjs";
 import { nomConversation, reponsesDe } from "./whatsapp-calc.mjs";
+import { demandeAgent, demandeRecente } from "./whatsapp-suivi-calc.mjs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const estUuid = (x) => typeof x === "string" && UUID.test(x);
@@ -17,6 +18,8 @@ export const estUuid = (x) => typeof x === "string" && UUID.test(x);
 // Les questions rapides proposées dans l'Assistant ouvert depuis une conversation, et la question de la vue « À faire ».
 export const QUESTIONS_RAPIDES = [N_("Qu'y a-t-il à faire ?"), N_("Résume"), N_("Prépare les dossiers")];
 export const QUESTION_A_FAIRE_BOITE = N_("Qu'y a-t-il à faire dans WhatsApp ?");
+// Les questions rapides proposées : sans « Prépare les dossiers » en lecture seule (la fonction n'y proposerait aucune carte).
+export const questionsProposees = (demande) => QUESTIONS_RAPIDES.filter((q) => !(demande && demande.lecture_seule && q === QUESTIONS_RAPIDES[2]));
 export const QUESTION_MAX = 2000;
 // La question de la vue « À faire » passe à l'Assistant par sessionStorage et part au clic, dans une nouvelle conversation.
 export const CLE_QUESTION_AGENT = "gestion-agent-question";
@@ -31,12 +34,49 @@ export function conversationLiee(agent = [], whatsappId = "") {
   return liees[0] || null;
 }
 
+// Ce que l'Assistant fait de la demande déposée par l'écran WhatsApp (sessionStorage, déjà retirée par l'appelant). Revue de sécurité de la
+// PR 297 : seulement une demande de moins de deux minutes, pour l'entreprise ouverte, et qui correspond à la conversation ouverte :
+//   - une question (« Demander à l'assistant ») : dans la conversation de l'Assistant désignée par l'écran, liée à la même conversation
+//     WhatsApp, ou dans une nouvelle conversation si l'écran n'en a désigné aucune ;
+//   - « Créer le dossier » ou « Mettre à jour le dossier » : seulement dans une nouvelle conversation.
+// Rend { question }, { dossier } ou null.
+export function demandeAOuvrir(brut, { conv = null, entiteId = "", maintenant = Date.now() } = {}) {
+  if (!brut || !demandeRecente(brut, maintenant)) return null;
+  const w = demandeAgent(brut);
+  if (!w || (w.entite_id && w.entite_id !== entiteId)) return null;
+  if (w.whatsapp_mode === "question") {
+    const ok = conv ? !!conv.id && w.agent_conversation_id === conv.id && conv.whatsapp_conversation_id === w.whatsapp_conversation_id : !w.agent_conversation_id;
+    return ok ? { question: w } : null;
+  }
+  return conv ? null : { dossier: w };
+}
+// La question de la vue « À faire » (CLE_QUESTION_AGENT) : datée elle aussi, pour l'entreprise ouverte. Rend le texte ou "".
+export function questionBoiteAOuvrir(brut, { entiteId = "", maintenant = Date.now() } = {}) {
+  if (!brut || !demandeRecente(brut, maintenant)) return "";
+  let q = null;
+  try {
+    q = JSON.parse(brut);
+  } catch {
+    return "";
+  }
+  if (!q || typeof q.texte !== "string" || !q.texte.trim() || (q.entite && q.entite !== entiteId)) return "";
+  return q.texte.trim().slice(0, QUESTION_MAX);
+}
+
 // ---- Aller au message ---------------------------------------------------------------------------------------------------------------
 // Le message à montrer : seulement un identifiant bien formé (lireAdresse rend la valeur brute de `m`).
 export const messageCible = (adresse = {}) => (estUuid(adresse.message) ? adresse.message : "");
 // Le message est-il dans le fil chargé ? Sinon l'écran relit plus loin dans le temps (store.whatsappMessages, `inclure`).
 export const messagePresent = (messages = [], id = "") => !!id && (messages || []).some((m) => m && m.id === id);
 export const SURBRILLANCE_MS = 2000;
+// La fenêtre lue autour d'un message plus ancien que les 500 derniers : 100 messages avant, 100 après.
+export const FENETRE_MESSAGE = 100;
+// Les derniers messages et la fenêtre autour du message cité, sans doublon, dans l'ordre d'envoi.
+export function fusionnerFenetre(derniers = [], fenetre = []) {
+  const vus = new Map();
+  for (const m of [...(fenetre || []), ...(derniers || [])]) if (m && m.id && !vus.has(m.id)) vus.set(m.id, m);
+  return [...vus.values()].sort((a, b) => String(a.envoye_le || "").localeCompare(String(b.envoye_le || "")));
+}
 
 // ---- Vue « À faire » -----------------------------------------------------------------------------------------------------------------
 // Les données de l'écran (etat.brut : déjà lues avec les droits de la personne, RLS des migrations 58 et 63) au format de aFaireWhatsApp.
@@ -99,33 +139,26 @@ export const RECHERCHE_MIN = 2;
 export const RECHERCHE_MAX = 8;
 export const PAR_CONVERSATION_MAX = 3;
 export const rechercheValable = (q) => String(q || "").trim().length >= RECHERCHE_MIN;
-// L'extrait centré sur le premier mot trouvé, ce mot entre « et » (comme ts_headline de whatsapp_rechercher). Un extrait déjà marqué par la
-// base est seulement raccourci.
-export function extraitAutour(texte = "", q = "", n = 110) {
-  const t = String(texte || "").replace(/\s+/g, " ").trim();
-  if (/«[^»]+»/.test(t)) return t.length > n + 20 ? `${t.slice(0, n + 19)}…` : t;
-  const mots = sansAccents(q).split(/\s+/).map((m) => m.replace(/[^\p{L}\p{N}]+/gu, "")).filter((m) => m.length >= RECHERCHE_MIN);
-  const plat = sansAccents(t);
-  // sansAccents garde la longueur d'un texte en caractères composés : les positions valent pour le texte d'origine.
-  const memeLongueur = plat.length === t.length;
-  let i = -1;
-  let long = 0;
-  for (const m of mots) {
-    const re = new RegExp(`(?:^|[^\\p{L}\\p{N}])(${m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "u");
-    const r = re.exec(plat);
-    if (r && memeLongueur && (i < 0 || r.index < i)) {
-      i = r.index + r[0].length - r[1].length;
-      const fin = /[^\p{L}\p{N}]/u.exec(plat.slice(i));
-      long = fin ? fin.index : plat.length - i;
-    }
+// Une ligne de la palette : le mot cherché tombe dans le premier tiers, visible aussi à 390 px.
+export const EXTRAIT_MAX = 72;
+// Les mots cherchés, sans accents ni ponctuation, deux lettres au moins.
+export const motsCherches = (q = "") => sansAccents(q).split(/\s+/).map((m) => m.replace(/[^\p{L}\p{N}]+/gu, "")).filter((m) => m.length >= RECHERCHE_MIN).slice(0, 6);
+// L'extrait découpé pour l'affichage, chaque mot qui commence par un mot cherché marqué « trouve » : [{ texte, trouve }]. Sans délimiteur
+// venu de la base (whatsapp_rechercher rend le texte entier, la revue de sécurité de la PR 295) : le surlignage se fait ici, sur l'extrait
+// déjà masqué par extraitAutour (agent-whatsapp-lecture.mjs).
+export function morceauxSurlignes(extrait = "", q = "") {
+  const t = String(extrait || "");
+  const mots = motsCherches(q);
+  if (!mots.length || !t) return t ? [{ texte: t, trouve: false }] : [];
+  const out = [];
+  // Les jetons (lettres et chiffres) et ce qui les sépare, dans l'ordre : un jeton trouvé si sa forme sans accents commence par un mot.
+  for (const m of t.matchAll(/([\p{L}\p{N}]+)|([^\p{L}\p{N}]+)/gu)) {
+    const trouve = !!m[1] && mots.some((x) => sansAccents(m[1]).startsWith(x));
+    const dernier = out[out.length - 1];
+    if (dernier && dernier.trouve === trouve && !trouve) dernier.texte += m[0];
+    else out.push({ texte: m[0], trouve });
   }
-  if (i < 0) return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-  let debut = Math.max(0, i - Math.floor((n - long) / 3));
-  // Commencer au début d'un mot.
-  const espace = debut > 0 ? t.slice(debut, i).search(/\s/) : -1;
-  if (espace >= 0) debut += espace + 1;
-  const finX = Math.min(t.length, debut + n);
-  return `${debut > 0 ? "…" : ""}${t.slice(debut, i)}«${t.slice(i, i + long)}»${t.slice(i + long, finX)}${finX < t.length ? "…" : ""}`;
+  return out;
 }
 // Les messages trouvés (whatsapp_rechercher : conversation_id, message_id, extrait, envoye_le) mis en résultats : seulement les conversations
 // de la boîte chargée pour la personne (`conversations`, mêmes droits que l'écran), jamais un contact personnel, trois messages au plus par
@@ -147,7 +180,8 @@ export function resultatsRechercheWhatsApp(trouves = [], { conversations = [], c
       message: t.message_id,
       nom: nomConversation(c, c.client_id ? fiches.get(c.client_id) || null : null),
       entite_id: c.entite_id || null,
-      extrait: extraitAutour(t.extrait, q),
+      // Masqué d'abord (numéros, comptes, IBAN), puis coupé autour du premier mot cherché.
+      extrait: extraitAutour(t.extrait, motsCherches(q), EXTRAIT_MAX),
       le: t.envoye_le || null,
       lien: lienWhatsApp({ conversation: c.id, message: t.message_id, entite: c.entite_id || "" }),
     });

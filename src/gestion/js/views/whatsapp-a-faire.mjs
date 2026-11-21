@@ -27,7 +27,7 @@ function demanderCommentaire(entites) {
   const e = entites.find((x) => x.id === etat.entiteId && assistantDans(x.id)) || entites.find((x) => assistantDans(x.id));
   if (!e) return;
   try {
-    sessionStorage.setItem(CLE_QUESTION_AGENT, JSON.stringify({ texte: tr(QUESTION_A_FAIRE_BOITE), entite: e.id }));
+    sessionStorage.setItem(CLE_QUESTION_AGENT, JSON.stringify({ texte: tr(QUESTION_A_FAIRE_BOITE), entite: e.id, le: Date.now() }));
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et posez la question."), true);
   }

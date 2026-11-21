@@ -2459,3 +2459,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 @media (prefers-reduced-motion: reduce) { .wa-bulle { transition: none; } }
 /* Cinq filtres avec « À faire » : sur ordinateur ils passent à la ligne au lieu de défiler. */
 @media (min-width: 900px) { .wa-liste .puces { flex-wrap: wrap; overflow: visible; } }
+/* Revue de la PR 297 : trombone éteint pendant une question WhatsApp, limite de longueur dite sous le champ. */
+.agent-joindre.desactive { opacity: 0.45; cursor: not-allowed; }
+.agent-wa-longueur:empty { display: none; }
+.agent-joints-erreur.info { color: var(--texte-2); }

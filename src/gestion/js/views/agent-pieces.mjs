@@ -38,7 +38,21 @@ export function piecesSaisie({ change = () => {} } = {}) {
     erreur.textContent = "";
     dessiner();
   };
+  // `bloquer(raison)` : pièces jointes indisponibles (une question WhatsApp en attente part avec l'échange, sans fichier). La raison est dite
+  // à la place du trombone et à chaque essai (glisser, coller). bloquer("") les rend.
+  let bloque = "";
+  const bloquer = (raison = "") => {
+    bloque = raison;
+    entree.disabled = !!raison;
+    bouton.classList.toggle("desactive", !!raison);
+    bouton.setAttribute("aria-disabled", raison ? "true" : "false");
+    bouton.title = raison || tr("Joindre une photo ou un PDF");
+    if (raison && joints.length) vider();
+    erreur.textContent = raison;
+    erreur.classList.toggle("info", !!raison);
+  };
   const ajouter = (fichiers) => {
+    if (bloque) return void (erreur.textContent = bloque);
     const { gardes, refus } = trierAjout(joints.map((j) => j.fichier), [...fichiers]);
     for (const f of gardes) joints.push({ fichier: f, apercu: String(f.type).startsWith("image/") ? URL.createObjectURL(f) : "" });
     erreur.textContent = refus ? erreurFichier(refus) : "";
@@ -97,7 +111,7 @@ export function piecesSaisie({ change = () => {} } = {}) {
     erreur.textContent = "";
     dessiner();
   };
-  return { bouton, entree, liste, erreur, attacher, coller, ajouter, prets, vider, fichiers: () => joints.map((j) => j.fichier), noms: () => joints.map((j) => ({ nom: j.fichier.name || tr("Photo"), media_type: estPdf(j.fichier.type) ? "application/pdf" : "image/jpeg", taille: j.fichier.size })) };
+  return { bouton, entree, liste, erreur, attacher, coller, ajouter, bloquer, prets, vider, fichiers: () => joints.map((j) => j.fichier), noms: () => joints.map((j) => ({ nom: j.fichier.name || tr("Photo"), media_type: estPdf(j.fichier.type) ? "application/pdf" : "image/jpeg", taille: j.fichier.size })) };
 }
 
 // Les vignettes d'un message envoyé : le nom et le type ; un clic ouvre le fichier (relu dans la base, tant qu'il est gardé).

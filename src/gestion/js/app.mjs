@@ -489,8 +489,6 @@ function chercher(q) {
   return out;
 }
 
-// L'extrait d'un message WhatsApp, le mot trouvé (entre « et ») surligné. Du texte seulement, jamais du HTML.
-const extraitMarque = (t) => String(t).split(/«([^»]*)»/).map((x, i) => (i % 2 ? h("mark", null, x) : x));
 function ouvrirRecherche() {
   if (document.querySelector(".palette-fond")) return;
   const precedent = document.activeElement;
@@ -509,10 +507,10 @@ function ouvrirRecherche() {
     wa.attente = true;
     wa.minuterie = setTimeout(async () => {
       try {
-        const [{ resultatsRechercheWhatsApp }, trouves] = await Promise.all([import("./whatsapp-relie-calc.mjs"), etat.store.whatsappRechercher(q, { lim: 20 })]);
+        const [{ resultatsRechercheWhatsApp, morceauxSurlignes }, trouves] = await Promise.all([import("./whatsapp-relie-calc.mjs"), etat.store.whatsappRechercher(q, { lim: 20 })]);
         if (tour !== wa.tour || !fond.isConnected) return;
         const lignes = resultatsRechercheWhatsApp(trouves, { conversations: etat.brut.whatsapp_conversations || [], clients: etat.brut.clients || [], q });
-        Object.assign(wa, { q, attente: false, resultats: lignes.map((r) => ({ groupe: tr("WhatsApp"), icone: "whatsapp", titre: r.nom, detail: r.extrait, marque: true, droite: r.le ? quand(r.le, { langue: langueActive() }) : "", href: r.lien })) });
+        Object.assign(wa, { q, attente: false, resultats: lignes.map((r) => ({ groupe: tr("WhatsApp"), icone: "whatsapp", titre: r.nom, detail: r.extrait, morceaux: morceauxSurlignes(r.extrait, q), droite: r.le ? quand(r.le, { langue: langueActive() }) : "", href: r.lien })) });
       } catch {
         if (tour === wa.tour) Object.assign(wa, { q, attente: false, resultats: [] });
       }
@@ -562,7 +560,7 @@ function ouvrirRecherche() {
           "li",
           { role: "option", id: `palette-${i}`, "aria-selected": i === actif ? "true" : "false", onmousedown: (e) => e.preventDefault(), onclick: () => ouvrir(r), onmousemove: () => actif !== i && ((actif = i), marquer()) },
           icone(r.icone, 18),
-          h("span", { class: "palette-texte" }, h("strong", null, r.titre), r.detail ? h("span", null, r.marque ? extraitMarque(r.detail) : r.detail) : null),
+          h("span", { class: "palette-texte" }, h("strong", null, r.titre), r.detail ? h("span", null, r.morceaux ? r.morceaux.map((m) => (m.trouve ? h("mark", null, m.texte) : m.texte)) : r.detail) : null),
           r.droite ? h("span", { class: "palette-droite" }, r.droite) : null
         )
       );

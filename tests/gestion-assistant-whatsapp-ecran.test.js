@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as R from "../src/gestion/js/whatsapp-relie-calc.mjs";
-import { demandeAgent, MODES_DOSSIER } from "../src/gestion/js/whatsapp-suivi-calc.mjs";
+import { demandeAgent, demandeRecente, DEMANDE_VALIDITE_MS, ERREURS_AGENT_WHATSAPP, MODES_DOSSIER } from "../src/gestion/js/whatsapp-suivi-calc.mjs";
 import { echangeWhatsApp } from "../src/gestion/js/agent-calc.mjs";
 import { texteQuestionDemo, repondreQuestionWhatsAppDemo } from "../src/gestion/js/agent-whatsapp-demo.mjs";
 import { texteDepuisWhatsApp, MODES, MODES_DEMANDE } from "../supabase/functions/agent/whatsapp.js";
@@ -39,7 +39,7 @@ test("demander : jamais pour un contact personnel ; la conversation liée de l'A
 
 test("demander : la demande « question » passe par la clé de « Créer le dossier », sans pièce, sans envoi d'office", () => {
   assert.deepEqual(MODES_DOSSIER, ["creer", "maj"], "les modes du dossier ne changent pas");
-  assert.deepEqual(demandeAgent({ id: "w1", mode: "question", entite: "s", agent: "a3", pieces: ["o/c/a.jpg"] }), { whatsapp_conversation_id: "w1", whatsapp_mode: "question", entite_id: "s", whatsapp_pieces: [], agent_conversation_id: "a3" });
+  assert.deepEqual(demandeAgent({ id: "w1", mode: "question", entite: "s", agent: "a3", pieces: ["o/c/a.jpg"] }), { whatsapp_conversation_id: "w1", whatsapp_mode: "question", entite_id: "s", whatsapp_pieces: [], agent_conversation_id: "a3", lecture_seule: false });
   assert.equal(demandeAgent({ id: "w1", mode: "question" }).agent_conversation_id, null);
   const vue = lire("src/gestion/js/views/agent.mjs");
   // La question n'est envoyée qu'au clic (question rapide ou bouton Envoyer) : ouvrir ne fait qu'afficher les questions rapides.
@@ -63,7 +63,7 @@ test("fonction agent : la question entre <question>, l'échange joint par texteD
   assert.equal(echangeWhatsApp("Crée le dossier…\n\n<conversation>\n[Client 20.11.2026 10:00] Hi\n</conversation>").question, undefined);
   const f = lire("supabase/functions/agent/index.ts");
   assert.match(f, /if \(waId && waMode === "question" && \(!waQuestion \|\| waQuestion\.length > QUESTION_MAX_WA\)\) return json\(\{ erreur: "message_invalide" \}, 400\);/);
-  assert.match(f, /question: waQuestion \}\);/);
+  assert.match(f, /question: waQuestion, lectureSeule: !waEcrit \}\);/);
   // La démonstration écrit le même format.
   const d = texteQuestionDemo("Résume", [{ sens: "entrant", texte: "Hi [Nani 10:00] there", envoye_le: il_y_a(30) }]);
   assert.equal(echangeWhatsApp(d).question, "Résume");
@@ -83,10 +83,12 @@ test("liens : seulement la forme #/whatsapp?c=… construite par le code ; le me
   const wa = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(wa, /"data-message": m\.id/);
   assert.match(wa, /whatsappMessages\(c\.id, \{ inclure: messageCible\(lireAdresse\(location\.hash\)\) \}\)/, "le message ancien est chargé");
-  assert.match(wa, /if \(cle && cle !== messageMontre && montrerMessage\(racine, cible\)\) return void \(messageMontre = cle\);/, "montré une fois par adresse");
+  assert.match(wa, /if \(cle && cle !== messageMontre && montrerMessage\(racine, cible\)\) return void \(\(messageMontre = cle\), history\.replaceState\(null, "", adresseConversation\(ouverte\)\)\);/, "montré une fois, puis retiré de l'adresse");
   assert.equal(R.SURBRILLANCE_MS, 2000);
   const sb = lire("src/gestion/js/store-supabase.mjs");
-  assert.match(sb, /if \(inclure && lus\.length >= 500 && !lus\.some\(\(m\) => m\.id === inclure\)\)/);
+  assert.match(sb, /if \(!inclure \|\| lus\.length < 500 \|\| lus\.some\(\(m\) => m\.id === inclure\)\) return lus;/);
+  assert.match(sb, /lte\("envoye_le", t\)\.order\("envoye_le", \{ ascending: false \}\)\.limit\(FENETRE_MESSAGE \+ 1\)/, "une fenêtre autour du message, pas les 5 000 derniers");
+  assert.doesNotMatch(sb, /limit\(depuis \? 5000/);
 });
 
 // ---- Vue « À faire » -----------------------------------------------------------------------------------------------------------------
@@ -165,23 +167,99 @@ test("recherche : messages trouvés en groupe WhatsApp, au message, jamais un co
   assert.equal(r.length, 3);
   assert.ok(r.every((x) => x.conversation === a.id && x.nom === "Emma"));
   assert.ok(r.every((x) => /^#\/whatsapp\?c=[0-9a-f-]{36}&m=[0-9a-f-]{36}&entite=[0-9a-f-]{36}$/.test(x.lien)));
-  assert.equal(r[0].extrait, "«Ferry» to Phi Phi number 0");
+  assert.equal(r[0].extrait, "Ferry to Phi Phi number 0", "le texte entier rendu par la base, masqué et coupé ici");
   assert.equal(R.rechercheValable("f"), false);
   assert.equal(R.rechercheValable(" fe "), true);
   assert.equal(R.RECHERCHE_DELAI_MS, 300);
 });
 
-test("recherche : extrait centré sur le mot, accents compris ; un extrait marqué par la base reste tel quel", () => {
-  const long = `${"bla ".repeat(40)}Rendez-vous à l'hôtel Lanta Sand demain ${"bla ".repeat(40)}`;
-  const e = R.extraitAutour(long, "hotel");
-  assert.match(e, /^….*«hôtel» Lanta Sand.*…$/);
-  assert.ok(e.length <= 115);
-  assert.equal(R.extraitAutour("Le «ferry» part à 9h", "ferry"), "Le «ferry» part à 9h");
-  assert.equal(R.extraitAutour("rien ici", "ferry"), "rien ici");
+test("recherche : le texte entier masqué avant d'être coupé, le mot cherché surligné par l'écran (revue de la PR 297, point 9)", () => {
+  const c = conv({ nom: "Emma" });
+  const long = `${"bla ".repeat(60)}Call me on +66 81 234 5678 at the hôtel Lanta Sand tomorrow ${"bla ".repeat(40)}`;
+  const [r] = R.resultatsRechercheWhatsApp([{ conversation_id: c.id, message_id: id(), extrait: long, envoye_le: il_y_a(1) }], { conversations: [c], q: "hotel" });
+  assert.doesNotMatch(r.extrait, /81 234|5678/, "le numéro est masqué avant la coupe");
+  assert.match(r.extrait, /^….*hôtel Lanta Sand.*…$/);
+  assert.deepEqual(R.morceauxSurlignes("At the hôtel, Hotelier", "hotel").filter((m) => m.trouve).map((m) => m.texte), ["hôtel", "Hotelier"], "sans accents ni casse, en préfixe");
+  assert.deepEqual(R.morceauxSurlignes("«ferry» time", "ferry").filter((m) => m.trouve).map((m) => m.texte), ["ferry"], "aucun délimiteur n'est requis");
+  assert.deepEqual(R.morceauxSurlignes("rien", ""), [{ texte: "rien", trouve: false }]);
+  assert.equal(R.rechercheValable("f"), false);
   const app = lire("src/gestion/js/app.mjs");
   assert.match(app, /if \(!whatsappVisible\(\) \|\| !etat\.store\.whatsappRechercher \|\| q\.length < 2\)/, "seulement pour qui lit la boîte, deux caractères au moins");
   assert.match(app, /\}, 300\);/);
-  assert.match(app, /h\("mark", null, x\)/, "le mot trouvé surligné, en texte");
+  assert.match(app, /m\.trouve \? h\("mark", null, m\.texte\) : m\.texte/, "le mot trouvé surligné, en texte");
+  assert.doesNotMatch(app, /«\(\[\^»\]\*\)»/, "plus de délimiteurs attendus de la base");
+});
+
+// ---- Revue de sécurité de la PR 297 ---------------------------------------------------------------------------------------------
+test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, lecture seule sans liaison ni carte", () => {
+  const f = lire("supabase/functions/agent/index.ts");
+  const i403 = f.indexOf('if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);');
+  assert.ok(i403 > 0, "contact personnel : 403");
+  assert.ok(i403 < f.indexOf('sb.from("whatsapp_messages").select("sens, texte, medias'), "refusé avant de lire un seul message");
+  assert.match(f, /select\("id, telephone, nom, entite_id, dossier_id, reponses"\)/);
+  assert.match(f, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: waId \}\)/);
+  assert.match(f, /if \(!waEcrit && waMode !== "question"\) return json\(\{ erreur: "whatsapp_lecture_seule" \}, 403\);/, "créer et mettre à jour refusés");
+  assert.match(f, /\.\.\.\(waId && waEcrit \? \{ whatsapp_conversation_id: waId \} : \{\}\)/, "en lecture seule, aucune liaison");
+  const t = texteDepuisWhatsApp({ mode: "question", conv: { id: id(), nom: "Tom" }, question: "Prépare les dossiers", messages: [], lectureSeule: true });
+  assert.match(t, /Lecture seule : ne propose aucune carte/);
+  assert.doesNotMatch(texteDepuisWhatsApp({ mode: "question", conv: {}, question: "Résume", messages: [] }), /Lecture seule/);
+  assert.ok(ERREURS_AGENT_WHATSAPP.contact_personnel && ERREURS_AGENT_WHATSAPP.whatsapp_lecture_seule);
+  // Écran : « Prépare les dossiers » masqué en lecture seule ; la demande le dit.
+  assert.deepEqual(R.questionsProposees({ lecture_seule: true }), ["Qu'y a-t-il à faire ?", "Résume"]);
+  assert.deepEqual(R.questionsProposees({ lecture_seule: false }), R.QUESTIONS_RAPIDES);
+  assert.equal(demandeAgent({ id: "w1", mode: "question", lecture: true }).lecture_seule, true);
+  assert.match(lire("src/gestion/js/views/whatsapp.mjs"), /\.\.\.\(peutEcrire\(c\) \? \{\} : \{ lecture: true \}\)/);
+});
+
+test("revue 297, point 4 : une question dans la conversation liée rouverte joint l'échange frais, liaison contrôlée", () => {
+  const f = lire("supabase/functions/agent/index.ts");
+  assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id && waMode === "question";/);
+  assert.match(f, /lie\.data\.whatsapp_conversation_id !== waId\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
+  const vue = lire("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /\.\.\.\(conv \? \{ conversation_id: conv\.id \} : \{\}\), whatsapp_conversation_id: question\.whatsapp_conversation_id, whatsapp_mode: "question"/);
+});
+
+test("revue 297, point 5 : la demande de l'écran est retirée à chaque lecture, vaut deux minutes et pour la conversation ouverte", () => {
+  const T = 1_000_000_000_000;
+  const d = (o) => JSON.stringify({ id: "w1", mode: "question", entite: "s", le: T, ...o });
+  assert.equal(demandeRecente(d({}), T + 60_000), true);
+  assert.equal(demandeRecente(d({}), T + DEMANDE_VALIDITE_MS + 1), false, "plus de deux minutes");
+  assert.equal(demandeRecente(d({ le: undefined }), T), false, "sans date");
+  assert.equal(demandeRecente(d({}), T - 1000), false, "datée dans le futur");
+  assert.equal(R.demandeAOuvrir(d({}), { entiteId: "s", maintenant: T }).question.whatsapp_conversation_id, "w1", "nouvelle conversation");
+  assert.equal(R.demandeAOuvrir(d({}), { entiteId: "t", maintenant: T }), null, "autre entreprise");
+  assert.equal(R.demandeAOuvrir(d({ agent: "a1" }), { entiteId: "s", maintenant: T }), null, "l'écran attendait une conversation liée");
+  assert.ok(R.demandeAOuvrir(d({ agent: "a1" }), { conv: { id: "a1", whatsapp_conversation_id: "w1" }, entiteId: "s", maintenant: T }).question);
+  assert.equal(R.demandeAOuvrir(d({ agent: "a1" }), { conv: { id: "a2", whatsapp_conversation_id: "w1" }, entiteId: "s", maintenant: T }), null, "une autre conversation ouverte");
+  assert.equal(R.demandeAOuvrir(d({ agent: "a1" }), { conv: { id: "a1", whatsapp_conversation_id: "w9" }, entiteId: "s", maintenant: T }), null, "liée à une autre conversation WhatsApp");
+  assert.ok(R.demandeAOuvrir(d({ mode: "creer" }), { entiteId: "s", maintenant: T }).dossier);
+  assert.equal(R.demandeAOuvrir(d({ mode: "creer" }), { conv: { id: "a1" }, entiteId: "s", maintenant: T }), null, "un dossier seulement dans une nouvelle conversation");
+  assert.equal(R.questionBoiteAOuvrir(JSON.stringify({ texte: "Qu'y a-t-il ?", entite: "s", le: T }), { entiteId: "s", maintenant: T }), "Qu'y a-t-il ?");
+  assert.equal(R.questionBoiteAOuvrir(JSON.stringify({ texte: "Qu'y a-t-il ?", entite: "s", le: T - 200_000 }), { entiteId: "s", maintenant: T }), "");
+  const vue = lire("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /const brut = sessionStorage\.getItem\(CLE_DEMANDE_AGENT\);\n\s+sessionStorage\.removeItem\(CLE_DEMANDE_AGENT\);/, "retirée avant toute décision");
+  const wa = lire("src/gestion/js/views/whatsapp.mjs");
+  assert.equal((wa.match(/le: Date\.now\(\)/g) || []).length, 2, "les deux demandes de l'écran sont datées");
+  assert.match(lire("src/gestion/js/views/whatsapp-a-faire.mjs"), /entite: e\.id, le: Date\.now\(\)/);
+});
+
+test("revue 297, points 6 et 7 : pas de pièce jointe et QUESTION_MAX caractères pendant une question WhatsApp", () => {
+  const vue = lire("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /pieces\.bloquer\(attente \? tr\("Pièces jointes indisponibles pour une question sur WhatsApp/);
+  assert.match(vue, /champ\.maxLength = attente \? QUESTION_MAX : 8000;/);
+  assert.match(vue, /if \(question && texte\.length > QUESTION_MAX\) return void/);
+  const p = lire("src/gestion/js/views/agent-pieces.mjs");
+  assert.match(p, /if \(bloque\) return void \(erreur\.textContent = bloque\);/, "glisser ou coller ne joint rien non plus");
+  assert.match(p, /entree\.disabled = !!raison;/);
+  assert.equal(R.QUESTION_MAX, 2000);
+});
+
+test("revue 297, point 8 : la fenêtre autour d'un message ancien s'ajoute aux derniers, sans doublon, dans l'ordre", () => {
+  const m = (i) => ({ id: `m${i}`, envoye_le: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString() });
+  const derniers = [m(50), m(51), m(52)];
+  const fenetre = [m(3), m(4), m(5), m(51)];
+  assert.deepEqual(R.fusionnerFenetre(derniers, fenetre).map((x) => x.id), ["m3", "m4", "m5", "m50", "m51", "m52"]);
+  assert.equal(R.FENETRE_MESSAGE, 100);
 });
 
 // ---- Démonstration -----------------------------------------------------------------------------------------------------------------
@@ -222,6 +300,24 @@ test("démonstration : bouton, Assistant lié qui répond, recherche « ferry »
     // « Prépare les dossiers » : la démonstration lit l'échange de Jade et propose des cartes.
     q = await envoyer({ conversation_id: debut.id, texte: "Prépare les dossiers" });
     assert.ok(q.ev.some((x) => x.t === "carte" || x.t === "texte"));
+    // Revue 297, point 4 : une question dans la conversation liée rouverte joint l'échange frais ; une liaison fausse est refusée.
+    const avant = (await store.agentFil(debut.id)).messages.length;
+    q = await envoyer({ conversation_id: debut.id, whatsapp_conversation_id: jade.id, whatsapp_mode: "question", texte: "Résume" });
+    assert.deepEqual(q.r, { ok: true });
+    const fil2 = await store.agentFil(debut.id);
+    const dernierUser = fil2.messages.slice(avant).find((m) => m.role === "user").contenu.find((b) => b.type === "text").text;
+    assert.equal(echangeWhatsApp(dernierUser).question, "Résume");
+    assert.match(dernierUser, /<conversation>[\s\S]*Two bookings for you![\s\S]*<\/conversation>/, "l'échange frais est joint");
+    const autre = d.whatsapp_conversations.find((c) => c.entite_id === exc.id && c.id !== jade.id && c.reponses !== "jamais");
+    assert.equal((await envoyer({ conversation_id: debut.id, whatsapp_conversation_id: autre.id, whatsapp_mode: "question", texte: "Résume" })).r.erreur, "conversation_introuvable");
+    // Revue 297, point 1 : un contact personnel est refusé dans tous les modes, rien n'est lu.
+    const taxi = d.entites.find((e) => e.slug === "taxi");
+    for (const mode of ["question", "creer", "maj"]) {
+      const ev = [];
+      const r = await store.agentEnvoyer({ entite_id: taxi.id, whatsapp_conversation_id: somchai.id, whatsapp_mode: mode, whatsapp_pieces: [], texte: "Résume" }, (x) => ev.push(x));
+      assert.equal(r.erreur, "contact_personnel", mode);
+      assert.ok(!ev.length, `${mode} : aucune conversation créée, rien envoyé`);
+    }
     // Question vide refusée, contact personnel jamais lu.
     assert.equal((await envoyer({ whatsapp_conversation_id: jade.id, whatsapp_mode: "question", texte: "" })).r.erreur, "message_invalide");
     const perso = await repondreQuestionWhatsAppDemo("Résume", null, somchai.id);

@@ -420,7 +420,7 @@ async function versAssistant(c, prop) {
   const pieces = await choisirPieces(c);
   if (pieces === null) return;
   try {
-    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces }));
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces, le: Date.now() }));
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
@@ -452,7 +452,8 @@ async function demanderAssistant(c, prop) {
     liee = null;
   }
   try {
-    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: "question", entite: entiteId, ...(liee ? { agent: liee.id } : {}) }));
+    // Datée (valable deux minutes) ; `lecture` : conversation d'une entreprise que la personne n'administre pas.
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: "question", entite: entiteId, le: Date.now(), ...(peutEcrire(c) ? {} : { lecture: true }), ...(liee ? { agent: liee.id } : {}) }));
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
@@ -1033,7 +1034,8 @@ export async function vueWhatsApp() {
       const zone = racine.querySelector(".wa-messages");
       const colonne = racine.querySelector(".wa-liste");
       if (colonne && defilListe) colonne.scrollTop = defilListe;
-      if (cle && cle !== messageMontre && montrerMessage(racine, cible)) return void (messageMontre = cle);
+      // Montré, le message quitte l'adresse : un rechargement ou un redessin ne ramène plus dessus.
+      if (cle && cle !== messageMontre && montrerMessage(racine, cible)) return void ((messageMontre = cle), history.replaceState(null, "", adresseConversation(ouverte)));
       if (!replacer) return void (zone && (zone.scrollTop = defilMessages));
       if (window.matchMedia("(min-width: 900px)").matches) zone && (zone.scrollTop = zone.scrollHeight);
       else {

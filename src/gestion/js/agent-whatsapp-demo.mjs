@@ -112,9 +112,14 @@ const demandeDossiers = (t) => /pr[ée]pare|dossier|cr[ée]er|booking|file/i.tes
 // Une question sur une conversation précise (`id`). Rend { evenements } quand la démonstration y répond, { preparer: true } pour « Prépare
 // les dossiers » (la démonstration habituelle lit alors l'échange du client) ou null (autre suite de la conversation). `libre` : une question
 // quelconque reçoit un résumé, comme la première question d'une conversation ouverte depuis WhatsApp.
-export async function repondreQuestionWhatsAppDemo(question, source, id, { maintenant = Date.now(), libre = false } = {}) {
-  if (!source || !id) return null;
-  if (demandeDossiers(question) && !demandeAFaire(question)) return { preparer: true };
+// `lectureSeule` : la conversation appartient à une entreprise que la personne n'administre pas ; aucun dossier n'est préparé.
+export async function repondreQuestionWhatsAppDemo(question, source, id, { maintenant = Date.now(), libre = false, lectureSeule = false } = {}) {
+  if (!id) return null;
+  if (demandeDossiers(question) && !demandeAFaire(question)) {
+    if (lectureSeule) return { evenements: [{ t: "texte", delta: "Lecture seule : cette conversation appartient à une entreprise que vous n'administrez pas. Je réponds à vos questions, sans préparer de dossier." }] };
+    return { preparer: true };
+  }
+  if (!source) return null;
   const ev = [];
   if (demandeAFaire(question)) {
     ev.push({ t: "etape", outil: "a_faire_whatsapp" });

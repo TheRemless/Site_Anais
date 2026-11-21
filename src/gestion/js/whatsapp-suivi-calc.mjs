@@ -23,8 +23,24 @@ export function demandeAgent(valeur) {
   const base = { whatsapp_conversation_id: v.id, whatsapp_mode: v.mode, entite_id: typeof v.entite === "string" ? v.entite : null, whatsapp_pieces: pieces };
   // « Demander à l'assistant » (PR B) : rien ne part tout seul, la personne tape ou choisit sa question. `agent` : la conversation de
   // l'Assistant déjà liée, rouverte au lieu d'en créer une.
-  return v.mode === "question" ? { ...base, whatsapp_pieces: [], agent_conversation_id: typeof v.agent === "string" && v.agent ? v.agent : null } : base;
+  // `lecture` : la personne n'administre pas l'entreprise de la conversation (lecture seule) ; « Prépare les dossiers » n'est pas proposé.
+  return v.mode === "question" ? { ...base, whatsapp_pieces: [], agent_conversation_id: typeof v.agent === "string" && v.agent ? v.agent : null, lecture_seule: v.lecture === true } : base;
 }
+// Revue de sécurité de la PR 297 : la demande déposée par l'écran WhatsApp ne vaut que deux minutes (`le` : Date.now() au dépôt). Plus
+// vieille, sans date ou datée dans le futur, elle est ignorée : un onglet rouvert plus tard n'envoie rien.
+export const DEMANDE_VALIDITE_MS = 2 * 60 * 1000;
+export const demandeRecente = (v, maintenant = Date.now()) => {
+  let x = v;
+  if (typeof x === "string") {
+    try {
+      x = JSON.parse(x);
+    } catch {
+      return false;
+    }
+  }
+  const le = x && typeof x === "object" ? Number(x.le) : NaN;
+  return Number.isFinite(le) && maintenant - le >= 0 && maintenant - le <= DEMANDE_VALIDITE_MS;
+};
 
 // ---- Pièces à joindre (fonction « agent », 20.11.2026 : rien n'est joint d'office) -----------------------------------------------------------
 // Une capture de virement ou de compte contient des coordonnées bancaires : la personne coche elle-même les photos et PDF à joindre, aucun
@@ -75,6 +91,8 @@ export function liaisonApresDossier(conv, dossier, entiteId) {
 export const ERREURS_AGENT_WHATSAPP = {
   whatsapp_introuvable: N_("Cette conversation WhatsApp n'est plus lisible ou appartient à une autre entreprise."),
   dossier_introuvable: N_("Aucun dossier n'est relié à cette conversation : utilisez « Créer le dossier »."),
+  contact_personnel: N_("Ce contact est réglé « Contact personnel » : rien de sa conversation n'est envoyé à l'assistant."),
+  whatsapp_lecture_seule: N_("Cette conversation appartient à une entreprise que vous n'administrez pas : l'assistant peut seulement répondre à une question, sans créer de dossier."),
 };
 
 // ---- Signal de paiement -----------------------------------------------------------------------------------------------------------------
