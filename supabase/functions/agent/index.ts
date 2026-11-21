@@ -37,7 +37,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, conversationDeClient, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -890,11 +890,13 @@ Deno.serve(async (req) => {
   ]);
   if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
   const lignesAppris = autreEnt ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.data?.nom || "", nomAutre: autreEnt.nom }) : lus.data || [];
-  const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte });
+  // Chez Secret et Taxi, les réponses corrigées perdent leur signature avant de servir d'exemple (prompt.js, blocApprentissages).
+  const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte, signatures: signe(reglages) ? null : [ent.data?.nom || "", ...(unifie ? unifie.entites.map((e) => e.nom) : [])].filter(Boolean) });
   // Le contrôle de la réponse au client (revue de sécurité de la PR 299). Une conversation jointe ou liée de partenaire, de chauffeur ou
-  // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne.
+  // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne. Celle
+  // d'un client : les montants écrits par Nani y sont des prix de vente (conversationClient, 21.11.2026), jamais ceux du client.
   const typeLu = waLue && typeof waLue.type_contact === "string" ? waLue.type_contact : "";
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu) });
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: conversationDeClient(waLue) });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;
@@ -904,10 +906,16 @@ Deno.serve(async (req) => {
   if (!CONTACTS_NOMMES.includes(typeLu) && waLue && waLue.partenaire_id && waLue.nom) ajouterNoms(memo, [{ conversation: waLue.id, nom: String(waLue.nom) }]);
   // Les lectures de la boîte des échanges précédents (montants internes et noms lus), avant leur retrait pour Claude.
   retenirLectures(gardes, memo);
-  // Les nets de l'entreprise (des deux en espace unifié), lus avec la clé de service comme la boîte (whatsapp/reponse.ts) : seulement pour
-  // le contrôle « montant_interne ». Ils ne vont que dans memo.internes : ni dans les consignes, ni dans les messages, ni dans un résultat
-  // d'outil, ni dans le flux vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
-  for (const n of await netsPourControle(admin, idsEntites)) memo.internes.add(n);
+  // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte
+  // (whatsapp/reponse.ts) : seulement pour le contrôle de la réponse. Ceux des services de la demande en cours (rendus par un outil de la
+  // conversation, ou du dossier relié) bloquent (montant_interne) ; ceux des autres services avertissent (montant_egal_net, faux blocage du
+  // 21.11.2026). Ils ne vont que dans memo.nets : ni dans les consignes, ni dans les messages, ni dans un résultat d'outil, ni dans le flux
+  // vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
+  memo.nets = await netsPourControle(admin, idsEntites);
+  // Le dossier relié : ses services (leurs nets bloquent), ses nets, marges et commissions (bloquent aussi).
+  const relie = await dossierPourControle(admin, conv!.dossier_id, idsEntites);
+  memo.servicesEnCours = relie.services;
+  for (const n of relie.internes) memo.internes.add(n);
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange

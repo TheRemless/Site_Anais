@@ -91,7 +91,7 @@ test("point 2 : lire_conversation et chercher_conversations d'un partenaire, d'u
 });
 
 test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, jamais rendus ni envoyés chez Claude", async () => {
-  // La lecture : prestations_nets et trajets_nets des entreprises données, en nombres.
+  // La lecture : prestations_nets et trajets_nets des entreprises données, chaque net avec son service (21.11.2026).
   const appels = [];
   const db = {
     from: (table) => ({
@@ -99,36 +99,44 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
         in: (col, ids) => ({
           range: async () => {
             appels.push([table, cols, col, ids]);
-            return { data: table === "prestations_nets" ? [{ net: 1100, net_enfant: 550 }, { net: null }] : [{ net_adulte: 1350, net_enfant: 0 }], error: null };
+            return { data: table === "prestations_nets" ? [{ prestation_id: "p1", net: 1100, net_enfant: 550 }, { prestation_id: "p2", net: null }] : [{ trajet_id: "t1", net_adulte: 1350, net_enfant: 0 }], error: null };
           },
         }),
       }),
     }),
   };
   const s = await netsPourControle(db, ["e1", "e2"]);
-  assert.deepEqual([...s].sort((x, y) => x - y), [550, 1100, 1350]);
+  assert.deepEqual(s, [{ montant: 1100, prestation_id: "p1" }, { montant: 550, prestation_id: "p1" }, { montant: 1350, trajet_id: "t1" }]);
   assert.deepEqual(appels.map((x) => x[0]).sort(), ["prestations_nets", "trajets_nets"]);
   assert.ok(appels.every((x) => x[2] === "entite_id" && x[3].join() === "e1,e2"));
-  assert.equal((await netsPourControle(db, [])).size, 0);
+  assert.equal((await netsPourControle(db, [])).length, 0);
   // La fonction « agent » : clé de service, entreprises de la conversation (les deux en espace unifié), seulement dans memo.internes.
   const ts = lire("supabase/functions/agent/index.ts");
   assert.equal((ts.match(/netsPourControle\(/g) || []).length, 1);
-  assert.match(ts, /for \(const n of await netsPourControle\(admin, idsEntites\)\) memo\.internes\.add\(n\);/);
+  assert.match(ts, /memo\.nets = await netsPourControle\(admin, idsEntites\);/);
+  assert.match(ts, /const relie = await dossierPourControle\(admin, conv!\.dossier_id, idsEntites\);\n  memo\.servicesEnCours = relie\.services;\n  for \(const n of relie\.internes\) memo\.internes\.add\(n\);/);
   assert.match(ts, /const idsEntites = unifie \? unifie\.entites\.map\(\(e\) => e\.id\) : \[entiteId\];/);
-  // memo.internes ne part ni dans les consignes, ni dans les messages, ni dans un résultat d'outil, ni vers l'écran.
+  // memo.internes, memo.nets et memo.servicesEnCours ne partent ni dans les consignes, ni dans les messages, ni dans un résultat d'outil,
+  // ni vers l'écran.
   const code = ts.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
   assert.deepEqual(code.match(/memo\.internes\S*/g), ["memo.internes.add(n);"], "memo.internes n'est que rempli");
+  assert.deepEqual(code.match(/memo\.(?:nets|servicesEnCours)\S*/g), ["memo.nets", "memo.servicesEnCours"], "memo.nets et memo.servicesEnCours ne sont que posés");
+  assert.doesNotMatch(code, /relie\.(?!services\b|internes\b)/, "le dossier relié ne sert qu'au contrôle");
   assert.doesNotMatch(code, /internes\s*:|\.\.\.memo\b|JSON\.stringify\(memo/);
   // La boucle ne fait que passer memo à executer.
   assert.equal((lire("supabase/functions/agent/boucle.js").match(/memo/g) || []).length, 2);
   const outils = lire("supabase/functions/agent/outils.js");
   const exec = outils.slice(outils.indexOf("export async function executer"), outils.indexOf("export function memoDepuis"));
   assert.doesNotMatch(exec, /contenu: \{[^}]*internes/);
-  // Le contrôle s'en sert : un montant égal à un net bloque, sauf égal à un prix de vente rendu.
+  // Le contrôle s'en sert : un net d'un service de la demande en cours bloque, sauf égal à un prix de vente rendu ; celui d'un autre
+  // service avertit seulement.
   const memo = memoDepuis([]);
-  for (const x of s) memo.internes.add(x);
+  memo.nets = s;
+  memo.servicesEnCours = new Set(["p1"]);
   const r = await repondre(memo, "Hi Tom, 1,100 THB per person.");
   assert.ok(r.avertissements.includes("montant_interne:1100"));
+  const autre = await repondre(memo, "Hi Tom, 1,350 THB per person.");
+  assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net:1350"));
   assert.doesNotMatch(JSON.stringify(r), /550|1350/, "aucun autre net ne sort");
 });
 
@@ -175,7 +183,8 @@ test("point 3 : whatsapp-envoi et la réponse préparée bloquent les noms des c
   assert.deepEqual(await nomsContactsTypes(db({ data: null, error: { code: "500" } }), "org"), { noms: [], erreur: true });
   const envoi = lire("supabase/functions/whatsapp-envoi/index.ts");
   assert.match(envoi, /const types = await nomsContactsTypes\(admin, conv\.organisation_id, \{ sauf: contactApporteur\(conv\) \?/);
-  assert.match(envoi, /if \(types\.erreur\) return \["nom_prestataire:lecture_impossible"\];/, "illisible : rien ne part");
+  assert.match(envoi, /if \(types\.erreur\) return ferme;/, "illisible : rien ne part");
+  assert.match(envoi, /const ferme = \{ a_retirer: \["nom_prestataire:lecture_impossible"\]/);
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
   assert.match(rep, /const types = await nomsContactsTypes\(db, conv\.organisation_id, \{ sauf: contactApporteur\(conv\) \? conv\.id : null \}\);/);
 });

@@ -161,12 +161,13 @@ export async function ouvrirDansEntreprise({ id, origine, changer, charger = asy
   }
 }
 
-// WhatsApp commun en lecture : une réponse préparée pour une autre entreprise ne montre un net (montant_interne) qu'à qui a
+// WhatsApp commun en lecture : une réponse préparée pour une autre entreprise ne montre un net (montant_interne, montant_egal_net) qu'à qui a
 // « partenaires.nets » dans l'entreprise de la réponse, et un nom de partenaire (nom_prestataire) qu'à qui a « partenaires.lire ».
 export function avertissementsVisibles(codes = [], permissions = []) {
   const cache = (code) => {
     const cle = String(code || "").split(":")[0];
-    if (cle === "montant_interne") return !permissions.includes("partenaires.nets");
+    // montant_egal_net (21.11.2026) dit aussi qu'un chiffre est un net : même droit.
+    if (cle === "montant_interne" || cle === "montant_egal_net") return !permissions.includes("partenaires.nets");
     if (cle === "nom_prestataire") return !permissions.includes("partenaires.lire");
     return false;
   };

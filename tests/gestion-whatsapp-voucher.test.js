@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { envoyerVoucherImage, viderCacheCoexistence } from "../supabase/functions/whatsapp-envoi/voucher.js";
 import * as S from "../supabase/functions/whatsapp-envoi/calc.js";
-import { controlerReponse } from "../supabase/functions/agent/outils.js";
 import * as F from "../src/gestion/js/whatsapp-voucher-calc.mjs";
 import { envoiANoter } from "../src/gestion/js/envoi-voucher-calc.mjs";
 import { etatMedia, LIBELLES_MEDIA } from "../src/gestion/js/whatsapp-calc.mjs";
@@ -128,9 +127,9 @@ function monde(o = {}) {
   const ctx = {
     sb: client(), admin: client(), fetch, cle: "test", webhook: "https://projet.supabase.co/functions/v1/whatsapp", organisation: ORG,
     contenuInterne: async (_a, conv, texte) => {
-      appels.legendes.push({ entite_id: conv.entite_id, texte });
-      const c = controlerReponse(texte, { signer: true, internes: new Set([1500]), ventes: new Set([3000]), prestataires: ["Lazy Day"] });
-      return (c.avertissements || []).filter((a) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire"));
+      appels.legendes.push({ entite_id: conv.entite_id, dossier_id: conv.dossier_id, texte });
+      // Comme contenuInterne : un net du service du dossier (1500) bloque, le net d'un autre service (2200) est à confirmer.
+      return S.controleEnvoi(texte, { nets: [{ montant: 1500, prestation_id: "p-dossier" }, { montant: 2200, prestation_id: "p-autre" }], servicesEnCours: new Set(["p-dossier"]), ventes: new Set([3000]), prestataires: ["Lazy Day"] });
     },
     uuid: () => ID_FICHIER,
     maintenant: () => w.horloge || MAINTENANT,
@@ -356,7 +355,7 @@ test("légende contrôlée dans l'entreprise de la réservation : conversation d
   const index = lire("supabase/functions/whatsapp-envoi/index.ts");
   const ci = index.slice(index.indexOf("async function contenuInterne"));
   assert.match(ci, /let ids: string\[\] = conv\.entite_id \? \[conv\.entite_id\] : \[\];/);
-  assert.match(ci, /\.in\("slug", \["secret", "taxi"\]\);\n    if \(error\) return \["nom_prestataire:lecture_impossible"\];/, "à trier : Secret et Taxi, et fermé si la liste manque");
+  assert.match(ci, /\.in\("slug", \["secret", "taxi"\]\);\n    if \(error\) return ferme;/, "à trier : Secret et Taxi, et fermé si la liste manque");
   assert.deepEqual(F.contactVoucher({ entite_id: TAXI, client_id: CL, reponses: "auto", type_contact: "client" }, { id: D, client_id: CL, entite_id: SECRET }), { ok: false, erreur: "conversation_autre_entreprise" });
 });
 
@@ -404,6 +403,24 @@ test("téléphone : un numéro différent de la fiche client exige numero_confir
 });
 
 // ---- Légende -----------------------------------------------------------------------------------------------------------------------
+test("légende avec le net d'un autre service (faux blocage du 21.11.2026) : 409 à confirmer, puis envoyée avec la confirmation exacte", async () => {
+  const m = monde();
+  const r = await m.envoyer({ legende: "Hello Tom, total 2,200 THB." });
+  assert.deepEqual([r.status, r.corps], [409, { erreur: "montant_a_confirmer", a_confirmer: [2200] }]);
+  assert.equal(m.appels.depots.length, 0, "rien de déposé");
+  assert.equal(m.appels.fetch.length, 0, "rien d'envoyé");
+  assert.equal((await m.envoyer({ legende: "Hello Tom, total 2,200 THB.", montants_confirmes: [2200, 300] })).status, 409, "une autre liste redemande");
+  const ok = await monde().envoyer({ legende: "Hello Tom, total 2,200 THB.", montants_confirmes: [2200] });
+  assert.equal(ok.status, 200);
+  // Le net d'un service du dossier ne se confirme jamais.
+  assert.equal((await monde().envoyer({ legende: "Hello Tom, 1500 THB per adult.", montants_confirmes: [1500] })).status, 422);
+  // Le contrôle voit le dossier de la réservation quand la conversation n'en a pas.
+  const t = monde();
+  t.w.conv.dossier_id = null;
+  await t.envoyer();
+  assert.deepEqual(t.appels.legendes.map((x) => x.dossier_id), [D]);
+});
+
 test("légende bloquée : un net ou un nom de partenaire, rien de déposé ni d'envoyé", async () => {
   for (const legende of ["Hello Tom, the price is 1500 THB per adult.", "Hello Tom, our partner Lazy Day will pick you up."]) {
     const m = monde();

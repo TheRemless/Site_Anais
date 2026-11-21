@@ -342,10 +342,10 @@ test("revue 6 : la boîte WhatsApp ne charge aucun net pour les outils, seulemen
   const colonnes = ctxSrc.slice(0, ctxSrc.indexOf("};"));
   assert.doesNotMatch(colonnes, /prestations_nets:|trajets_nets:|partenaires_prives:/);
   // Revue de sécurité de la PR 299 : la lecture des nets pour le contrôle est commune à la boîte et à l'Assistant (agent/outils.js).
-  assert.match(wa, /memo\.internes = await netsPourControle\(db, ids\);/);
+  assert.match(wa, /memo\.nets = await netsPourControle\(db, ids\);/);
   const outilsSrc = readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8");
   assert.match(outilsSrc, /export async function netsPourControle\(db, ids = \[\]\)/);
-  assert.match(outilsSrc, /toutes\("prestations_nets", "net, net_enfant"\), toutes\("trajets_nets", "net_adulte, net_enfant"\)/);
+  assert.match(outilsSrc, /toutes\("prestations_nets", "prestation_id, net, net_enfant"\), toutes\("trajets_nets", "trajet_id, net_adulte, net_enfant"\)/);
   // Pourquoi : avec des nets chargés, le drapeau « recommande » viendrait d'eux même sans droit ; sans eux, aucun drapeau.
   const deux = [donnees.prestations[0], { ...donnees.prestations[0], id: "a9000000-0000-4000-8000-000000000009", prix_vente: 1500 }];
   const nets = [{ prestation_id: deux[0].id, net: 1100 }, { prestation_id: deux[1].id, net: 900 }];

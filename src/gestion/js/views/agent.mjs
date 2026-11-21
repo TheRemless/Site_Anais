@@ -114,6 +114,8 @@ function texteAvertissement(a) {
   if (code === "heure_non_source") return tr("Heure sans source dans la conversation : {v}. À vérifier.", { v: valeur });
   if (code === "mot_interne") return tr("Mot interne dans la réponse : « {v} ». À retirer.", { v: valeur });
   if (code === "montant_interne") return tr("Montant interne (net, marge ou commission) dans la réponse : {v}. À retirer.", { v: valeur });
+  // 21.11.2026 : le net d'un autre service du catalogue ne bloque pas la copie (coïncidence fréquente sur un chiffre rond).
+  if (code === "montant_egal_net") return tr("Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.", { v: valeur });
   if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }

@@ -1,8 +1,16 @@
-// Fonction « whatsapp-envoi » : la logique pure (demande, message Telnyx). Tests : tests/gestion-whatsapp.test.js.
+// Fonction « whatsapp-envoi » : la logique pure (demande, message Telnyx, contrôle du texte). Tests : tests/gestion-whatsapp.test.js.
+import { controlerReponse, netsDuControle } from "../agent/outils.js";
 export const TEXTE_MAX_OCTETS = 4096; // limite de Telnyx pour un texte WhatsApp
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Rend { conversation_id, texte, proposition_id } ou { erreur }.
+// Les montants que la personne a confirmés après un refus « montant_a_confirmer » : une liste (JSON) ou « 10000,5000 » (multipart).
+// 20 au plus, nombres positifs ; tout le reste est ignoré.
+export function lireMontantsConfirmes(v) {
+  const brut = Array.isArray(v) ? v : typeof v === "string" && v.trim() ? v.split(",") : [];
+  return [...new Set(brut.slice(0, 20).map((x) => (typeof x === "number" ? x : typeof x === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(x) ? Number(x) : NaN)).filter((x) => Number.isFinite(x) && x > 0))];
+}
+
+// Rend { conversation_id, texte, proposition_id, montants_confirmes } ou { erreur }.
 export function lireEnvoi(d) {
   if (!d || typeof d !== "object") return { erreur: "demande_invalide" };
   if (typeof d.conversation_id !== "string" || !UUID.test(d.conversation_id)) return { erreur: "conversation_invalide" };
@@ -10,7 +18,38 @@ export function lireEnvoi(d) {
   if (!texte) return { erreur: "texte_vide" };
   if (new TextEncoder().encode(texte).length > TEXTE_MAX_OCTETS) return { erreur: "texte_trop_long" };
   const proposition_id = typeof d.proposition_id === "string" && UUID.test(d.proposition_id) ? d.proposition_id : null;
-  return { conversation_id: d.conversation_id, texte, proposition_id };
+  return { conversation_id: d.conversation_id, texte, proposition_id, montants_confirmes: lireMontantsConfirmes(d.montants_confirmes) };
+}
+
+// ---- Contrôle du texte envoyé (PR 278, faux blocage du 21.11.2026) ---------------------------------------------------------------
+// Le texte ou la légende d'un voucher, contrôlés avant tout envoi (contenuInterne, index.ts). Rend { a_retirer, a_confirmer } :
+//   - a_retirer bloque (422 « contenu_interne ») : un net d'un service du dossier relié à la conversation, un net, une marge ou une
+//     commission du dossier relié (`internes`), un nom de partenaire ou de contact typé ;
+//   - a_confirmer (409 « montant_a_confirmer ») : un montant égal au net d'un autre service du catalogue, qui n'est ni un prix de vente du
+//     catalogue ou du dossier relié, ni un total : des prix du catalogue qui figurent aussi dans le texte, ou des services du dossier relié
+//     (comme la carte de dossier pour l'Assistant). La personne confirme d'un clic, l'écran renvoie la même liste.
+// `nets` : netsPourControle ; `servicesEnCours`, `internes`, `ventesDossier` : dossierPourControle (agent/outils.js).
+export function controleEnvoi(texte, { nets = [], servicesEnCours = new Set(), internes = new Set(), ventes = new Set(), ventesDossier = [], prestataires = [] } = {}) {
+  const n = netsDuControle({ nets, servicesEnCours });
+  const c = controlerReponse(texte, { signer: true, internes: new Set([...internes, ...n.bloquants]), ventes: new Set([...ventes, ...ventesDossier]), netsAutres: n.autres, elementsVente: [...ventes], composants: ventesDossier, prestataires });
+  const av = c.avertissements || [];
+  const a_confirmer = [...new Set(av.filter((a) => a.startsWith("montant_egal_net:")).flatMap((a) => a.slice("montant_egal_net:".length).split(",").map(Number)))].filter(Number.isFinite).sort((x, y) => x - y);
+  return { a_retirer: av.filter((a) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire")), a_confirmer };
+}
+// La même liste, l'ordre et les doublons mis à part.
+export const memesMontants = (a = [], b = []) => {
+  const x = [...new Set(a.map(Number))].sort((p, q) => p - q);
+  const y = [...new Set(b.map(Number))].sort((p, q) => p - q);
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+};
+// Le refus d'un envoi d'après le contrôle, ou null quand il n'y a rien à retirer et que les montants à confirmer sont exactement ceux que
+// la personne a confirmés (une liste différente, plus courte ou plus longue, redemande la confirmation).
+export function refusEnvoi(controle, confirmes = []) {
+  const aRetirer = (controle && controle.a_retirer) || [];
+  const aConfirmer = (controle && controle.a_confirmer) || [];
+  if (aRetirer.length) return { status: 422, corps: { erreur: "contenu_interne", a_retirer: aRetirer } };
+  if (aConfirmer.length && !memesMontants(aConfirmer, confirmes)) return { status: 409, corps: { erreur: "montant_a_confirmer", a_confirmer: aConfirmer } };
+  return null;
 }
 
 // Corps de POST https://api.telnyx.com/v2/messages/whatsapp (texte libre, possible dans la fenêtre de 24 h).
@@ -60,7 +99,7 @@ export function lireEnvoiVoucher(d) {
   const legende = typeof d.legende === "string" ? d.legende.replace(/\r\n?/g, "\n").trim() : "";
   if (new TextEncoder().encode(legende).length > LEGENDE_MAX_OCTETS) return { erreur: "legende_trop_longue" };
   const numero_confirme = typeof d.numero_confirme === "string" && /^\+[1-9][0-9]{6,15}$/.test(d.numero_confirme) ? d.numero_confirme : null;
-  return { conversation_id: d.conversation_id, reservation_id: d.reservation_id, essai_id: d.essai_id.toLowerCase(), legende, numero_confirme };
+  return { conversation_id: d.conversation_id, reservation_id: d.reservation_id, essai_id: d.essai_id.toLowerCase(), legende, numero_confirme, montants_confirmes: lireMontantsConfirmes(d.montants_confirmes) };
 }
 
 // ---- Image : type et dimensions lus dans l'en-tête, jamais ce qu'annonce le navigateur ------------------------------------------------

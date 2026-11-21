@@ -1,6 +1,17 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Faux blocage du 21.11.2026 : net d'un autre service du catalogue, avertissement et confirmation à l'envoi
+  "Le montant {valeur} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {valeur} is also the net of another service in the catalogue. Check that it is really a selling price.",
+  "Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {v} is also the net of another service in the catalogue. Check that it is really a selling price.",
+  "Un montant du texte est aussi le net d'un autre service du catalogue. Confirmez-le pour envoyer, rien n'est parti.": "An amount in the text is also the net of another service in the catalogue. Confirm it to send, nothing was sent.",
+  "Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.": "The amount {liste} is also the net of another service in the catalogue. Only send it if it really is the selling price for this client.",
+  "Envoyer quand même": "Send anyway",
+  "Rien n'est parti.": "Nothing was sent.",
+  "Mettre à jour la fiche": "Update the record",
+  "Pas maintenant": "Not now",
+  "Fiche du client mise à jour.": "Client record updated.",
+  "{prenom} a écrit {nom} : mettre à jour la fiche ?": "{prenom} wrote {nom}: update the record?",
   // Migration 72 : demandes du site et conversations WhatsApp reliées (21.11.2026)
   "Cette demande a été traitée entre-temps (depuis WhatsApp ou l'Assistant) : aucun dossier n'a été créé. Fermez cette fenêtre.": "This request was handled in the meantime (from WhatsApp or the Assistant): no file was created. Close this window.",
   "Reliée au dossier créé depuis WhatsApp ou l'Assistant": "Linked to the file created from WhatsApp or the Assistant",

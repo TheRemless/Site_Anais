@@ -134,7 +134,7 @@ test("faits du client : branchés sous l'en-tête, copiés d'un tap, sans appel 
   assert.match(bloc, /montant: \(n, d\) => formatMontant\(n, d \|\| undefined\)/, "prix comme partout dans Gestion");
   assert.doesNotMatch(bloc, /store\.(agent|whatsappPreparer)|anthropic/i, "aucun appel à l'IA");
   // Migration 68 : le type du contact se range à côté de l'entreprise.
-  assert.match(vue, /h\("div", \{ class: "wa-fil-infos" \}, selecteurEntreprise\(c, prop\)(?:, selecteurType\(c\))?\),\n\s+blocFaits\(c, prop\),/);
+  assert.match(vue, /h\("div", \{ class: "wa-fil-infos" \}, selecteurEntreprise\(c, prop\)(?:, selecteurType\(c\))?\),\n\s+(?:bandeauFiche\(c\),\n\s+)?blocFaits\(c, prop\),/);
   assert.match(vue, /function menuConversation\(c\)/, "les réglages rares dans le menu « … »");
 });
 

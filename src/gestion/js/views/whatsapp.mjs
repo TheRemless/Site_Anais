@@ -20,7 +20,7 @@ import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
-  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, LECTURE_IMPOSSIBLE, propositionCourante,
+  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, montantsAConfirmer, ficheAMettreAJour, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
   apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX,
 } from "../whatsapp-calc.mjs";
@@ -311,9 +311,38 @@ function enTete(c, prop) {
       h("button", { class: "bouton-icone secondaire wa-menu", type: "button", "aria-label": tr("Options de la conversation"), onclick: () => menuConversation(c) }, icone("ellipsis", 20))
     ),
     h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), selecteurType(c)),
+    bandeauFiche(c),
     blocFaits(c, prop),
     blocResume(c),
   ];
+}
+
+// ---- Nom écrit par le client (21.11.2026) -------------------------------------------------------------------------------------------
+// La fonction « whatsapp » a noté sur la conversation le nom que le client a écrit ; la fiche reliée n'a pas de nom de famille. L'écran le
+// propose, Nani décide : rien n'est écrit sur la fiche sans son clic. « Pas maintenant » le cache jusqu'au rechargement de la page.
+const fichesIgnorees = new Set();
+function bandeauFiche(c) {
+  const client = clientDe(c);
+  const maj = !lectureSeule && peut("clients.ecrire") && !fichesIgnorees.has(c.id) ? ficheAMettreAJour(c, client) : null;
+  if (!maj) return null;
+  const oui = h("button", { class: "secondaire petit", type: "button" }, tr("Mettre à jour la fiche"));
+  const non = h("button", { class: "lien", type: "button" }, tr("Pas maintenant"));
+  oui.addEventListener("click", async () => {
+    oui.disabled = non.disabled = true;
+    try {
+      await modifier("clients", client.id, maj);
+      toast(tr("Fiche du client mise à jour."));
+      rafraichir();
+    } catch (err) {
+      oui.disabled = non.disabled = false;
+      toast(err.message, true);
+    }
+  });
+  non.addEventListener("click", () => {
+    fichesIgnorees.add(c.id);
+    rafraichir();
+  });
+  return h("div", { class: "bandeau-info wa-fiche-nom", role: "status" }, h("p", null, tr("{prenom} a écrit {nom} : mettre à jour la fiche ?", { prenom: client.prenom || maj.prenom, nom: c.nom })), h("div", { class: "wa-prop-suite" }, oui, non));
 }
 
 // ---- Faits du client (lot 2, usage n° 2) --------------------------------------------------------------------------------------------
@@ -737,7 +766,20 @@ async function envoyer(c, p, zone, bouton, apres) {
   if (!(await confirmer(tr("Envoyer cette réponse à {nom} depuis Gestion ? Elle part tout de suite du numéro de l'entreprise.", { nom: nomConversation(c, clientDe(c)) }), tr("Envoyer")))) return;
   if (!toujoursCourante(c, p)) return perimee();
   bouton.disabled = true;
-  const r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte: zone.value, proposition_id: p.id });
+  let r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte: zone.value, proposition_id: p.id });
+  // Un montant égal au net d'un autre service du catalogue (whatsapp-envoi, 409) : rien n'est parti. Nani confirme d'un clic, le même texte
+  // repart avec cette liste, que la fonction revérifie.
+  const aConfirmer = montantsAConfirmer(r);
+  if (aConfirmer.length) {
+    const texte = zone.value;
+    if (!(await confirmer(tr("Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.", { liste: aConfirmer.join(", ") }), tr("Envoyer quand même")))) {
+      bouton.disabled = false;
+      toast(tr("Rien n'est parti."));
+      return apres();
+    }
+    if (!toujoursCourante(c, p)) return perimee();
+    r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte, proposition_id: p.id, montants_confirmes: aConfirmer });
+  }
   if (r && r.demo) {
     bouton.disabled = false;
     return toast(tr("En démo, rien n'est envoyé."));

@@ -282,8 +282,8 @@ test("réponse à l'apporteur lui-même : « Hi Jade » passe vers Jade ; vers E
   assert.match(rep, /const exemptes = contactApporteur\(conv\) && conv\.partenaire_id \? fichesDuContact\(conv,/);
   assert.match(rep, /const prestataires = \[\.\.\.new Set\(\[\.\.\.nomsABloquer\(\(await ctx\.charger\("partenaires"\)\) as \{ id: string; nom: string \}\[\], exemptes\), \.\.\.types\.noms\]\)\];/);
   const envoi = source("supabase/functions/whatsapp-envoi/index.ts");
-  assert.match(envoi, /select\("id, organisation_id, telephone, entite_id, reponses, type_contact, partenaire_id"\)/);
-  assert.match(envoi, /if \(lue\.error && lue\.error\.code === "42703"\) lue = await sb\.from\("whatsapp_conversations"\)\.select\("id, organisation_id, telephone, entite_id"\)/);
+  assert.match(envoi, /select\("id, organisation_id, telephone, entite_id, dossier_id, reponses, type_contact, partenaire_id"\)/);
+  assert.match(envoi, /if \(lue\.error && lue\.error\.code === "42703"\) lue = await sb\.from\("whatsapp_conversations"\)\.select\("id, organisation_id, telephone, entite_id, dossier_id"\)/);
   assert.match(envoi, /const prestataires = \[\.\.\.new Set\(\[\.\.\.nomsABloquer\(pa\.data \|\| \[\], fichesDuContact\(conv, pa\.data \|\| \[\]\)\), \.\.\.types\.noms\]\)\];/);
   const idx = source("supabase/functions/agent/index.ts");
   assert.match(idx, /const prestataires = nomsABloquer\(partenairesLus\);/, "agent : tous les noms bloqués par défaut");
@@ -463,8 +463,9 @@ test("revue 298, point 5 : repli de la conversation liée seulement sans demande
 
 test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l'écran le dit clairement", async () => {
   const envoi = source("supabase/functions/whatsapp-envoi/index.ts");
-  assert.match(envoi, /if \(pa\.error\) return \["nom_prestataire:lecture_impossible"\];/);
-  assert.ok(envoi.indexOf("if (pa.error)") < envoi.indexOf("const c = controlerReponse"));
+  assert.match(envoi, /const ferme = \{ a_retirer: \["nom_prestataire:lecture_impossible"\], a_confirmer: \[\] as number\[\] \};/);
+  assert.match(envoi, /if \(pa\.error\) return ferme;/);
+  assert.ok(envoi.indexOf("if (pa.error)") < envoi.indexOf("return controleEnvoi("));
   const W = await import("../src/gestion/js/whatsapp-calc.mjs");
   assert.equal(W.codeEnvoi("contenu_interne", ["nom_prestataire:lecture_impossible"]), "partenaires_illisibles");
   assert.equal(W.codeEnvoi("contenu_interne", ["nom_prestataire:Jade"]), "contenu_interne");
