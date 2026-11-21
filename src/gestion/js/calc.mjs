@@ -425,3 +425,10 @@ export function convertirContenu(contenu, taux, devise) {
   c.equivalents = { ...(c.equivalents || {}), actif: false };
   return c;
 }
+
+// Démonstration de l'Assistant (agent-demo.mjs, store-local.mjs) : le numéro de vol tapé après « vol » ou « flight » (« vol FD 3217 »,
+// « flight TG-225 »), code en majuscules pour ne pas lire « at 8 ». Rendu sans espace, comme la fonction (agent/outils.js, numeroVol).
+export function numeroVolTape(texte) {
+  const m = /\b(?:[Vv]ol|[Ff]light)\s+(?:n[°o]\.?\s*)?([A-Z]{2,3}|[A-Z]\d|\d[A-Z])[ -]?(\d{1,4})([A-Z]?)\b/.exec(String(texte || ""));
+  return m ? `${m[1]}${m[2]}${m[3]}` : "";
+}

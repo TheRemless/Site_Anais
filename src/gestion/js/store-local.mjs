@@ -1,6 +1,6 @@
 // Stockage de démonstration : tout reste dans le navigateur (localStorage), rien n'est envoyé.
 // Il reproduit les droits de la vraie base : l'utilisateur de démo ne reçoit que ce que son rôle lui montre.
-import { aujourdhui, ajouterJours, totalDossier, sommePaiements, montantSurPlace } from "./calc.mjs";
+import { aujourdhui, ajouterJours, totalDossier, sommePaiements, montantSurPlace, numeroVolTape } from "./calc.mjs";
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
@@ -368,7 +368,8 @@ export function creer() {
     if (!exc || !course) return null;
     const j = (n) => ajouterJours(aujourdhui(), n);
     const service = (p, ent2, date, extra = {}) => ({ texte: p ? p.libelle : "", offre: p ? { genre: "prestation", id: p.id } : null, libelle: p ? p.libelle : "", date, heure_pickup: "", lieu_pickup: "Lanta Sand Resort", de: "", vers: "", adultes: 2, enfants: 0, prix: p ? Number(p.prix_vente) * (p.unite === "pp" ? 2 : 1) : null, origine_prix: p ? "catalogue" : "a_fixer", remarque: "", entite_id: ent2 ? ent2.id : null, entreprise: ent2 ? marqueUnifiee(ent2) : "", avertissements: ent2 ? [] : ["entreprise_a_choisir"], ...extra });
-    const services = [service(course, taxi, j(2)), service(exc, secret, j(3)), service(null, null, j(4), { texte: "Sunset dinner boat pickup", libelle: "Sunset dinner boat pickup", prix: 1500, origine_prix: "saisi" })];
+    // Le numéro de vol tapé dans la demande (agent-demo.mjs, numeroVolTape) : sur la course vers l'aéroport, comme le vrai assistant.
+    const services = [service(course, taxi, j(2), { vol: numeroVolTape(texte) }), service(exc, secret, j(3)), service(null, null, j(4), { texte: "Sunset dinner boat pickup", libelle: "Sunset dinner boat pickup", prix: 1500, origine_prix: "saisi" })];
     if (partageReciproqueDemo(secret, taxi)) setTimeout(() => ecouteurs.forEach((f) => f()), 0);
     return { genre: "dossier", titre: "Séjour de Clara : excursion et transfert", donnees: { client: { nom: "Clara Martin", telephone: "+447700900966", hotel: "Lanta Sand Resort", langue: "en" }, adultes: 2, enfants: 0, bebes: 0, services, entreprises: ["secret", "taxi"] }, avertissements: ["entreprise_a_choisir"] };
   }

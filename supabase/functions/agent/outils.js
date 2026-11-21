@@ -213,7 +213,8 @@ const SERVICE = obj({
   adultes: I("0 si inconnu."),
   enfants: I("0 si inconnu."),
   prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes."),
-  remarque: S("Ce qu'il faut savoir pour réserver (vol, bagages, attente), ou \"\"."),
+  vol: S("Numéro du vol d'un transfert qui part d'un aéroport ou y va (« FD3217 »), seulement s'il est écrit dans la conversation, le WhatsApp lu ou une pièce jointe, sinon \"\". Jamais l'heure du vol, jamais un numéro deviné."),
+  remarque: S("Ce qu'il faut savoir pour réserver (bagages, attente, heure du vol), ou \"\". Le numéro du vol va dans « vol »."),
 });
 // Espace unifié Secret et Taxi : le service dit son entreprise quand il est hors catalogue (celle de la ligne compte sinon).
 const SERVICE_UNIFIE = obj({
@@ -289,7 +290,7 @@ export const OUTILS = [
   },
   {
     name: "lire_dossier",
-    description: "Lit un dossier : client, dates et services réservés (date, heure et lieu de pickup, personnes, statut, prix de vente). Chaque service a une référence R-… pour proposer une modification.",
+    description: "Lit un dossier : client, dates et services réservés (date, heure et lieu de pickup, numéro de vol s'il est noté, personnes, statut, prix de vente). Chaque service a une référence R-… pour proposer une modification.",
     input_schema: obj({ dossier: S("Référence D-… rendue par chercher_clients, ou la référence du dossier (« 2026-0142 »).") }),
   },
   {
@@ -316,11 +317,11 @@ export const OUTILS = [
   },
   {
     name: "proposer_modification",
-    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, une remarque, ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
+    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, son numéro de vol (champ « vol », écrit dans la conversation), une remarque, ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
     input_schema: obj({
       titre: S("Titre court de la carte."),
       reservation: S("Référence R-… rendue par lire_dossier."),
-      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "remarque", "annulation"] },
+      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "vol", "remarque", "annulation"] },
       valeur: S("La nouvelle valeur (AAAA-MM-JJ, HH:MM, texte ou nombre)."),
       raison: S("Pourquoi, en une phrase, pour la personne."),
     }),
@@ -849,7 +850,7 @@ export async function lireDossier(e, ctx) {
     const internes = champsInternes(ctx, fiche, voitNets(ctx, ed) ? chiffresService(r, nets.get(r.id)) : {}, ed);
     // Le règlement d'un service est celui de la réservation (choisi sur le document), pas le mode par défaut du partenaire.
     if (internes.reglement) internes.reglement = r.paye_sur_place ? "sur_place" : "chez_nous";
-    return { reservation: refDe("R", r.id), libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), adultes: entier(p.adultes), enfants: entier(p.enfants), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
+    return { reservation: refDe("R", r.id), libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), ...(numeroVol(r.vol) ? { vol: numeroVol(r.vol) } : {}), adultes: entier(p.adultes), enfants: entier(p.enfants), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
   });
   // Les totaux du dossier, services annulés exclus.
   const actifs = services.filter((s) => s.statut !== "annule");
@@ -931,6 +932,9 @@ export function ajouterNoms(memo, noms = []) {
   }
 }
 export function retenirLecture(resultat, memo) {
+  // Le texte lu (messages du client) peut donner un numéro de vol : seulement pour contrôler le champ « vol » d'une carte (volSource).
+  if (!Array.isArray(memo.sourcesVol)) memo.sourcesVol = [];
+  memo.sourcesVol.push(textesDe(resultat).join("\n").slice(0, 200_000));
   const { internes, noms } = retenuDeLecture(resultat);
   if (!(memo.internes instanceof Set)) memo.internes = new Set();
   for (const n of internes) memo.internes.add(n);
@@ -1004,7 +1008,7 @@ function entrepriseDuService(s, ctx, ligne, entiteDossier, avert) {
 
 // Un service proposé : le prix vient de la ligne du catalogue (par sa référence) ou d'un montant tapé par la personne ; sinon vide.
 // `entiteDossier` : l'entreprise du dossier visé (proposer_reservation), qui fixe celle du service en mode unifié.
-async function serviceDepuis(s, ctx, tapes, entiteDossier = null) {
+async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
   const [prestations, trajets] = await Promise.all([ctx.charger("prestations"), ctx.charger("trajets")]);
   const ref = texte(s.ref, 12);
   const p = /^P-/i.test(ref) ? trouverRef(ref, prestations) : null;
@@ -1051,10 +1055,39 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null) {
     enfants,
     prix,
     origine_prix: origine,
+    // Le numéro de vol, seulement pour un transfert (une excursion ou un billet de bateau n'en imprime pas) et seulement s'il a une source.
+    vol: p && p.famille !== "transfert" ? "" : t ? "" : volSource(s.vol, ctx, memo, avert),
     remarque: texte(s.remarque, 300),
     ...entreprise,
     avertissements: avert,
   };
+}
+
+// ---- Numéro de vol (21.11.2026) ----------------------------------------------------------------------------------------------
+// Un numéro de vol : le code de la compagnie (deux caractères IATA, ou trois lettres OACI) puis 1 à 4 chiffres, avec une lettre de suffixe
+// possible : « FD3217 », « FD 3217 », « tg-225 », « 3K 542 ». Rend la forme sans espace, en majuscules, ou "" si ce n'en est pas un.
+const FORME_VOL = /^([A-Z]{2,3}|[A-Z]\d|\d[A-Z])(\d{1,4})([A-Z]?)$/;
+export function numeroVol(v) {
+  const s = String(v || "").toUpperCase().replace(/[\s.-]/g, "");
+  return s.length <= 8 && FORME_VOL.test(s) ? s : "";
+}
+// Le numéro est-il écrit dans l'un des textes, avec ou sans espace ou tiret entre le code et les chiffres (« fd 3217 », « FD-3217 ») ?
+export function volDansTextes(vol, textes = []) {
+  const m = FORME_VOL.exec(numeroVol(vol));
+  if (!m) return false;
+  const re = new RegExp(`(?<![A-Z0-9])${m[1]}[\\s-]?${m[2]}${m[3]}(?![A-Z0-9])`, "i");
+  return (textes || []).some((t) => re.test(String(t || "")));
+}
+// Le vol proposé par le modèle : gardé s'il a la forme d'un numéro de vol et qu'il est écrit dans la conversation (texte de la personne,
+// message de client collé ou WhatsApp lu, memo.sourcesVol). Une pièce jointe (billet en photo, PDF) ne se relit pas ici : le vol est gardé,
+// marqué « à vérifier ». Sinon il est vidé, avec un avertissement : jamais un vol deviné.
+export function volSource(v, ctx = {}, memo = {}, avert = []) {
+  if (!String(v || "").trim()) return "";
+  const n = numeroVol(v);
+  if (!n) return avert.push("vol_illisible"), "";
+  if (volDansTextes(n, [...(memo.textes || []), ...(memo.sourcesVol || [])])) return n;
+  if ((ctx.fichiers || []).length) return avert.push("vol_piece_jointe"), n;
+  return avert.push("vol_sans_source"), "";
 }
 
 // Formule de fin signée (même liste que itineraire.js, retirerSignature) : chez Secret et Taxi, la réponse ne signe jamais.
@@ -1136,7 +1169,7 @@ export function partenairesCites(t, noms = []) {
 }
 
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise"];
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
@@ -1149,7 +1182,7 @@ export async function proposer(nom, e, ctx, memo) {
   }
   if (nom === "proposer_dossier") {
     const services = [];
-    for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes));
+    for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes, null, memo));
     if (!services.length) return { erreur: "aucun_service" };
     // Mode unifié : les entreprises de la demande (deux pour une demande mixte, qui donnera deux dossiers liés).
     const entreprises = estUnifie(ctx) ? ENTREPRISES_UNIFIEES.filter((slug) => services.some((x) => x.entreprise === slug)) : null;
@@ -1170,20 +1203,23 @@ export async function proposer(nom, e, ctx, memo) {
     if (!d) return { erreur: "dossier_introuvable" };
     // Mode unifié : le service va dans l'entreprise du dossier visé.
     const ent = entrepriseDe(ctx, d.entite_id);
-    const service = await serviceDepuis(e.service, ctx, tapes, ent ? ent.id : null);
+    const service = await serviceDepuis(e.service, ctx, tapes, ent ? ent.id : null, memo);
     const avert = avertissementsEntreprise([service]);
     return { genre: "reservation", titre: texte(e.titre, 120), donnees: { dossier_id: d.id, dossier_ref: texte(d.ref, 30), ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), service }, ...(avert.length ? { avertissements: avert } : {}) };
   }
   if (nom === "proposer_modification") {
     const r = trouverRef(e.reservation, ctx.parRef ? await ctx.parRef("reservations", e.reservation) : await ctx.charger("reservations"));
     if (!r) return { erreur: "reservation_introuvable" };
-    const v = texte(e.valeur, 300);
-    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), remarque: !!v, annulation: v === "annule" }[e.champ];
+    // Un numéro de vol : sa forme, et une source dans la conversation (volSource) ; sans source, la carte n'est pas proposée.
+    const avertVol = [];
+    const v = e.champ === "vol" ? volSource(e.valeur, ctx, memo, avertVol) : texte(e.valeur, 300);
+    if (e.champ === "vol" && !v) return { erreur: avertVol[0] || "valeur_invalide" };
+    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), vol: !!v, remarque: !!v, annulation: v === "annule" }[e.champ];
     if (!ok) return { erreur: "valeur_invalide" };
     if (e.champ === "annulation" && r.statut === "annule") return { erreur: "deja_annule" };
-    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), remarque: "", annulation: r.statut || "" }[e.champ];
+    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), vol: texte(r.vol || (r.details && r.details.vol) || "", 20), remarque: "", annulation: r.statut || "" }[e.champ];
     const ent = entrepriseDe(ctx, r.entite_id);
-    return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), libelle: texte(r.libelle, 160), champ: e.champ, avant, valeur: v, raison: texte(e.raison, 240) } };
+    return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), libelle: texte(r.libelle, 160), champ: e.champ, avant, valeur: v, raison: texte(e.raison, 240) }, ...(avertVol.length ? { avertissements: avertVol } : {}) };
   }
   if (nom === "proposer_temps_trajet") {
     const d = entier(e.duree_min, 1440);

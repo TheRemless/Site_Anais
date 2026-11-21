@@ -102,6 +102,10 @@ const AVERTISSEMENTS = {
   catalogue_autre_entreprise: N_("Un tarif vient du catalogue de l'autre entreprise : vérifiez le service avant de l'ajouter."),
   // Contact WhatsApp apporteur (PR D) : la référence donnée par l'agent ne correspond à aucune fiche.
   apporteur_inconnu: N_("La référence donnée par l'assistant ne correspond à aucune fiche apporteur."),
+  // Numéro de vol (21.11.2026) : contrôlé par la fonction, jamais deviné.
+  vol_piece_jointe: N_("Numéro de vol lu sur une pièce jointe : vérifiez-le avant de valider."),
+  vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
+  vol_illisible: N_("Un numéro de vol proposé n'a pas la forme d'un numéro de vol : il a été laissé vide."),
 };
 function texteAvertissement(a) {
   const [code, valeur] = String(a).split(/:(.*)/s);
@@ -789,7 +793,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
+      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -802,10 +806,10 @@ export async function vueAgent(idOuvert = "") {
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup })].filter(Boolean).join(", "))), prixTexte(s))));
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol })].filter(Boolean).join(", "))), prixTexte(s))));
       action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
     } else if (c.genre === "modification") {
-      corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
+      corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, d.champ === "vol" ? h("span", null, tr("Numéro de vol"), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
     } else if (c.genre === "temps") {
       corps.push(h("p", { class: "agent-modif" }, h("strong", null, d.de), " ", icone("inverser", 16), " ", h("strong", null, d.vers), " ", h("span", null, texteDuree(d.duree_min))), h("p", { class: "aide" }, [d.ferry ? tr("ferry") : "", d.marge_min ? tr("marge {m} min", { m: d.marge_min }) : "", d.source].filter(Boolean).join(", ")));

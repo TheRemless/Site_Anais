@@ -88,12 +88,15 @@ export function prixBooking(montant, devise = "THB", t = textesVoucher(null)) {
 // Le numéro de vol ou de bateau rejoint le lieu qui est un aéroport ou un port (« Krabi Airport, flight FD3217 »), sinon la prise en charge.
 const PORT = /\b(pier|port|ferry|jetty|harbou?r)\b|ท่าเรือ/i;
 const AEROPORT = /airport|aéroport|aeroport|สนามบิน/i;
+// Le numéro est déjà écrit dans ce lieu, aux espaces, tirets et majuscules près (« Krabi Airport, flight FD 3217 » et « FD3217 »).
+const compact = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u0e00-\u0e7f]/g, "");
+export const volDejaDans = (lieu, vol) => !!compact(vol) && compact(lieu).includes(compact(vol));
 export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
   const v = String(vol || "").trim();
   if (!v) return { pickup, dropoff };
+  // Déjà écrit dans l'un des deux lieux (tapé à la main) : pas une seconde fois.
+  if (volDejaDans(pickup, v) || volDejaDans(dropoff, v)) return { pickup, dropoff };
   const avec = (lieu) => {
-    // Déjà écrit dans le lieu (« Krabi Airport, flight FD3217 » tapé à la main) : pas une seconde fois.
-    if (String(lieu || "").toLowerCase().includes(v.toLowerCase())) return lieu;
     const mot = PORT.test(lieu) && !AEROPORT.test(lieu) ? "boat" : "flight";
     return [String(lieu || "").trim(), `${mot} ${v}`].filter(Boolean).join(", ");
   };
