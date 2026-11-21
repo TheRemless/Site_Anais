@@ -198,3 +198,17 @@ test("démonstration : le numéro tapé après « vol » ou « flight » est lu,
   assert.equal(numeroVolTape("vol à 19h30"), "");
   assert.equal(lireComplements("vol FD3217 à 19h30, 2 personnes, 2 valises").numeroVol, "FD3217");
 });
+
+test("revue : un numéro plus court n'est pas « déjà écrit » dans un plus long ; un vol lu par lire_dossier est une source", async () => {
+  assert.ok(!volDejaDans("Krabi Airport, flight FD3217", "FD321"));
+  assert.deepEqual(lieuxAvecVol("Krabi Airport, flight FD3217", "Hotel", "FD321"), { pickup: "Krabi Airport, flight FD3217, flight FD321", dropoff: "Hotel" });
+  // lire_dossier rend le vol noté ; une carte peut le reprendre (« même vol »).
+  const memo = memoAvec("Ajoute le même vol sur ce service");
+  const lu = await executer("lire_dossier", { dossier: refDe("D", DOS) }, ctxDe({ parRef: async (table) => donnees[table] || [] }), memo);
+  assert.equal(lu.contenu.services[0].vol, "FD3210");
+  const modif = await executer("proposer_modification", { titre: "Vol", reservation: refDe("R", RES), champ: "vol", valeur: "FD3210", raison: "" }, ctxDe(), memo);
+  assert.equal(modif.carte.donnees.valeur, "FD3210");
+  // Le même vol lu dans l'historique (résultat d'outil enregistré) compte aussi.
+  const m2 = memoDepuis([{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "lire_dossier", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: JSON.stringify({ services: [{ vol: "TG225" }] }) }] }]);
+  assert.equal(volSource("TG225", {}, m2, []), "TG225");
+});

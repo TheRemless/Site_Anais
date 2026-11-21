@@ -934,7 +934,9 @@ export function ajouterNoms(memo, noms = []) {
 export function retenirLecture(resultat, memo) {
   // Le texte lu (messages du client) peut donner un numéro de vol : seulement pour contrôler le champ « vol » d'une carte (volSource).
   if (!Array.isArray(memo.sourcesVol)) memo.sourcesVol = [];
-  memo.sourcesVol.push(textesDe(resultat).join("\n").slice(0, 200_000));
+  // Borné : 50 000 caractères par lecture, les 20 dernières lectures.
+  memo.sourcesVol.push(textesDe(resultat).join("\n").slice(0, 50_000));
+  if (memo.sourcesVol.length > 20) memo.sourcesVol.splice(0, memo.sourcesVol.length - 20);
   const { internes, noms } = retenuDeLecture(resultat);
   if (!(memo.internes instanceof Set)) memo.internes = new Set();
   for (const n of internes) memo.internes.add(n);
@@ -1320,6 +1322,11 @@ export async function executer(nom, entree, ctx, memo) {
     const f = { chercher_conversations: executerWhatsApp.bind(null, "chercher_conversations"), lire_conversation: executerWhatsApp.bind(null, "lire_conversation"), a_faire_whatsapp: executerWhatsApp.bind(null, "a_faire_whatsapp"), lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
     const r = await f(entree, ctx, memo);
     ajouter(r);
+    // Les vols déjà notés sur les réservations du dossier lu : une source pour une carte (« même vol que l'aller »).
+    if (nom === "lire_dossier" && r.resultat && Array.isArray(r.resultat.services)) {
+      if (!Array.isArray(memo.sourcesVol)) memo.sourcesVol = [];
+      for (const s of r.resultat.services) if (s && typeof s.vol === "string" && s.vol) memo.sourcesVol.push(s.vol);
+    }
     if (memo.internes) collecterInternes(r.resultat, memo.internes);
     // Une conversation de partenaire, de chauffeur ou d'hôtel lue : ses montants deviennent internes, son nom bloqué (revue de la PR 299).
     if (whatsapp && r.resultat && !r.resultat.erreur) retenirLecture(r.resultat, memo);
@@ -1343,6 +1350,8 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
     for (const [k, x] of Object.entries(v)) {
       if (["prix_vente", "prix_adulte", "prix_enfant", "prix", "total_vente"].includes(k) && typeof x === "number") memo.prix.add(x);
       else if (CLE_INTERNE.test(k) && typeof x === "number") memo.internes.add(x);
+      // Un numéro de vol rendu par lire_dossier (déjà noté sur une réservation) est une source pour le champ « vol » d'une carte.
+      else if (k === "vol" && typeof x === "string" && numeroVol(x)) (memo.sourcesVol || (memo.sourcesVol = [])).push(x);
       else if (typeof x === "string" && heureValide(x)) memo.heures.add(x);
       else if (x && typeof x === "object") parcourir(x);
     }

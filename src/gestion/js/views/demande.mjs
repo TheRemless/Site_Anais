@@ -155,7 +155,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const lieuFinal = lieu || (sv.zonePickup && hotelPickup ? hotelPickup : "");
     // Les champs du voucher remplis dans la fenêtre l'emportent ; un lieu laissé vide reste celui de la demande.
     const v = sv.saisie || saisieVide();
-    return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details: nonVides(v.details), zonePickup: sv.zonePickup || null };
+    // Un numéro de vol ne reste que sur un transfert : une offre changée pour une excursion ne le garde pas caché.
+    const details = nonVides(v.details);
+    if (details.vol && !modeTaxi() && !sv.transfertLibre && !sv.retourDepart && offre && !estTransfert(offre)) delete details.vol;
+    return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details, zonePickup: sv.zonePickup || null };
   }
 
   const coches = () => services.filter((sv) => sv.coche);
