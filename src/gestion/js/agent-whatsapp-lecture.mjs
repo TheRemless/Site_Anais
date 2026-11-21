@@ -58,6 +58,7 @@ export const cleNumero = (v) => {
 export function numerosPartenaires(partenaires = []) {
   const out = new Set();
   for (const p of partenaires) {
+    if (p && p.categorie === "apporteur") continue;
     const t = p && p.contact ? p.contact.telephones : null;
     const liste = Array.isArray(t) ? t : typeof t === "string" ? t.split(/[,;/\n]|\s{2,}/) : [];
     for (const x of liste) {
