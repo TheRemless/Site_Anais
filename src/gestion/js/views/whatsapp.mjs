@@ -643,7 +643,7 @@ async function ouvrirMedia(media) {
 function blocMedia(media) {
   const e = etatMedia(media);
   const legende = media.legende ? h("figcaption", null, media.legende) : null;
-  if (LIBELLES_MEDIA[e]) return h("p", { class: `wa-media-absent ${e}` }, icone(e === "attente" ? "horloge" : "alerte", 16), tr(LIBELLES_MEDIA[e]));
+  if (LIBELLES_MEDIA[e]) return h("p", { class: `wa-media-absent ${e}` }, icone(e === "attente" ? "horloge" : e === "voucher_envoye" ? "image" : "alerte", 16), tr(LIBELLES_MEDIA[e]));
   if (e === "image") {
     const zone = h("span", { class: "wa-vignette-vide" }, icone("image", 22), h("span", null, etat.store.mode === "demo" ? tr("Aperçu indisponible en démonstration") : tr("Photo en chargement")));
     const fig = h("figure", { class: "wa-image" }, h("button", { type: "button", class: "wa-vignette", "aria-label": tr("Ouvrir la photo"), onclick: () => ouvrirMedia(media) }, zone), legende);

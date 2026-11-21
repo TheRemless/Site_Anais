@@ -18,6 +18,7 @@ import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVo
 import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
+import { conversationPourVoucher, boutonVoucherWhatsApp } from "./voucher-whatsapp.mjs";
 
 // Ce qui manque à un voucher (controlesVoucher), dit aussi sur les cartes « Voucher » de l'Assistant (agent-cartes-voucher.mjs).
 export const AVERTISSEMENTS = {
@@ -57,13 +58,28 @@ export async function imageDuRendu(noeud) {
 
 let adresseApercu = null;
 
+// Le message de confirmation au client, en anglais, de l'entreprise ouverte (« taxi-confirmation-en » pour Taxi), rempli comme les autres
+// messages types. Sert à copier, au lien WhatsApp et au message sous l'image envoyée dans la conversation (voucher-whatsapp.mjs).
+export function messageClientVoucher(x) {
+  const r = x.reservation;
+  const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
+  const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
+  const partenaire = partenaireDe(r.partenaire_id);
+  const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
+  return messageVoucher({
+    pour: "client",
+    prenom: client.prenom || "",
+    gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
+    vars: variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "", telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }),
+  });
+}
+
 // `avantNavigation` (espace unifié, migration 63) : appelé à la fermeture de la fenêtre, avant toute navigation (retour dans l'entreprise de
 // la conversation de l'Assistant).
 export function envoyerVoucher(x, { avantNavigation = null } = {}) {
   const r = x.reservation;
   const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
-  const partenaire = partenaireDe(r.partenaire_id);
   const numero = x.numero || numeroVoucher(dossier.ref || "", x.index);
   const taxi = estTaxi(reglages());
   const booking = estBookingConfirmation(r, x.type, reglages());
@@ -71,16 +87,10 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
   // Le titre suit le modèle : « Booking confirmation … » pour Taxi et les transferts de Secret payés au chauffeur.
   const titreVoucher = booking ? tr("Booking confirmation {numero}", { numero }) : tr("Voucher {numero}", { numero });
   const telClient = chiffres(client.telephone);
-  const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
-  const message = {
-    // Le message de confirmation en anglais de l'entreprise ouverte (« taxi-confirmation-en » pour Taxi), rempli comme les autres messages types.
-    client: messageVoucher({
-      pour: "client",
-      prenom: client.prenom || "",
-      gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
-      vars: variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "", telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }),
-    }),
-  };
+  const message = { client: messageClientVoucher(x) };
+  // La conversation WhatsApp du client, si elle existe : l'image peut y partir depuis Gestion (voucher-whatsapp.mjs). Sinon, rien de plus.
+  const conversation = conversationPourVoucher(x);
+  const boutonConversation = () => boutonVoucherWhatsApp({ x, conversation, fichier: () => fichier, legende: () => message.client, noter: () => noter("client", "gestion") });
 
   const avertissements = controlesVoucher(r, client, x.type || "");
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));
@@ -247,6 +257,7 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
         ...(destinataires.length === 1
           ? [h("button", { class: "principal", type: "button", onclick: () => partagerImage("client") }, tr("Partager l'image du voucher"))]
           : destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => partagerImage(pour) }, pour === "client" ? tr("Partager : client") : tr("Partager : client")))),
+        boutonConversation(),
         boutonTous,
         ...secours(),
         ...imprimer
@@ -255,6 +266,7 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
     } else if (chemin === "ordinateur") {
       actions.replaceChildren(
         ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, tr("Envoyer sur WhatsApp"))),
+        boutonConversation(),
         ...(partageFichiers([fichier]) ? [h("button", { class: "secondaire", type: "button", onclick: () => partagerImage(destinataires.length === 1 ? "client" : undefined) }, tr("Partager avec le système"))] : []),
         boutonTous,
         ...secours(),
@@ -263,7 +275,7 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
       aide.textContent = tr("Un lien WhatsApp ne peut pas joindre d'image : l'image est copiée, puis la conversation s'ouvre et vous la collez avec {raccourci}. Sans numéro, WhatsApp propose de choisir le contact.", { raccourci: raccourci() });
     } else {
       // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
-      actions.replaceChildren(...secours({ principal: true }), boutonTous, ...imprimer);
+      actions.replaceChildren(...secours({ principal: true }), boutonConversation(), boutonTous, ...imprimer);
       aide.textContent = tr("Appuyez longuement sur l'image pour l'enregistrer dans Photos, puis joignez-la dans WhatsApp.");
       zone.echec({ titre: tr("Ce navigateur ne peut pas joindre l'image : enregistrez-la, puis joignez-la dans WhatsApp (Safari le fait d'un tap)."), boutons: boutonsRepli() });
     }

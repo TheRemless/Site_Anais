@@ -7,6 +7,8 @@
 // se rend dans son entreprise, d'un trait et sans attendre, puis l'écran revient ; l'envoi s'y ouvre par ouvrirDansEntreprise, avec retour
 // synchrone à la fermeture de la fenêtre. Mêmes droits que l'écran Réservations et le bouton voucher (vouchersPermis) : Secret ou Taxi,
 // lire les dossiers, jamais « vouchers.seul » (l'écran thaï de Mook reste à part). Un voucher pas encore prêt dit ce qui manque.
+// « Envoyer dans la conversation WhatsApp » (21.11.2026) : seulement si la conversation du client existe et que la personne peut y écrire
+// (voucher-whatsapp.mjs) ; la confirmation s'ouvre dans l'entreprise du service, comme l'envoi habituel.
 import { etat, changerEntite, permissionsDe, reglagesDe, entitesAccessibles, nomClient } from "../etat.mjs";
 import { h, icone, toast } from "../ui.mjs";
 import { tr, langueActive } from "../i18n.mjs";
@@ -16,7 +18,7 @@ import { controlesVoucher, nomFichierVoucher, numeroVoucher } from "../operation
 import { ouvrirDansEntreprise, marqueUnifiee, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
 import { dansEntreprise, parEntreprise, cleImage } from "../agent-cartes-voucher-calc.mjs";
 
-const modules = () => Promise.all([import("./voucher.mjs"), import("./voucher-envoi.mjs"), import("./partage.mjs")]);
+const modules = () => Promise.all([import("./voucher.mjs"), import("./voucher-envoi.mjs"), import("./partage.mjs"), import("./voucher-whatsapp.mjs")]);
 const changerSansNaviguer = (id) => etat.entiteId !== id && changerEntite(id, { naviguer: false });
 
 // Lire ou rendre dans l'entreprise `id`, d'un trait, puis revenir (agent-cartes-voucher-calc.mjs : bascule dans le `try`, voucherDepuis gardé).
@@ -37,7 +39,7 @@ const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateStrin
 
 // Ce que l'écran relit d'une ligne du résultat, dans son entreprise : la réservation chargée, son dossier, son client, son voucher rendu et
 // ce qui manque. Revue de sécurité de la PR 303 : rien du fil (texte écrit par l'agent) ne s'affiche, seulement ces données relues.
-function relire(r, { renderVoucher, vouchersDuDossier }) {
+function relire(r, { renderVoucher, vouchersDuDossier }, { conversationPourVoucher }) {
   const ent = r.entite_id;
   const d = etat.db.dossiers.find((y) => y.id === r.dossier_id) || null;
   if (!d) return null;
@@ -45,11 +47,11 @@ function relire(r, { renderVoucher, vouchersDuDossier }) {
   const x = vouchersDuDossier(r.dossier_id).find((v) => v.reservation.id === r.id) || null;
   if (!x) return { r, ent, dossier: d, client, sansVoucher: true };
   const booking = estBookingConfirmation(r, x.type, etat.db.reglages);
-  return { r, ent, dossier: d, client, booking, cle: cleImage({ reservation: r, client, dossier: d, reglages: etat.db.reglages }), manque: controlesVoucher(r, client, x.type || ""), noeud: renderVoucher(x), nom: nomFichierVoucher(x.numero || numeroVoucher(d.ref || "", x.index), nomClient(client), { taxi: booking }) };
+  return { r, ent, dossier: d, client, booking, conversation: conversationPourVoucher(x), cle: cleImage({ reservation: r, client, dossier: d, reglages: etat.db.reglages }), manque: controlesVoucher(r, client, x.type || ""), noeud: renderVoucher(x), nom: nomFichierVoucher(x.numero || numeroVoucher(d.ref || "", x.index), nomClient(client), { taxi: booking }) };
 }
 // Toutes les lignes d'un résultat : les références retrouvées parmi les réservations chargées, les droits de l'écran contrôlés, puis une
 // seule bascule par entreprise. Rend { lus (dans l'ordre du résultat), absents (nombre de lignes qui ne se relisent pas) }.
-function relireTout(lignes, voucher) {
+function relireTout(lignes, voucher, wa) {
   const trouvees = [];
   let absents = 0;
   for (const l of lignes) {
@@ -58,7 +60,7 @@ function relireTout(lignes, voucher) {
     else if (vouchersPermis({ fonctionnement: reglagesDe(r.entite_id).fonctionnement, permissions: permissionsDe(r.entite_id) }) && !trouvees.some((x) => x.r.id === r.id)) trouvees.push({ r, ent: r.entite_id });
   }
   const lus = new Map();
-  for (const { ent, liste } of parEntreprise(trouvees)) dans(ent, () => liste.forEach((x) => lus.set(x.r.id, relire(x.r, voucher))));
+  for (const { ent, liste } of parEntreprise(trouvees)) dans(ent, () => liste.forEach((x) => lus.set(x.r.id, relire(x.r, voucher, wa))));
   const ordre = trouvees.map((x) => lus.get(x.r.id)).filter(Boolean);
   return { lus: ordre, absents: absents + trouvees.length - ordre.length };
 }
@@ -79,6 +81,23 @@ function envoyer(v) {
   });
 }
 
+// La confirmation d'envoi dans la conversation WhatsApp du client, dans l'entreprise du service ; retour à la fermeture.
+function envoyerConversation(v, fichier) {
+  return ouvrirDansEntreprise({
+    id: v.ent,
+    origine: etat.entiteId,
+    changer: changerSansNaviguer,
+    charger: modules,
+    ouvrir: ([{ vouchersDuDossier }, { messageClientVoucher }, , { conversationPourVoucher, confirmerVoucherWhatsApp }], revenir) => {
+      const x = vouchersDuDossier(v.r.dossier_id).find((y) => y.reservation.id === v.r.id);
+      const conversation = x ? conversationPourVoucher(x) : null;
+      if (!conversation) return void toast(tr("La conversation WhatsApp du client n'est plus disponible : utilisez l'envoi habituel."), true), false;
+      confirmerVoucherWhatsApp(x, { conversation, fichier, legende: messageClientVoucher(x), avantNavigation: revenir });
+      return true;
+    },
+  });
+}
+
 function ligneService(v, { imageDuRendu, AVERTISSEMENTS }, { moyen, enregistrer, copierImage }) {
   const titre = h("p", { class: "agent-voucher-titre" }, h("strong", null, v.r.libelle || ""), h("small", null, [jourCourt(v.r.date_service), v.r.heure_pickup ? tr("pickup {h}", { h: v.r.heure_pickup }) : ""].filter(Boolean).join(", ")));
   if (v.sansVoucher) return h("div", { class: "agent-voucher-service" }, titre, h("p", { class: "aide" }, tr("Pas de voucher")));
@@ -86,10 +105,12 @@ function ligneService(v, { imageDuRendu, AVERTISSEMENTS }, { moyen, enregistrer,
   const apercu = h("button", { type: "button", class: "agent-voucher-apercu", "aria-label": v.booking ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher"), onclick: () => envoyer(v) }, h("span", { class: "aide" }, tr("Préparation de l'image…")));
   const telecharger = h("button", { class: "secondaire", type: "button", disabled: true }, tr("Télécharger l'image"));
   const copier = h("button", { class: "secondaire", type: "button", hidden: true }, tr("Copier l'image"));
+  const conversation = v.conversation ? h("button", { class: "secondaire", type: "button", disabled: true }, icone("whatsapp", 18), tr("Envoyer dans la conversation WhatsApp")) : null;
   const actions = h(
     "div",
     { class: "actions gauche" },
     h("button", { class: "principal", type: "button", onclick: () => envoyer(v) }, icone("whatsapp", 18), v.booking ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher")),
+    conversation,
     telecharger,
     copier
   );
@@ -104,6 +125,10 @@ function ligneService(v, { imageDuRendu, AVERTISSEMENTS }, { moyen, enregistrer,
     apercu.replaceChildren(img);
     telecharger.disabled = false;
     telecharger.onclick = () => enregistrer([fichier]);
+    if (conversation) {
+      conversation.disabled = false;
+      conversation.onclick = () => envoyerConversation(v, fichier);
+    }
     if (moyen([fichier]) === "ordinateur") {
       copier.hidden = false;
       copier.onclick = async () => toast((await copierImage(fichier)).ok ? tr("Image copiée : collez-la dans WhatsApp.") : tr("Copie impossible : téléchargez l'image."), false);
@@ -176,7 +201,7 @@ export function cartesVouchers(resultat) {
   modules()
     .then((mods) => {
       const [voucher] = mods;
-      const { lus, absents } = relireTout(lignes, voucher);
+      const { lus, absents } = relireTout(lignes, voucher, mods[3]);
       const parDossier = new Map();
       for (const v of lus) parDossier.set(v.dossier.id, [...(parDossier.get(v.dossier.id) || []), v]);
       zone.replaceChildren(...[...parDossier.values()].map((l) => carte(l, mods)), absents ? h("p", { class: "aide" }, tr("Un service de ce résultat n'est pas chargé sur cet appareil : rechargez la page pour voir son voucher.")) : null);

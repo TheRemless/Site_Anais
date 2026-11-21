@@ -204,7 +204,7 @@ test("migration 72 : en-tête, transaction, aucune donnée modifiée, droits ; r
   assert.ok(fs.existsSync(new URL("../docs/gestion/retour-72-demandes-whatsapp.sql", import.meta.url)));
   assert.match(source("docs/gestion/retour-72-demandes-whatsapp.sql"), /drop function if exists demande_site_relier\(uuid, uuid\);/);
   assert.ok(fs.existsSync(new URL("../docs/gestion/verif-demandes-whatsapp.mjs", import.meta.url)));
-  assert.match(source(".github/workflows/ci.yml"), /verif-whatsapp-nom verif-demandes-whatsapp; do/);
+  assert.match(source(".github/workflows/ci.yml"), /for f in [^\n]*verif-whatsapp-nom verif-demandes-whatsapp[ ;][^\n]*; do/);
 });
 
 // ---- Revue de sécurité de la PR 302 -----------------------------------------------------------------------------------------------

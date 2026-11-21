@@ -15,6 +15,7 @@ import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
+import { BUCKET_SORTANT, cheminsSortants, sansFichierSortant, statutLibereFichier, sortantsAPurger } from "../whatsapp-envoi/calc.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 const entetes = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -142,6 +143,9 @@ async function traiterEnAttente(db: SupabaseClient, idCourant: string | null) {
   // Un envoi depuis Gestion sans réponse sûre de Telnyx depuis 5 minutes : échec visible, Nani vérifie dans WhatsApp (migration 64).
   const { data: expires, error: errE } = await db.from("whatsapp_messages").update({ statut_envoi: "echec", erreur_envoi: "sans_confirmation", statut_le: new Date().toISOString() }).eq("statut_envoi", "envoi").lt("envoye_le", limiteEnvoi()).select("id");
   if (errE) console.error("envois à vérifier :", errE.message);
+  // Vouchers envoyés depuis Gestion : leur fichier temporaire ne reste jamais plus d'une heure (à chaque passage, la reprise passe toutes les
+  // 5 minutes). Une panne du stockage n'arrête pas le reste du traitement.
+  await purgerSortants(db).catch((err) => console.error("purge des vouchers envoyés :", String((err as Error)?.message || err).slice(0, 200)));
   const r = await reglages(db);
   if (!r.purge_le || Date.now() - new Date(r.purge_le).getTime() > 3600_000) {
     reglagesLus = null;
@@ -200,7 +204,7 @@ async function appliquer(db: SupabaseClient, a: any) {
   // Statut d'envoi (migration 64) : sur le message sortant qui porte cet id, sans jamais revenir en arrière (remis puis « sent » en retard).
   if (a.action === "statut") {
     const ids = [a.telnyx_id ? `telnyx_id.eq.${filtre(a.telnyx_id)}` : null, a.meta_id ? `meta_id.eq.${filtre(a.meta_id)}` : null].filter(Boolean).join(",");
-    const { data: msgs, error } = await db.from("whatsapp_messages").select("id, statut_envoi").eq("sens", "sortant").or(ids).limit(5);
+    const { data: msgs, error } = await db.from("whatsapp_messages").select("id, statut_envoi, medias").eq("sens", "sortant").or(ids).limit(5);
     if (error) throw new Error(error.message);
     // Message inconnu : statut arrivé avant que whatsapp-envoi note l'id Telnyx (repris), ou message hors de Gestion.
     if (!msgs || !msgs.length) throw new CibleAbsente("statut_message_inconnu", STATUT_FENETRE_MS);
@@ -212,6 +216,9 @@ async function appliquer(db: SupabaseClient, a: any) {
       const { error: errU } = await (m.statut_envoi === null ? q.is("statut_envoi", null) : q.in("statut_envoi", avant));
       if (errU) throw new Error(errU.message);
     }
+    // Voucher envoyé depuis Gestion (whatsapp-envoi/voucher.js) : remis ou lu, Meta a pris l'image ; en échec, elle ne partira plus.
+    // Le fichier temporaire du bucket « whatsapp-sortant » est effacé. Un effacement manqué est repris par la purge (une heure au plus).
+    if (statutLibereFichier(a.statut)) for (const m of msgs) await effacerSortant(db, m.id, m.medias || []);
     return;
   }
   if (a.action === "modifier" || a.action === "supprimer") {
@@ -380,6 +387,30 @@ async function effacerMedias(db: SupabaseClient, message: string, medias: Record
   }
   if (!medias.length) return;
   await db.from("whatsapp_messages").update({ medias: medias.map((m) => (m.statut === "copie" ? { ...m, statut: "efface", chemin: null } : m)) }).eq("id", message);
+}
+
+// Fichier temporaire d'un voucher envoyé depuis Gestion : effacé du bucket privé, puis le média ne le cite plus. Seul un chemin de la forme
+// <organisation>/<horodatage>-<uuid>.<png|jpg|webp> du dossier de cette organisation est effacé (cheminsSortants).
+async function effacerSortant(db: SupabaseClient, message: string, medias: Record<string, unknown>[]) {
+  const chemins = cheminsSortants(medias, ORGANISATION);
+  if (!chemins.length) return;
+  const { error } = await db.storage.from(BUCKET_SORTANT).remove(chemins);
+  if (error) return console.error("voucher envoyé : fichier non effacé, la purge s'en charge", error.message);
+  const { error: errM } = await db.from("whatsapp_messages").update({ medias: sansFichierSortant(medias) }).eq("id", message);
+  if (errM) console.error("voucher envoyé : média non mis à jour", errM.message);
+}
+
+// Purge des vouchers envoyés (migration 73) : tout fichier de plus d'une heure du dossier de l'organisation, quel que soit son message
+// (envoi au résultat inconnu, « Pas parti », statut jamais arrivé). 100 par passage, les plus anciens d'abord. whatsapp-envoi refuse tout
+// dépôt pour une autre organisation que WHATSAPP_ORGANISATION : ce seul dossier suffit.
+async function purgerSortants(db: SupabaseClient) {
+  const stockage = db.storage.from(BUCKET_SORTANT);
+  const { data, error } = await stockage.list(ORGANISATION, { limit: 100, sortBy: { column: "created_at", order: "asc" } });
+  if (error) throw new Error(error.message);
+  const vieux = sortantsAPurger(data || [], ORGANISATION);
+  if (!vieux.length) return;
+  const { error: errR } = await stockage.remove(vieux);
+  if (errR) throw new Error(errR.message);
 }
 
 // Conservation (migration 58) : la base supprime ce qui a passé son délai et rend les médias de plus de 90 jours, effacés ici du stockage.

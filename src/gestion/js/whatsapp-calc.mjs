@@ -227,6 +227,8 @@ export const avertissements = (prop) => ((prop && prop.avertissements) || []).ma
 // Ce que montre un média : une vignette (image copiée), un lien (document, son, vidéo copiés), ou pourquoi il manque.
 export function etatMedia(media) {
   const m = media || {};
+  // Voucher envoyé depuis Gestion (migration 73) : l'image n'est pas gardée, seul son envoi est montré.
+  if (m.statut === "voucher") return "voucher_envoye";
   if (m.statut === "efface") return "expire";
   if (m.statut === "trop_gros") return "trop_gros";
   if (m.statut === "echec") return "echec";
@@ -238,6 +240,7 @@ export function etatMedia(media) {
   return "document";
 }
 export const LIBELLES_MEDIA = {
+  voucher_envoye: N_("Voucher envoyé depuis Gestion (image non gardée)"),
   expire: N_("Média expiré"),
   trop_gros: N_("Fichier trop gros pour être gardé"),
   echec: N_("Média non récupéré"),
