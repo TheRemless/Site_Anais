@@ -32,3 +32,7 @@ Déchiffre, vérifie le manifeste (nombre de lignes et empreinte de chaque table
 
 ## Preuve
 `docs/gestion/verif-sauvegarde-archive.mjs` rejoue ce parcours sur Postgres en mémoire (jamais sur la production) : base d'origine, export, chiffrement, déchiffrement, script SQL, base neuve : mêmes lignes dans les 30 tables, séquences remises. Il tourne dans la CI. Les tests de rotation, d'échec et d'alerte sont dans `tests/gestion-sauvegarde-auto.test.js`.
+
+## Sauvegarde par GitHub (depuis le 21.11.2026)
+
+La sauvegarde de chaque nuit tourne maintenant sur GitHub, dans le dépôt `TheRemless/gestion-sauvegardes` (script `outils/sauvegarder.mjs`, même format `.gsb`, même phrase de chiffrement). Elle se connecte avec le rôle `sauvegarde_gestion` (migration 66), qui n'a aucun droit sur les tables et ne peut qu'appeler `sauvegarde_tables()`, `sauvegarde_table()`, `sauvegarde_schema()` et `sauvegarde_noter()`. Gestion affiche un bandeau rouge aux administrateurs après 30 heures sans réussite (`sauvegarde_etat()`). La sauvegarde du Mac est coupée après la première nuit réussie sur GitHub. La marche à suivre pour restaurer est dans le README de ce dépôt.

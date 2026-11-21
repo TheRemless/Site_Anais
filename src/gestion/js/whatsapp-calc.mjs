@@ -97,7 +97,7 @@ export const MOTIFS_TRI = {
   partenaire: N_("Un partenaire"),
   publicite: N_("Publicité"),
   media_seul: N_("Photo ou vocal sans texte"),
-  contact_jamais: N_("Contact réglé sur Jamais"),
+  contact_jamais: N_("Contact personnel"),
   limite: N_("Limite du jour des réponses atteinte"),
   tri_illisible: N_("Message non trié"),
   ia_coupee: N_("Assistant éteint ou réception suspendue : message non trié"),

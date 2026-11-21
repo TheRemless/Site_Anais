@@ -14,6 +14,7 @@ import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 import { agentActif } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
+import { bandeauSauvegarde } from "./views/bandeau-sauvegarde.mjs";
 import { lecteurWhatsApp, badgeWhatsApp, TABLES_WHATSAPP } from "./whatsapp-calc.mjs";
 import { ATTENTE_WHATSAPP_MS, intervalleRepli, signatureWhatsApp, directCoupe } from "./direct-reprise-calc.mjs";
 
@@ -417,7 +418,7 @@ async function afficherVoucherSeul() {
 }
 
 function coque() {
-  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, bandeauCredit(), h("main", { id: "principal", tabindex: "-1" }))), barreOnglets(), boutonPlus());
+  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, bandeauCredit(), bandeauSauvegarde(), h("main", { id: "principal", tabindex: "-1" }))), barreOnglets(), boutonPlus());
 }
 
 // ---- Recherche globale ----------------------------------------------------------------------------------------
@@ -1142,6 +1143,17 @@ init()
   .then(installerTirer)
   .catch((err) => {
     console.error(err);
+    // Page ouverte avant une mise en ligne : le module de connexion à la base (store-supabase-….js) n'existe plus sous son ancien nom. Rien
+    // n'est encore saisi au démarrage : on recharge la version en ligne une fois (au plus une fois par minute) au lieu d'afficher l'erreur.
+    if (FICHIER_DISPARU.test(String((err && err.message) || ""))) {
+      try {
+        const dernier = Number(sessionStorage.getItem("gestion-recharge-demarrage")) || 0;
+        if (Date.now() - dernier > 60 * 1000) {
+          sessionStorage.setItem("gestion-recharge-demarrage", String(Date.now()));
+          return void location.reload();
+        }
+      } catch {}
+    }
     // Réseau absent et copie de la feuille du jour sur ce téléphone : on l'affiche en lecture seule au lieu de l'écran d'erreur.
     try {
       if (localStorage.getItem(CLE_HORS_LIGNE) && (navigator.onLine === false || /failed to fetch|networkerror|load failed|network/i.test(String(err && err.message)))) return void location.replace("hors-ligne.html");
