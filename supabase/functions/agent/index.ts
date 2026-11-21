@@ -31,7 +31,7 @@ import { MARQUE_PROMESSE, borneJour, cleNumero, contactExclu, dateBangkok as jou
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
-import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES as MODES_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -92,6 +92,9 @@ Deno.serve(async (req) => {
   // construits ici, plus bas, depuis la conversation WhatsApp lue avec la session de la personne.
   const waId = typeof demande.whatsapp_conversation_id === "string" && UUID.test(demande.whatsapp_conversation_id) && !demande.conversation_id ? demande.whatsapp_conversation_id : null;
   const waMode = MODES_WA.includes(demande.whatsapp_mode) ? demande.whatsapp_mode : "creer";
+  // « Demander à l'assistant » (PR B) : la question tapée par la personne est obligatoire ; la conversation est jointe comme pour un dossier.
+  const waQuestion = waId && waMode === "question" ? message : "";
+  if (waId && waMode === "question" && (!waQuestion || waQuestion.length > QUESTION_MAX_WA)) return json({ erreur: "message_invalide" }, 400);
   // Un message peut n'être que des pièces jointes (photos, captures, PDF). Contrôlées une seule fois : ici pour une nouvelle conversation
   // (rien n'est encore gardé), plus bas avec ce que garde déjà une conversation existante.
   const avecFichiers = Array.isArray(demande.fichiers) && demande.fichiers.length > 0;
@@ -192,10 +195,10 @@ Deno.serve(async (req) => {
       if (verifierPieces([...fichiers, piece]).ok) fichiers.push(piece);
       else ecartes++;
     }
-    const dossierWa = waMode === "maj" && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
+    const dossierWa = (waMode === "maj" || waMode === "question") && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
-    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX });
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, question: waQuestion });
     controle = verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
     waConv = wc.data;

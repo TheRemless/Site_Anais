@@ -5,7 +5,7 @@ import { aFaireWhatsApp, chercherConversations, lireConversation, sansAccents } 
 
 // Une question sur la boîte : WhatsApp, une conversation, un message, ce qui attend.
 export const questionWhatsApp = (texte) => /whatsapp|conversation (?:de|d'|avec)|qui (?:m'|nous )?a [ée]crit|qu(?:i|'est-ce qui) attend|pas (?:encore )?r[ée]pondu/i.test(String(texte || ""));
-const demandeAFaire = (texte) => /[àa] faire|attend|en retard|promesse|urgent|pas r[ée]pondu|qui (?:m'|nous |a )?(?:a )?[ée]crit/i.test(String(texte || ""));
+const demandeAFaire = (texte) => /[àa] faire|attend|en retard|promesse|urgent|pas r[ée]pondu|qui (?:m'|nous |a )?(?:a )?[ée]crit|to do|needs doing|waiting|pending/i.test(String(texte || ""));
 
 // Même recherche que whatsapp_rechercher (migration 67), en mémoire : chaque mot de 3 lettres ou plus en préfixe d'un mot du message
 // (texte et légende), un mot de 2 lettres en entier, six chiffres ou plus dans les chiffres du message. Les contacts « jamais », les messages supprimés et les réactions n'y sont jamais.
@@ -88,4 +88,56 @@ export async function repondreWhatsAppDemo(texte, source, { maintenant = Date.no
     delta: `La conversation de ${lu.nom}${ENTREPRISES[lu.entreprise] ? ` (${ENTREPRISES[lu.entreprise]})` : ""} : ${lu.messages.length} message${lu.messages.length > 1 ? "s" : ""}${lu.attend_depuis ? ", le client attend une réponse" : ""}. ${lu.lien}\nEn démonstration, je cite les derniers messages tels quels ; en service, je les résume.\n${lignes.join("\n")}${autres}`,
   });
   return ev;
+}
+
+// ---- « Demander à l'assistant » depuis une conversation (PR B, 21.11.2026) -------------------------------------------------------------
+// Le premier message tel que la fonction l'écrit (agent/whatsapp.js, texteDepuisWhatsApp en mode « question ») : la question entre
+// <question> et </question>, puis l'échange entre <conversation> et </conversation>, une ligne « [Client 21.11.2026 10:00] texte ».
+const heureDemo = (iso) => {
+  const b = new Date(Date.parse(iso) + 7 * 3600 * 1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(b.getUTCDate())}.${p(b.getUTCMonth() + 1)}.${b.getUTCFullYear()} ${p(b.getUTCHours())}:${p(b.getUTCMinutes())}`;
+};
+export function texteQuestionDemo(question, messages = [], { qui = "Nani" } = {}) {
+  const q = String(question || "").replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›")).trim();
+  const lignes = [...messages]
+    .filter((m) => m && !m.supprime_le && m.texte)
+    .sort((a, b) => String(a.envoye_le).localeCompare(String(b.envoye_le)))
+    .slice(-40)
+    .map((m) => `[${m.sens === "entrant" ? "Client" : qui} ${heureDemo(m.envoye_le)}] ${String(m.texte).replace(/[\[\]<>]/g, " ").replace(/\s+/g, " ").trim()}`);
+  return `${qui} te pose une question sur cette conversation WhatsApp.\n<question>\n${q}\n</question>\n\n<conversation>\n${lignes.join("\n") || "(aucun texte)"}\n</conversation>`;
+}
+const demandeResume = (t) => /r[ée]sum|summar|de quoi|quoi de neuf|what.*about/i.test(String(t || ""));
+const demandeDossiers = (t) => /pr[ée]pare|dossier|cr[ée]er|booking|file/i.test(String(t || ""));
+// Une question sur une conversation précise (`id`). Rend { evenements } quand la démonstration y répond, { preparer: true } pour « Prépare
+// les dossiers » (la démonstration habituelle lit alors l'échange du client) ou null (autre suite de la conversation). `libre` : une question
+// quelconque reçoit un résumé, comme la première question d'une conversation ouverte depuis WhatsApp.
+export async function repondreQuestionWhatsAppDemo(question, source, id, { maintenant = Date.now(), libre = false } = {}) {
+  if (!source || !id) return null;
+  if (demandeDossiers(question) && !demandeAFaire(question)) return { preparer: true };
+  const ev = [];
+  if (demandeAFaire(question)) {
+    ev.push({ t: "etape", outil: "a_faire_whatsapp" });
+    const r = aFaireWhatsApp(await source.aFaire(), { maintenant });
+    const ici = r.elements.filter((x) => x.conversation === id);
+    const ailleurs = r.nombre - ici.length;
+    const lignes = ici.map((x) => `- ${x.niveau === "urgent" ? "Urgent, " : ""}${LIBELLES[x.genre]}${x.attente ? ` depuis ${x.attente}` : ""}${x.genre === "ferry_non_paye" ? `, solde ${x.solde_du}${x.devise ? ` ${x.devise}` : ""}` : ""} ${x.lien}`);
+    const fin = ailleurs > 0 ? `\nAilleurs dans WhatsApp, ${ailleurs} autre${ailleurs > 1 ? "s" : ""} chose${ailleurs > 1 ? "s" : ""} attend${ailleurs > 1 ? "ent" : ""}.` : "";
+    ev.push({ t: "texte", delta: `${lignes.length ? `Pour cette conversation :\n${lignes.join("\n")}` : "Rien n'attend dans cette conversation."}${fin}` });
+    return { evenements: ev };
+  }
+  if (!demandeResume(question) && !libre) return null;
+  ev.push({ t: "etape", outil: "lire_conversation" });
+  const lu = lireConversation({ conversation: id, depuis: "", derniers: 0 }, await source.conversation(id, { depuis: "", derniers: 40 }), { qui: source.qui || "Nani" });
+  if (lu.erreur) {
+    ev.push({ t: "texte", delta: lu.erreur === "contact_personnel" ? "Ce contact est réglé « Contact personnel » : je ne lis rien de lui." : "Je ne peux pas lire cette conversation." });
+    return { evenements: ev };
+  }
+  const derniers = lu.messages.filter((m) => m.texte).slice(-3);
+  const lignes = derniers.map((m) => `- ${m.de === "client" ? "Client" : m.de} : « ${m.texte.length > 160 ? `${m.texte.slice(0, 159)}…` : m.texte} » ${m.lien}`);
+  ev.push({
+    t: "texte",
+    delta: `${lu.nom} : ${lu.messages.length} message${lu.messages.length > 1 ? "s" : ""}${lu.attend_depuis ? ", le client attend une réponse" : ""}. ${lu.lien}\nEn démonstration, je cite les derniers messages ; en service, je les résume et je réponds à la question.\n${lignes.join("\n")}`,
+  });
+  return { evenements: ev };
 }

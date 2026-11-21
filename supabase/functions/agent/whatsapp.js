@@ -10,6 +10,10 @@ import { masquer } from "../whatsapp/proposer.js";
 import { MAX_FICHIERS_MESSAGE, TYPES_FICHIER } from "./fichiers.js";
 
 export const MODES = ["creer", "maj"];
+// « Demander à l'assistant » (PR B du 21.11.2026) : une question de la personne sur la conversation, avec les derniers messages joints par le
+// même mécanisme. L'agent répond en cartes comme d'habitude ; il ne propose un dossier que si la question le demande.
+export const MODES_DEMANDE = [...MODES, "question"];
+export const QUESTION_MAX = 2000;
 export const MESSAGES_MAX = 80;
 // Sous les limites d'un message de l'agent (six fichiers, 5 Mo par image, 10 Mo en tout) avec une marge.
 export const OCTETS_IMAGE_MAX = 4.5 * 1024 * 1024;
@@ -57,11 +61,15 @@ const neutre = (t) => masquer(String(t || "")).replace(/[\[\]<>]/g, (c) => ({ "[
 
 // Le message que l'agent reçoit, comme si la personne l'avait écrit. Les messages les plus récents passent toujours : l'échange est rempli
 // du plus récent au plus ancien jusqu'à `max` caractères, puis remis dans l'ordre.
-export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui = "Nani", dossier = null, joints = 0, ecartes = 0, max = 8000 }) {
+// `question` (mode « question ») : la question tapée par la personne, entre <question> et </question>, sans chevrons (elle ne ferme pas le bloc).
+export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui = "Nani", dossier = null, joints = 0, ecartes = 0, max = 8000, question = "" }) {
   const nom = conv && conv.nom ? ` (nom WhatsApp : ${neutre(conv.nom).slice(0, 60)})` : "";
   const tel = conv && conv.telephone ? `Numéro WhatsApp du client : ${conv.telephone}${nom}.` : "";
+  const q = String(question || "").replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›")).trim().slice(0, QUESTION_MAX);
   const consigne =
-    mode === "maj"
+    mode === "question"
+      ? `${qui} te pose une question sur cette conversation WhatsApp${dossier ? ` (dossier relié ${dossier.ref})` : ""}. Réponds d'après la conversation, court et concret. Si elle demande de préparer ou de mettre à jour des dossiers, propose les cartes habituelles (client, services, dates, personnes, pickups calculés) ; sinon ne propose aucune carte.${conv && conv.id ? ` Pour relire la conversation plus tard (nouveaux messages), lis-la avec lire_conversation, conversation ${conv.id}.` : ""}\n<question>\n${q}\n</question>`
+      : mode === "maj"
       ? `Mets à jour le dossier ${dossier ? dossier.ref : "relié"} d'après cette conversation WhatsApp : le client a peut-être changé une date, un hôtel, une heure ou le nombre de personnes. Lis d'abord le dossier, puis propose une carte de modification par changement. Ne propose rien que le client n'a pas demandé.`
       : "Crée le dossier de ce client d'après cette conversation WhatsApp : client, services, dates, personnes et pickups calculés. Propose les cartes habituelles ; demande-moi ce qui manque.";
   const tete = [

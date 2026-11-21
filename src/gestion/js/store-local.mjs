@@ -624,6 +624,17 @@ export function creer() {
       if (!conversationLue(conversationId)) return [];
       return structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === conversationId).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)));
     },
+    // Comme whatsapp_rechercher (migration 67) : seulement les conversations que la personne lit, jamais un contact personnel (PR B).
+    async whatsappRechercher(q, { lim = 20 } = {}) {
+      if (!litWhatsApp(null)) return [];
+      const { rechercheDemo } = await import("./agent-whatsapp-demo.mjs");
+      const convs = data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id) && c.reponses !== "jamais");
+      const ids = new Set(convs.map((c) => c.id));
+      const messages = data.whatsapp_messages.filter((m) => ids.has(m.conversation_id));
+      // La base centre l'extrait sur le mot trouvé (ts_headline) : ici le texte entier, que l'écran centre de la même façon (extraitAutour).
+      const textes = new Map(messages.map((m) => [m.id, `${m.texte || ""} ${(Array.isArray(m.medias) && m.medias[0] && m.medias[0].legende) || ""}`.trim()]));
+      return rechercheDemo(q, convs, messages, Math.min(50, Math.max(1, lim))).map((t) => ({ ...t, extrait: textes.get(t.message_id) || t.extrait }));
+    },
     // « Préparer une réponse » en démonstration : une proposition « en_cours » tout de suite, puis une réponse fictive après un court délai,
     // annoncées comme le ferait Realtime. Prépare même pour un contact réglé sur « Jamais » ou un message que le tri a écarté, comme la fonction.
     async whatsappPreparer(conversationId, { delai = 1500 } = {}) {
@@ -875,14 +886,24 @@ export function creer() {
       // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61), comme la fonction : la conversation est lue
       // avec les droits de la personne, le message est construit depuis l'échange. En démonstration, seulement le texte des messages du client.
       const wc = corps.whatsapp_conversation_id && !corps.conversation_id ? conversationLue(corps.whatsapp_conversation_id) : null;
-      const modeWa = corps.whatsapp_mode === "maj" ? "maj" : "creer";
+      const modeWa = corps.whatsapp_mode === "maj" ? "maj" : corps.whatsapp_mode === "question" ? "question" : "creer";
+      // « Demander à l'assistant » (PR B) : la question de la personne, puis l'échange joint, comme la fonction (texteDepuisWhatsApp).
+      const question = modeWa === "question" ? texte : "";
+      let texteDemo = "";
       if (corps.whatsapp_conversation_id && !corps.conversation_id) {
         // Comme la fonction : la conversation est rangée dans l'entreprise de l'Assistant, ou encore à trier (lot 2). Les pièces cochées
         // (whatsapp_pieces) ne sont pas lues en démonstration.
         if (!wc || (wc.entite_id !== e && wc.entite_id !== null)) return { erreur: "whatsapp_introuvable" };
         if (modeWa === "maj" && !data.dossiers.some((d) => d.id === wc.dossier_id)) return { erreur: "dossier_introuvable" };
+        if (modeWa === "question" && (!question || question.length > 2000)) return { erreur: "message_invalide" };
         const lignes = data.whatsapp_messages.filter((m) => m.conversation_id === wc.id && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte);
         texte = lignes.join("\n") || "Bonjour";
+        if (modeWa === "question") {
+          const { texteQuestionDemo } = await import("./agent-whatsapp-demo.mjs");
+          // La suite de la démonstration (« Prépare les dossiers ») lit les messages du client ; le fil garde la question et l'échange.
+          texteDemo = texte;
+          texte = texteQuestionDemo(question, data.whatsapp_messages.filter((m) => m.conversation_id === wc.id));
+        }
       }
       if (!texte && !pieces.length) return { erreur: "message_invalide" };
       if (pieces.length > 6) return { erreur: "trop_de_fichiers" };
@@ -898,6 +919,8 @@ export function creer() {
       }
       const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant() });
       surEvenement({ t: "conversation", id: conv.id, titre: conv.titre, dossier_id: conv.dossier_id, ...(conv.whatsapp_conversation_id ? { whatsapp_conversation_id: conv.whatsapp_conversation_id } : {}) });
+      // Les mots qui guident la démonstration : la question, ou l'échange du client pour « Prépare les dossiers » (PR B).
+      let texteGuide = texte;
       const blocs = pieces.map((f) => {
         const ligne = { id: uid(), conversation_id: conv.id, nom: String(f.nom || "").slice(0, 120), media_type: f.media_type, taille: String(f.data || "").length, cree_le: maintenant() };
         data.agent_fichiers.push(ligne);
@@ -921,9 +944,37 @@ export function creer() {
         surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
         return { ok: true };
       }
+      // Une conversation liée à WhatsApp (PR B) : la question rapide reçoit sa réponse tirée des vrais outils sur la démo. « Prépare les
+      // dossiers » continue avec l'échange du client, comme « Créer le dossier ».
+      const waLie = wc ? (modeWa === "question" ? wc.id : null) : conv.whatsapp_conversation_id || null;
+      if (waLie) {
+        const sourceLie = sourceWhatsApp(e);
+        const { repondreQuestionWhatsAppDemo } = await import("./agent-whatsapp-demo.mjs");
+        const q = wc ? question : texte;
+        const r = await repondreQuestionWhatsAppDemo(q, sourceLie, waLie, { libre: !!wc });
+        if (r && r.evenements) {
+          let dernier = "";
+          for (const ev of r.evenements) {
+            await new Promise((ok) => setTimeout(ok, ev.t === "etape" ? 400 : 120));
+            if (ev.t === "texte") {
+              message("assistant", [{ type: "text", text: ev.delta }]);
+              dernier = ev.delta;
+            }
+            surEvenement(ev);
+          }
+          conv.apercu = (dernier || q).replace(/\s+/g, " ").slice(0, 200);
+          conv.maj_le = maintenant();
+          sauve();
+          surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "simulation" });
+          return { ok: true };
+        }
+        if (r && r.preparer) {
+          texteGuide = texteDemo || data.whatsapp_messages.filter((m) => m.conversation_id === waLie && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte).join("\n") || texte;
+        }
+      }
       // Espace unifié (migration 63) : une demande qui mêle une excursion et un transfert donne une seule carte, chaque service avec son
       // entreprise (le troisième, hors catalogue, sans entreprise : la personne choisit), comme la fonction en mode unifié.
-      const carteMixte = carteMixteDemo(e, texte);
+      const carteMixte = carteMixteDemo(e, texteGuide);
       if (carteMixte) {
         const phrase = "Une seule carte pour les deux entreprises : l'excursion chez Secret, le transfert chez Taxi. Le dîner en bateau n'a pas d'entreprise, choisissez-la sur le service. À la validation, deux dossiers liés sont créés.";
         surEvenement({ t: "texte", delta: phrase });
@@ -960,7 +1011,7 @@ export function creer() {
       }
       const { repondreDemo } = await import("./agent-demo.mjs");
       const entite = data.entites.find((x) => x.id === e) || {};
-      const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e), liaisons: data.liaisons_ferry.filter((l) => l.entite_id === e), hotels: data.hotels_lieux.filter((l) => l.entite_id === e) });
+      const r = await repondreDemo(texteGuide, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e), liaisons: data.liaisons_ferry.filter((l) => l.entite_id === e), hotels: data.hotels_lieux.filter((l) => l.entite_id === e) });
       conv.demo_etat = r.etat;
       let dernier = "";
       for (const ev of r.evenements) {

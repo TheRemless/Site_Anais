@@ -202,7 +202,7 @@ test("Assistant : titre au nom du client, recherche, échange WhatsApp à gauche
   assert.equal(dossiersDeLaCarte({ statut: "validee", genre: "dossier", donnees: { dossier_id: "d3" } }, { dossiers }), null, "dossier annulé");
   const vue = source("src/gestion/js/views/agent.mjs");
   assert.match(vue, /const r = resultats\.get\(c\.id\) \|\| dossiersDeLaCarte\(c, \{ conv, dossiers: etat\.brut\.dossiers \|\| \[\], cartes: fil\.cartes \}\);/);
-  assert.match(vue, /async function ouvrir\(id\) \{\n\s+depuisWhatsAppEcran = false;/, "la flèche vers WhatsApp seulement pour la conversation qui en vient");
+  assert.match(vue, /async function ouvrir\(id, \{ question = null \} = \{\}\) \{\n\s+depuisWhatsAppEcran = false;/, "la flèche vers WhatsApp seulement pour la conversation qui en vient");
   assert.match(vue, /formatMontant\(Number\(s\.prix\), devise\(\)\)/, "prix au format de Gestion");
   assert.match(vue, /tr\("heure de pickup à fixer"\)/);
   assert.match(vue, /squelette\(3, \{ cartes: false \}\)/, "squelette pendant la lecture du fil");
