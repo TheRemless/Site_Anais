@@ -417,7 +417,7 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { c
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
   };
   const COL_DOSSIER = "id, ref, client_id, date_depart, date_retour, annule";
-  const COL_RESA = "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place";
+  const COL_RESA = "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, prix_origine:details->>prix_origine";
   // deno-lint-ignore no-explicit-any
   const lire = async (requete: any, table: string) => {
     const { data, error } = await requete;

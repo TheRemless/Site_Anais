@@ -39,6 +39,8 @@ const AVERTISSEMENTS = {
   enfant_non_compte: N_("Tarif par adulte sans prix enfant : les enfants ne sont pas comptés."),
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
+  // Revue de la PR 307 : le prix de la carte valait pour d'autres personnes.
+  prix_carte_personnes: N_("Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation."),
 };
 
 // Quantité d'une prestation selon son unité (les bébés ne comptent pas).
@@ -160,6 +162,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const v = sv.saisie || saisieVide();
     // Un numéro de vol ne reste que sur un transfert : une offre changée pour une excursion ne le garde pas caché.
     const details = nonVides(v.details);
+    // Un prix repris du client sans correction de Nani (revue de la PR 307) : la réservation le garde (details.prix_origine), le contrôle ne
+    // s'en sert jamais pour lever un net.
+    if ((offre && offre.prixCarte !== undefined && offre.prixOrigine === "client_non_corrige") || (sv.transfertLibre && sv.prixOrigine === "client_non_corrige")) details.prix_origine = "client_non_corrige";
     if (details.vol && !modeTaxi() && !sv.transfertLibre && !sv.retourDepart && offre && !estTransfert(offre)) delete details.vol;
     return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details, zonePickup: sv.zonePickup || null };
   }
@@ -649,7 +654,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }

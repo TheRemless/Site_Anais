@@ -121,6 +121,8 @@ export function propositionDepuisCarte(donnees = {}) {
       // Un service du catalogue dont le prix vient de la conversation (« saisi » ou « client_non_corrige ») garde ce prix à la validation,
       // le prix du catalogue reste affiché à côté (Jérémy, 22.11.2026). Un prix « catalogue » se recalcule comme avant.
       prix_carte: s.offre && ["saisi", "client_non_corrige"].includes(s.origine_prix) && Number(s.prix) > 0 ? Number(s.prix) : null,
+      // L'origine du prix, gardée jusqu'à la réservation (details.prix_origine) : un prix du client non corrigé ne lève jamais un net.
+      prix_origine: ["saisi", "client_non_corrige"].includes(s.origine_prix) ? s.origine_prix : null,
       lieu_pickup: s.lieu_pickup || "",
       // Le numéro de vol lu par l'agent (contrôlé par la fonction) : posé sur la réservation du transfert, modifiable dans la fenêtre.
       vol: s.vol || "",
@@ -146,7 +148,8 @@ export function reservationDepuisCarte(donnees = {}) {
     montant_vente: s.prix ?? null,
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
-    ...(s.vol ? { details: { vol: s.vol } } : {}),
+    // L'origine d'un prix repris du client sans correction de Nani (revue de la PR 307) : relue par le contrôle (dossierPourControle).
+    ...(s.vol || s.origine_prix === "client_non_corrige" ? { details: { ...(s.vol ? { vol: s.vol } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) } } : {}),
     notes: s.remarque || "",
   };
 }

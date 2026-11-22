@@ -112,7 +112,7 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   };
   const { nets: s, erreur } = await netsPourControle(db, ["e1", "e2"]);
   assert.equal(erreur, false);
-  assert.deepEqual(s, [{ montant: 1100, prestation_id: "p1" }, { montant: 550, prestation_id: "p1" }, { montant: 1350, trajet_id: "t1" }]);
+  assert.deepEqual(s, [{ montant: 1100, prestation_id: "p1", genre: "adulte" }, { montant: 550, prestation_id: "p1", genre: "enfant" }, { montant: 1350, trajet_id: "t1", genre: "adulte" }]);
   assert.deepEqual(appels.map((x) => x[0]).sort(), ["prestations_nets", "trajets_nets"]);
   assert.ok(appels.every((x) => x[2] === "entite_id" && x[3].join() === "e1,e2"));
   assert.equal((await netsPourControle(db, [])).nets.length, 0);

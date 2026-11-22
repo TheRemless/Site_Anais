@@ -99,6 +99,7 @@ const AVERTISSEMENTS = {
   // 22.11.2026 : le prix écrit par le client, que Nani n'a pas corrigé ensuite. Repère seulement, rien n'est bloqué.
   prix_client_non_corrige: N_("Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider."),
   prix_egal_net: N_("Un prix proposé est égal à un net interne : il a été laissé vide."),
+  prix_sous_net: N_("Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant »."),
   reference_inconnue: N_("Un service proposé n'existe pas au catalogue : choisissez-le à la main."),
   date_illisible: N_("Une date n'a pas pu être lue."),
   // Espace unifié Secret et Taxi (migration 63).
@@ -1128,6 +1129,8 @@ export async function vueAgent(idOuvert = "") {
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
     try {
       if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
+      // Un prix du client sous le net (revue de la PR 307) : jamais validé d'un geste.
+      else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
