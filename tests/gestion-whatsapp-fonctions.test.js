@@ -14,8 +14,8 @@ const source = (f) => fs.readFileSync(path.join(RACINE, "src/gestion/js", f), "u
 test("créer ou mettre à jour le dossier : mode, demande transmise à l'Assistant, liaison après validation", () => {
   assert.equal(S.modeDossier({ dossier_id: null }), "creer");
   assert.equal(S.modeDossier({ dossier_id: "d1" }), "maj");
-  assert.deepEqual(S.demandeAgent(JSON.stringify({ id: "w1", mode: "creer", entite: "t", pieces: ["o/c/a.jpg", "o/c/a.jpg", 3, "o/c/b.pdf"] })), { whatsapp_conversation_id: "w1", whatsapp_mode: "creer", entite_id: "t", whatsapp_pieces: ["o/c/a.jpg", "o/c/b.pdf"] });
-  assert.deepEqual(S.demandeAgent({ id: "w1", mode: "maj" }), { whatsapp_conversation_id: "w1", whatsapp_mode: "maj", entite_id: null, whatsapp_pieces: [] }, "sans pièce cochée, aucune");
+  assert.deepEqual(S.demandeAgent(JSON.stringify({ id: "w1", mode: "creer", entite: "t", pieces: ["o/c/a.jpg", "o/c/a.jpg", 3, "o/c/b.pdf"] })), { whatsapp_conversation_id: "w1", whatsapp_mode: "creer", entite_id: "t", whatsapp_pieces: ["o/c/a.jpg", "o/c/b.pdf"], agent_conversation_id: null });
+  assert.deepEqual(S.demandeAgent({ id: "w1", mode: "maj" }), { whatsapp_conversation_id: "w1", whatsapp_mode: "maj", entite_id: null, whatsapp_pieces: [], agent_conversation_id: null }, "sans pièce cochée, aucune");
   assert.equal(S.demandeAgent({ id: "w1", mode: "creer", pieces: Array.from({ length: 9 }, (_, i) => `p${i}`) }).whatsapp_pieces.length, 6, "six au plus");
   for (const v of [null, "", "pas du json", JSON.stringify({ id: "w1", mode: "supprimer" }), JSON.stringify({ mode: "creer" })]) assert.equal(S.demandeAgent(v), null, String(v));
   const dossier = { id: "d9", client_id: "c9" };
@@ -151,11 +151,11 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
 test("branchement : boutons de l'en-tête, Assistant, voucher, paiement, résumé, tâches, aucune relance de ferry", () => {
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /relie \? tr\("Mettre à jour le dossier"\) : tr\("Créer le dossier"\)/);
-  assert.match(vue, /sessionStorage\.setItem\(CLE_DEMANDE_AGENT, JSON\.stringify\(\{ id: c\.id, mode: modeDossier\(c\), entite: entiteId, pieces, le: Date\.now\(\) \}\)\)/);
+  assert.match(vue, /sessionStorage\.setItem\(CLE_DEMANDE_AGENT, JSON\.stringify\(\{ id: c\.id, mode: modeDossier\(c\), entite: entiteId, pieces, le: Date\.now\(\), \.\.\.\(liee \? \{ agent: liee\.id \} : \{\}\) \}\)\)/);
   assert.match(vue, /const pieces = await choisirPieces\(c\);\n\s+if \(pieces === null\) return;/, "la feuille des pièces avant l'Assistant, fermer annule");
   assert.match(vue, /tr\("Résumé automatique, à vérifier"\)/);
   assert.match(vue, /resumeEnRetard\(c\) \? ` \$\{tr\("\(avant le dernier message\)"\)\}`/);
-  assert.match(vue, /naviguer\("#\/agent\/nouvelle"\)/);
+  assert.match(vue, /naviguer\(liee \? `#\/agent\/\$\{liee\.id\}` : "#\/agent\/nouvelle"\)/);
   assert.match(vue, /entreprisePourAssistant\(\{ conv: c, prop, choix, activeId: etat\.entiteId \}\) \|\| \(await choisirEntreprise\(c, prop\)\)/, "à trier : la question seulement si rien ne permet de choisir");
   assert.match(vue, /envoyerVoucher\(x\)/, "écran d'envoi du voucher habituel");
   assert.match(vue, /naviguer\(`#\/dossier\/\$\{dossier\.id\}\?paiement=1`\)/);

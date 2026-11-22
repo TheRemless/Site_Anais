@@ -567,13 +567,20 @@ async function versAssistant(c, prop) {
   // Les pièces d'abord : fermer la feuille annule tout.
   const pieces = await choisirPieces(c);
   if (pieces === null) return;
+  // Une seule discussion par conversation WhatsApp (22.11.2026) : la plus récente ouverte de cette entreprise est rouverte.
+  let liee = null;
   try {
-    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces, le: Date.now() }));
+    liee = conversationLiee(await etat.store.agentConversations(entiteId), c.id);
+  } catch {
+    liee = null;
+  }
+  try {
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces, le: Date.now(), ...(liee ? { agent: liee.id } : {}) }));
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
   if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
-  naviguer("#/agent/nouvelle");
+  naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
 }
 // ---- Demander à l'assistant (PR B, 21.11.2026) ----------------------------------------------------------------------------------------
 // L'Assistant s'ouvre lié à cette conversation (agent_conversations.whatsapp_conversation_id, comme « Créer le dossier »), dans l'entreprise de

@@ -23,6 +23,7 @@
 //   - vouchers (vouchers.js, 21.11.2026) : trouver_vouchers, en lecture, proposé et exécuté seulement dans Secret ou Taxi pour qui lit les
 //     réservations de l'entreprise active (dossiers.lire, jamais « vouchers.seul ») ; ZTP n'a pas de voucher. Ni net, ni commission, ni prix,
 //     ni nom de prestataire ; l'écran fait les cartes et l'image, rien ne part sans le clic de la personne.
+import { partenaireProbable, prixDeVentePermis } from "../whatsapp/type-contact.js";
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
@@ -580,6 +581,36 @@ const motsDe = (q) =>
     .split(" ")
     .filter((w) => w.length > 1 && !["the", "de", "du", "la", "le", "les", "to", "a", "et", "and", "koh", "ko"].includes(w));
 
+// Les lignes de zone du catalogue Taxi (22.11.2026, transfert Koh Lanta → Krabi Town) : le groupe « Private Taxi » est un taxi privé
+// entre Koh Lanta et une zone, et son libellé ne dit que la zone (« Krabi Town », « Ao Nang »). La recherche « private minivan Koh Lanta
+// Krabi Town » ne la trouvait pas : « minivan » et « Lanta » n'y figurent pas. Une ligne de zone est rendue seulement si la recherche
+// nomme Koh Lanta et si TOUS ses autres mots (hors véhicule) sont dans le libellé de la zone : « Krabi Town » donne Krabi Town, jamais
+// Krabi Airport ; « Krabi » seul rend les deux et c'est le lieu de l'hôtel (situer_hotels) qui tranche. Rien n'est deviné d'un hôtel.
+export const GROUPES_ZONE_LANTA = ["private taxi"];
+// Les mots qui ne disent pas un lieu : véhicules (ils restent lus pour la règle du véhicule, VEHICULES_ZONE), liaisons, « pax » et les nombres.
+const MOTS_HORS_ZONE = ["lanta", "private", "prive", "privee", "taxi", "taxis", "minivan", "minivans", "van", "vans", "minibus", "car", "cars", "voiture", "voitures", "sedan", "berline", "suv", "transfer", "transfers", "transfert", "transferts", "vip", "pickup", "drop", "off", "from", "depuis", "vers", "by", "for", "pax"];
+const horsZone = (m) => MOTS_HORS_ZONE.includes(m) || /^\d+$/.test(m);
+export const ligneDeZoneLanta = (p) => !!p && p.famille === "transfert" && GROUPES_ZONE_LANTA.includes(sansAccents(String(p.groupe || "")).trim());
+// Relecture de la PR 318 : des mots entiers (« ao » ne trouve pas « Khao »), et le véhicule demandé respecté (une voiture ne rend jamais
+// « Minivan to … », un minivan jamais « Car to … ») ; un libellé qui ne nomme aucun véhicule vaut pour tous.
+const VEHICULES_ZONE = { minivan: ["minivan", "minivans", "van", "vans", "minibus"], voiture: ["car", "cars", "voiture", "voitures", "sedan", "berline", "suv"] };
+const motsEntiers = (t) => sansAccents(String(t || "")).replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean);
+const vehiculesDe = (mots) => Object.keys(VEHICULES_ZONE).filter((g) => mots.some((m) => VEHICULES_ZONE[g].includes(m)));
+export function zonesLanta(prestations = [], mots = []) {
+  if (!mots.includes("lanta")) return [];
+  const restes = mots.filter((m) => !horsZone(m));
+  if (!restes.length) return [];
+  const demandes = vehiculesDe(mots);
+  return (prestations || []).filter((p) => {
+    if (!ligneDeZoneLanta(p)) return false;
+    const libelle = motsEntiers([p.libelle, p.libelle_en].join(" "));
+    if (!restes.every((m) => libelle.includes(m))) return false;
+    const nommes = vehiculesDe(libelle);
+    return !demandes.length || !nommes.length || nommes.some((g) => demandes.includes(g));
+  });
+}
+export const CONSEIL_ZONE_LANTA = "Les lignes « depuis_koh_lanta » sont des taxis privés entre Koh Lanta et la zone de leur libellé : garde-la seulement si l'autre bout du trajet est dans cette zone (champ « lieu » de situer_hotels) ; sinon dis que ce trajet n'est pas au catalogue.";
+
 // Le drapeau « recommande » : dans un groupe d'options équivalentes, celle à la meilleure marge (vente moins net), quand au moins deux nets
 // sont connus et que les marges diffèrent. La marge elle-même ne sort jamais d'ici.
 function recommandes(options, margeDe) {
@@ -601,6 +632,8 @@ export async function chercherCatalogue(e, ctx) {
   if (e.famille !== "trajet") {
     const ps = (prestations || []).filter((p) => proposable(p, masques) && prestationProposable(p) && (e.famille === "tout" || p.famille === e.famille));
     const trouves = ps.filter((p) => correspond(sansAccents([p.libelle, p.libelle_en, p.groupe, p.famille].join(" ")), mots));
+    // Les zones Private Taxi de Taxi (zonesLanta), si la recherche stricte ne les a pas déjà.
+    for (const p of zonesLanta(ps, mots)) if (!trouves.includes(p)) trouves.push(p);
     // Options équivalentes : même groupe (la même excursion chez deux prestataires), sinon même libellé.
     const groupes = new Map();
     for (const p of trouves) {
@@ -631,6 +664,7 @@ export async function chercherCatalogue(e, ctx) {
           prix_vente: nombre(p.prix_vente),
           unite: texte(p.unite, 20),
           ...(reco.has(p.id) ? { recommande: true } : {}),
+          ...(ligneDeZoneLanta(p) ? { depuis_koh_lanta: true } : {}),
           ...champsInternes(ctx, fiche, { net, net_enfant: n ? nombre(n.net_enfant) : null, marge, commission, gain: fiche ? gainDe(fiche.sur_place, marge, commission) : null }, p.entite_id),
         });
       }
@@ -650,7 +684,8 @@ export async function chercherCatalogue(e, ctx) {
   // Recommandés d'abord, puis par libellé : le même catalogue donne toujours le même résultat.
   lignes.sort((a, b) => (b.recommande ? 1 : 0) - (a.recommande ? 1 : 0) || String(a.libelle || a.trajet).localeCompare(String(b.libelle || b.trajet)));
   const prixVus = lignes.flatMap((l) => [l.prix_vente, l.prix_adulte, l.prix_enfant]).filter((x) => x !== null && x !== undefined);
-  return { resultat: { nombre: lignes.length, lignes: lignes.slice(0, 30), ...(lignes.length > 30 ? { tronque: true } : {}), ...(lignes.length ? {} : { conseil: "Aucun tarif ne correspond : essaie d'autres mots, ou dis que ce n'est pas au catalogue." }) }, prix: prixVus };
+  const conseil = !lignes.length ? "Aucun tarif ne correspond : essaie d'autres mots, ou dis que ce n'est pas au catalogue." : lignes.some((l) => l.depuis_koh_lanta) ? CONSEIL_ZONE_LANTA : "";
+  return { resultat: { nombre: lignes.length, lignes: lignes.slice(0, 30), ...(lignes.length > 30 ? { tronque: true } : {}), ...(conseil ? { conseil } : {}) }, prix: prixVus };
 }
 
 // ---- Horaires des trajets --------------------------------------------------------------------------------------------------------
@@ -946,6 +981,10 @@ export async function lireDossier(e, ctx) {
 // une source pour la réponse au client (memoDepuis). Seuls le texte de la personne et sa <question> comptent.
 const BLOC_CONVERSATION = /<conversation>[\s\S]*?(?:<\/conversation>|$)/g;
 export const sansConversation = (t) => String(t || "").replace(BLOC_CONVERSATION, " ");
+// Le résumé d'une discussion pleine remplacée (discussion-pleine.js) : du contexte seulement. Ses montants ne sont jamais tapés par la
+// personne ni des prix acceptés pour la nouvelle demande (un client fidèle qui demande un autre trajet ne reçoit pas l'ancien prix).
+const BLOC_RESUME = /<resume_discussion>[\s\S]*?<\/resume_discussion>/g;
+export const sansResume = (t) => String(t || "").replace(BLOC_RESUME, " ");
 export const conversationsJointes = (t) => [...String(t || "").matchAll(BLOC_CONVERSATION)].map((m) => m[0]);
 // Ce que le contrôle retient d'une lecture de la boîte (chercher_conversations, lire_conversation, a_faire_whatsapp) : pour chaque
 // conversation typée partenaire, chauffeur ou hôtel, ses montants (des nets possibles : montant_interne, sauf égaux à un prix de vente
@@ -999,6 +1038,9 @@ export function retenirLecture(resultat, memo, nom = "lire_conversation") {
   // ceux d'une autre conversation lue (un autre client, un partenaire non typé) : revue de sécurité de la PR 306.
   if (nom === "lire_conversation" && memo.conversationClient === true && memo.conversationLiee && resultat && resultat.conversation === memo.conversationLiee) {
     if (!(memo.nani instanceof Set)) memo.nani = new Set();
+    // Un client seulement probable (relecture de la PR 318) : un montant près d'un mot de coût, écrit par le contact ou par Nani, reste
+    // interne, comme dans le bloc joint.
+    if (memo.clientProbable === true) for (const x of textesDe(resultat)) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
     for (const n of montantsDeNaniLus(resultat, { confirme: true })) memo.nani.add(n);
   }
   ajouterNoms(memo, noms);
@@ -1294,7 +1336,44 @@ export function montantsPresDuNet(t) {
 export const conversationDeClient = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
 // Un client confirmé (revue de sécurité de la PR 306) : typé « client », ou sans type mais relié à une fiche client ou à un dossier. Seule
 // une telle conversation donne des prix écrits par Nani : un partenaire jamais typé reste exclu.
-export const clientConfirme = (c) => conversationDeClient(c) && (c.type_contact === "client" || !!c.client_id || !!c.dossier_id);
+// Un partenaire posé, déduit ou probable (whatsapp/type-contact.js, #319, migration 110) n'est jamais un client confirmé : un prix que Nani
+// lui écrit est souvent un net.
+export const clientConfirme = (c) => conversationDeClient(c) && prixDeVentePermis(c) && (c.type_contact === "client" || !!c.client_id || !!c.dossier_id);
+// Un client probable (22.11.2026, nouveau client sans fiche) : personne ne type un contact « client » et la fiche n'existe qu'après la
+// validation du premier dossier, si bien que les prix écrits par Nani n'étaient jamais repris pour le premier dossier d'un client.
+// Resserré après la relecture de la PR 318 (un chauffeur non typé qui écrit « net 1,800 THB », Nani qui répond « OK 1,800 THB » et le
+// chauffeur « ok » ne doit jamais donner un prix de vente). Une conversation :
+//   - de client : aucun type non client, aucune fiche partenaire reliée, pas Contact personnel, pas un partenaire posé, déduit ou probable
+//     d'après le sens de toute la conversation (prixDeVentePermis et partenaireProbable, whatsapp/type-contact.js, #319), et un tri qui ne
+//     dit pas « pas un client » ;
+//   - ET une DEMANDE ENTRANTE du contact pour l'entreprise du dossier : demande_le des faits des étapes (whatsapp_conversations.avancee,
+//     migration 105), posé seulement par un message du contact qui demande un prix, une réservation ou une disponibilité (etapes.js). Un
+//     prix de Nani (prix_le) ou « Prêt à réserver » ne suffisent jamais : un partenaire en a aussi ;
+//   - OU un tri demande_client ou suivi_reservation (les motifs pour lesquels la boîte prépare déjà une réponse, MOTIFS_A_PREPARER) dont
+//     l'entreprise est celle du dossier. « remerciement », « autre », « media_seul », « tri_illisible », « ia_coupee » ou un tri nul ne
+//     suffisent jamais.
+// Seulement Secret et Taxi : chez ZTP (ou toute autre entreprise), rien ne compte. Ses prix écrits par Nani sont admis pour une carte,
+// marqués à vérifier (prix_nani_a_verifier), jamais sous le net (prix_sous_net) ; les montants écrits par le contact près d'un mot de coût
+// restent internes (memoDepuis, clientProbable). Jamais les prix du client (prixClientValides reste au client confirmé).
+export const MOTIFS_CLIENT = ["demande_client", "suivi_reservation"];
+// Les motifs du tri qui disent « pas un client » pour le prix : ceux de l'écran (whatsapp-etapes-calc.mjs, MOTIFS_TRI_NON_CLIENT), plus
+// « partenaire » et « non_client ». Un tri « partenaire » ne sort plus une conversation des listes client (#319, seul un type posé ou déduit
+// le fait), mais il bloque toujours la reprise d'un prix.
+export const MOTIFS_NON_CLIENT = ["personnel", "partenaire", "publicite", "contact_jamais", "non_client"];
+const entreprisesDuDossier = (entreprises) => (entreprises || []).filter((e) => ENTREPRISES_UNIFIEES.includes(e));
+// Une demande entrante du contact, pour l'entreprise du dossier (`entreprises` : « secret », « taxi »), d'après les faits gardés.
+export function etapeClient(c, entreprises = []) {
+  const f = c && c.avancee;
+  if (!f || typeof f !== "object" || f.jamais) return false;
+  const par = f.par && typeof f.par === "object" ? f.par : {};
+  return entreprisesDuDossier(entreprises).some((k) => !!par[k] && typeof par[k] === "object" && typeof par[k].demande_le === "string" && !!par[k].demande_le);
+}
+const triDe = (c) => (c && c.tri && typeof c.tri === "object" ? c.tri : {});
+// Un tri de demande de client, pour l'entreprise du dossier.
+export const triClient = (c, entreprises = []) => MOTIFS_CLIENT.includes(triDe(c).motif) && entreprisesDuDossier(entreprises).includes(triDe(c).entreprise);
+export const clientProbable = (c, entreprises = []) => conversationDeClient(c) && prixDeVentePermis(c) && !partenaireProbable(c) && !MOTIFS_NON_CLIENT.includes(triDe(c).motif) && (etapeClient(c, entreprises) || triClient(c, entreprises));
+// Les prix écrits par Nani dans la conversation liée valent prix de vente : client confirmé, ou client probable.
+export const clientPourPrixDeNani = (c, entreprises = []) => clientConfirme(c) || clientProbable(c, entreprises);
 // Les messages de la base (boîte WhatsApp, reponse.ts) : sortants, écrits depuis l'app ou depuis Gestion, d'un client confirmé.
 export function montantsSortants(messages = [], conv = null) {
   const out = new Set();
@@ -1362,7 +1441,13 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     const interdit = (memo.internes instanceof Set && memo.internes.has(saisi)) || netsDuControle(memo).bloquants.has(saisi);
     // Le prix du client que Nani n'a pas corrigé (demande de Jérémy du 22.11.2026, montantsClientValides) : admis, marqué comme tel.
     const duClient = !tapes.has(saisi) && memo.clientValides instanceof Set && memo.clientValides.has(saisi);
+    // Le montant vient seulement d'un message de Nani (pas tapé par la personne dans l'Assistant).
+    const nani = !(memo.tapes instanceof Set && memo.tapes.has(saisi)) && memo.nani instanceof Set && memo.nani.has(saisi);
     if ((tapes.has(saisi) || duClient) && interdit) avert.push("prix_egal_net");
+    // Un prix écrit par Nani à un client seulement probable (relecture de la PR 318) : jamais sous le net du service ni à son niveau, jamais
+    // quand les nets sont illisibles. Un service sans net connu (course de Taxi) passe.
+    else if (tapes.has(saisi) && nani && memo.clientProbable === true && memo.controleImpossible === true) avert.push("prix_client_sans_net");
+    else if (tapes.has(saisi) && nani && memo.clientProbable === true && netService !== null && saisi <= netService) avert.push("prix_sous_net");
     else if (tapes.has(saisi)) {
       prix = saisi;
       origine = "saisi";
@@ -1380,7 +1465,13 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
       avert.push("prix_client_non_corrige");
       // Un prix du catalogue différent n'est jamais remplacé en silence : la carte montre les deux et garde celui de la conversation.
       if (prixCatalogue !== null && prixCatalogue !== saisi) catalogueAffiche = prixCatalogue;
+    } else if (prixCatalogue !== null && prixCatalogue === saisi) {
+      // Le montant non sourcé est celui du catalogue pour ce service (22.11.2026) : le prix du catalogue, sans rien perdre.
+      prix = prixCatalogue;
+      origine = "catalogue";
     } else avert.push("prix_non_tape");
+    // Un prix écrit par Nani à un client probable (pas encore de fiche) : repris, mais à vérifier sur la carte.
+    if (origine === "saisi" && memo.clientProbable === true && nani) avert.push("prix_nani_a_verifier");
   } else if (prixCatalogue !== null) {
     prix = prixCatalogue;
     origine = "catalogue";
@@ -1631,7 +1722,7 @@ export function partenairesCites(t, noms = []) {
 
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
 // Avec le prix du client non corrigé par Nani et le prix refusé parce qu'égal à un net (22.11.2026) : la carte les montre, rien n'est bloqué.
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_egal_net", "prix_sous_net", "prix_client_sans_net"];
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
@@ -1822,12 +1913,13 @@ export async function executer(nom, entree, ctx, memo) {
 // et les montants tapés par la personne. Sert à contrôler la réponse au client.
 // `conversationInterne` : la conversation WhatsApp jointe ou liée est celle d'un partenaire, d'un chauffeur ou d'un hôtel ; les montants de
 // ses blocs <conversation> vont dans memo.internes (revue de sécurité de la PR 299). Dans tous les cas, ces blocs ne sont jamais « tapés ».
-// `conversationClient` : la conversation WhatsApp liée est celle d'un client confirmé (clientConfirme) ; les montants écrits par Nani
-// dans ses blocs <conversation> sont alors admis comme prix (memo.nani, montantsDeNani). `conversationLiee` : son id, seule lecture de la
+// `conversationClient` : la conversation WhatsApp liée est celle d'un client confirmé ou probable (clientPourPrixDeNani) ; les montants écrits par Nani
+// dans ses blocs <conversation> sont alors admis comme prix (memo.nani, montantsDeNani). `clientProbable` : ce client n'est que probable
+// (clientProbable, pas encore de fiche) ; ses prix repris sont marqués à vérifier. `conversationLiee` : son id, seule lecture de la
 // boîte qui donne aussi des prix de Nani (retenirLecture).
-export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, conversationLiee = null } = {}) {
+export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, clientProbable = false, conversationLiee = null } = {}) {
   // refs : les prestations et trajets rendus par les outils ; nets et servicesEnCours : posés par la fonction (netsPourControle, dossier relié).
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, clientProbable: conversationClient === true && clientProbable === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
@@ -1854,11 +1946,13 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   const nomsAppels = new Map();
   for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "assistant" && b && b.type === "tool_use") nomsAppels.set(b.id, b.name);
   for (const m of messages) {
-    const tapes = (t) => {
+    const tapes = (brut) => {
+      const t = sansResume(brut);
       memo.tapes = new Set([...memo.tapes, ...montantsTapes([sansConversation(t)])]);
       // Le texte de la personne (hors blocs joints) et les lignes de Nani d'un bloc. Celles du client seulement quand le contact n'est pas un
       // client confirmé : « cost 1,500? » écrit par un client confirmé ne rend rien interne.
-      const jointes = conversationClient ? lignesDeNani(conversationsJointes(t)) : lignesJointes(conversationsJointes(t));
+      // Un client seulement probable (relecture de la PR 318) : toutes les lignes, le contact compris. Un net écrit par lui reste interne.
+      const jointes = conversationClient && !memo.clientProbable ? lignesDeNani(conversationsJointes(t)) : lignesJointes(conversationsJointes(t));
       for (const x of [sansConversation(t), ...jointes]) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
       if (conversationInterne) for (const n of montantsInternesDe(conversationsJointes(t))) memo.internes.add(n);
       // Le prix du client non corrigé ne vient jamais du bloc joint (revue de la PR 307) : la fonction le calcule sur la base à chaque échange.
@@ -1883,7 +1977,7 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   }
   // Les heures tapées par la personne sont admises aussi (« vol à 19:30 »), et ses durées (« compte 2h30 »).
   for (const m of messages) {
-    const t = m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "";
+    const t = sansResume(m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "");
     for (const x of t.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)) memo.heures.add(`${x[1].padStart(2, "0")}:${x[2]}`);
     for (const d of dureesTapees([t])) memo.durees.add(d);
     if (t.trim()) memo.textes.push(t);

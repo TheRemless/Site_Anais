@@ -20,7 +20,7 @@ const TAXI = { id: id(), slug: "taxi" };
 const conv = (o = {}) => ({ id: id(), telephone: "+447700900311", nom: "Tom", entite_id: SECRET.id, client_id: null, dossier_id: null, dernier_message_le: il_y_a(10), dernier_sens: "entrant", non_lus: 1, reponses: "auto", tri: {}, dernier_texte: "Hello", attend_depuis: il_y_a(10), ...o });
 
 // ---- Demander à l'assistant -----------------------------------------------------------------------------------------------------
-test("demander : jamais pour un contact personnel ; la conversation liée de l'Assistant est rouverte, la plus récente non archivée", () => {
+test("demander : jamais pour un contact personnel ; la conversation liée de l'Assistant est rouverte, la plus récente ouverte", () => {
   const c = conv();
   assert.equal(R.demandePermise(c), true);
   assert.equal(R.demandePermise({ ...c, reponses: "jamais" }), false, "contact personnel : pas de bouton");
@@ -32,7 +32,8 @@ test("demander : jamais pour un contact personnel ; la conversation liée de l'A
     { id: "a4", whatsapp_conversation_id: id(), statut: "ouverte", maj_le: il_y_a(0) },
   ];
   assert.equal(R.conversationLiee(a, c.id).id, "a3");
-  assert.equal(R.conversationLiee(a.slice(0, 1), c.id).id, "a1", "une conversation archivée vaut mieux qu'une nouvelle");
+  // Règle de Jérémy du 22.11.2026 : « le bouton rouvre la plus récente qui est ouverte ». Archivée, elle ne se rouvre plus.
+  assert.equal(R.conversationLiee(a.slice(0, 1), c.id), null, "une conversation archivée ne se rouvre pas");
   assert.equal(R.conversationLiee(a, id()), null);
   assert.equal(R.conversationLiee(a, "x"), null);
 });
@@ -196,7 +197,7 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
   const i403 = f.indexOf('if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);');
   assert.ok(i403 > 0, "contact personnel : 403");
   assert.ok(i403 < f.indexOf('sb.from("whatsapp_messages").select("sens, texte, medias'), "refusé avant de lire un seul message");
-  assert.match(f, /select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses"\)/);
+  assert.match(f, /"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
   assert.match(f, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: waId \}\)/);
   assert.match(f, /if \(!waEcrit && waMode !== "question"\) return json\(\{ erreur: "whatsapp_lecture_seule" \}, 403\);/, "créer et mettre à jour refusés");
   assert.match(f, /\.\.\.\(waId && waEcrit \? \{ whatsapp_conversation_id: waId \} : \{\}\)/, "en lecture seule, aucune liaison");
@@ -213,8 +214,9 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
 
 test("revue 297, point 4 : une question dans la conversation liée rouverte joint l'échange frais, liaison contrôlée", () => {
   const f = lire("supabase/functions/agent/index.ts");
-  assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id && waMode === "question";/);
-  assert.match(f, /lie\.data\.whatsapp_conversation_id !== waId\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
+  // 22.11.2026 : créer et mettre à jour le dossier passent aussi dans la conversation liée, avec le même contrôle de liaison.
+  assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id;/);
+  assert.match(f, /lie\.data\.whatsapp_conversation_id !== waId \|\| lie\.data\.statut === "archivee"\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
   const vue = lire("src/gestion/js/views/agent.mjs");
   assert.match(vue, /\.\.\.\(conv \? \{ conversation_id: conv\.id \} : \{\}\), whatsapp_conversation_id: question\.whatsapp_conversation_id, whatsapp_mode: "question"/);
 });

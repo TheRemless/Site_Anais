@@ -117,7 +117,8 @@ test("« Demander à l'assistant » : le nom saisi est dit comme tel, neutralis�
   // La fonction refuse un contact personnel avant de lire quoi que ce soit (nom compris).
   const idx = source("supabase/functions/agent/index.ts");
   assert.match(idx, /if \(wc\.data\.reponses === "jamais"\) return json\(\{ erreur: "contact_personnel" \}, 403\)/);
-  assert.match(idx, /select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source"\)\.eq\("id", waId\)/);
+  assert.match(idx, /const COLONNES_WA = \[\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee, type_source, type_avis, type_signaux",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source",/);
+  assert.match(idx, /const wc: any = await lireWa\(waId\);/);
   assert.match(idx, /attend_depuis, type_contact, partenaire_id, nom_source`/);
 });
 

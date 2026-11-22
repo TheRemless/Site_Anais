@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { siegesAVerifier } from "../agent-calc.mjs";
+import { separerResume, siegesAVerifier } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
@@ -103,6 +103,8 @@ const AVERTISSEMENTS = {
   prix_non_tape: N_("Un prix proposé ne venait ni du catalogue ni de vous : il a été laissé vide."),
   // 22.11.2026 : le prix écrit par le client, que Nani n'a pas corrigé ensuite. Repère seulement, rien n'est bloqué.
   prix_client_non_corrige: N_("Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider."),
+  // 22.11.2026 : le prix écrit par Nani à un nouveau client, sans fiche encore (clientProbable). Repère seulement, rien n'est bloqué.
+  prix_nani_a_verifier: N_("Un prix vient d'un message de Nani à un contact pas encore relié à une fiche client : vérifiez-le avant de valider."),
   prix_egal_net: N_("Un prix proposé est égal à un net interne : il a été laissé vide."),
   prix_client_sans_net: N_("Le prix écrit par le client n'a pas pu être comparé au net : il a été laissé vide."),
   prix_sous_net: N_("Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant »."),
@@ -347,7 +349,8 @@ export async function vueAgent(idOuvert = "") {
     dessinerFil();
     // Message venu d'une autre entreprise (« Passer à … ») : il attend dans la zone de saisie, la personne l'envoie.
     // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61) : la demande part aussitôt, la fonction lit
-    // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois.
+    // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois, dans la conversation déjà
+    // liée quand l'écran l'a désignée (une seule discussion par conversation WhatsApp, 22.11.2026).
     let depuisWhatsApp = null;
     let questionBoite = "";
     try {
@@ -544,6 +547,12 @@ export async function vueAgent(idOuvert = "") {
   function element(it, i) {
     if (it.genre === "personne") {
       // Le premier message d'une conversation ouverte depuis WhatsApp : l'échange du client, à gauche et replié (design n° 4).
+      // Le résumé d'une discussion pleine archivée (relecture de la PR 318) : une ligne discrète, puis le reste du message.
+      const { resume, reste } = separerResume(it.texte);
+      if (resume) {
+        const suite = reste ? element({ ...it, texte: reste }, -1) : null;
+        return h("div", null, h("p", { class: "agent-etape-wa" }, icone("dossiers", 16), tr("Suite d'une discussion pleine, archivée : client, dossiers et dernier prix accepté repris.")), suite);
+      }
       const echange = i === 0 && conv && conv.whatsapp_conversation_id ? echangeWhatsApp(it.texte, { depuisWhatsApp: true }) : echangeWhatsApp(it.texte);
       // « Demander à l'assistant » (PR B) : l'échange replié, puis la question de la personne, à droite comme ses messages.
       if (echange && echange.question) return h("div", { class: "agent-question-wa" }, bulleWhatsApp(echange), h("div", { class: "agent-bulle de-personne" }, paragraphes(echange.question)));
@@ -627,12 +636,18 @@ export async function vueAgent(idOuvert = "") {
     zoneFil.append(etape);
     descendre();
     const corps = whatsapp
-      ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" }
+      ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" }
       : question
         ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: question.whatsapp_conversation_id, whatsapp_mode: "question", whatsapp_pieces: [], texte }
         : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
     // Une exception (connexion coupée, écran qui lève) ne laisse jamais « L'assistant réfléchit » ni le bouton éteint (audit I7).
-    const r = await etat.store.agentEnvoyer(corps, (ev) => {
+    const surEvenement = (ev) => {
+      // La discussion liée était pleine (relecture de la PR 318) : la fonction l'a archivée et en a ouvert une nouvelle, qui prend sa place.
+      if (ev.t === "conversation" && conv && ev.remplace && ev.remplace === conv.id && ev.id !== conv.id) {
+        conversations = (conversations || []).map((c) => (c.id === ev.remplace ? { ...c, statut: "archivee" } : c));
+        conv = null;
+        toast(tr("La discussion était pleine : elle est archivée, une nouvelle reprend son résumé."));
+      }
       if (ev.t === "conversation" && !conv) {
         conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString(), whatsapp_conversation_id: ev.whatsapp_conversation_id || null };
         conversations = [conv, ...(conversations || [])];
@@ -668,7 +683,17 @@ export async function vueAgent(idOuvert = "") {
         else etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur), ev.detail ? h("small", { class: "agent-erreur-detail" }, ev.detail) : null));
       }
       descendre();
-    }).catch(() => ({ erreur: "coupure" }));
+    };
+    let r = await etat.store.agentEnvoyer(corps, surEvenement).catch(() => ({ erreur: "coupure" }));
+    // Compatibilité avec une fonction agent pas encore redéployée (22.11.2026) : elle ne connaît la discussion liée que pour une question
+    // et répond « message_invalide » à un dossier envoyé dedans. L'écran retombe alors sur l'ancien chemin, une nouvelle discussion, sans
+    // erreur affichée. Rien n'a été gardé par la fonction : la demande repart une fois, sans conversation_id.
+    if (r && r.erreur === "message_invalide" && whatsapp && corps.conversation_id) {
+      const { conversation_id: _liee, ...sansLiee } = corps;
+      conv = null;
+      idOuvert = "";
+      r = await etat.store.agentEnvoyer(sansLiee, surEvenement).catch(() => ({ erreur: "coupure" }));
+    }
     etape.remove();
     if (r && r.erreur) {
       // Plafond ou crédit : l'assistant le dit dans le fil, comme une réponse, pour que ce soit clair et non une panne obscure.
@@ -1064,7 +1089,8 @@ export async function vueAgent(idOuvert = "") {
     for (const r of etat.brut.reservations || []) if (dossierId && r.dossier_id === dossierId) ajouter(ventes, r.montant_vente);
     filDepuis(fil.messages, []).forEach((it, i) => {
       if (it.genre !== "personne" || echangeWhatsApp(it.texte, { depuisWhatsApp: i === 0 && !!(conv && conv.whatsapp_conversation_id) }) || /<\/?(?:conversation|question)>/.test(it.texte)) return;
-      for (const phrase of String(it.texte).split(/\n+|(?<=[.!?;])\s+/)) if (!phraseInterne(phrase)) for (const n of montantsDuTexte(phrase)) ajouter(ventes, n);
+      // Le résumé d'une discussion pleine remplacée : du contexte, jamais un prix accepté.
+      for (const phrase of String(separerResume(it.texte).reste).split(/\n+|(?<=[.!?;])\s+/)) if (!phraseInterne(phrase)) for (const n of montantsDuTexte(phrase)) ajouter(ventes, n);
     });
     if (!(permissionsDe(ent) || []).includes("partenaires.nets")) return { ventes, nets: null };
     const nets = new Set(dossierId ? netsDuDossier(dossierId) : []);
