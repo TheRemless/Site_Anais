@@ -194,9 +194,33 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     let contactsDisponible = true;
     // nom_source (migration 70, nom saisi à la main) : relue sans elle tant que la migration n'est pas appliquée ; l'écran n'offre pas le crayon.
     let nomDisponible = true;
+    // pret_reserver, pret_retire_le (migration 85, filtre « Prêt à réserver ») : ajoutées à toutes les lectures ; absentes, on relit sans elles
+    // et l'écran n'offre pas le filtre.
+    const PRET = "pret_reserver, pret_retire_le";
+    let pretDisponible = true;
+    // avancee, etape_manuelle (migration 105, étapes des clients) : ajoutées à toutes les lectures ; absentes, on relit sans elles et l'écran
+    // garde l'ancienne liste.
+    const ETAPES = "avancee, etape_manuelle, ia_coupee";
+    let etapesDisponible = true;
+    // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
+    // la migration n'est pas appliquée. Gardé d'une lecture à l'autre, comme PRET et ETAPES (relecture de la PR 317) : une colonne absente
+    // ne relance pas une lecture en échec à chaque rafraîchissement.
+    let manquesDisponible = true;
     const lireConversations = async () => {
-      const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
+      const requete = (colonnes) => sb.from("whatsapp_conversations").select([colonnes, pretDisponible ? PRET : "", pretDisponible && etapesDisponible ? ETAPES : ""].filter(Boolean).join(", ")).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
+      const BASE = `${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`;
+      const lireBase = () => requete(manquesDisponible ? `${BASE}, manque_le, bsuid, meme_client_que` : BASE);
+      let r = await lireBase();
+      // Chaque migration récente (85, 100, 105) peut manquer seule : on retire ses colonnes, puis on relit. Sans la 85, pas d'étapes non plus.
+      for (let essai = 0; essai < 3 && r.error; essai++) {
+        if (pretDisponible && etapesDisponible && ETAPES.split(", ").some((c) => colonneAbsente(r.error, c))) etapesDisponible = false;
+        else if (pretDisponible && PRET.split(", ").some((c) => colonneAbsente(r.error, c))) {
+          pretDisponible = false;
+          etapesDisponible = false;
+        } else if (manquesDisponible && ["manque_le", "bsuid", "meme_client_que"].some((c) => colonneAbsente(r.error, c))) manquesDisponible = false;
+        else break;
+        r = await lireBase();
+      }
       if (r.error && colonneAbsente(r.error, "nom_source")) {
         nomDisponible = false;
         r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);
@@ -233,6 +257,8 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_suivi_disponible: conversations !== null && suiviDisponible,
       whatsapp_contacts_disponible: conversations !== null && contactsDisponible,
       whatsapp_nom_disponible: conversations !== null && nomDisponible,
+      whatsapp_pret_disponible: conversations !== null && pretDisponible,
+      whatsapp_etapes_disponible: conversations !== null && pretDisponible && etapesDisponible,
     };
   }
 
@@ -397,9 +423,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // lui (FENETRE_MESSAGE avant et après), ajoutée aux 500 derniers. Aussi ancien soit-il, il est trouvé.
     async whatsappMessages(conversationId, { inclure = "" } = {}) {
       const base = "id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le";
-      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`;
+      // repere (migration 100) : relu sans lui tant que la migration n'est pas appliquée.
+      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere`;
       const requete = (cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId);
       let r = await requete(colonnes).order("envoye_le", { ascending: false }).limit(500);
+      if (colonneAbsente(r.error, "repere")) r = await requete((colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`)).order("envoye_le", { ascending: false }).limit(500);
       if (colonneAbsente(r.error, "statut_envoi")) r = await requete((colonnes = base)).order("envoye_le", { ascending: false }).limit(500);
       const lus = verifie(r).reverse();
       if (!inclure || lus.length < 500 || lus.some((m) => m.id === inclure)) return lus;
@@ -411,6 +439,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         requete(colonnes).gt("envoye_le", t).order("envoye_le", { ascending: true }).limit(FENETRE_MESSAGE),
       ]);
       return fusionnerFenetre(lus, [...verifie(avant).reverse(), ...verifie(apres)]);
+    },
+    // Le dernier message du client d'une conversation (sa date seulement), pour la fenêtre de 24 h du point du soir : une ligne lue au lieu de
+    // 500. null s'il n'a jamais écrit ; une erreur de lecture est levée (elle n'est jamais prise pour une fenêtre fermée).
+    async whatsappDernierEntrant(conversationId) {
+      const r = await sb.from("whatsapp_messages").select("envoye_le").eq("conversation_id", conversationId).eq("sens", "entrant").order("envoye_le", { ascending: false }).limit(1);
+      const lus = verifie(r);
+      return (lus[0] && lus[0].envoye_le) || null;
     },
     // Recherche plein texte dans les messages (whatsapp_rechercher, migration 67, PR B) pour la recherche de Gestion. La base applique les droits
     // (whatsapp_lit) et écarte les contacts personnels. Sans la migration, ou en cas d'erreur, rien : la recherche marche sans WhatsApp.
@@ -662,12 +697,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // Les corrections d'une carte validée. Sans la migration, rien n'est noté (false).
     async agentNoterApprentissages(entiteId, carteId, lignes) {
       if (!lignes.length) return true;
-      const { error } = await sb.from("agent_apprentissages").insert(lignes.map((l) => ({ entite_id: entiteId, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres })));
+      const { error } = await sb.from("agent_apprentissages").insert(lignes.map((l) => ({ entite_id: entiteId, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres, ...(l.interne ? { interne: true } : {}) })));
       return !error;
     },
     // Tableau de l'assistant : les apprentissages des entreprises suivies (null tant que la migration manque).
     async agentApprentissages(entiteIds) {
-      const { data, error } = await sb.from("agent_apprentissages").select("id, entite_id, user_id, genre, contexte, avant, apres, cree_le").in("entite_id", entiteIds).order("cree_le", { ascending: false }).limit(500);
+      const { data, error } = await sb.from("agent_apprentissages").select("id, entite_id, user_id, genre, contexte, avant, apres, cree_le, interne").in("entite_id", entiteIds).order("cree_le", { ascending: false }).limit(500);
       return error ? null : data || [];
     },
     async agentSupprimerApprentissage(id) {

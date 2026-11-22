@@ -122,7 +122,9 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   // La fonction « agent » : clé de service, entreprises de la conversation (les deux en espace unifié), seulement dans memo.internes.
   const ts = lire("supabase/functions/agent/index.ts");
   assert.equal((ts.match(/netsPourControle\(/g) || []).length, 1);
-  assert.match(ts, /const lusNets = await netsPourControle\(admin, idsEntites\);\n  memo\.nets = lusNets\.nets;/);
+  // Lus une fois (migration 74 : avant les apprentissages, qu'ils filtrent), puis seulement dans memo.nets.
+  assert.match(ts, /const lusNets = await netsPourControle\(admin, idsEntites\);\n  const lus = await lireApprentissages\(sb, \{ dbNets: admin,[^\n]*nets: lusNets, qui: ra\.responsable \|\| "" \}\);/);
+  assert.match(ts, /\n  memo\.nets = lusNets\.nets;/);
   assert.match(ts, /memo\.controleImpossible = lusNets\.erreur;/);
   assert.match(ts, /const relie = await dossierPourControle\(admin, conv!\.dossier_id, idsEntites\);/);
   assert.match(ts, /memo\.servicesEnCours = new Set\(\[\.\.\.relie\.services, \.\.\.\(relieWa\?\.services \?\? \[\]\)\]\);/);
@@ -149,7 +151,16 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   assert.ok(bloqueMontant(r.avertissements, 1100));
   const autre = await repondre(memo, "Hi Tom, 1,350 THB per person.");
   assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net"), "sans le droit nets, le code sans sa valeur");
-  assert.doesNotMatch(JSON.stringify(r), /550|1350/, "aucun autre net ne sort");
+  // L'empreinte d'un montant masqué (« montant_interne:#sel:empreinte ») est aléatoire : elle peut contenir « 550 » par hasard. Elle est
+  // retirée avant de chercher les nets (relecture de la PR 315 : \b voit aussi 550 dans {"net":550}, [550,1350] et 550.00).
+  const sansEmpreinte = (j) => j.replace(/#[0-9a-f]{8,32}:[0-9a-f,]+/g, "#empreinte");
+  const FUITE = /\b(?:550|1,?350)\b/;
+  const sansEmpreintes = sansEmpreinte(JSON.stringify(r));
+  assert.match(sansEmpreintes, /montant_interne:#empreinte/, "l'empreinte est bien celle qui a été retirée");
+  assert.doesNotMatch(sansEmpreintes, FUITE, "aucun autre net ne sort");
+  // Le contrôle lui-même : une empreinte qui contient 550 passe, une vraie fuite échoue, sous toutes ses formes.
+  assert.doesNotMatch(sansEmpreinte('{"avertissements":["montant_interne:#eca6ccc4df28550d:b0c7cd815f825b4f"]}'), FUITE);
+  for (const fuite of ['{"net":550,"x":1}', '{"nets":[550,1350]}', '"net 550.00"', '"1,350 THB"']) assert.match(sansEmpreinte(fuite), FUITE, fuite);
 });
 
 // ---- 3. Noms lus chez un partenaire -------------------------------------------------------------------------------------------------
@@ -214,8 +225,11 @@ test("point 4 : un contact personnel ne sert jamais d'exemple de ton", () => {
 test("point 5 : « Préparer une réponse » est refusé pour un contact personnel et le bouton est masqué", async () => {
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
   const demande = rep.slice(rep.indexOf("export async function preparerALaDemande"), rep.indexOf("async function preparationAutoPermise"));
-  assert.ok(demande.indexOf('if (lu.conv.reponses === "jamais") return { erreur: "contact_personnel" };') > 0);
-  assert.ok(demande.indexOf("contact_personnel") < demande.indexOf("ANTHROPIC_API_KEY") && demande.indexOf("contact_personnel") < demande.indexOf("budgetOuvert("), "avant tout le reste");
+  // Depuis le 22.11.2026, la règle est dans refusDemande (proposer.js) : Contact personnel refusé, IA coupée permise à la demande.
+  const { refusDemande } = await import("../supabase/functions/whatsapp/proposer.js");
+  assert.equal(refusDemande({ reponses: "jamais" }), "contact_personnel");
+  assert.ok(demande.indexOf("const refus = refusDemande(lu.conv);\n  if (refus) return { erreur: refus };") > 0);
+  assert.ok(demande.indexOf("refusDemande(lu.conv)") < demande.indexOf("ANTHROPIC_API_KEY") && demande.indexOf("refusDemande(lu.conv)") < demande.indexOf("budgetOuvert("), "avant tout le reste");
   assert.match(lire("supabase/functions/whatsapp-preparer/index.ts"), /contact_personnel: 403/);
   assert.match(lire("src/gestion/js/views/whatsapp.mjs"), /const bouton = !lectureSeule && reponsesDe\(c\) !== "jamais" && dernier/);
   assert.equal(W.erreurPreparer("contact_personnel"), "Contact personnel : rien n'est envoyé à l'IA. Répondez depuis l'app.");

@@ -233,7 +233,7 @@ function blocAppris(lignes, { entites, noms, plusieurs, recharger }) {
             h(
               "li",
               null,
-              h("div", { class: "as-appris-tete" }, h("strong", null, tr(GENRES_APPRIS[l.genre] || l.genre)), h("span", { class: "as-quand" }, `${formatDate(jourBangkok(l.cree_le))}${noms[l.user_id] ? ` · ${noms[l.user_id]}` : ""}${plusieurs ? ` · ${nomEntite(l.entite_id)}` : ""}`)),
+              h("div", { class: "as-appris-tete" }, h("strong", null, tr(GENRES_APPRIS[l.genre] || l.genre)), l.interne ? h("span", { class: "as-appris-interne", title: tr("Jamais relue par l'assistant") }, tr("interne")) : null, h("span", { class: "as-quand" }, `${formatDate(jourBangkok(l.cree_le))}${noms[l.user_id] ? ` · ${noms[l.user_id]}` : ""}${plusieurs ? ` · ${nomEntite(l.entite_id)}` : ""}`)),
               l.contexte ? h("p", { class: "as-appris-contexte" }, l.contexte) : null,
               h("p", { class: "as-appris-modif" }, h("del", null, l.avant || tr("vide")), " → ", h("ins", null, l.apres || tr("vide"))),
               peutSupprimer(l) ? h("button", { class: "lien danger", type: "button", onclick: () => supprimer(l) }, tr("Oublier")) : null

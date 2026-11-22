@@ -33,6 +33,7 @@ import { ouvrirCarnet, baseDistante as baseDistanteCarnet } from "./carnet.mjs";
 import { disponible as carnetDisponible, peutNoter } from "../carnet-calc.mjs";
 import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservationsAReactiver, reactivation } from "../dossier-gestes-calc.mjs";
 import { champApporteur, patchApporteur, blocResumeApporteur } from "./apporteurs.mjs";
+import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 
@@ -731,7 +732,7 @@ function ficheDossierVue(id) {
       "div",
       { class: "entete" },
       h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable, lienAgent), lienDossierLie(d)),
-      h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
+      h("div", { class: "entete-actions" }, pastille(r.statut), boutonProposerExcursion({ dossier: d, classe: "secondaire" }), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
     blocDemandesSite(d),
     resume,

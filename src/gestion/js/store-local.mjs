@@ -12,6 +12,8 @@ import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
+import { conversationPret } from "./demo-pret.mjs";
+import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
@@ -122,6 +124,23 @@ export function creer() {
         data.whatsapp_conversations.push(...j.whatsapp_conversations);
         data.whatsapp_messages.push(...j.whatsapp_messages);
       }
+    }
+    // Prêt à réserver (migration 85) : une conversation de taxi prête, posée une fois, aussi dans une démo déjà enregistrée.
+    if (!AGENCE && !data.demo_pret) {
+      data.demo_pret = 1;
+      const taxiP = data.entites.find((e) => e.slug === "taxi");
+      if (taxiP) {
+        const p = conversationPret({ taxi: taxiP, uid, organisation: ORG_DEMO });
+        data.whatsapp_conversations.push(...p.whatsapp_conversations);
+        data.whatsapp_messages.push(...p.whatsapp_messages);
+      }
+    }
+    // Étapes des clients (migration 105) : les faits que la fonction tirerait des messages, posés une fois pour les conversations de clients.
+    // Version 2 (relecture du 22.11.2026 : faits par entreprise) : reposés aussi sur une démo qui avait la version 1.
+    if (!AGENCE && data.demo_etapes !== 2) {
+      data.demo_etapes = 2;
+      const marque = (id) => { const e = data.entites.find((x) => x.id === id); return e && (e.slug === "taxi" ? "taxi" : e.slug === "excursions" || e.slug === "secret" ? "secret" : null); };
+      for (const c of data.whatsapp_conversations) if (c.reponses !== "jamais" && !["partenaire", "chauffeur", "hotel", "apporteur"].includes(c.type_contact) && !c.partenaire_id) c.avancee = faitsDemo(c, data.whatsapp_messages, marque(c.entite_id));
     }
     // Espace unifié Secret et Taxi (migration 63) : fiches partagées dans les deux sens, deux dossiers liés, une fiche en double et une
     // conversation de l'Assistant dans chaque entreprise. Posé une fois, aussi dans une démo déjà enregistrée.
@@ -343,7 +362,7 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom", "pret_retire_le", "etape_manuelle", "ia_coupee"].includes(k)) delete patch[k];
     // Nom saisi à la main (migration 70, whatsapp_nom_manuel) : dès que « nom » est écrit, même à l'identique, il est nettoyé et devient
     // manuel (60 caractères, sans caractère invisible) ; vide après nettoyage, plus de nom ni de source.
     if ("nom" in patch) {
@@ -352,6 +371,11 @@ export function creer() {
     }
     // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
     if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;
+    // Prêt à réserver (migration 85, whatsapp_pret_outil) : le retrait est daté à l'heure du moment, vide il est annulé.
+    if ("pret_retire_le" in patch && patch.pret_retire_le !== null) patch.pret_retire_le = new Date().toISOString();
+    // Étape choisie par Nani (migration 105, whatsapp_etape_outil) : clés et étapes contrôlées, heure du moment, un choix inchangé garde la sienne.
+    if ("etape_manuelle" in patch) patch.etape_manuelle = etapeManuelleLocale(ligne.etape_manuelle, patch.etape_manuelle);
+    if ("ia_coupee" in patch) patch.ia_coupee = patch.ia_coupee === true;
     // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
     if ("reponses" in patch && !["auto", "jamais"].includes(patch.reponses)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
     if ("non_lus" in patch && !(patch.non_lus <= ligne.non_lus)) patch.non_lus = ligne.non_lus;
@@ -360,9 +384,13 @@ export function creer() {
       if (apres.entite_id && !adminWhatsApp(apres.entite_id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
       patch.entite_source = "manuel";
     }
-    const client = apres.client_id ? data.clients.find((c) => c.id === apres.client_id && c.entite_id === apres.entite_id) : null;
+    // Comme whatsapp_reclasser (migration 85) : un client appartient à Secret et à Taxi, sa fiche et son dossier peuvent être de l'une ou de
+    // l'autre (que la personne administre), même dans une conversation à trier ; ailleurs, seulement de l'entreprise de la conversation.
+    const commun = (!apres.type_contact || apres.type_contact === "client") && !apres.partenaire_id && apres.reponses !== "jamais";
+    const entiteOk = (id) => (commun ? !!id && (id === apres.entite_id || adminWhatsApp(id)) : id === apres.entite_id);
+    const client = apres.client_id ? data.clients.find((c) => c.id === apres.client_id && entiteOk(c.entite_id)) : null;
     if (apres.client_id && !client) patch.client_id = null;
-    const dossierOk = apres.dossier_id && data.dossiers.some((d) => d.id === apres.dossier_id && d.entite_id === apres.entite_id && (!client || d.client_id === client.id));
+    const dossierOk = apres.dossier_id && data.dossiers.some((d) => d.id === apres.dossier_id && entiteOk(d.entite_id) && (!client || d.client_id === client.id));
     if (apres.dossier_id && !dossierOk) patch.dossier_id = null;
     // Comme la base (migration 59) : les propositions encore ouvertes, préparées pour une autre entreprise, sont remplacées.
     if (patch.entite_source === "manuel") for (const p of data.whatsapp_propositions) if (p.conversation_id === ligne.id && ["a_faire", "en_cours"].includes(p.statut) && p.entite_id !== apres.entite_id) p.statut = "remplacee";
@@ -684,6 +712,12 @@ export function creer() {
       const tout = await this.charger();
       return Object.fromEntries(Object.entries(tout).filter(([k]) => k.startsWith("whatsapp_")));
     },
+    // Comme la base : la date du dernier message du client, ou null.
+    async whatsappDernierEntrant(conversationId) {
+      if (!conversationLue(conversationId)) return null;
+      const d = data.whatsapp_messages.filter((m) => m.conversation_id === conversationId && m.sens === "entrant").map((m) => m.envoye_le).sort().pop();
+      return d || null;
+    },
     async whatsappMessages(conversationId) {
       if (!conversationLue(conversationId)) return [];
       return structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === conversationId).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)));
@@ -924,7 +958,7 @@ export function creer() {
       const perms = permissionsDans(contexte(), entiteId);
       if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) return false;
       data.agent_apprentissages = data.agent_apprentissages || [];
-      for (const l of lignes) data.agent_apprentissages.push({ id: uid(), entite_id: entiteId, user_id: utilisateur.user_id, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres, cree_le: new Date().toISOString() });
+      for (const l of lignes) data.agent_apprentissages.push({ id: uid(), entite_id: entiteId, user_id: utilisateur.user_id, carte_id: carteId || null, genre: l.genre, interne: !!l.interne, contexte: l.contexte, avant: l.avant, apres: l.apres, cree_le: new Date().toISOString() });
       sauve();
       return true;
     },
@@ -1355,6 +1389,10 @@ export function creer() {
       out.whatsapp_contacts_disponible = !AGENCE;
       // Nom saisi à la main (migration 70).
       out.whatsapp_nom_disponible = !AGENCE;
+      // Prêt à réserver (migration 85).
+      out.whatsapp_pret_disponible = !AGENCE;
+      // Étapes des clients (migration 105).
+      out.whatsapp_etapes_disponible = !AGENCE;
       out.apporteurs_disponible = true;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());

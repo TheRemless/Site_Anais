@@ -14,7 +14,10 @@ test("sécurité n° 1 : rien chez Anthropic, même le tri, si la réception est
   const rangee = { entite_id: S, reponses: "auto" };
   const aTrier = { entite_id: null, reponses: "auto" };
   assert.equal(iaPermise({ receptionActive: true, conv: rangee, agents: { [S]: true, [T]: false } }), true);
-  assert.equal(iaPermise({ receptionActive: true, conv: rangee, agents: { [S]: false, [T]: true } }), false, "l'assistant de son entreprise compte, pas l'autre");
+  // Relecture du 22.11.2026 : un client appartient à Secret et à Taxi, son tri est permis si l'un des deux assistants est allumé, même rangé.
+  assert.equal(iaPermise({ receptionActive: true, conv: rangee, agents: { [S]: false, [T]: true } }), true, "client rangé : l'un des deux suffit");
+  assert.equal(iaPermise({ receptionActive: true, conv: { ...rangee, type_contact: "hotel" }, agents: { [S]: false, [T]: true } }), false, "un autre contact rangé : l'assistant de son entreprise compte, pas l'autre");
+  assert.equal(iaPermise({ receptionActive: true, conv: { ...rangee, ia_coupee: true }, agents: { [S]: true, [T]: true } }), false, "IA coupée pour cette conversation (migration 105)");
   assert.equal(iaPermise({ receptionActive: true, conv: rangee, agents: {} }), false, "réglage absent : fermé");
   assert.equal(iaPermise({ receptionActive: true, conv: aTrier, agents: { [S]: false, [T]: true } }), true, "à trier : une des deux suffit");
   assert.equal(iaPermise({ receptionActive: true, conv: aTrier, agents: { [S]: false, [T]: false } }), false);

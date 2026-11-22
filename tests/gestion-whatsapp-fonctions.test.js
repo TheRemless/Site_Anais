@@ -24,10 +24,14 @@ test("créer ou mettre à jour le dossier : mode, demande transmise à l'Assista
   assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c9", dossier_id: "d9" }, dossier, "t"), { action: "rien", patch: null }, "déjà reliée");
   assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c1", dossier_id: null }, dossier, "t"), { action: "demander", patch: { client_id: "c9", dossier_id: "d9" } }, "un autre client : on demande");
   assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c9", dossier_id: "d1" }, dossier, "t").action, "demander", "un autre dossier : on demande");
-  // Lot 2 : à trier, la conversation se range dans l'entreprise du dossier validé, avec son client et son dossier.
-  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: null }, { ...dossier, entite_id: "s" }, "t"), { action: "ecrire", patch: { entite_id: "s", client_id: "c9", dossier_id: "d9" } }, "à trier : rangée chez le dossier");
-  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: null }, dossier, "t").patch.entite_id, "t", "sans entreprise sur le dossier : celle de l'Assistant");
-  assert.equal(S.liaisonApresDossier({ id: "w", entite_id: "s" }, dossier, "t").action, "rien", "autre entreprise");
+  // 22.11.2026 : un client appartient à Secret et à Taxi. Le dossier se relie sans ranger la conversation dans son entreprise ; rangée dans
+  // l'autre entreprise, elle redevient commune (entite_id vide).
+  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: null }, { ...dossier, entite_id: "s" }, "t"), { action: "ecrire", patch: { client_id: "c9", dossier_id: "d9" } }, "client à trier : relié, pas rangé");
+  assert.equal("entite_id" in S.liaisonApresDossier({ id: "w", entite_id: null }, dossier, "t").patch, false, "jamais rangé chez l'Assistant");
+  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "s", client_id: "c1" }, { ...dossier, entite_id: "t" }, "t"), { action: "ecrire", patch: { entite_id: null, client_id: "c9", dossier_id: "d9" } }, "rangée chez Secret, dossier Taxi : redevient commune et se relie");
+  // Un contact qui n'est pas un client garde l'ancienne règle : rangé dans l'entreprise du dossier, rien dans une autre.
+  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: null, type_contact: "hotel" }, { ...dossier, entite_id: "s" }, "t"), { action: "ecrire", patch: { entite_id: "s", client_id: "c9", dossier_id: "d9" } });
+  assert.equal(S.liaisonApresDossier({ id: "w", entite_id: "s", type_contact: "chauffeur" }, dossier, "t").action, "rien", "autre entreprise");
   assert.equal(S.liaisonApresDossier(null, dossier, "t").action, "rien", "introuvable en base");
   assert.equal(S.liaisonApresDossier({ id: "w", entite_id: "t" }, null, "t").action, "rien");
   for (const r of [S.liaisonApresDossier({ id: "w", entite_id: "t" }, dossier, "t"), S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c1" }, dossier, "t")]) assert.ok(!("entite_id" in r.patch), "jamais l'entreprise");

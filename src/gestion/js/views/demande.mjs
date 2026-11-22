@@ -15,7 +15,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
@@ -53,7 +53,8 @@ function lignesDe(offre, d, langue, devise) {
 
 function lignesBrutes(offre, d, langue, devise) {
   if (offre.genre === "trajet") return lignesDepuisTrajet(offre.source, netTrajet(offre.source), { langue, date: d.date, adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants, compagnie: "" });
-  const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.enfant ? d.adultes || 1 : quantite(offre.source, d), devise });
+  // Les véhicules du devis calculé par Nani (offre.vehicules, assistant-calc.mjs avecVehicules) : la ligne en prend la quantité.
+  const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.vehicules || (offre.enfant ? d.adultes || 1 : quantite(offre.source, d)), devise });
   // Prix de base pour 1 ou 2 personnes, puis une ligne de supplément par personne en plus (aucune ligne à une ou deux personnes).
   const supplement = offre.supplement ? [ligneDepuisPrestation(offre.supplement.source, netPrestation(offre.supplement.source), { langue, date: d.date, qte: offre.supplement.qte, devise })] : [];
   if (!offre.enfant) return [adulte, ...supplement];
@@ -207,6 +208,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (sv.adultes + sv.enfants === 0) alertes.push(tr("Nombre de personnes à préciser."));
     if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
     if (sv.copie) alertes.push(tr("Même service, autre date."));
+    // Plus de sièges que d'enfants et de bébés : à vérifier avant de créer (relecture de la PR 315).
+    const saisie = sv.saisie || {};
+    if (siegesEnTrop({ sieges: saisie.sieges, enfants: sv.enfants, bebes: saisie.bebes })) alertes.push(tr("Plus de sièges que d'enfants et de bébés : vérifiez."));
     n.alertes.replaceChildren(...alertes.map((a) => h("span", { class: "demande-attention" }, a)));
     n.alertes.hidden = !alertes.length;
     n.li.classList.toggle("decoche", !sv.coche);
@@ -240,7 +244,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     sv.noeuds = noeuds;
     // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges), modifiable dans la fenêtre.
     const site = d.type === "transfer";
-    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: site ? Number(d.sieges) || 0 : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
+    // Les sièges du service (carte de l'Assistant, 22.11.2026) passent avant ceux du formulaire du site.
+    // Jamais chez ZTP : ses vouchers n'impriment pas de sièges (relecture de la PR 315).
+    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: modeExcursions() ? Number(sv.sieges) || (site ? Number(d.sieges) || 0 : 0) : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
     // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
     if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
@@ -301,8 +307,13 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     return noeuds.li;
   }
 
+  // Le prix du service vient de la personne (prix convenu tapé, lignes prises à la main dans la base), pas d'une offre du catalogue.
+  const prixALaMain = (sv) => !!(sv.lignesCustom || sv.transfertLibre || sv.retourDepart);
+  const prixSaisiIci = (sv) => !sv.prixALaMainAuDepart && prixALaMain(sv);
   function nouveauService(base) {
     const sv = { id: ++compteur, coche: true, phrase: "", date: "", heure: "", adultes: d ? d.adultes : 0, enfants: d ? d.enfants : 0, offreId: null, lignesCustom: null, copie: false, noeuds: null, ...base };
+    // Un prix déjà à la main dès l'ouverture (transfert libre, retour au départ) : pas un changement fait ici (prixSaisiIci).
+    sv.prixALaMainAuDepart = prixALaMain(sv);
     services.push(sv);
     listeBloc.append(construireService(sv));
     // Prix déjà convenu (tapé par la personne dans la conversation de l'Assistant) : la ligne du transfert privé se fait tout de suite.
@@ -474,7 +485,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       parService.push({ ligneIds: ls.map((l) => l.id), ...reservationDe(sv, offre) });
     }
     // Retour au point de départ sans programme : on ne crée pas, le champ est montré.
-    const incomplet = trajetIncomplet(parService);
+    const incomplet = trajetIncomplet(parService) || siegesIncomplets(parService);
     if (incomplet) return { incomplet: coches()[incomplet.index], code: incomplet.code, champ: incomplet.champ };
     const plusieurs = parService.length > 1;
     // Prix convenu dans « Modifier » (un seul service) : la facture prend ce total, l'écart va sur la première ligne.
@@ -486,7 +497,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function montrerIncomplet(b) {
     erreur.textContent = tr(ERREURS_TRAJET[b.code]);
     const sv = b.incomplet;
-    const champ_ = document.getElementById(`svc${sv.id}-v-${b.champ === "duree_h" ? "duree-h" : "programme-trajet"}`);
+    const champ_ = document.getElementById(`svc${sv.id}-v-${b.champ === "duree_h" ? "duree-h" : b.champ === "sieges" ? "sieges" : "programme-trajet"}`);
     if (!champ_) return;
     const bloc = champ_.closest("details");
     if (bloc) bloc.open = true;
@@ -533,7 +544,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     try {
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
-      const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null }));
+      // prix_saisi : la personne a remplacé ici le prix de l'offre du catalogue par un prix à elle (onglet Assistant, agent-apprendre.mjs).
+      const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null, prix_saisi: prixSaisiIci(sv) }));
       const somme = b.lignes.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));
@@ -654,7 +666,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", sieges: Number(t.sieges) || 0, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }

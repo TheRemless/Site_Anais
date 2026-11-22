@@ -227,7 +227,10 @@ test("prompt : bloc des corrections choisi par le premier message, stable, en ca
 
 test("agent : les corrections lues avant l'ouverture de la conversation, dans l'entreprise", () => {
   const agent = lire("supabase/functions/agent/index.ts");
-  assert.match(agent, /from\("agent_apprentissages"\)\.select\("id, genre, contexte, avant, apres, cree_le"\)\.eq\("entite_id", entiteId\)\.lte\("cree_le", conv!\.cree_le/);
+  assert.match(agent, /lireApprentissages\(sb, \{ dbNets: admin, active: \{ id: entiteId, nom: ent\.data\?\.nom \|\| "" \}, autre: autreEnt, jusqua: conv!\.cree_le/);
+  const lecture = lire("supabase/functions/agent/apprentissages.js");
+  assert.match(lecture, /avant\(db\.from\(VUE_POUR_IA\)\.select\(COLONNES_APPRIS\)\.eq\("entite_id", active\.id\)\)/);
+  assert.match(lecture, /const avant = \(q\) => \(jusqua \? q\.lte\("cree_le", jusqua\) : q\);/);
   assert.match(agent, /tourner\(\{ anthropic, modele, systeme, appris, contexte/);
 });
 

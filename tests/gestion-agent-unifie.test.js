@@ -389,9 +389,12 @@ test("revue 8 : corrections marquées de leur entreprise, quota pour l'active, s
   assert.match(bloc, /Chaque correction dit son entreprise entre crochets/);
   // Hors mode unifié, le bloc d'avant.
   assert.doesNotMatch(blocApprentissages(actives, { qui: "Nani" }), /\[|entre crochets/);
+  // Une seule lecture pour l'Assistant et la boîte WhatsApp (agent/apprentissages.js, migration 74).
+  const lecture = readFileSync(new URL("../supabase/functions/agent/apprentissages.js", import.meta.url), "utf8");
+  assert.match(lecture, /\.eq\("entite_id", autre\.id\)\.eq\("genre", "reponse"\)\)[^\n]*\.limit\(APPRIS_LUS_AUTRE\)/);
+  assert.match(lecture, /\.limit\(autre \? APPRIS_LUS_ACTIVE : limite\)/);
   const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
-  assert.match(idx, /\.eq\("entite_id", autreEnt\.id\)\.eq\("genre", "reponse"\)[^\n]*\.limit\(APPRIS_LUS_AUTRE\)/);
-  assert.match(idx, /\.limit\(unifie \? APPRIS_LUS_ACTIVE : 80\)/);
+  assert.match(idx, /lireApprentissages\(sb, \{[^\n]*autre: autreEnt,/);
   const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
-  assert.match(wa, /\.eq\("entite_id", autre\.id\)\.eq\("genre", "reponse"\)[^\n]*\.limit\(APPRIS_LUS_AUTRE\)/);
+  assert.match(wa, /lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true, qui: reglagesAssistant\(reglages \|\| \{\}\)\.responsable \|\| "" \}\)/);
 });

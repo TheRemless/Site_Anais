@@ -7,7 +7,8 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte } from "../agent-calc.mjs";
+import { siegesAVerifier } from "../agent-calc.mjs";
+import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
@@ -16,6 +17,7 @@ import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.m
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
+import { phraseInterne } from "../agent-apprendre-texte.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
@@ -26,6 +28,9 @@ import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
+import { boutonPasBien } from "./agent-retour.mjs";
+import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
+import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -110,6 +115,8 @@ const AVERTISSEMENTS = {
   apporteur_inconnu: N_("La référence donnée par l'assistant ne correspond à aucune fiche apporteur."),
   // Numéro de vol (21.11.2026) : contrôlé par la fonction, jamais deviné.
   vol_piece_jointe: N_("Numéro de vol lu sur une pièce jointe : vérifiez-le avant de valider."),
+  // Relecture de la PR 315 : calculé par l'écran, jamais par la fonction.
+  sieges_a_verifier: N_("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant »."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
   vol_illisible: N_("Un numéro de vol proposé n'a pas la forme d'un numéro de vol : il a été laissé vide."),
 };
@@ -526,6 +533,14 @@ export async function vueAgent(idOuvert = "") {
     if (!matchMedia("(min-width: 900px)").matches) window.scrollTo({ top: document.documentElement.scrollHeight });
   });
 
+  // « Pas bien » (migration 74) : dans l'entreprise de la conversation, pour qui peut y noter un apprentissage (agent-retour.mjs).
+  const entiteDuFil = () => (conv && conv.entite_id) || etat.entiteId;
+  // Les noms masqués d'un « Pas bien » sur une bulle : une réponse à l'équipe peut citer plusieurs clients (planning, vouchers, recherche) et
+  // des partenaires. Tous les clients et partenaires chargés, en plus de ceux de la conversation (revue de sécurité).
+  const nomsDuFil = () => {
+    const m = nomsAMasquer();
+    return { noms: [...m.noms, ...[...(etat.db.clients || []), ...(etat.brut.clients || [])].flatMap((x) => [x.prenom, x.nom])].filter(Boolean), entiers: m.entiers };
+  };
   function element(it, i) {
     if (it.genre === "personne") {
       // Le premier message d'une conversation ouverte depuis WhatsApp : l'échange du client, à gauche et replié (design n° 4).
@@ -535,7 +550,9 @@ export async function vueAgent(idOuvert = "") {
       if (echange) return bulleWhatsApp(echange);
       return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
     }
-    if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte));
+    // « Pas bien » : la raison et un extrait sans montant (la réponse à l'équipe peut citer des nets, des marges ou des gains), jamais la
+    // question tapée (elle peut contenir le message d'un client collé). Relu par l'Assistant seulement, pas par la boîte WhatsApp.
+    if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte), boutonPasBien({ entiteId: entiteDuFil(), reponse: it.texte, contexte: "réponse de l'Assistant à l'équipe", masques: nomsDuFil, prix: prixConnus, sansMontants: true }));
     if (it.genre === "pieces") return bullePieces(it.fichiers);
     if (it.genre === "planning") return frise(it.planning);
     // Les vouchers trouvés (trouver_vouchers) : une carte par dossier, avec l'aperçu et le bouton d'envoi.
@@ -746,8 +763,10 @@ export async function vueAgent(idOuvert = "") {
   const devise = () => reglages().devise || "THB";
   const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : "");
   // Les prix comme partout dans Gestion (formatMontant, design n° 15) : « THB 2'300 ».
-  const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, formatMontant(Number(s.prix), devise()), h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : s.origine_prix === "client_non_corrige" ? [tr("prix du client, non corrigé par Nani"), s.prix_catalogue !== undefined && s.prix_catalogue !== null ? ` · ${tr("catalogue : {prix}", { prix: formatMontant(Number(s.prix_catalogue), devise()) })}` : ""].join("") : tr("catalogue"))));
+  const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, formatMontant(Number(s.prix), devise()), h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : s.origine_prix === "devis" ? tr("devis calculé") : s.origine_prix === "client_non_corrige" ? [tr("prix du client, non corrigé par Nani"), s.prix_catalogue !== undefined && s.prix_catalogue !== null ? ` · ${tr("catalogue : {prix}", { prix: formatMontant(Number(s.prix_catalogue), devise()) })}` : ""].join("") : tr("catalogue"))));
   // L'heure de pickup manque : dit sur la carte, comme « Prix à fixer », avant de créer le dossier (design n° 5).
+  // Les sièges enfant ou bébé lus par l'Assistant (22.11.2026), dits sur la carte avant de créer.
+  const siegesTexte = (s) => (Number(s.sieges) > 0 ? pluriel(Number(s.sieges), N_("{n} siège enfant"), N_("{n} sièges enfant")) : "");
   const pickupTexte = (s) => (s.heure_pickup ? tr("pickup {h}", { h: s.heure_pickup }) : h("span", { class: "agent-a-fixer" }, tr("heure de pickup à fixer")));
 
   // Ce qu'une validation a créé pendant cette visite (dossier, course) : la carte validée montre ensuite le voucher et le message.
@@ -756,7 +775,13 @@ export async function vueAgent(idOuvert = "") {
   const motifs = new Map();
   // Espace unifié : l'entreprise d'un service corrigée d'un tap avant de valider (carte -> { index du service: { id, slug } }).
   const corrections = new Map();
-  const donneesCarte = (c) => (carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
+  // Le devis calculé par Nani sur cette carte (devis-carte.mjs) passe aussi : « Créer le dossier » reprend ses véhicules et son total.
+  // Le devis n'est repris que si l'échange n'a pas de nouveau message depuis son calcul (marqueFil).
+  const marqueFil = () => {
+    const m = fil.messages || [];
+    return `${m.length}:${(m[m.length - 1] || {}).cree_le || ""}`;
+  };
+  const donneesCarte = (c) => donneesAvecDevis(c.id, carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees, { marque: marqueFil() });
   const entrepriseDe = (id) => entitesAccessibles().find((e) => e.id === id) || null;
   const libelleEntreprise = (id) => {
     const e = entrepriseDe(id);
@@ -812,7 +837,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
+      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -823,12 +848,14 @@ export async function vueAgent(idOuvert = "") {
       action = { libelle: mixte ? tr("Créer les deux dossiers") : ailleurs ? tr("Créer le dossier chez {nom}", { nom: libelleEntreprise(ids[0]) }) : tr("Créer le dossier"), faire: () => valider(c), puis: mixte || ailleurs || aChoisir ? null : { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) } };
       // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
+      // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
+      if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil }));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol })].filter(Boolean).join(", "))), prixTexte(s))));
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s)].filter(Boolean).join(", "))), prixTexte(s))));
       action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
     } else if (c.genre === "modification") {
-      corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, d.champ === "vol" ? h("span", null, tr("Numéro de vol"), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
+      corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, d.champ === "vol" ? h("span", null, tr("Numéro de vol"), " ") : d.champ === "sieges" ? h("span", null, tr("Sièges enfant ou bébé"), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
     } else if (c.genre === "temps") {
       corps.push(h("p", { class: "agent-modif" }, h("strong", null, d.de), " ", icone("inverser", 16), " ", h("strong", null, d.vers), " ", h("span", null, texteDuree(d.duree_min))), h("p", { class: "aide" }, [d.ferry ? tr("ferry") : "", d.marge_min ? tr("marge {m} min", { m: d.marge_min }) : "", d.source].filter(Boolean).join(", ")));
@@ -867,6 +894,9 @@ export async function vueAgent(idOuvert = "") {
       const bloquants = bloquantsReponse(c.avertissements);
       const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
       corps.push(zone, alerte);
+      // « Pas bien » sur la réponse au client préparée (la carte reste à copier ou à écarter).
+      const pasBien = boutonPasBien({ entiteId: entiteDuFil(), reponse: d.message || "", contexte: d.langue === "en" ? "réponse au client en anglais préparée par l'Assistant" : "réponse au client préparée par l'Assistant", masques: () => nomsAMasquer(c), prix: prixConnus, carteId: c.id });
+      if (pasBien) corps.push(pasBien);
       action = {
         libelle: tr("Copier la réponse"),
         faire: () => (resteBloque(zone.value, bloquants).length ? null : copier(c, zone.value)),
@@ -888,7 +918,7 @@ export async function vueAgent(idOuvert = "") {
     }
     // Espace unifié : « entreprise à choisir » tombe dès que chaque service a son entreprise (corrigée d'un tap).
     const resolu = c.genre === "dossier" && carteUnifiee(d) && (c.statut !== "proposee" || (donneesCarte(c).services || []).every((s) => s.entite_id));
-    const avertissements = (c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir"));
+    const avertissements = [...(c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir")), ...(c.statut === "proposee" && siegesAVerifier(c) ? ["sieges_a_verifier"] : [])];
     const avert = avertissements.length && c.genre !== "amelioration" ? h("ul", { class: "assistant-avertissements" }, avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
     const libelles = { dossier: estCourse(c) ? N_("Course") : N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: c.genre === "reponse" && d.destinataire === "apporteur" ? N_("Réponse à l'apporteur") : N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
     // Une demande envoyée montre son suivi (envoyée, PR prête, en ligne, refusée).
@@ -986,7 +1016,71 @@ export async function vueAgent(idOuvert = "") {
   // `enregistre`, ses réservations sont relues. Une panne ici ne gêne jamais la validation.
   // `entiteId` : l'entreprise du dossier (espace unifié), où ses apprentissages sont gardés.
   // `typeLie` : le type du contact WhatsApp lié, relu (noterReussite) ; un apporteur ne relie pas la conversation au dossier (revue PR 298).
-  async function apresValidation(c, { dossierId = null, enregistre = null, entiteId = etat.entiteId, typeLie = null } = {}) {
+  // Les noms à masquer dans un apprentissage (correction ou « Pas bien ») : le client du dossier `idNoms` (celui de la carte, ou celui déjà
+  // relié à la conversation), les noms donnés dans les cartes « dossier » de la conversation (une réponse copiée avant que la conversation
+  // ait un dossier ne garde pas le nom du client), et les noms d'apporteur (revue PR 298) : fiche reliée à la conversation WhatsApp, toutes
+  // les fiches « apporteur », noms des cartes. Aussi le nom de la conversation WhatsApp liée (le contact).
+  function nomsAMasquer(c = null, idNoms = conv && conv.dossier_id) {
+    const dossier = idNoms ? etat.db.dossiers.find((d) => d.id === idNoms) : null;
+    const client = dossier ? etat.db.clients.find((x) => x.id === dossier.client_id) : null;
+    const waLue = conv && conv.whatsapp_conversation_id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === conv.whatsapp_conversation_id) || null : null;
+    const cartes = c ? [c, ...fil.cartes] : fil.cartes;
+    // Un contact typé (partenaire, chauffeur, hôtel, apporteur) ou relié à une fiche partenaire : son nom se masque en entier.
+    const typee = (x) => !!x && (["partenaire", "chauffeur", "hotel", "apporteur"].includes(x.type_contact) || !!x.partenaire_id);
+    return {
+      // Les noms du client, masqués mot par mot (sauf mots courants et mots de deux lettres).
+      noms: [client && client.prenom, client && client.nom, waLue && !typee(waLue) ? waLue.nom : "", ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom)].filter(Boolean),
+      // Les partenaires, les apporteurs et les contacts typés, masqués en entier (revue de la PR 312).
+      entiers: [
+        // Les apporteurs et les contacts typés sont souvent des personnes (« Somchai (driver) ») : aussi mot par mot, hors mots courants.
+        ...nomsApporteurAMasquer({ partenaires: etat.brut.partenaires || [], conversationWa: waLue, cartes }).map((nom) => ({ nom, personne: true })),
+        ...(etat.brut.partenaires || []).map((x) => x.nom),
+        // Un hôtel typé n'est pas une personne (son nom sert de lieu de pickup) : en entier seulement.
+        ...(etat.brut.whatsapp_conversations || []).filter(typee).map((x) => ({ nom: x.nom, personne: x.type_contact !== "hotel" })),
+      ].filter((x) => x && (typeof x === "string" || x.nom)),
+    };
+  }
+  // Les prix connus au moment d'un « Pas bien » (demande de Jérémy, 22.11.2026), dans l'entreprise de la conversation :
+  //   - ventes : catalogue (prix de vente des prestations et des trajets), prix des cartes de la conversation (dont ceux que la règle des
+  //     PR 306 et 307 a déjà repris de la conversation : « donné par vous », « prix du client non corrigé »), réservations du dossier relié,
+  //     et les montants tapés par la personne dans cette conversation (règle de la PR 306, même lecture montantsDuTexte, jamais un échange
+  //     WhatsApp joint ni une phrase qui parle de net) ;
+  //   - nets : catalogue et dossier relié, seulement avec le droit de voir les nets (« partenaires.nets ») ; sinon null, et un montant qui
+  //     serait un net devient une question.
+  function prixConnus() {
+    const ent = entiteDuFil();
+    const ventes = new Set();
+    const ajouter = (set, v) => {
+      const n = Number(v);
+      if (n > 0) set.add(n);
+    };
+    for (const p of etat.brut.prestations || []) if (p.entite_id === ent) ajouter(ventes, p.prix_vente);
+    for (const t of etat.brut.trajets || []) if (t.entite_id === ent) for (const k of ["prix_adulte", "prix_enfant"]) ajouter(ventes, t[k]);
+    for (const c of fil.cartes) {
+      const d = c.donnees || {};
+      for (const sv of [...(d.services || []), d.service].filter(Boolean)) ajouter(ventes, sv.prix);
+    }
+    const dossierId = conv && conv.dossier_id;
+    for (const r of etat.brut.reservations || []) if (dossierId && r.dossier_id === dossierId) ajouter(ventes, r.montant_vente);
+    filDepuis(fil.messages, []).forEach((it, i) => {
+      if (it.genre !== "personne" || echangeWhatsApp(it.texte, { depuisWhatsApp: i === 0 && !!(conv && conv.whatsapp_conversation_id) }) || /<\/?(?:conversation|question)>/.test(it.texte)) return;
+      for (const phrase of String(it.texte).split(/\n+|(?<=[.!?;])\s+/)) if (!phraseInterne(phrase)) for (const n of montantsDuTexte(phrase)) ajouter(ventes, n);
+    });
+    if (!(permissionsDe(ent) || []).includes("partenaires.nets")) return { ventes, nets: null };
+    const nets = new Set(dossierId ? netsDuDossier(dossierId) : []);
+    const services = new Set([...(etat.brut.prestations || []), ...(etat.brut.trajets || [])].filter((x) => x.entite_id === ent).map((x) => x.id));
+    for (const n of etat.brut.prestations_nets || []) if (services.has(n.prestation_id)) for (const k of ["net", "net_enfant"]) ajouter(nets, n[k]);
+    for (const n of etat.brut.trajets_nets || []) if (services.has(n.trajet_id)) for (const k of ["net_adulte", "net_enfant"]) ajouter(nets, n[k]);
+    return { ventes, nets };
+  }
+  // Les nets, marges et commissions du dossier (lus seulement par qui a le droit de les voir) : une remarque qui en cite un n'est pas apprise.
+  function netsDuDossier(idNoms) {
+    const resas = new Set((etat.brut.reservations || []).filter((r) => r.dossier_id === idNoms).map((r) => r.id));
+    const out = new Set();
+    for (const l of etat.brut.reservations_nets || []) if (resas.has(l.reservation_id)) for (const [k, v] of Object.entries(l)) if (/^(?:nets?|marges?|commissions?|gains?)(?:_|$)/.test(k) && Number(v) > 0) out.add(Number(v));
+    return out;
+  }
+  async function apresValidation(c, { dossierId = null, enregistre = null, entiteId = etat.entiteId, typeLie = null, ecran = null } = {}) {
     try {
       const id = dossierDeLaCarte(c, { dossierId });
       if (id && conv && !conv.dossier_id && lierDossierConversation(c, typeLie)) {
@@ -998,15 +1092,9 @@ export async function vueAgent(idOuvert = "") {
       }
       // Les noms du client à masquer : ceux du dossier de la carte, ou du dossier déjà relié à la conversation (réponse au client).
       const idNoms = id || (conv && conv.dossier_id);
-      const dossier = idNoms ? etat.db.dossiers.find((d) => d.id === idNoms) : null;
-      const client = dossier ? etat.db.clients.find((x) => x.id === dossier.client_id) : null;
-      const vu = enregistre || (c.genre === "dossier" && id ? { reservations: etat.db.reservations.filter((r) => r.dossier_id === id) } : null);
-      // Aussi les noms donnés dans les cartes « dossier » de la conversation : une réponse copiée avant que la conversation ait un dossier
-      // ne garde pas le nom du client.
-      // Et les noms d'apporteur (revue PR 298) : fiche reliée à la conversation WhatsApp, toutes les fiches « apporteur », noms des cartes.
-      const waLiee = conv && conv.whatsapp_conversation_id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === conv.whatsapp_conversation_id) || null : null;
-      const noms = [client && client.prenom, client && client.nom, ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom), ...nomsApporteurAMasquer({ partenaires: etat.brut.partenaires || [], conversationWa: waLiee, cartes: [c, ...fil.cartes] })].filter(Boolean);
-      const lignes = correctionsDepuisCarte(c, vu, { noms });
+      // `ecran` : ce que « Vérifier avant » a fait de chaque service (prix_saisi), pour distinguer un prix tapé d'un recalcul.
+      const vu = enregistre || (c.genre === "dossier" && id ? { reservations: etat.db.reservations.filter((r) => r.dossier_id === id), ...(ecran ? { ecran } : {}) } : null);
+      const lignes = correctionsDepuisCarte(c, vu, { ...nomsAMasquer(c, idNoms), nets: idNoms ? netsDuDossier(idNoms) : new Set() });
       if (lignes.length && (await etat.store.agentNoterApprentissages(entiteId, c.id, lignes))) toast(lignes.length === 1 ? tr("Correction notée : l'assistant s'en servira la prochaine fois.") : tr("{n} corrections notées : l'assistant s'en servira la prochaine fois.", { n: lignes.length }));
     } catch (err) {
       console.error("agent : après la validation", err);
@@ -1130,20 +1218,23 @@ export async function vueAgent(idOuvert = "") {
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
     try {
       if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
+      // Plus de sièges que d'enfants et de bébés (relecture de la PR 315) : jamais validé d'un geste, Nani confirme dans la fiche.
+      else if (siegesAVerifier(c)) r = { ok: false, motif: tr("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant ».") };
       // Un prix du client sous le net (revue de la PR 307) : jamais validé d'un geste.
       else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
       else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c);
-      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
       else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(c, reservationDepuisCarte(c.donnees), tr("Service ajouté au dossier.")));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
-          return ancienne ? enregistrerReservation(c, reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne) : { ok: false, motif: tr("Ce service n'existe plus.") };
+          // Les notes d'avant : une remarque retouchée s'apprend par ce qui a été ajouté (agent-apprendre.mjs).
+          return ancienne ? enregistrerReservation(c, reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
         });
       } else if (c.genre === "temps") r = await ajouterTemps(c);
     } catch (err) {
@@ -1185,7 +1276,7 @@ export async function vueAgent(idOuvert = "") {
           changerSansNaviguer(origine);
         }
       }
-    } else await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res } : null, typeLie });
+    } else await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res, ...(typeof r.notesAvant === "string" ? { notesAvant: r.notesAvant } : {}) } : null, ecran: Array.isArray(r.ecran) ? r.ecran : null, typeLie });
     await decider(c, "validee");
   }
 
@@ -1241,7 +1332,8 @@ export async function vueAgent(idOuvert = "") {
     if (!(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) return;
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
-    (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier }) => noterReussite(c, { ok: true, dossier }) });
+    // `services` : ce que l'écran a fait de chaque service (prix tapé à la place de celui du catalogue), pour les apprentissages.
+    (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }) });
   }
   async function ouvrirCourse(c) {
     // Même règle que la validation d'un geste (et que l'ancien écran) : une course depuis une confirmation se crée par une administratrice.
@@ -1264,12 +1356,13 @@ export async function vueAgent(idOuvert = "") {
     return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {
       const r = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
       if (!r) return void toast(tr("Ce service n'existe plus."), true), false;
+      // La base de la fusion est la ligne d'origine (relecture de la PR 315) : une modification concurrente n'efface pas le changement proposé.
       const ferme = modal(tr("Modifier la réservation"), formulaireReservation(reservationModifiee(r, c.donnees), async (res) => {
         ferme();
         if (!res) return;
         toast(tr("Service modifié."));
-        await noterReussite(c, { ok: true, reservation: { ...res, dossier_id: res.dossier_id || r.dossier_id } });
-      }), { ferme: revenir });
+        await noterReussite(c, { ok: true, reservation: { ...res, dossier_id: res.dossier_id || r.dossier_id }, notesAvant: String(r.notes || "") });
+      }, { base: r }), { ferme: revenir });
       return true;
     });
   }
@@ -1289,7 +1382,7 @@ export async function vueAgent(idOuvert = "") {
         ferme();
         fin(r);
       };
-      const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }));
+      const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }), { base: ancienne || valeurs });
       ferme = modal(tr("Réservation"), form, { cache: true });
       minuterie = setTimeout(() => terminer({ ok: false, motif: tr("Rien n'a été enregistré : ouvrez « Vérifier avant ».") }), 60_000);
       form.requestSubmit();

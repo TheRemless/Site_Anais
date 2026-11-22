@@ -12,15 +12,17 @@
 // (ctx.permissions et permissionsPar vides). Les dossiers lus restent ceux reliés à la conversation.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, DUREE_MAX_MS, MODELE_DEFAUT, apprentissagesUnifies, ligneJournal, signe } from "../agent/prompt.js";
+import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
 import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef } from "../agent/outils.js";
 import { CONTACTS_INTERNES } from "../agent/whatsapp-lecture.js";
 import { tourner } from "../agent/boucle.js";
+import { lireApprentissages } from "../agent/apprentissages.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
 import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
-import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
+import { debutMois, estCreditEpuise, plafondRetenu } from "../assistant/budget.js";
 import { dateBangkok, reglagesAssistant } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
+import { clientCommun, entrepriseReponse, refusDemande } from "./proposer.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
@@ -41,7 +43,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     const lu = await lireConversation(db, conversationId);
     if (!lu || !aRepondre(lu.messages, messageId)) return;
     const { conv, messages } = lu;
-    // Partenaire, chauffeur, hôtel et apporteur sont triés comme un client (migration 69) : seul le Contact personnel coupe l'IA.
+    // Partenaire, chauffeur, hôtel, apporteur et fiche partenaire reliée : plus de tri automatique (22.11.2026, triSansAppel), l'Assistant
+    // reste à la demande. Seul le Contact personnel coupe toute IA.
     let decision = triSansAppel({ conv, messages });
     // Assistant éteint ou réception suspendue (audit sécurité n° 1) : pas même le tri chez Anthropic.
     if (!decision && !(await iaOuverte(db, conv))) decision = { preparer: false, motif: "ia_coupee" };
@@ -57,7 +60,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     if (!decision) {
       try {
         // deno-lint-ignore no-explicit-any
-        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id }) as any);
+        // Un client est commun à Secret et à Taxi : le tri donne toujours l'entreprise de la demande en cours, même si la conversation est rangée.
+        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id || clientCommun(conv) }) as any);
         appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
         decision = decisionDepuisReponse(m);
         if (decision.motif === "tri_illisible") console.error("whatsapp : tri illisible", m.stop_reason, (m.usage as { output_tokens?: number })?.output_tokens);
@@ -96,7 +100,9 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
 export async function preparerALaDemande(db: SupabaseClient, conversationId: string) {
   const lu = await lireConversation(db, conversationId);
   if (!lu) return { erreur: "droit_manquant" };
-  if (lu.conv.reponses === "jamais") return { erreur: "contact_personnel" };
+  // Contact personnel : refusé. IA coupée par Nani (migration 105) : permis, seul l'automatique est coupé (refusDemande, décision du 22.11.2026).
+  const refus = refusDemande(lu.conv);
+  if (refus) return { erreur: refus };
   const dernier = lu.messages.filter((m) => !m.supprime_le).reduce((a: any, m: any) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
   if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
@@ -108,12 +114,13 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
   // Sans l'espace unifié, Nani choisit d'abord (on ne prend pas un catalogue au hasard).
   const { data: ents } = await db.from("entites").select("id, slug").eq("organisation_id", lu.conv.organisation_id).in("slug", ["secret", "taxi"]);
   let defaut: string | null = null;
-  if (!lu.conv.entite_id && !suggestion && unifieAllume(Deno.env.get("AGENT_UNIFIE") || "")) {
+  if ((!lu.conv.entite_id || clientCommun(lu.conv)) && !suggestion && unifieAllume(Deno.env.get("AGENT_UNIFIE") || "")) {
     const { data: regls } = await db.from("reglages").select("entite_id, valeur").in("entite_id", (ents || []).map((e) => e.id));
     const allumees = (ents || []).filter((e) => (regls || []).some((r) => r.entite_id === e.id && r.valeur && r.valeur.agent_ia === true)).map((e) => e.slug);
     defaut = entrepriseParDefaut({ unifie: true, slugs: (ents || []).map((e) => e.slug), allumees });
   }
-  const ent = (ents || []).find((e) => e.id === lu.conv.entite_id) || (ents || []).find((e) => e.slug === (suggestion || defaut));
+  // Un client : l'entreprise de la demande en cours d'abord (le tri), puis celle de la conversation.
+  const ent = entrepriseReponse({ conv: lu.conv, ents: ents || [], suggestion, defaut });
   if (!ent) return { erreur: "a_trier" };
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
   if (!regl || !regl.valeur || regl.valeur.agent_ia !== true) return { erreur: "agent_eteint" };
@@ -148,7 +155,7 @@ export async function iaOuverte(db: SupabaseClient, conv: Conv) {
 async function preparationAutoPermise(db: SupabaseClient, conv: Conv, suggestion: string | null) {
   const { data: ents, error } = await db.from("entites").select("id, slug").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
   if (error) return false;
-  const ent = (ents || []).find((e) => e.id === conv.entite_id) || (!conv.entite_id && suggestion ? (ents || []).find((e) => e.slug === suggestion) : null);
+  const ent = entrepriseReponse({ conv, ents: ents || [], suggestion });
   const lu = ent ? await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle() : null;
   return !!lu && !lu.error && preparationAuto(lu.data ? lu.data.valeur : null);
 }
@@ -184,7 +191,8 @@ async function nommerConversation(db: SupabaseClient, conv: Conv, nom: string) {
 async function lireConversation(db: SupabaseClient, conversationId: string) {
   const { data: conv } = await db.from("whatsapp_conversations").select("*").eq("id", conversationId).maybeSingle();
   if (!conv) return null;
-  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(40);
+  // Ligne « non transmis » (migration 100) : jamais lue par l'IA, ni le tri ni la réponse.
+  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(40);
   return { conv: conv as Conv, messages: [...(msgs || [])].reverse() as Record<string, any>[] };
 }
 
@@ -226,9 +234,9 @@ async function preparer(
   { anthropic, appels, j, suggestion, defaut = null }: { anthropic: Anthropic; appels: { usage: Record<string, unknown>; modele: string }[]; j: ReturnType<typeof journalEnCours>; suggestion: string | null; defaut?: string | null },
 ) {
   const { data: entites } = await db.from("entites").select("id, slug, nom").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
-  const parSlug = new Map((entites || []).map((e) => [e.slug, e]));
-  const ent = (entites || []).find((e) => e.id === conv.entite_id) || (suggestion ? parSlug.get(suggestion) : null) || (defaut ? parSlug.get(defaut) : null) || null;
-  const proposee = conv.entite_id ? null : suggestion;
+  // Un client : le catalogue de l'entreprise de la demande en cours (le tri), pas celui de la conversation. Un autre contact : son entreprise.
+  const ent = entrepriseReponse({ conv, ents: entites || [], suggestion, defaut });
+  const proposee = conv.entite_id && !clientCommun(conv) ? null : suggestion;
   // À trier sans entreprise suggérée : pas de réponse (on ne prend pas le catalogue d'une entreprise au hasard), mais une trace visible.
   if (!ent) return echecVisible(db, conv.id, messageId, null, "a_trier");
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
@@ -271,12 +279,10 @@ async function preparer(
     if (types.erreur) console.error("whatsapp : noms des contacts typés illisibles");
     const prestataires = [...new Set([...nomsABloquer((await ctx.charger("partenaires")) as { id: string; nom: string }[], exemptes), ...types.noms])];
     // Espace unifié : 60 corrections de l'entreprise active ; de l'autre, seulement les réponses au client (20), marquées de leur entreprise.
-    const [lus, lusAutre] = await Promise.all([
-      db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(unifie ? APPRIS_LUS_ACTIVE : 80),
-      unifie && autre ? db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", autre.id).eq("genre", "reponse").order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
-    ]);
-    const lignesAppris = unifie && autre ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.nom, nomAutre: autre.nom }) : lus.data || [];
-    if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
+    // Lues et filtrées dans agent/apprentissages.js : une ligne dont un montant est égal à un net de l'entreprise est écartée, et seules les
+    // lignes utiles à une réponse au client restent (ni remarque de service, ni « Pas bien » sur une réponse à l'équipe).
+    const lus = await lireApprentissages(db, { active: ent, autre: unifie && autre ? autre : null, pourClient: true, qui: reglagesAssistant(reglages || {}).responsable || "" });
+    const lignesAppris = lus.lignes;
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
     // Chez Secret et Taxi, les exemples perdent leur signature (« VIP Taxi Lanta 🌴 » d'un message type) : l'agent ne la recopie pas.
     const signatures = signe(reglages) ? null : [ent.nom, ...(unifie && autre ? [autre.nom] : [])];
@@ -285,7 +291,7 @@ async function preparer(
       return "";
     });
     const unifieConsignes = unifie && autre ? { entreprises: [{ nom: ent.nom, slug: ent.slug, reglages }, { nom: autre.nom, slug: autre.slug, reglages: reglagesAutre }] } : null;
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? conv.type_contact || null : null });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.erreur ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? conv.type_contact || null : null });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
@@ -358,7 +364,7 @@ async function tonDeNani(db: SupabaseClient, entiteId: string, conversationId: s
   const ids = (convs || []).map((c) => c.id);
   if (!ids.length) return "";
   const [msgs, props] = await Promise.all([
-    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).order("envoye_le", { ascending: false }).limit(400),
+    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(400),
     db.from("whatsapp_propositions").select("conversation_id, cree_le, texte, statut").in("conversation_id", ids).not("texte", "is", null).order("cree_le", { ascending: false }).limit(60),
   ]);
   const tous = msgs.data || [];

@@ -383,7 +383,8 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   assert.match(p.texte, /proposer_reponse une seule fois/);
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
-  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.eq\("entite_id", ent\.id\)/);
+  // Lues et filtrées des montants égaux à un net dans agent/apprentissages.js (migration 74), dans l'entreprise de la conversation.
+  assert.match(reponse, /const lus = await lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true, qui: reglagesAssistant\(reglages \|\| \{\}\)\.responsable \|\| "" \}\);/);
 });
 
 // ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------
@@ -413,14 +414,22 @@ test("whatsapp tri : lecture stricte de la décision de Haiku (deux signaux conc
   assert.ok(MOTIFS.includes("contact_jamais") && MOTIFS.includes("limite"));
 });
 
-test("whatsapp tri (migration 69) : partenaire, chauffeur, hôtel et apporteur passent au tri par Haiku comme un client ; un contact personnel jamais", () => {
+test("whatsapp tri (22.11.2026) : un client ou un contact non typé passe au tri par Haiku ; partenaire, chauffeur, hôtel, apporteur ou fiche partenaire, non, mais l'IA reste permise ; un contact personnel jamais", () => {
   const question = [M({ texte: "Can you confirm the pickup at 9 tomorrow?" })];
   const agents = { e1: true };
-  for (const type of ["client", "partenaire", "chauffeur", "hotel", "apporteur"]) {
+  for (const type of ["client", null]) {
     const conv = { telephone: "+66812345678", reponses: "auto", type_contact: type, entite_id: "e1" };
     assert.equal(triSansAppel({ conv, messages: question }), null, `${type} : le tri par Haiku a lieu`);
     assert.equal(iaPermiseTri({ receptionActive: true, conv, agents }), true, `${type} : l'IA est permise`);
   }
+  for (const type of ["partenaire", "chauffeur", "hotel", "apporteur"]) {
+    const conv = { telephone: "+66812345678", reponses: "auto", type_contact: type, entite_id: "e1" };
+    assert.deepEqual(triSansAppel({ conv, messages: question }), { preparer: false, motif: "non_client" }, `${type} : pas de tri automatique`);
+    assert.equal(iaPermiseTri({ receptionActive: true, conv, agents }), true, `${type} : l'Assistant reste permis à la demande`);
+  }
+  assert.deepEqual(triSansAppel({ conv: { reponses: "auto", type_contact: null, partenaire_id: "p1" }, messages: question }), { preparer: false, motif: "non_client" }, "une fiche partenaire reliée");
+  // IA coupée par Nani pour cette conversation (migration 105) : pas de tri, motif « ia_coupee ».
+  assert.deepEqual(triSansAppel({ conv: { reponses: "auto", type_contact: null, ia_coupee: true }, messages: question }), { preparer: false, motif: "ia_coupee" });
   // Le numéro d'une fiche partenaire ne coupe plus rien (l'ancien paramètre est ignoré).
   assert.equal(triSansAppel({ conv: { telephone: "+66812345678", reponses: "auto" }, messages: question, numerosPartenaires: new Set(["812345678"]) }), null);
   for (const conv of [{ reponses: "jamais", type_contact: null, entite_id: "e1" }, { reponses: "jamais", type_contact: "partenaire", entite_id: "e1" }]) {

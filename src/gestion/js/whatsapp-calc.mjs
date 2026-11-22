@@ -5,7 +5,7 @@
 import { N_ } from "./i18n.mjs";
 import { numeroAffiche } from "./demandes-site-calc.mjs";
 import { nomContact, nomSaisi } from "./agent-whatsapp-lecture.mjs";
-import { montantsDuTexte } from "./agent-calc.mjs";
+import { montantsDuTexte, bloquantsReponse, CONTROLE_IMPOSSIBLE } from "./agent-calc.mjs";
 
 export { numeroAffiche };
 
@@ -60,7 +60,8 @@ export const morceauxReponse = (texte) => String(texte || "").split(/\n\s*\n/).m
 // sinon le numéro. Même ordre que l'Assistant (agent-whatsapp-lecture.mjs, nomContact), qui n'envoie jamais le numéro.
 export { nomSaisi };
 export function nomConversation(conv, client = null) {
-  return nomContact(conv, client) || numeroAffiche((conv && conv.telephone) || "");
+  // Client sans numéro (migration 100) : son BSUID, faute de mieux (le nom du profil WhatsApp arrive presque toujours avec).
+  return nomContact(conv, client) || numeroAffiche((conv && conv.telephone) || "") || ((conv && conv.bsuid) || "");
 }
 // Le nom tel que la base le garde (déclencheur whatsapp_nom_manuel, migration 70) : caractères invisibles (U+200B à U+200F, U+202A à U+202E,
 // U+2060 à U+2069, U+FEFF) retirés, espaces et caractères de contrôle réduits à une espace, 60 caractères au plus. Vide : null (le nom
@@ -139,6 +140,7 @@ export const MOTIFS_TRI = {
   limite: N_("Limite du jour des réponses atteinte"),
   tri_illisible: N_("Message non trié"),
   ia_coupee: N_("Assistant éteint ou réception suspendue : message non trié"),
+  non_client: N_("Contact qui n'est pas un client : pas de tri automatique"),
   autre: N_("Rien à répondre"),
 };
 // Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.
@@ -285,7 +287,20 @@ export const LIBELLES_TYPE = {
   location: N_("Position"),
   contacts: N_("Contact"),
   inconnu: N_("Message que Gestion ne sait pas afficher"),
+  non_transmis: N_("Message non transmis"),
 };
+
+// Messages manquants (migration 100). Ligne gardée quand WhatsApp n'a pas transmis le message du client (type non_transmis), et repère
+// discret sur une réponse de Nani avant laquelle un message du client semble manquer (repere) ou sur la carte (manque_le). Sans IA.
+export const TEXTE_NON_TRANSMIS = N_("Message du client non transmis par WhatsApp, {heure}. Ouvre WhatsApp sur le téléphone pour le lire.");
+export const LIBELLE_MANQUE = N_("Un message du client semble manquer");
+export const estNonTransmis = (m) => !!m && m.type === "non_transmis";
+export const repereManque = (m) => !!m && m.repere === "semble_manquer";
+export const conversationManque = (c) => !!c && !!c.manque_le;
+// Même client (même BSUID) qui écrit depuis un autre numéro : la conversation de l'ancien numéro (migration 100). Jamais de changement de
+// numéro automatique : Nani décide.
+export const LIBELLE_NOUVEAU_NUMERO = N_("Nouveau numéro pour ce client");
+export const ancienneConversation = (c, conversations = []) => (c && c.meme_client_que ? conversations.find((x) => x.id === c.meme_client_que) || null : null);
 export const libelleType = (type) => LIBELLES_TYPE[type] || LIBELLES_TYPE.inconnu;
 export const ORIGINES = { app: N_("depuis l'app"), gestion: N_("depuis Gestion") };
 
@@ -347,6 +362,52 @@ export function aConfirmerEnvoi(r, texte = "") {
   const texteQuestion = r.portee === "autre_service" ? N_("Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.") : N_("Le montant {liste} est aussi un net du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.");
   return { renvoi: liste, texte: texteQuestion, vars: { liste: liste.join(", ") } };
 }
+// Motif en clair d'un refus du serveur pour un message écrit d'avance (point du soir, « Proposer une excursion »), jamais muet. Deux refus
+// (relecture de la PR 317, décision du 22.11.2026) :
+//   - « contenu_interne » (422) : un net qui n'est pas un prix de vente connu, ou un nom de partenaire. Refus sec, sans envoi forcé ;
+//   - « montant_a_confirmer » (409) : un prix de vente connu qui est aussi le net d'un autre service. Nani confirme d'un clic
+//     (« Envoyer quand même », `confirmer` : la liste renvoyée en montants_confirmes, comme la PR 306) ; le serveur exige cette liste.
+// Rend { texte, vars, confirmer? } (texte et vars pour tr), sinon null. Un montant masqué (pas le droit de voir les nets) n'est jamais nommé.
+// `texte` : le message refusé (montants relus quand ils sont masqués). `nombre` : la mise en forme d'un montant (langue de l'écran).
+export function motifRefusEnvoi(r, { texte = "", nombre = (n) => new Intl.NumberFormat("fr-FR").format(n) } = {}) {
+  if (!r || !["contenu_interne", "montant_a_confirmer"].includes(r.erreur)) return null;
+  if (r.erreur === "montant_a_confirmer") {
+    const question = aConfirmerEnvoi(r, texte);
+    // Rien de confirmable (montants masqués absents du texte) : refus sec.
+    if (!question) return { texte: MOTIFS_REFUS.masque, vars: {} };
+    const montants = r.masque ? [] : question.renvoi;
+    if (!montants.length) return { texte: MOTIFS_CONFIRMER.masque, vars: {}, confirmer: question.renvoi };
+    return { texte: montants.length > 1 ? MOTIFS_CONFIRMER.plusieurs : MOTIFS_CONFIRMER.un, vars: { montants: montants.map(nombre).join(", ") }, confirmer: question.renvoi };
+  }
+  const brut = (r.a_retirer || []).map(String);
+  // Lecture impossible côté serveur : le texte n'est pas en cause, le message habituel s'applique (codeEnvoi).
+  if (brut.includes(LECTURE_IMPOSSIBLE) || brut.includes(CONTROLE_IMPOSSIBLE)) return null;
+  const b = bloquantsReponse(brut);
+  const montants = [...new Set(b.montants)];
+  const noms = [...new Set([...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(x))])];
+  const cle = [montants.length > 1 ? "plusieurs" : montants.length ? "un" : (b.empreintes || []).length ? "masque" : "", noms.length > 1 ? "noms" : noms.length ? "nom" : ""].filter(Boolean).join("+");
+  if (!cle) return { texte: ERREURS_ENVOI.contenu_interne, vars: {} };
+  return { texte: MOTIFS_REFUS[cle], vars: { ...(montants.length ? { montants: montants.map(nombre).join(", ") } : {}), ...(noms.length ? { noms: noms.join(", ") } : {}) } };
+}
+// Les phrases possibles, écrites en entier pour la traduction (N_).
+const MOTIFS_REFUS = {
+  un: N_("Le montant {montants} est égal à un prix d'achat. Modifiez le message, rien n'est parti."),
+  plusieurs: N_("Les montants {montants} sont égaux à des prix d'achat. Modifiez le message, rien n'est parti."),
+  masque: N_("Un montant du message est égal à un prix d'achat. Modifiez le message, rien n'est parti."),
+  nom: N_("{noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+  noms: N_("{noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+  "un+nom": N_("Le montant {montants} est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+  "un+noms": N_("Le montant {montants} est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+  "plusieurs+nom": N_("Les montants {montants} sont égaux à des prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+  "plusieurs+noms": N_("Les montants {montants} sont égaux à des prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+  "masque+nom": N_("Un montant du message est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+  "masque+noms": N_("Un montant du message est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+};
+const MOTIFS_CONFIRMER = {
+  un: N_("Le montant {montants} est un prix de vente, mais aussi le net d'un autre service. Vérifiez avant d'envoyer."),
+  plusieurs: N_("Les montants {montants} sont des prix de vente, mais aussi les nets d'autres services. Vérifiez avant d'envoyer."),
+  masque: N_("Un montant du message est un prix de vente, mais aussi le net d'un autre service. Vérifiez avant d'envoyer."),
+};
 export const montantsAConfirmer = (r, texte = "") => (aConfirmerEnvoi(r, texte) || { renvoi: [] }).renvoi;
 export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" && (aRetirer || []).includes("controle_impossible") ? "controle_impossible" : (code === "contenu_interne" && (aRetirer || []).includes(LECTURE_IMPOSSIBLE) ? "partenaires_illisibles" : code));
 // « Préparer une réponse » (fonction whatsapp-preparer, 202 puis préparation en tâche de fond).
@@ -354,6 +415,7 @@ export const ERREURS_PREPARER = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas de préparer une réponse pour cette conversation."),
   contact_personnel: N_("Contact personnel : rien n'est envoyé à l'IA. Répondez depuis l'app."),
+  ia_coupee: N_("IA coupée pour cette conversation : rien n'est envoyé à l'IA. Répondez depuis l'app."),
   rien_a_repondre: N_("Le dernier message n'est pas du client. Rien à préparer."),
   limite: N_("Limite atteinte (plafond du mois ou limite du jour). Répondez depuis l'app."),
   agent_eteint: N_("L'assistant est éteint pour cette entreprise. Allumez-le dans les Réglages."),

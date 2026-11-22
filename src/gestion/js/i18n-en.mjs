@@ -1,6 +1,28 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
+import { EN_POINT_SOIR } from "./i18n-en-point-soir.mjs";
+import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
+
 export const EN = {
+  // « Pas bien » sur une réponse de l'Assistant (migration 74)
+  "Pas bien": "Not good",
+  "Ce qui ne va pas, en quelques mots": "What is wrong, in a few words",
+  "Ce qui ne va pas dans cette réponse": "What is wrong with this reply",
+  "Noter": "Note it",
+  "Dites en quelques mots ce qui ne va pas.": "Say in a few words what is wrong.",
+  "200 caractères au plus.": "200 characters at most.",
+  "La raison ne peut pas parler de net, de commission ni de banque : l'assistant la relira.": "The reason cannot mention a net, a commission or a bank: the assistant will read it again.",
+  "Ce montant est :": "This amount is:",
+  "Ce montant est : {liste}": "This amount is: {liste}",
+  "Ces montants sont : {liste}": "These amounts are: {liste}",
+  "prix pour le client": "price for the client",
+  "prix d'achat (interne)": "purchase price (internal)",
+  "interne": "internal",
+  "Noté comme interne : visible dans le suivi, jamais relu par l'assistant.": "Noted as internal: visible in the tracking, never read by the assistant.",
+  "Jamais relue par l'assistant": "Never read by the assistant",
+  "Retour non noté : réessayez plus tard.": "Feedback not noted: try again later.",
+  "Noté : l'assistant s'en servira la prochaine fois.": "Noted: the assistant will use it next time.",
+  "Réponse jugée mauvaise": "Reply judged bad",
   // Faux blocage du 21.11.2026 : net d'un autre service du catalogue, avertissement et confirmation à l'envoi
   "Le montant {valeur} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {valeur} is also the net of another service in the catalogue. Check that it is really a selling price.",
   "Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {v} is also the net of another service in the catalogue. Check that it is really a selling price.",
@@ -274,6 +296,12 @@ export const EN = {
   "Photo envoyée par le client": "Photo sent by the client",
   "modifié": "edited",
   "Supprimé par le client": "Deleted by the client",
+  // Messages manquants (migration 100).
+  "Message du client non transmis par WhatsApp, {heure}. Ouvre WhatsApp sur le téléphone pour le lire.": "Client message not passed on by WhatsApp, {heure}. Open WhatsApp on the phone to read it.",
+  "Un message du client semble manquer": "A client message seems to be missing",
+  "Message non transmis": "Message not passed on",
+  "Nouveau numéro pour ce client": "New number for this client",
+  "Voir la conversation de l'ancien numéro": "See the conversation of the old number",
   "Réaction": "Reaction",
   "Copié": "Copied",
   "Réponse copiée. Collez-la dans WhatsApp.": "Reply copied. Paste it into WhatsApp.",
@@ -4552,4 +4580,57 @@ export const EN = {
   "Réponse à l'apporteur": "Reply to the referrer",
   "Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant.": "Partner records could not be read to check the text. Nothing was sent, try again in a moment.",
   "Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur.": "File created without a referrer: the WhatsApp contact is no longer marked as a referrer.",
+  // « Calculer le devis » sur la carte du dossier (22.11.2026)
+  "Calculer le devis": "Calculate the quote",
+  "Recalculer le devis": "Recalculate the quote",
+  "Il manque le trajet, les personnes ou la date.": "The route, the number of people or the date is missing.",
+  "Ce trajet n'est pas au catalogue : aucun calcul. Fixez le prix vous-même ou ajoutez le trajet au catalogue.": "This route is not in the catalogue: nothing calculated. Set the price yourself or add the route to the catalogue.",
+  "Ce tarif n'est plus au catalogue, ou il est masqué : aucun calcul.": "This rate is no longer in the catalogue, or it is hidden: nothing calculated.",
+  "Ce service est d'une autre entreprise : calculez-le depuis son Assistant.": "This service belongs to another company: calculate it from its Assistant.",
+  "Le tarif n'a pas de prix de vente au catalogue : aucun calcul.": "The rate has no selling price in the catalogue: nothing calculated.",
+  "Ce service se paie sur place : aucun prix à annoncer.": "This service is paid on site: no price to give.",
+  "Remarque du tarif à vérifier dans le catalogue": "Rate remark to check in the catalogue",
+  "choisi par vous": "chosen by you",
+  "suggestion : {n} personnes au plus par minivan, selon les bagages": "suggestion: {n} people at most per minivan, depending on luggage",
+  "Un véhicule de moins": "One vehicle less",
+  "Un véhicule de plus": "One vehicle more",
+  "Remarque du tarif à vérifier : {remarque}": "Rate remark to check: {remarque}",
+  "{n} véhicule": "{n} vehicle",
+  "{n} véhicules": "{n} vehicles",
+  "Pas de réponse préparée tant qu'un service n'a pas de prix.": "No reply is prepared while a service has no price.",
+  "Total : {total}": "Total: {total}",
+  "Relisez avant d'envoyer : rien ne part sans vous.": "Read it before sending: nothing goes out without you.",
+  // Relecture de la PR 309 (devis)
+  "écrit par Nani dans la conversation": "written by Nani in the conversation",
+  "suggestion : {n} personnes au plus par voiture": "suggestion: {n} people at most per car",
+  "1 par défaut : à vous de choisir": "1 by default: your choice",
+  "Le trajet n'a pas de prix enfant : les {n} enfants ne sont pas comptés.": "The route has no child price: the {n} children are not counted.",
+  "Le tarif n'a pas de prix enfant : les {n} enfants ne sont pas comptés.": "The rate has no child price: the {n} children are not counted.",
+  "Le prix de la personne en plus n'est pas au catalogue : {n} personnes ne sont pas comptées.": "The extra person price is not in the catalogue: {n} people are not counted.",
+  "Prix par enfant": "Price per child",
+  "Prix par personne en plus": "Price per extra person",
+  "{unite} ({devise})": "{unite} ({devise})",
+  "Ajouter au prix": "Add to the price",
+  "Le prix accepté vaut pour tout le service, quel que soit le nombre de véhicules.": "The accepted price covers the whole service, whatever the number of vehicles.",
+  "{n} × {prix} ajoutés": "{n} × {prix} added",
+  "{n} offerts": "{n} free of charge",
+  "Le prix accepté ne couvre pas le net de tous les véhicules : revoyez le prix ou le nombre de véhicules avant d'envoyer.": "The accepted price does not cover the net of all vehicles: review the price or the number of vehicles before sending.",
+  "Complétez le prix ci-dessus avant de copier la réponse.": "Complete the price above before copying the reply.",
+  "devis calculé": "calculated quote",
+  // Sièges enfant ou bébé sur la carte de l'Assistant (22.11.2026)
+  "{n} siège enfant": "{n} child seat",
+  "{n} sièges enfant": "{n} child seats",
+  // Relecture de la PR 315 (sièges enfant ou bébé)
+  "Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant ».": "More child or baby seats than children and babies: check with “Check first”.",
+  "10 sièges enfant ou bébé au plus : corrigez le nombre.": "10 child or baby seats at most: correct the number.",
+  "Plus de sièges que d'enfants et de bébés : vérifiez.": "More seats than children and babies: check.",
+  "Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus.": "Seats only print on a transfer voucher: clear the field if they are no longer needed.",
+  "{n} sièges enfant ou bébé au plus.": "{n} child or baby seats at most.",
+  "Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer.": "More seats than children and babies: check, then save again to confirm.",
+  ...EN_POINT_SOIR,
+  ...EN_EXCURSION,
 };
+
+// Prêt à réserver (migration 85) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_PRET } from "./i18n-en-pret.mjs";
+for (const [k, v] of Object.entries(EN_PRET)) if (!(k in EN)) EN[k] = v;

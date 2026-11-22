@@ -53,6 +53,7 @@ const ROUTES = [
   [/^#\/analyses(?:\/([a-z]+))?(?:\?.*)?$/, "analyses", vers(() => import("./views/analyses.mjs"), "vueAnalyses")],
   [/^#\/groupe$/, "groupe", vers(() => import("./views/groupe.mjs"), "vueGroupe")],
   [/^#\/taches$/, "taches", vers(() => import("./views/taches.mjs"), "vueTaches")],
+  [/^#\/soir$/, "soir", vers(() => import("./views/point-soir.mjs"), "vuePointSoir")],
   [/^#\/composants$/, "composants", vers(() => import("./views/composants.mjs"), "vueComposants")],
 ];
 
@@ -213,7 +214,7 @@ function ecrans() {
   const demandes = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
   const whatsapp = whatsappVisible() ? badgeWhatsApp(etat.brut.whatsapp_conversations || [], etat.brut.whatsapp_propositions || []) : 0;
   return [
-    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(whatsappVisible(), { href: "#/whatsapp", libelle: tr("WhatsApp"), cle: "whatsapp", icone: "whatsapp", badge: whatsapp, badgeLibelle: tr("{badge} à traiter", { badge: whatsapp }) }), ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
+    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), ...si(moduleActif("reservations"), { href: "#/soir", libelle: tr("Point du soir"), cle: "soir", icone: "lune" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(whatsappVisible(), { href: "#/whatsapp", libelle: tr("WhatsApp"), cle: "whatsapp", icone: "whatsapp", badge: whatsapp, badgeLibelle: tr("{badge} à traiter", { badge: whatsapp }) }), ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
     { titre: tr("Site"), items: [...si(siteVisible(), { href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }), ...si(bandeauVisible(), { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" })] },
     { titre: tr("Ventes"), items: [...si(agentVisible(), { href: "#/agent", libelle: tr("Assistant"), cle: "agent", icone: "assistant" }), { href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {

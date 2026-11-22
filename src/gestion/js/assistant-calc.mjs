@@ -32,15 +32,28 @@ export function offreDepuisBase(ref, pax, { prestations = [], trajets = [], nomP
 // catalogue recalculé reste à côté (totalCatalogue). Le nombre de personnes change : le prix repart du catalogue, avec un avertissement
 // (revue de la PR 307).
 const memesPersonnes = (a, b) => !!a && !!b && a.adultes === b.adultes && a.enfants === b.enfants;
+// Les véhicules du devis (avecVehicules) suivent la même règle que le prix de la carte : gardés pour les mêmes personnes, sinon le prix
+// repart du catalogue avec l'avertissement.
 export const offresRecalculees = (offres, d, contexte) =>
   (offres || [])
     .map((o) => {
       const base = offreDepuisBase({ genre: o.genre, id: o.id }, paxDe(d), contexte);
-      if (!o || o.prixCarte === undefined || !base) return base;
-      if (!memesPersonnes(paxDe(d), o.prixCartePax)) return { ...base, avertissement: "prix_carte_personnes" };
-      return auPrixCarte(base, o.prixCarte, { pax: o.prixCartePax, origine: o.prixOrigine });
+      if (!o || !base || (o.prixCarte === undefined && !o.vehicules)) return base;
+      if (!memesPersonnes(paxDe(d), o.prixCarte !== undefined ? o.prixCartePax : o.vehiculesPax)) return { ...base, avertissement: "prix_carte_personnes" };
+      return avecVehicules(auPrixCarte(base, o.prixCarte, { pax: o.prixCartePax, origine: o.prixOrigine }), o.vehicules || null, o.vehiculesPax);
     })
     .filter(Boolean);
+// Le nombre de véhicules calculé par « Calculer le devis » (devis-calc.mjs) pour un tarif au véhicule ou au bateau : le total du catalogue
+// est multiplié, la ligne du dossier prend cette quantité (views/demande.mjs). Un prix de la carte (auPrixCarte) reste le total, réparti
+// sur les véhicules par lignesAuPrixCarte. `pax` : les personnes du devis.
+export function avecVehicules(offre, n, pax = null) {
+  const v = Number(n);
+  if (!offre || offre.genre !== "prestation" || !offre.source || !["veh", "boat"].includes(offre.source.unite) || !Number.isInteger(v) || v < 2) return offre;
+  const total = offre.prixCarte !== undefined || offre.total === null || offre.total === undefined ? offre.total : Math.round(Number(offre.total) * v * 100) / 100;
+  // Le prix du catalogue affiché à côté d'un prix de la carte (« Vérifier avant ») compte aussi les véhicules (relecture de la PR 309).
+  const totalCatalogue = offre.prixCarte !== undefined && offre.totalCatalogue !== null && offre.totalCatalogue !== undefined ? Math.round(Number(offre.totalCatalogue) * v * 100) / 100 : offre.totalCatalogue;
+  return { ...offre, vehicules: v, vehiculesPax: pax, total, ...(totalCatalogue !== undefined ? { totalCatalogue } : {}) };
+}
 // L'offre au prix de la conversation : total = le prix de la carte, totalCatalogue = le prix du catalogue (affiché s'il diffère).
 // `pax` : les personnes de la carte ; `origine` : « saisi » ou « client_non_corrige » (posée sur la réservation, details.prix_origine).
 export function auPrixCarte(offre, prix, { pax = null, origine = null } = {}) {
@@ -81,10 +94,13 @@ export function propositionVersDemande(p, contexte) {
     const lieu = s.lieu_pickup ? { hotelDepart: s.lieu_pickup } : {};
     // Le numéro de vol de la carte (21.11.2026) : il rejoint le bloc du voucher du service, modifiable.
     const vol = s.vol ? { vol: s.vol } : {};
-    if (s.hors_catalogue) return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol };
+    // Les sièges enfant ou bébé de la carte (22.11.2026) : dans le bloc du voucher du service, puis sur la réservation.
+    const sieges = Number(s.sieges) > 0 ? { sieges: Number(s.sieges) } : {};
+    if (s.hors_catalogue) return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol };
     // La première offre garde le prix de la carte quand il vient de la conversation (prix_carte) ; les autres restent au catalogue.
-    const offres = [s.offre, ...(s.alternatives || [])].map((r, i) => (i === 0 ? auPrixCarte(offreDepuisBase(r, pax, contexte), s.prix_carte, { pax, origine: s.prix_origine || null }) : offreDepuisBase(r, pax, contexte))).filter(Boolean);
-    return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu, ...vol };
+    // Elle garde aussi les véhicules du devis (s.vehicules, « Calculer le devis ») : le dossier reprend le devis.
+    const offres = [s.offre, ...(s.alternatives || [])].map((r, i) => (i === 0 ? avecVehicules(auPrixCarte(offreDepuisBase(r, pax, contexte), s.prix_carte, { pax, origine: s.prix_origine || null }), s.vehicules, pax) : offreDepuisBase(r, pax, contexte))).filter(Boolean);
+    return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu, ...vol };
   });
   const premier = services[0] || {};
   const d = {

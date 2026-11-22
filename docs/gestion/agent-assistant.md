@@ -248,6 +248,26 @@ Une conversation sans nouveau message depuis 90 jours est supprimée avec ses me
   date, libellé d'un service ajouté, phrases changées d'une réponse). Masqués : noms du client, téléphone, e-mail, lien. Écartés : net,
   commission, marge, banque. L'agent en relit dix au plus (quatre par genre), choisies à l'ouverture de la conversation d'après son premier
   message, dans un bloc mis en cache. Les administratrices les voient et les oublient dans « Suivi de l'assistant ».
+- **Apprentissages depuis le 22.11.2026 (migration 74)** :
+  - la réponse WhatsApp que Nani écrit elle-même (app du téléphone ou envoi depuis Gestion) après une réponse préparée est comparée à
+    la proposition par la fonction (`supabase/functions/agent/apprendre-whatsapp.js`) : conversation de client seulement, IA ouverte,
+    premier vrai message de Nani dans les deux heures et avant que le client réécrive, phrases changées seulement, masquées. Une
+    conversation jamais typée ne garde aucun montant. Classée ensuite partenaire, chauffeur, hôtel, apporteur ou Contact personnel : ses
+    lignes sont effacées par la base ;
+  - un prix d'offre remplacé à la main dans « Vérifier avant » et une remarque retouchée comptent ;
+  - bouton « Pas bien » sous chaque réponse de l'Assistant (raison de 200 caractères, extrait masqué ; sans aucun montant pour une
+    réponse à l'équipe), pour qui a « dossiers.ecrire » et « partenaires.lire » ;
+  - les montants d'une raison « Pas bien » sont rangés au clic : un prix de vente connu reste, un net connu (avec le droit des nets)
+    devient {montant}, un montant connu nulle part fait demander « prix pour le client » ou « prix d'achat (interne) ». Une ligne
+    interne garde ses nombres masqués par la base, reste visible dans « Suivi de l'assistant » (badge « interne ») et n'entre jamais
+    dans un prompt ;
+  - chaque ligne de la fonction est reliée à sa conversation (effacée avec elle, oubliée si la conversation devient partenaire,
+    chauffeur, hôtel, apporteur ou Contact personnel) et porte son auteur : la personne qui a envoyé depuis Gestion, « l'équipe »
+    pour une réponse depuis l'app ;
+  - à la lecture (`supabase/functions/agent/apprentissages.js`), seule la vue `agent_apprentissages_pour_ia` (sans les lignes internes)
+    est lue, et toute ligne dont un nombre est égal à un net de l'entreprise est écartée ; la boîte WhatsApp ne relit ni les remarques
+    ni les « Pas bien » sur une réponse à l'équipe. Les apprentissages ne vont que dans le prompt, jamais dans l'entraînement d'un
+    modèle.
 - **Point d'accroche pour les écrans de validation** : `apresValidation(c, { dossierId, enregistre })` dans `views/agent.mjs`, à appeler
   après chaque carte enregistrée.
 

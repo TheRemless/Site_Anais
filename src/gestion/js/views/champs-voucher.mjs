@@ -10,7 +10,7 @@ import { exemple } from "../etat.mjs";
 import { RETOUR_DEPART, detailsTrajet, erreursTrajet } from "../trajet-calc.mjs";
 
 // Codes d'erreur de erreursTrajet (trajet-calc.mjs).
-export const ERREURS_TRAJET = { e_programme: N_("Indiquez le programme : ce que le client veut faire."), e_duree: N_("Indiquez la durée en heures, par exemple 3 ou 1,5. Vide si elle n'est pas connue.") };
+export const ERREURS_TRAJET = { e_programme: N_("Indiquez le programme : ce que le client veut faire."), e_duree: N_("Indiquez la durée en heures, par exemple 3 ou 1,5. Vide si elle n'est pas connue."), e_sieges_max: N_("10 sièges enfant ou bébé au plus : corrigez le nombre.") };
 
 // `details` : les valeurs de départ (celles de la réservation, ou ce que la demande collée a déjà lu).
 // `prefixe` : début des identifiants des champs (« v » dans la fiche, un par service à la création).
@@ -158,7 +158,9 @@ export const champsLongs = (cles) => cles.filter((c) => LONGS.includes(c));
 // `aideLieu` : ce qui sert de lieu de pickup quand il reste vide. `ouvert` : déplié au départ (un repli ou dépli à la main est gardé dans `saisie`).
 // `surSaisie(saisie)` : appelée après chaque frappe (le libellé d'une course hors catalogue suit son pickup et son drop-off).
 export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe, sauf = [], aideLieu = "", ouvert = true, surSaisie = null }) {
-  const cles = champsCreation(service, { taxi }).filter((c) => !sauf.includes(c));
+  // Des sièges déjà saisis restent visibles même si le modèle n'en imprime pas (transfert devenu excursion, relecture de la PR 315).
+  const base = champsCreation(service, { taxi });
+  const cles = [...base, ...(Number(s.sieges) > 0 && !base.includes("sieges") ? ["sieges"] : [])].filter((c) => !sauf.includes(c));
   if (!cles.length) return null;
   const location = service.type === "location";
   const cv = champsVoucher({ details: { ...s.details, ...(s.sieges ? { sieges: s.sieges } : {}) }, prefixe, dateService: () => service.date || "" });

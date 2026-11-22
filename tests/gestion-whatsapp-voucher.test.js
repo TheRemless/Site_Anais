@@ -354,8 +354,9 @@ test("légende contrôlée dans l'entreprise de la réservation : conversation d
   assert.equal((await bloquee.envoyer({ legende: "Our partner Lazy Day picks you up." })).corps.erreur, "contenu_interne");
   const index = lire("supabase/functions/whatsapp-envoi/index.ts");
   const ci = index.slice(index.indexOf("async function contenuInterne"));
-  assert.match(ci, /let ids: string\[\] = conv\.entite_id \? \[conv\.entite_id\] : \[\];/);
-  assert.match(ci, /\.in\("slug", \["secret", "taxi"\]\);\n    if \(error\) return ferme;/, "à trier : Secret et Taxi, et fermé si la liste manque");
+  // Revue de la PR 310 : Secret et Taxi ensemble pour une conversation de l'une, de l'autre ou à trier (entitesControlees), fermé si la
+  // liste manque.
+  assert.match(ci, /\.in\("slug", \["secret", "taxi"\]\);\n  if \(errE\) return ferme;\n  const ids: string\[\] = entitesControlees\(conv, paire \|\| \[\]\);/, "Secret et Taxi, et fermé si la liste manque");
   assert.deepEqual(F.contactVoucher({ entite_id: TAXI, client_id: CL, reponses: "auto", type_contact: "client" }, { id: D, client_id: CL, entite_id: SECRET }), { ok: false, erreur: "conversation_autre_entreprise" });
 });
 
@@ -538,7 +539,7 @@ test("fichier supprimé : au statut « remis », « lu » ou « échec », par l
   const wa = lire("supabase/functions/whatsapp/index.ts");
   assert.match(wa, /if \(statutLibereFichier\(a\.statut\)\) for \(const m of msgs\) await effacerSortant\(db, m\.id, m\.medias \|\| \[\]\);/);
   assert.match(wa, /const chemins = cheminsSortants\(medias, ORGANISATION\);/);
-  assert.match(wa, /select\("id, statut_envoi, medias"\)/);
+  assert.match(wa, /select\("id, statut_envoi, medias(?:, meta_id)?"\)/);
   assert.match(wa, /await purgerSortants\(db\)\.catch/, "à chaque passage de la reprise (toutes les 5 minutes)");
   assert.ok(wa.indexOf("await purgerSortants(db)") < wa.indexOf("await purger(db)"), "pas seulement une fois par heure");
 });

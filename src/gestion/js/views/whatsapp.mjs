@@ -22,7 +22,7 @@ import {
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, aConfirmerEnvoi, ficheAMettreAJour, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
-  apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX,
+  apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX, aTraiter,
 } from "../whatsapp-calc.mjs";
 import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
 import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-calc.mjs";
@@ -30,6 +30,14 @@ import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
+// Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
+import { estNonTransmis, repereManque, conversationManque, TEXTE_NON_TRANSMIS, LIBELLE_MANQUE, LIBELLE_NOUVEAU_NUMERO, ancienneConversation } from "../whatsapp-calc.mjs";
+// Filtre « Prêt à réserver » (migration 85), à part dans whatsapp-pret.mjs.
+import { clientCommun } from "../whatsapp-pret-calc.mjs";
+import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
+// Étapes des conversations de clients (migration 105), à part dans whatsapp-etapes.mjs.
+import { etapesDisponibles, conversationClient, filtresEtapes, estFiltreEtape, filtrerParEtape, dansEntreprise, aTrierNonClient, pastillesEtapes, blocEtapes, basculerIA } from "./whatsapp-etapes.mjs";
+import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -80,7 +88,7 @@ function ligneConversation(c, prop, ouverte) {
       h(
         "span",
         { class: "wa-conv-ligne" },
-        h("span", { class: "wa-conv-nom" }, h("strong", null, nomConversation(c, clientDe(c))), h("span", { class: `wa-marque${e ? ` ${marqueEntite(e) || ""}` : " a-trier"}` }, e ? e.nom : tr("À trier"))),
+        h("span", { class: "wa-conv-nom" }, h("strong", null, nomConversation(c, clientDe(c))), etapesDisponibles() && conversationClient(c) ? pastillesEtapes(c) : h("span", { class: `wa-marque${e ? ` ${marqueEntite(e) || ""}` : " a-trier"}` }, e ? e.nom : tr("À trier"))),
         c.dernier_message_le ? h("time", { datetime: c.dernier_message_le }, quand(c.dernier_message_le, { langue: langueActive() })) : null
       ),
       h(
@@ -94,7 +102,11 @@ function ligneConversation(c, prop, ouverte) {
           att ? h("span", { class: `wa-attente${att.urgent ? " urgente" : ""}`, title: tr("Le client attend depuis {duree}", { duree: att.texte }), "aria-label": tr("Le client attend depuis {duree}", { duree: att.texte }) }, icone("horloge", 14), att.texte) : null,
           nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null
         )
-      )
+      ),
+      // Repère discret (migration 100) : effacé au prochain message du client.
+      conversationManque(c) ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_MANQUE)) : null,
+      c.meme_client_que ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_NOUVEAU_NUMERO)) : null,
+      filtre === FILTRE_PRET.valeur || filtre === "etape:pret" ? resumeLignePret(c) : null
     )
   );
 }
@@ -109,7 +121,10 @@ function marquerTouchee(lien) {
 // Secret | VIP Taxi Lanta en un tap. « Proposé par l'agent » quand l'agent l'a rangée ; pour une conversation à trier, l'entreprise
 // que l'agent propose est marquée.
 function selecteurEntreprise(c, prop) {
-  if (lectureSeule) return h("p", { class: "wa-lecture-seule", role: "status" }, icone("alerte", 16), tr("Lecture seule : conversation de {entreprise}", { entreprise: nomEntrepriseConv(c) }));
+  const lecture = lectureSeule ? h("p", { class: "wa-lecture-seule", role: "status" }, icone("alerte", 16), tr("Lecture seule : conversation de {entreprise}", { entreprise: nomEntrepriseConv(c) })) : null;
+  // Un client appartient à Secret et à Taxi (migration 105) : ses étapes à la place du choix de l'entreprise, qui se décide par dossier.
+  if (etapesDisponibles() && conversationClient(c)) return [lecture, blocEtapes(c, { lectureSeule, rafraichir })];
+  if (lectureSeule) return lecture;
   const choix = entitesWhatsApp();
   // L'agent ne range plus la conversation : il propose une entreprise et prépare la réponse avec ses données (migration 59).
   const proposee = !c.entite_id ? entrepriseProposee(prop, choix) : null;
@@ -196,6 +211,8 @@ function menuConversation(c) {
       ici && !lectureSeule ? item(client ? tr("Changer le client relié") : tr("Relier un client"), () => ouvrirRelier(c)) : null,
       client ? item(tr("Ouvrir la fiche du client"), () => naviguer(`#/client/${client.id}`)) : null,
       etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Contact personnel : rien envoyé à l'IA"), () => basculerReponses(c)) : null,
+      // IA coupée pour cette conversation (migration 105), sans la classer en Contact personnel.
+      etapesDisponibles() && !lectureSeule && reponsesDe(c) !== "jamais" ? item(c.ia_coupee ? tr("Rallumer l'IA pour cette conversation") : tr("Couper l'IA pour cette conversation"), () => basculerIA(c, rafraichir)) : null,
       wa ? h("a", { class: "bouton secondaire", href: wa, target: "_blank", rel: "noopener", onclick: () => fermer() }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null
     ),
     { feuille: true, protege: false }
@@ -316,7 +333,23 @@ function enTete(c, prop) {
     bandeauFiche(c),
     blocFaits(c, prop),
     blocResume(c),
+    // Même client depuis un autre numéro (migration 100).
+    noteNouveauNumero(c),
   ];
+}
+
+// Même client (même BSUID) qui écrit depuis un autre numéro (migration 100) : le numéro n'est jamais changé seul, Nani voit l'ancienne
+// conversation et décide.
+function noteNouveauNumero(c) {
+  if (!c.meme_client_que) return null;
+  const ancienne = ancienneConversation(c, etat.brut.whatsapp_conversations || []);
+  return h(
+    "p",
+    { class: "wa-nouveau-numero", role: "note" },
+    icone("alerte", 16),
+    tr(LIBELLE_NOUVEAU_NUMERO),
+    ancienne ? h("a", { href: adresseConversation(ancienne), class: "lien" }, tr("Voir la conversation de l'ancien numéro")) : null
+  );
 }
 
 // ---- Nom écrit par le client (21.11.2026) -------------------------------------------------------------------------------------------
@@ -406,7 +439,10 @@ function blocFaits(c, prop) {
       : client
         ? h("span", { class: "wa-sans" }, tr("{nom}, aucun dossier", { nom: nomClient(client) }))
         : h("span", { class: "wa-sans" }, tr("Aucun dossier relié")),
-    actions
+    actions,
+    // « Proposer une excursion » (composant à part, views/proposer-excursion.mjs) : séjour de plusieurs jours après un transfert ; jamais en
+    // lecture seule.
+    dossier && !lectureSeule ? boutonProposerExcursion({ dossier, conversation: c }) : null
   );
   if (!lignes.length) return h("section", { class: "wa-faits", "aria-label": tr("Faits du client") }, tete);
   const valeurDe = (l) => (l.cle === "reste" && l.paye ? tr("Payé") : l.aFixer ? `${l.valeur}, ${tr("heure à fixer")}` : l.valeur);
@@ -442,16 +478,17 @@ function blocFaits(c, prop) {
 // « Créer le dossier » ou « Mettre à jour le dossier » : l'Assistant de l'entreprise de la conversation s'ouvre et lit l'échange lui-même
 // (texte, photos, PDF). Proposé seulement là où l'Assistant est allumé et permis (comme son onglet).
 const assistantDans = (id) => !!id && agentActif(reglagesDe(id)) && ["partenaires.lire", "dossiers.ecrire"].every((d) => permissionsDe(id).includes(d));
-function choisirEntreprise(c, prop) {
+// `suggeree` : l'entreprise présélectionnée (bouton principal), toujours modifiable. Pour un client, la question est toujours posée.
+function choisirEntreprise(c, prop, suggeree = null) {
   const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
-  const proposee = entrepriseProposee(prop, choix);
+  const proposee = suggeree || entrepriseProposee(prop, choix);
   return new Promise((resoudre) => {
     let fermer;
     // Résolue avant de fermer : la fermeture rend « null » (fenêtre fermée sans choix), sans effet après un choix.
     const prendre = (e) => (resoudre(e), fermer());
     fermer = modal(
       tr("Dans quelle entreprise ?"),
-      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("La conversation est à trier. Elle sera rangée dans l'entreprise du dossier une fois le dossier validé.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
+      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, clientCommun(c) ? tr("Ce client est commun à Secret et à Taxi : le dossier appartient à l'entreprise choisie, la conversation reste aux deux.") : tr("La conversation est à trier. Elle sera rangée dans l'entreprise du dossier une fois le dossier validé.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
       { protege: false, ferme: () => resoudre(null) }
     );
   });
@@ -507,11 +544,22 @@ async function choisirPieces(c) {
 
 async function versAssistant(c, prop) {
   let entiteId = c.entite_id;
-  if (!entiteId) {
+  // Un client appartient à Secret et à Taxi : « Créer le dossier » demande toujours l'entreprise, la suggestion du tri présélectionnée et
+  // modifiable (une excursion ne se crée plus chez Taxi en silence). Une conversation rangée dans l'autre entreprise redevient commune.
+  const commun = clientCommun(c);
+  if (!entiteId || commun) {
     const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
-    const entreprise = entreprisePourAssistant({ conv: c, prop, choix, activeId: etat.entiteId }) || (await choisirEntreprise(c, prop));
+    const suggeree = entreprisePourAssistant({ conv: commun ? { ...c, entite_id: null } : c, prop, choix, activeId: etat.entiteId });
+    const entreprise = commun ? await choisirEntreprise(c, prop, suggeree) : suggeree || (await choisirEntreprise(c, prop));
     if (!entreprise) return;
     entiteId = entreprise.id;
+    if (commun && c.entite_id && c.entite_id !== entiteId) {
+      try {
+        await modifier("whatsapp_conversations", c.id, { entite_id: null });
+      } catch (err) {
+        return toast(err.message, true);
+      }
+    }
   }
   // Les pièces d'abord : fermer la feuille annule tout.
   const pieces = await choisirPieces(c);
@@ -529,6 +577,7 @@ async function versAssistant(c, prop) {
 // la conversation, sinon celle proposée par le tri. Une conversation de l'Assistant déjà liée est rouverte. Rien ne part avant que la
 // personne tape ou choisisse sa question ; la fonction joint alors les derniers messages. Jamais pour un contact personnel.
 function boutonDemander(c, prop) {
+  // IA coupée (migration 105) : seul l'automatique est coupé, la demande de Nani reste permise (décision du 22.11.2026).
   if (!demandePermise(c)) return null;
   const possible = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
   return possible ? h("button", { type: "button", class: "secondaire petit wa-demander", onclick: () => demanderAssistant(c, prop) }, icone("assistant", 16), tr("Demander à l'assistant")) : null;
@@ -576,14 +625,23 @@ async function envoyerVoucherDuDossier(dossierId) {
   if (!x.reservation) return toast(tr("Ce dossier n'a pas encore de service à mettre sur un voucher."), true);
   envoyerVoucher(x);
 }
+// « Prêt à réserver » (migration 85) : le même « Créer le dossier » que la fiche des faits, ou null.
+// Pour un client, l'entreprise est demandée à chaque fois (versAssistant) : il suffit qu'un des deux Assistants soit permis.
+const creerPret = (c, prop) =>
+  // Jamais pour un Contact personnel (relecture de la PR 317) : rien de lui ne part chez l'IA.
+  !lectureSeule && reponsesDe(c) !== "jamais" && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
 // `dossier` : celui de la fiche des faits (relié, ou trouvé par le client). « Mettre à jour » demande un dossier relié (l'Assistant ne lit que
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
   if (lectureSeule) return null;
   const demander = boutonDemander(c, prop);
-  const ici = !c.entite_id || c.entite_id === etat.entiteId;
+  // Un client est commun à Secret et à Taxi : « Créer le dossier » reste proposé où que la conversation soit rangée (l'entreprise est demandée).
+  const commun = clientCommun(c);
+  const ici = commun || !c.entite_id || c.entite_id === etat.entiteId;
   const relie = c.entite_id === etat.entiteId ? dossierDe(c) : null;
-  const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
+  // IA coupée pour cette conversation (migration 105) : l'Assistant s'ouvre toujours à la demande (décision du 22.11.2026).
+  // Jamais pour un Contact personnel (relecture de la PR 317).
+  const assistant = reponsesDe(c) !== "jamais" && (commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id));
   const voucherDe = dossier && dossier.entite_id === etat.entiteId ? dossier : null;
   const boutons = [
     assistant && ici ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), relie ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,
@@ -690,6 +748,14 @@ function blocMedia(media) {
 }
 
 function bulle(m) {
+  // Repère discret avant une réponse de Nani : un message du client semble manquer avant elle (migration 100).
+  const repere = repereManque(m) ? h("p", { class: "wa-repere-manque" }, tr(LIBELLE_MANQUE)) : null;
+  // WhatsApp n'a pas transmis ce message du client : une ligne qui renvoie au téléphone, à la place de la bulle.
+  if (estNonTransmis(m)) return h("p", { class: "wa-bulle entrant wa-non-transmis", "data-message": m.id, role: "note" }, icone("alerte", 16), tr(TEXTE_NON_TRANSMIS, { heure: heureBangkok(m.envoye_le) }));
+  return repere ? [repere, bulleMessage(m)] : bulleMessage(m);
+}
+
+function bulleMessage(m) {
   const medias = Array.isArray(m.medias) ? m.medias : [];
   const texte = m.texte && !(medias.length && medias.some((x) => x.legende === m.texte)) ? m.texte : "";
   // Statut d'envoi (migration 64) : envoyé, remis, lu, ou non remis avec la raison de WhatsApp. Discret, à la suite de l'heure.
@@ -1016,7 +1082,8 @@ async function fil(c, prop) {
       !erreur && !messages.length ? h("p", { class: "aide" }, tr("Aucun message gardé pour cette conversation.")) : null,
       jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
       lignesTaches(c),
-      cartePaiement(c)
+      cartePaiement(c),
+      cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
     doute ? carteVerifier(c, doute) : null,
     carteProposition(c, prop, messages)
@@ -1093,7 +1160,17 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
-  const filtrer = (liste, f) => filtrerConversations(liste, f, marqueDe);
+  const etapes = etapesDisponibles();
+  const filtrer = (liste, f) =>
+    f === FILTRE_PRET.valeur
+      ? filtrerPretes(liste)
+      : estFiltreEtape(f)
+      ? filtrerParEtape(liste, f)
+      : etapes && (f === "secret" || f === "taxi")
+      ? liste.filter((c) => dansEntreprise(c, f))
+      : etapes && f === "a_trier"
+      ? liste.filter(aTrierNonClient)
+      : filtrerConversations(liste, f, marqueDe);
   if (filtre === null) filtre = filtreDeDepart(conversations);
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
   if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
@@ -1103,7 +1180,17 @@ export async function vueWhatsApp() {
   // « À faire » (PR B) : tout ce qui attend, trié par urgence, sans IA. Placé après « Toutes ».
   const aFaireBoite = aFaireDeLaBoite(entitesWhatsApp());
   nombres.a_faire = aFaireBoite.nombre;
-  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...FILTRES.slice(1)];
+  if (filtrePretDisponible()) nombres[FILTRE_PRET.valeur] = nombrePretes(conversations);
+  // Migration 105 : un filtre par étape (« Prêt à réserver » en devient un) ; Secret et Taxi comptent les clients qui ont une étape chez
+  // elles ; « À trier » ne garde que les contacts qui ne sont pas des clients, et disparaît s'il est vide.
+  const parEtape = etapes ? filtresEtapes(conversations, filtre) : [];
+  for (const f of parEtape) nombres[f.valeur] = f.nombre;
+  if (etapes) {
+    for (const m of ["secret", "taxi"]) nombres[m] = conversations.filter((c) => dansEntreprise(c, m) && aTraiter(c, courantes.get(c.id))).length;
+    nombres.a_trier = conversations.filter(aTrierNonClient).length;
+  }
+  const suite = FILTRES.slice(1).filter((f) => !etapes || f.valeur !== "a_trier" || nombres.a_trier || filtre === "a_trier");
+  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...(etapes ? parEtape : filtrePretDisponible() ? [FILTRE_PRET] : []), ...suite];
 
   const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: filtres.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
@@ -1124,6 +1211,10 @@ export async function vueWhatsApp() {
       ? listeAFaire(aFaireBoite, { entites: entitesWhatsApp(), idOuvert })
       : liste.length
       ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
+      : filtre === FILTRE_PRET.valeur
+      ? videPret()
+      : estFiltreEtape(filtre)
+      ? h("p", { class: "aide wa-liste-vide" }, tr("Aucune conversation à cette étape."))
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
   racine.append(colonneListe);

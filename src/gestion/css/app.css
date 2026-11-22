@@ -1942,6 +1942,19 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-bulle p:last-child { margin-bottom: 0; }
 .agent-bulle.de-personne { align-self: flex-end; max-width: 85%; padding: 10px 14px; background: var(--teal-100); border-radius: 16px 16px 4px 16px; overflow-wrap: anywhere; }
 .agent-bulle.de-agent { align-self: flex-start; max-width: 68ch; line-height: 1.55; overflow-wrap: anywhere; }
+/* « Pas bien » sous une réponse de l'Assistant (migration 74) : discret, cible de 44 px au toucher. */
+.agent-avis { margin-top: 2px; }
+.agent-avis-bouton { min-height: 44px; padding: 0; color: var(--texte-2); font-size: 0.86rem; }
+.agent-avis-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.agent-avis-raison { flex: 1 1 220px; min-width: 0; min-height: 44px; }
+.agent-avis-form .erreur { flex-basis: 100%; margin: 0; color: var(--danger); font-size: 0.86rem; }
+.agent-avis-form .erreur:empty { display: none; }
+.agent-avis-note { margin: 4px 0 0; }
+.agent-avis-question { margin-top: 6px; }
+.agent-avis-question p { margin: 0 0 6px; font-size: 0.92rem; }
+.agent-avis-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.agent-avis-choix button { min-height: 44px; }
+.as-appris-interne { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.78rem; font-weight: 600; }
 .agent-etape { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--texte-2); font-size: 0.92rem; }
 .agent-point { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); animation: agent-pouls 1.2s ease-in-out infinite; }
 @keyframes agent-pouls { 50% { opacity: 0.25; } }
@@ -2250,6 +2263,10 @@ button.agent-joint { cursor: pointer; }
 .wa-statut.lu { color: var(--teal-700); font-weight: 600; }
 .wa-statut.echec, .wa-statut.doute { color: var(--danger); font-weight: 600; }
 .wa-bulle.non-remis { box-shadow: inset 0 0 0 1px var(--danger); }
+.wa-repere-manque { align-self: center; margin: 6px auto 2px; font-size: 0.8125rem; font-style: italic; color: var(--texte-2); text-align: center; }
+.wa-bulle.wa-non-transmis { align-self: flex-start; display: flex; gap: 6px; align-items: flex-start; max-width: min(85%, 520px); margin: 4px 0; padding: 8px 12px; border: 1px dashed var(--bord-fort); border-radius: 12px; background: transparent; font-size: 0.9rem; color: var(--texte-2); }
+.wa-bulle.wa-non-transmis svg { flex: none; margin-top: 2px; }
+.wa-nouveau-numero { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; font-size: 0.9rem; color: var(--texte-2); }
 .wa-statut-detail { margin: 4px 0 0; font-size: 0.84rem; color: var(--danger); text-align: right; }
 .wa-verifier { border-top-color: var(--danger); }
 .wa-verifier > p:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; }
@@ -2399,6 +2416,8 @@ button.agent-badge-entreprise { cursor: pointer; }
 .wa-conv-nom strong { min-width: 0; }
 .wa-conv-apercu { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; color: var(--texte-2); }
 .wa-conv.non-lue .wa-conv-apercu { color: var(--texte); }
+/* Messages manquants (migration 100) : repère discret sur la carte et dans la conversation, ligne « non transmis » à la place d'une bulle. */
+.wa-conv-manque { display: block; margin-top: 2px; font-size: 0.8125rem; color: var(--texte-2); font-style: italic; }
 .wa-conv-vous { color: var(--texte-2); }
 .wa-conv-prete { display: inline-flex; color: var(--teal-700); }
 .wa-attente { display: inline-flex; align-items: center; gap: 3px; font-size: 0.8125rem; font-weight: 600; color: var(--texte-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -2507,3 +2526,41 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-joindre.desactive { opacity: 0.45; cursor: not-allowed; }
 .agent-wa-longueur:empty { display: none; }
 .agent-joints-erreur.info { color: var(--texte-2); }
+
+/* WhatsApp, filtre « Prêt à réserver » (migration 85) : la ligne sous l'aperçu et la carte pré-remplie dans la conversation. */
+.wa-conv-pret { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 0.85rem; color: var(--teal-700); }
+.wa-conv-pret svg { flex: none; }
+.wa-conv-pret span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wa-pret-carte { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 0.92rem; line-height: 1.4; }
+.wa-pret-carte dt { color: var(--texte-2); }
+.wa-pret-carte dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.wa-suivi-pret .principal.petit svg { margin-right: 6px; vertical-align: -3px; }
+.wa-suivi .wa-pret-dossier { margin-top: 8px; font-size: 0.9rem; color: var(--texte-2); }
+
+/* WhatsApp, étapes des clients (migration 105) : une pastille par entreprise dans la liste et l'en-tête, la fenêtre « Changer l'étape ». */
+.wa-etapes { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.wa-marque.wa-etape.aucune { background: var(--surface-2); color: var(--texte-2); }
+.wa-marque.wa-etape.manuelle { box-shadow: inset 0 0 0 1px currentColor; }
+.wa-etapes-bloc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.wa-etapes-bloc .lien { min-height: 40px; padding: 0; }
+.wa-choix-etapes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+.wa-choix-entreprise { justify-content: flex-start; }
+.wa-marque.wa-ia-coupee { background: var(--surface-2); color: var(--texte-2); }
+.wa-ia-coupee-aide { flex: 1 0 100%; margin: 0; }
+
+/* Point du soir (22.11.2026) : le message prêt de chaque pickup, lisible avant d'être envoyé. */
+.point-soir h2 { display: flex; align-items: center; gap: 6px; }
+.point-soir-bloc { margin-top: 14px; }
+.point-soir-bloc h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 1rem; margin: 0 0 8px; }
+.point-soir-message { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); border-radius: var(--rayon); font-size: 0.92rem; overflow-wrap: anywhere; white-space: pre-line; }
+.point-soir-signal { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
+.point-soir-destinataire { margin: 0; flex: 1 0 100%; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.point-soir-numero { flex: 1 0 100%; font-size: 0.9rem; }
+.point-soir-edition { flex: 1 0 100%; width: 100%; font: inherit; font-size: 0.92rem; }
+
+/* Proposer une excursion (22.11.2026) : une ou deux excursions cochées, le message relu avant de partir. */
+.excursion-choix { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.excursion-choix label { display: block; padding: 8px 10px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); cursor: pointer; overflow-wrap: anywhere; }
+.excursion-choix input { margin-right: 6px; }
+.proposer-excursion textarea { width: 100%; }
+.proposer-excursion .actions a[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
