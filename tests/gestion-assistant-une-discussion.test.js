@@ -166,8 +166,9 @@ test("le prix de Nani n'est jamais repris pour un contact non client, ni sans tr
     { tri: { motif: "non_client" } },
     { tri: { motif: "remerciement" } },
     { type_contact: "partenaire" },
-    { type_contact: "chauffeur" },
-    { type_contact: "hotel" },
+    // Migration 110 : plus de type « chauffeur » ni « hôtel », un partenaire posé par Nani ou déduit.
+    { type_contact: "partenaire", type_source: "nani" },
+    { type_contact: "partenaire", type_source: "deduit" },
     { type_contact: "apporteur" },
     { partenaire_id: "p1" },
     { reponses: "jamais" },
@@ -220,7 +221,7 @@ test("une étape client (migration 105) suffit : la réservation qui finit sur �
   assert.equal(clientProbable({ ...merci, avancee: null }, ["taxi"]), false);
   assert.equal(clientProbable(avec({}), ["taxi"]), false);
   assert.equal(clientProbable({ ...merci, avancee: { v: 2, jamais: true } }, ["taxi"]), false);
-  for (const o of [{ type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "hotel" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }, { reponses: "jamais" }, { tri: { motif: "partenaire" } }, { tri: { motif: "personnel" } }, { tri: { motif: "publicite" } }, { tri: { motif: "non_client" } }]) {
+  for (const o of [{ type_contact: "partenaire" }, { type_contact: "partenaire", type_source: "nani" }, { type_contact: "partenaire", type_source: "deduit" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }, { reponses: "jamais" }, { tri: { motif: "partenaire" } }, { tri: { motif: "personnel" } }, { tri: { motif: "publicite" } }, { tri: { motif: "non_client" } }]) {
     const c = { ...merci, ...o };
     assert.equal(clientPourPrixDeNani(c, ["taxi"]), false, JSON.stringify(o));
     assert.equal((await service(c)).prix, null, JSON.stringify(o));
