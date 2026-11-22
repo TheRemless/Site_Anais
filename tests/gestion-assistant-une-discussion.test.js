@@ -231,8 +231,12 @@ test("une étape client (migration 105) suffit : la réservation qui finit sur �
   assert.match(o, /import \{ partenaireProbable, prixDeVentePermis \} from "\.\.\/whatsapp\/type-contact\.js";/);
   assert.match(o, /export const clientProbable = \(c, entreprises = \[\]\) => conversationDeClient\(c\) && prixDeVentePermis\(c\) && !partenaireProbable\(c\) &&/);
   assert.match(o, /export const clientConfirme = \(c\) => conversationDeClient\(c\) && prixDeVentePermis\(c\) &&/);
-  // Les motifs « pas un client » sont ceux de l'écran des étapes, plus « non_client ».
-  assert.deepEqual(MOTIFS_NON_CLIENT, [...MOTIFS_TRI_NON_CLIENT, "non_client"]);
+  // Les motifs « pas un client » pour le prix : ceux de l'écran des étapes, plus « partenaire » et « non_client ». Relecture finale de la
+  // #319 : un tri « partenaire » ne sort plus une conversation des listes client (seul un type posé ou déduit le fait), mais il bloque
+  // toujours le prix (prudence, comme partenaireProbable).
+  for (const m of MOTIFS_TRI_NON_CLIENT) assert.ok(MOTIFS_NON_CLIENT.includes(m), m);
+  assert.deepEqual([...MOTIFS_NON_CLIENT].sort(), [...new Set([...MOTIFS_TRI_NON_CLIENT, "partenaire", "non_client"])].sort());
+  assert.equal(clientProbable({ ...NOUVEAU, tri: { motif: "partenaire", entreprise: "taxi" } }, ["taxi"]), false, "un tri « partenaire » bloque le prix");
 });
 
 // Le cas reproduit par la relecture de la PR 318 : un chauffeur non typé.

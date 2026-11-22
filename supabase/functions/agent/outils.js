@@ -1356,7 +1356,9 @@ export const clientConfirme = (c) => conversationDeClient(c) && prixDeVentePermi
 // marqués à vérifier (prix_nani_a_verifier), jamais sous le net (prix_sous_net) ; les montants écrits par le contact près d'un mot de coût
 // restent internes (memoDepuis, clientProbable). Jamais les prix du client (prixClientValides reste au client confirmé).
 export const MOTIFS_CLIENT = ["demande_client", "suivi_reservation"];
-// Les motifs du tri qui disent « pas un client » (comme l'écran, whatsapp-etapes-calc.mjs, MOTIFS_TRI_NON_CLIENT, avec « non_client »).
+// Les motifs du tri qui disent « pas un client » pour le prix : ceux de l'écran (whatsapp-etapes-calc.mjs, MOTIFS_TRI_NON_CLIENT), plus
+// « partenaire » et « non_client ». Un tri « partenaire » ne sort plus une conversation des listes client (#319, seul un type posé ou déduit
+// le fait), mais il bloque toujours la reprise d'un prix.
 export const MOTIFS_NON_CLIENT = ["personnel", "partenaire", "publicite", "contact_jamais", "non_client"];
 const entreprisesDuDossier = (entreprises) => (entreprises || []).filter((e) => ENTREPRISES_UNIFIEES.includes(e));
 // Une demande entrante du contact, pour l'entreprise du dossier (`entreprises` : « secret », « taxi »), d'après les faits gardés.
