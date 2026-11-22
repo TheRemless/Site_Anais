@@ -464,6 +464,14 @@ export function chercherConversations(liste = [], q = "", texteDe = (c) => `${c.
 // Le message de départ d'une conversation ouverte depuis WhatsApp (« Créer le dossier ») : l'échange avec le client, à montrer à gauche dans
 // une bulle repliable (design n° 4), jamais comme si Nani l'avait écrit. La fonction « agent » l'écrit entre <conversation> et
 // </conversation>, une ligne « [Client 20.11.2026 10:00] texte » par message. Rend null pour un message ordinaire.
+// Le résumé qui ouvre la discussion qui remplace une discussion pleine (agent/discussion-pleine.js, relecture de la PR 318) : à part du
+// reste du message, pour l'écran. Rend { resume, reste } ; resume vide sans bloc.
+export function separerResume(texte = "") {
+  const t = String(texte || "");
+  const m = /^<resume_discussion>\n([\s\S]*?)\n<\/resume_discussion>\s*/.exec(t);
+  return m ? { resume: m[1], reste: t.slice(m[0].length) } : { resume: "", reste: t };
+}
+
 export function echangeWhatsApp(texte = "", { depuisWhatsApp = false } = {}) {
   const t = String(texte || "");
   const debut = t.indexOf("<conversation>");

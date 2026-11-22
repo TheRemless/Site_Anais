@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { siegesAVerifier } from "../agent-calc.mjs";
+import { separerResume, siegesAVerifier } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
@@ -547,6 +547,12 @@ export async function vueAgent(idOuvert = "") {
   function element(it, i) {
     if (it.genre === "personne") {
       // Le premier message d'une conversation ouverte depuis WhatsApp : l'échange du client, à gauche et replié (design n° 4).
+      // Le résumé d'une discussion pleine archivée (relecture de la PR 318) : une ligne discrète, puis le reste du message.
+      const { resume, reste } = separerResume(it.texte);
+      if (resume) {
+        const suite = reste ? element({ ...it, texte: reste }, -1) : null;
+        return h("div", null, h("p", { class: "agent-etape-wa" }, icone("dossiers", 16), tr("Suite d'une discussion pleine, archivée : client, dossiers et dernier prix accepté repris.")), suite);
+      }
       const echange = i === 0 && conv && conv.whatsapp_conversation_id ? echangeWhatsApp(it.texte, { depuisWhatsApp: true }) : echangeWhatsApp(it.texte);
       // « Demander à l'assistant » (PR B) : l'échange replié, puis la question de la personne, à droite comme ses messages.
       if (echange && echange.question) return h("div", { class: "agent-question-wa" }, bulleWhatsApp(echange), h("div", { class: "agent-bulle de-personne" }, paragraphes(echange.question)));
@@ -636,6 +642,12 @@ export async function vueAgent(idOuvert = "") {
         : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
     // Une exception (connexion coupée, écran qui lève) ne laisse jamais « L'assistant réfléchit » ni le bouton éteint (audit I7).
     const surEvenement = (ev) => {
+      // La discussion liée était pleine (relecture de la PR 318) : la fonction l'a archivée et en a ouvert une nouvelle, qui prend sa place.
+      if (ev.t === "conversation" && conv && ev.remplace && ev.remplace === conv.id && ev.id !== conv.id) {
+        conversations = (conversations || []).map((c) => (c.id === ev.remplace ? { ...c, statut: "archivee" } : c));
+        conv = null;
+        toast(tr("La discussion était pleine : elle est archivée, une nouvelle reprend son résumé."));
+      }
       if (ev.t === "conversation" && !conv) {
         conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString(), whatsapp_conversation_id: ev.whatsapp_conversation_id || null };
         conversations = [conv, ...(conversations || [])];

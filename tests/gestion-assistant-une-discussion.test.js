@@ -14,6 +14,9 @@ import { MOTIFS_A_PREPARER } from "../supabase/functions/whatsapp/proposer.js";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
 import { faitsAvancee } from "../supabase/functions/whatsapp/etapes.js";
 import { MOTIFS_TRI_NON_CLIENT } from "../src/gestion/js/whatsapp-etapes-calc.mjs";
+import { HISTORIQUE_PLEIN, dernierPrixAccepte, discussionPleine, resumeReport } from "../supabase/functions/agent/discussion-pleine.js";
+import { MAX_CONVERSATION_B64, MAX_FICHIERS_CONVERSATION } from "../supabase/functions/agent/fichiers.js";
+import { separerResume } from "../src/gestion/js/agent-calc.mjs";
 
 const lire = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const W = "0f000000-0000-4000-8000-000000000001";
@@ -58,7 +61,9 @@ test("une discussion par conversation WhatsApp : écran, Assistant, fonction et 
   // La fonction accepte tous les modes dans une discussion liée, avec le contrôle de liaison existant, et compte les pièces déjà gardées.
   const f = lire("supabase/functions/agent/index.ts");
   assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id;/);
-  assert.match(f, /if \(!lie\.data \|\| lie\.data\.entite_id !== entiteId \|\| lie\.data\.whatsapp_conversation_id !== waId\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
+  // Constat 6 de la relecture : une discussion archivée est refusée côté serveur aussi.
+  assert.match(f, /select\("id, entite_id, whatsapp_conversation_id, statut"\)\.eq\("id", demande\.conversation_id\)/);
+  assert.match(f, /if \(!lie\.data \|\| lie\.data\.entite_id !== entiteId \|\| lie\.data\.whatsapp_conversation_id !== waId \|\| lie\.data\.statut === "archivee"\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
   assert.match(f, /controle = conversationId \? null : verifierPieces\(demande\.fichiers\);/);
   assert.match(lire("src/gestion/js/store-local.mjs"), /const suiteWa = !!corps\.whatsapp_conversation_id && !!corps\.conversation_id;/);
 });
@@ -112,16 +117,19 @@ const prestations = [
   { id: ZONE, entite_id: ENT, famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Town", libelle_en: "Krabi Town", prix_vente: 2500, unite: "veh", actif: true },
   { id: AEROPORT, entite_id: ENT, famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Airport", libelle_en: "Krabi Airport", prix_vente: 2300, unite: "veh", actif: true },
   { id: "b1000000-0000-4000-8000-000000000003", entite_id: ENT, famille: "transfert", groupe: "Other routes mentioned", libelle: "Krabi Airport to Ao Nang", libelle_en: "Krabi Airport to Ao Nang", prix_vente: 700, unite: "veh", actif: true },
+  { id: "b1000000-0000-4000-8000-000000000004", entite_id: ENT, famille: "transfert", groupe: "Private Taxi", libelle: "Minivan to Ao Nang", libelle_en: "Minivan to Ao Nang", prix_vente: 2700, unite: "veh", actif: true },
+  { id: "b1000000-0000-4000-8000-000000000005", entite_id: ENT, famille: "transfert", groupe: "Private Taxi", libelle: "Khao Lak", libelle_en: "Khao Lak", prix_vente: 4500, unite: "veh", actif: true },
 ];
 const ctx = { permissions: [], charger: async (n) => ({ partenaires: [], prestations, trajets: [] })[n] || [], reglages: {} };
 const minute = (n) => `2026-11-22T04:${String(n).padStart(2, "0")}:00Z`;
 const MESSAGES = [
-  { sens: "entrant", texte: "Good morning, how much is a transfer from Sunny Cove Resort Koh Lanta to Riverside Hotel Krabi on 25 Nov, 11:00, 2 adults?", envoye_le: minute(37) },
-  { sens: "sortant", texte: "Hello, thank you for your message. The total price for a private minivan for your journey is 2,500 THB, all fees included (including ferry fee). Let me know if you want to book the transfer", envoye_le: minute(43) },
-  { sens: "entrant", texte: "Thank you very much. I'd like to book the transfer.", envoye_le: minute(54) },
+  // Messages inventés, de la même forme que le cas du 22.11.2026 (un prix en bahts au milieu d'une phrase).
+  { sens: "entrant", texte: "Hi there, what would a transfer cost from Test Lagoon Resort Koh Lanta to the Fictive Palms Hotel Krabi on 25 Nov at 11:00, 2 adults?", envoye_le: minute(37) },
+  { sens: "sortant", texte: "Hi! For this trip our private minivan comes to 2,500 THB in total, ferry ticket included. Just tell me if you would like to go ahead", envoye_le: minute(43) },
+  { sens: "entrant", texte: "Great, we would like to book it.", envoye_le: minute(54) },
 ];
 const NOUVEAU = { id: W, telephone: "+447700900123", nom: "Ella Test", type_contact: null, client_id: null, dossier_id: null, partenaire_id: null, reponses: "auto", tri: { motif: "demande_client", preparer: true, entreprise: "taxi" } };
-const carte = (ref = "") => ({ titre: "Ella Test", client_nom: "Ella Test", client_telephone: "+447700900123", hotel: "Sunny Cove Resort", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [{ ref, texte: "Private minivan Sunny Cove Resort → Riverside Hotel", date: "2026-11-25", heure_pickup: "11:00", lieu_pickup: "Sunny Cove Resort", de: "", vers: "", adultes: 2, enfants: 0, prix_saisi: "2500", vol: "", remarque: "" }] });
+const carte = (ref = "") => ({ titre: "Ella Test", client_nom: "Ella Test", client_telephone: "+447700900123", hotel: "Test Lagoon Resort", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [{ ref, texte: "Private minivan Test Lagoon Resort → Fictive Palms Hotel", date: "2026-11-25", heure_pickup: "11:00", lieu_pickup: "Test Lagoon Resort", de: "", vers: "", adultes: 2, enfants: 0, prix_saisi: "2500", vol: "", remarque: "" }] });
 // Comme la fonction agent : les entreprises où le dossier peut naître (ici Taxi).
 async function service(conv, ref = "", entreprises = ["taxi"]) {
   const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv, messages: MESSAGES }) }], { conversationClient: clientPourPrixDeNani(conv, entreprises), clientProbable: !clientConfirme(conv) && clientProbable(conv, entreprises), conversationLiee: conv.id });
@@ -131,7 +139,7 @@ async function service(conv, ref = "", entreprises = ["taxi"]) {
 test("un nouveau client (sans type, sans fiche, tri « demande_client ») : le prix écrit par Nani est repris, à vérifier", async () => {
   // La cause : sans fiche ni dossier, la conversation n'est pas un client confirmé ; le prix restait « à fixer ».
   assert.equal(clientConfirme(NOUVEAU), false);
-  assert.equal(clientProbable(NOUVEAU), true);
+  assert.equal(clientProbable(NOUVEAU, ["taxi"]), true);
   const s = await service(NOUVEAU);
   assert.deepEqual([s.prix, s.origine_prix], [2500, "saisi"], "« 2,500 THB » au milieu d'une phrase est lu");
   assert.ok(s.avertissements.includes("prix_nani_a_verifier"));
@@ -173,7 +181,10 @@ test("le prix de Nani n'est jamais repris pour un contact non client, ni sans tr
   // La fonction lit le tri et les étapes avec la conversation, passe les deux drapeaux à memoDepuis ; le prix du client non corrigé reste au
   // client confirmé.
   const f = lire("supabase/functions/agent/index.ts");
-  assert.match(f, /reponses, type_contact, partenaire_id, nom_source, tri, avancee"\)\.eq\("id", waId\)/);
+  // Constat 7 de la relecture : chaque repli 42703 garde ce que la migration d'avant a ajouté (nom_source jamais perdu).
+  assert.match(f, /const COLONNES_WA = \[\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
+  assert.match(f, /for \(const cols of COLONNES_WA\) \{\n\s+r = await sb\.from\("whatsapp_conversations"\)\.select\(cols\)\.eq\("id", id\)\.maybeSingle\(\);\n\s+if \(!\(r\.error && r\.error\.code === "42703"\)\) break;/);
+  assert.match(f, /const wc: any = await lireWa\(waId\);/);
   assert.match(f, /const slugsDossier = unifie \? unifie\.entites\.map\(\(e\) => e\.slug\) : \[ent\.data\?\.slug \|\| ""\];/);
   assert.match(f, /conversationClient: clientPourPrixDeNani\(waLue, slugsDossier\), clientProbable: !clientConfirme\(waLue\) && clientProbable\(waLue, slugsDossier\)/);
   assert.match(f, /if \(waLue && clientConfirme\(waLue\)\) \{\n\s+const lusWa/);
@@ -190,24 +201,100 @@ test("une étape client (migration 105) suffit : la réservation qui finit sur �
   const s = await service(merci);
   assert.deepEqual([s.prix, s.origine_prix], [2500, "saisi"]);
   assert.ok(s.avertissements.includes("prix_nani_a_verifier"));
-  // Une étape d'une autre entreprise ne compte pas ; une étape encore sans entreprise compte.
-  const chezSecret = { ...merci, avancee: { v: 2, par: { secret: { prix_le: minute(43) } } } };
-  assert.equal(clientProbable(chezSecret, ["taxi"]), false);
-  assert.equal(clientProbable(chezSecret, ["secret", "taxi"]), true, "espace unifié : les deux entreprises");
-  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: { inconnu: { demande_le: minute(37) } } } }, ["taxi"]), true);
-  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: {}, pret: { le: minute(54), entreprise: "taxi" } } }, ["taxi"]), true, "Prêt à réserver chez Taxi");
-  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: {}, pret: { le: minute(54), entreprise: "ztp" } } }, ["taxi"]), false, "ZTP reste à part");
-  // Jamais sans étape (un partenaire n'en a pas), jamais pour un contact non client, même avec des faits.
+  // Relecture de la PR 318 : seule une DEMANDE du contact pour l'entreprise du dossier compte. Un prix de Nani seul, « Prêt à réserver »,
+  // une demande d'une autre entreprise ou encore sans entreprise ne suffisent pas ; chez ZTP, rien ne compte.
+  const avec = (par, o = {}) => ({ ...merci, avancee: { v: 2, par, ...o } });
+  assert.equal(clientProbable(avec({ taxi: { prix_le: minute(43) } }), ["taxi"]), false, "un prix de Nani seul");
+  assert.equal(clientProbable(avec({ secret: { demande_le: minute(37) } }), ["taxi"]), false, "une demande chez Secret");
+  assert.equal(clientProbable(avec({ secret: { demande_le: minute(37) } }), ["secret", "taxi"]), true, "espace unifié : les deux entreprises");
+  assert.equal(clientProbable(avec({ inconnu: { demande_le: minute(37) } }), ["taxi"]), false, "sans entreprise : pas de repli");
+  assert.equal(clientProbable(avec({}, { pret: { le: minute(54), entreprise: "taxi" } }), ["taxi"]), false, "Prêt à réserver seul");
+  assert.equal(clientProbable(merci, ["ztp"]), false, "ZTP : aucune étape client ne compte");
+  assert.equal(clientProbable({ ...NOUVEAU }, ["ztp"]), false, "ZTP : le motif non plus");
+  assert.equal(clientProbable({ ...NOUVEAU, tri: { motif: "demande_client", entreprise: "secret" } }, ["taxi"]), false, "motif d'une autre entreprise");
+  assert.equal(clientProbable({ ...NOUVEAU, tri: { motif: "demande_client", entreprise: "inconnu" } }, ["taxi"]), false);
+  for (const motif of ["remerciement", "autre", "media_seul", "tri_illisible", "ia_coupee"]) assert.equal(clientProbable({ ...NOUVEAU, tri: { motif, entreprise: "taxi" } }, ["taxi"]), false, motif);
+  assert.equal(clientProbable({ ...NOUVEAU, tri: null }, ["taxi"]), false, "tri nul");
+  // Sans faits, sans demande, Contact personnel : jamais.
   assert.equal(clientProbable({ ...merci, avancee: null }, ["taxi"]), false);
-  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: {} } }, ["taxi"]), false);
+  assert.equal(clientProbable(avec({}), ["taxi"]), false);
   assert.equal(clientProbable({ ...merci, avancee: { v: 2, jamais: true } }, ["taxi"]), false);
   for (const o of [{ type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "hotel" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }, { reponses: "jamais" }, { tri: { motif: "partenaire" } }, { tri: { motif: "personnel" } }, { tri: { motif: "publicite" } }, { tri: { motif: "non_client" } }]) {
     const c = { ...merci, ...o };
     assert.equal(clientPourPrixDeNani(c, ["taxi"]), false, JSON.stringify(o));
     assert.equal((await service(c)).prix, null, JSON.stringify(o));
   }
+  // L'endroit de la future fonction « déduit partenaire » (session « Prêt à réserver ») : appelée avant tout le reste.
+  assert.match(lire("supabase/functions/agent/outils.js"), /export const clientProbable = \(c, entreprises = \[\]\) => conversationDeClient\(c\) && !partenaireDeduit\(c\) &&/);
   // Les motifs « pas un client » sont ceux de l'écran des étapes, plus « non_client ».
   assert.deepEqual(MOTIFS_NON_CLIENT, [...MOTIFS_TRI_NON_CLIENT, "non_client"]);
+});
+
+// Le cas reproduit par la relecture de la PR 318 : un chauffeur non typé.
+const CHAUFFEUR = [
+  { sens: "entrant", texte: "net 1,800 THB for the van tomorrow", envoye_le: minute(10) },
+  { sens: "sortant", texte: "OK 1,800 THB, pickup 9:00", envoye_le: minute(12) },
+  { sens: "entrant", texte: "ok", envoye_le: minute(13) },
+];
+const BATEAU = [
+  { sens: "entrant", texte: "Longtail for 4 pax tomorrow 3,500 THB", envoye_le: minute(20) },
+  { sens: "sortant", texte: "OK 3,500 THB, 8:30 at the pier", envoye_le: minute(22) },
+  { sens: "entrant", texte: "👍", envoye_le: minute(23) },
+];
+const contact = (messages, tri) => {
+  const c = { ...NOUVEAU, id: "0f000000-0000-4000-8000-000000000099", nom: "", tri };
+  return { ...c, avancee: faitsAvancee(c, messages, "2026-11-22T05:00:00Z") };
+};
+async function serviceDe(conv, messages, prix_saisi, o = {}) {
+  const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv, messages }) }], { conversationClient: clientPourPrixDeNani(conv, ["taxi"]), clientProbable: !clientConfirme(conv) && clientProbable(conv, ["taxi"]), conversationLiee: conv.id });
+  Object.assign(memo, o);
+  const e = { ...carte(o.ref || ""), services: [{ ...carte().services[0], ref: o.ref || "", prix_saisi }] };
+  return (await executer("proposer_dossier", e, ctx, memo)).carte.donnees.services[0];
+}
+
+test("constat 1 : un chauffeur ou un bateau non typé n'est jamais un client probable, son net ne devient pas un prix de vente", async () => {
+  for (const [messages, prix, motif] of [[CHAUFFEUR, "1800", "autre"], [CHAUFFEUR, "1800", "remerciement"], [CHAUFFEUR, "1800", null], [BATEAU, "3500", "media_seul"], [BATEAU, "3500", "remerciement"]]) {
+    const c = contact(messages, motif ? { motif, entreprise: "taxi" } : null);
+    // Aucune demande du contact : prix_le seul (et peut-être « prêt ») ne font pas un client.
+    assert.ok(!(c.avancee.par.taxi || {}).demande_le && !(c.avancee.par.inconnu || {}).demande_le, `${prix} ${motif} : aucune demande`);
+    assert.equal(clientProbable(c, ["taxi"]), false, `${prix} ${motif}`);
+    const s = await serviceDe(c, messages, prix);
+    assert.deepEqual([s.prix, s.origine_prix], [null, "a_fixer"], `${prix} ${motif}`);
+  }
+});
+
+test("constat 2 : chez un client seulement probable, un net écrit par le contact reste interne et bloque", async () => {
+  // Le tri se trompe et range le chauffeur parmi les demandes de client de Taxi : « net 1,800 » écrit par lui reste interne.
+  const c = contact(CHAUFFEUR, { motif: "demande_client", entreprise: "taxi" });
+  assert.equal(clientProbable(c, ["taxi"]), true);
+  const s = await serviceDe(c, CHAUFFEUR, "1800");
+  assert.equal(s.prix, null);
+  assert.ok(s.avertissements.includes("prix_egal_net"));
+  // Le même bloc chez un client confirmé : les lignes du contact ne comptent pas (règle de la PR 306, inchangée).
+  const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv: c, messages: CHAUFFEUR }) }], { conversationClient: true, clientProbable: true });
+  assert.ok(memo.internes.has(1800));
+  assert.ok(!memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv: c, messages: CHAUFFEUR }) }], { conversationClient: true }).internes.has(1800));
+  // La conversation liée relue par lire_conversation : même règle.
+  const o = lire("supabase/functions/agent/outils.js");
+  assert.match(o, /if \(memo\.clientProbable === true\) for \(const x of textesDe\(resultat\)\) for \(const n of montantsPresDuNet\(x\)\) memo\.internes\.add\(n\);/);
+  assert.match(o, /const jointes = conversationClient && !memo\.clientProbable \? lignesDeNani/);
+});
+
+test("constat 3 : le prix repris chez un client probable a un plancher, le net du service", async () => {
+  const net = (montant) => ({ nets: [{ prestation_id: ZONE, genre: "adulte", montant }], ref: refDe("P", ZONE) });
+  const sous = await serviceDe(NOUVEAU, MESSAGES, "2500", net(2600));
+  assert.equal(sous.prix, null);
+  assert.ok(sous.avertissements.includes("prix_sous_net"));
+  const egal = await serviceDe(NOUVEAU, MESSAGES, "2500", net(2500));
+  assert.equal(egal.prix, null, "au niveau du net : refusé aussi");
+  const dessus = await serviceDe(NOUVEAU, MESSAGES, "2500", net(1500));
+  assert.deepEqual([dessus.prix, dessus.origine_prix], [2500, "saisi"]);
+  const illisibles = await serviceDe(NOUVEAU, MESSAGES, "2500", { controleImpossible: true });
+  assert.equal(illisibles.prix, null);
+  assert.ok(illisibles.avertissements.includes("prix_client_sans_net"));
+  // Sans net connu pour ce service (course de Taxi) : repris, à vérifier.
+  const sansNet = await serviceDe(NOUVEAU, MESSAGES, "2500", { ref: refDe("P", ZONE) });
+  assert.deepEqual([sansNet.prix, sansNet.origine_prix], [2500, "saisi"]);
 });
 
 test("un montant non sourcé égal au prix du catalogue du service garde le prix du catalogue", async () => {
@@ -238,4 +325,59 @@ test("catalogue : la zone « Private Taxi · Krabi Town » sort pour un trajet K
   assert.deepEqual(await refs("private minivan Koh Lanta Krabi Noi"), []);
   assert.deepEqual(await refs("private taxi Koh Lanta"), [], "Koh Lanta seul ne donne pas toutes les zones");
   assert.deepEqual(zonesLanta(prestations, ["lanta", "town"]).map((p) => p.id), [ZONE]);
+});
+
+test("constat 8 : zones Private Taxi en mots entiers, véhicule demandé respecté", async () => {
+  const libelles = async (recherche) => (await chercherCatalogue({ recherche, famille: "transfert" }, ctx)).resultat.lignes.map((l) => l.libelle).sort();
+  assert.deepEqual(await libelles("car Koh Lanta Ao Nang"), [], "une voiture ne rend jamais « Minivan to … »");
+  assert.deepEqual(await libelles("minivan Koh Lanta Ao Nang"), ["Minivan to Ao Nang"]);
+  assert.deepEqual(await libelles("private taxi Koh Lanta Ao Nang"), ["Minivan to Ao Nang"], "sans véhicule dit : toutes les zones");
+  assert.deepEqual(await libelles("car Koh Lanta Krabi Town"), ["Krabi Town"], "un libellé sans véhicule vaut pour tous");
+  assert.deepEqual(await libelles("taxi Koh Lanta ao"), ["Minivan to Ao Nang"], "« ao » ne trouve pas « Khao »");
+  assert.deepEqual(await libelles("taxi Koh Lanta Khao Lak"), ["Khao Lak"]);
+  assert.deepEqual(zonesLanta(prestations, ["lanta", "kra"]), [], "un morceau de mot ne suffit pas");
+});
+
+test("constat 4 : une discussion liée pleine est archivée et remplacée, avec un court résumé", () => {
+  // Pleine : historique ou pièces (les limites de la migration 55) ; sinon rien.
+  assert.equal(discussionPleine({ messages: HISTORIQUE_PLEIN }), "historique");
+  assert.ok(HISTORIQUE_PLEIN < 400, "avant la coupe des 400 messages relus");
+  assert.equal(discussionPleine({ messages: 10, fichiers: { nombre: MAX_FICHIERS_CONVERSATION, taille: 0 }, nouveaux: [{ data: "aaaa" }] }), "pieces");
+  assert.equal(discussionPleine({ messages: 10, fichiers: { nombre: 1, taille: MAX_CONVERSATION_B64 - 2 }, nouveaux: [{ data: "aaaa" }] }), "pieces");
+  assert.equal(discussionPleine({ messages: 10, fichiers: { nombre: MAX_FICHIERS_CONVERSATION, taille: 0 } }), "", "sans pièce dans cet envoi : rien à refuser");
+  assert.equal(discussionPleine({ messages: 10, fichiers: { nombre: 1, taille: 10 }, nouveaux: [{ data: "aaaa" }] }), "");
+  // Le dernier prix accepté : la carte validée la plus récente, son prix de vente ; jamais une carte écartée ou proposée.
+  const cartes = [
+    { genre: "dossier", statut: "validee", cree_le: "2026-11-20T10:00:00Z", decide_le: "2026-11-20T10:05:00Z", donnees: { services: [{ libelle: "Private Taxi: Koh Lanta → Krabi Town", prix: 2500, net: 1900 }] } },
+    { genre: "reservation", statut: "validee", cree_le: "2026-11-21T09:00:00Z", decide_le: "2026-11-21T09:01:00Z", donnees: { service: { texte: "4 Islands tour", prix: 1800 } } },
+    { genre: "dossier", statut: "ecartee", cree_le: "2026-11-22T09:00:00Z", donnees: { services: [{ texte: "x", prix: 9999 }] } },
+    { genre: "reponse", statut: "validee", cree_le: "2026-11-22T09:30:00Z", donnees: { message: "2,000 THB" } },
+  ];
+  assert.deepEqual(dernierPrixAccepte(cartes), { prix: 1800, service: "4 Islands tour" });
+  assert.equal(dernierPrixAccepte([]), null);
+  const r = resumeReport({ client: { prenom: "Ella", nom: "Test <b>" }, dossiers: [{ ref: "TX-2026-001" }, { ref: "TX-2026-001" }], prix: { prix: 1800, service: "4 Islands tour" }, raison: "pieces" });
+  assert.match(r, /^<resume_discussion>\n/);
+  assert.match(r, /pleine \(pièces jointes\)/);
+  assert.match(r, /- Client : Ella Test b/, "les chevrons sont retirés");
+  assert.match(r, /- Dossiers : TX-2026-001\n/);
+  assert.match(r, /- Dernier prix accepté : 1 800 THB \(4 Islands tour\)/);
+  assert.doesNotMatch(r, /1900|net/i, "jamais un net");
+  assert.match(resumeReport({}), /Client : pas encore de fiche\n- Dossiers : aucun\n- Dernier prix accepté : aucun/);
+  // L'écran met le résumé à part.
+  assert.deepEqual(separerResume(`${r}\n\nSuite`), { resume: r.split("\n").slice(1, -1).join("\n"), reste: "Suite" });
+  assert.deepEqual(separerResume("Bonjour"), { resume: "", reste: "Bonjour" });
+  // La fonction : seulement une discussion liée où la personne écrit encore ; archivée, remplacée, rouverte si l'échange échoue.
+  const f = lire("supabase/functions/agent/index.ts");
+  assert.match(f, /if \(conversationId && conv && conv\.whatsapp_conversation_id && waLiee && waLiee\.id === conv\.whatsapp_conversation_id\) \{/);
+  assert.match(f, /update\(\{ statut: "archivee" \}\)\.eq\("id", ancien\.id\)/);
+  assert.match(f, /insert\(\{ entite_id: entiteId, titre: ancien\.titre, dossier_id: ancien\.dossier_id, whatsapp_conversation_id: ancien\.whatsapp_conversation_id \}\)/);
+  assert.match(f, /message = message \? `\$\{resume\}\\n\\n\$\{message\}` : resume;/);
+  assert.match(f, /if \(!conversationId \|\| remplace\) await sb\.from\("agent_conversations"\)\.delete\(\)\.eq\("id", conv!\.id\);\n\s+\/\/[^\n]*\n\s+if \(remplace\) await sb\.from\("agent_conversations"\)\.update\(\{ statut: "ouverte" \}\)\.eq\("id", remplace\);/);
+  assert.match(f, /\.\.\.\(remplace \? \{ remplace, whatsapp_conversation_id: conv!\.whatsapp_conversation_id \} : \{\}\)/);
+  assert.doesNotMatch(f.slice(f.indexOf("let remplace"), f.indexOf("const anciens")), /conversation_pleine/, "jamais d'échec « conversation_pleine » pour une discussion liée");
+  // L'écran : la nouvelle discussion prend la place de l'ancienne, marquée archivée.
+  const vue = lire("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /if \(ev\.t === "conversation" && conv && ev\.remplace && ev\.remplace === conv\.id && ev\.id !== conv\.id\) \{\n\s+conversations = \(conversations \|\| \[\]\)\.map\(\(c\) => \(c\.id === ev\.remplace \? \{ \.\.\.c, statut: "archivee" \} : c\)\);\n\s+conv = null;/);
+  assert.match(vue, /const \{ resume, reste \} = separerResume\(it\.texte\);/);
+  assert.match(lire("src/gestion/js/i18n-en.mjs"), /"The discussion was full: it is archived and a new one picks up its summary\."/);
 });

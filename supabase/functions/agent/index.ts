@@ -46,6 +46,7 @@ import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAI
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
+import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
 import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
@@ -91,6 +92,14 @@ async function alerterBudget(corps: Record<string, unknown>) {
     console.error("agent : alerte du budget", err instanceof Error ? err.message.slice(0, 120) : "");
   }
 }
+
+// Les colonnes lues d'une conversation WhatsApp, de la plus récente migration à la plus ancienne (repli sur l'erreur 42703).
+const COLONNES_WA = [
+  "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",
+  "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source",
+  "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id",
+  "id, telephone, nom, entite_id, client_id, dossier_id, reponses",
+];
 
 Deno.serve(async (req) => {
   const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: entetes(req) });
@@ -190,10 +199,15 @@ Deno.serve(async (req) => {
   let waLue: Record<string, any> | null = null;
   // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
   // pas typé, son nom est lu comme un nom de profil).
+  // Puis le tri et les faits des étapes (migration 105) : sans eux, le contact n'est jamais un client probable. Chaque repli garde ce que la
+  // migration d'avant a ajouté (relecture de la PR 318 : nom_source n'est jamais perdu avec la migration 105).
   const lireWa = async (id: string) => {
-    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee").eq("id", id).maybeSingle();
-    if (r.error && r.error.code === "42703") r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
-    return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
+    let r: any = null;
+    for (const cols of COLONNES_WA) {
+      r = await sb.from("whatsapp_conversations").select(cols).eq("id", id).maybeSingle();
+      if (!(r.error && r.error.code === "42703")) break;
+    }
+    return r;
   };
   // La personne n'administre pas l'entreprise de la conversation (whatsapp_peut_ecrire, migration 63) : la question passe en lecture seule,
   // sans liaison ni carte ; créer ou mettre à jour un dossier est refusé.
@@ -203,17 +217,16 @@ Deno.serve(async (req) => {
     // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
     // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
     // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
-    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee").eq("id", waId).maybeSingle();
-    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
-    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", waId).maybeSingle();
+    const wc: any = await lireWa(waId);
     if (wc.error) return json({ erreur: "base" }, 500);
     if (!wc.data) return json({ erreur: "whatsapp_introuvable" }, 404);
     // Contact personnel (migration 60) : rien de lui ne part chez Anthropic, dans aucun mode. Refusé avant de lire un seul message.
     if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);
     if (waSuite) {
-      const lie = await sb.from("agent_conversations").select("id, entite_id, whatsapp_conversation_id").eq("id", demande.conversation_id).maybeSingle();
+      const lie = await sb.from("agent_conversations").select("id, entite_id, whatsapp_conversation_id, statut").eq("id", demande.conversation_id).maybeSingle();
       if (lie.error) return json({ erreur: "base" }, 500);
-      if (!lie.data || lie.data.entite_id !== entiteId || lie.data.whatsapp_conversation_id !== waId) return json({ erreur: "conversation_introuvable" }, 404);
+      // Une discussion archivée ne se rouvre pas (relecture de la PR 318), comme à l'écran (conversationLiee).
+      if (!lie.data || lie.data.entite_id !== entiteId || lie.data.whatsapp_conversation_id !== waId || lie.data.statut === "archivee") return json({ erreur: "conversation_introuvable" }, 404);
     }
     const peut = await sb.rpc("whatsapp_peut_ecrire", { p_conversation: waId });
     if (peut.error) console.error("agent : whatsapp_peut_ecrire", peut.error.message);
@@ -286,6 +299,38 @@ Deno.serve(async (req) => {
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
   }
+  // Une discussion liée qui se remplit (relecture de la PR 318, discussion-pleine.js) : 20 pièces ou 30 Mo, ou un historique qui perdrait son
+  // début. Elle est archivée et une nouvelle, liée à la même conversation WhatsApp, la remplace, ouverte par un court résumé (client,
+  // dossiers, dernier prix de vente accepté). Seulement quand la personne écrit encore dans cette conversation WhatsApp (waLiee).
+  let remplace: string | null = null;
+  if (conversationId && conv && conv.whatsapp_conversation_id && waLiee && waLiee.id === conv.whatsapp_conversation_id) {
+    const [nb, fx] = await Promise.all([
+      sb.from("agent_messages").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id),
+      sb.from("agent_fichiers").select("taille").eq("conversation_id", conv.id).limit(100),
+    ]);
+    const gardes = fx.error ? [] : fx.data || [];
+    const plein = nb.error ? "" : discussionPleine({ messages: nb.count || 0, fichiers: { nombre: gardes.length, taille: gardes.reduce((s: number, f: any) => s + (Number(f.taille) || 0), 0) }, nouveaux: Array.isArray(demande.fichiers) ? demande.fichiers : [] });
+    if (plein) {
+      const idsDossiers = [...new Set([waLiee.dossier_id, conv.dossier_id].filter((x) => typeof x === "string" && UUID.test(x)))];
+      const [cl, ds, ct] = await Promise.all([
+        waLiee.client_id ? sb.from("clients").select("prenom, nom").eq("id", waLiee.client_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+        idsDossiers.length ? sb.from("dossiers").select("ref").in("id", idsDossiers) : Promise.resolve({ data: [], error: null }),
+        sb.from("agent_cartes").select("genre, statut, donnees, cree_le, decide_le").eq("conversation_id", conv.id).eq("statut", "validee").order("cree_le", { ascending: false }).limit(20),
+      ]);
+      const ancien = conv;
+      const arch = await sb.from("agent_conversations").update({ statut: "archivee" }).eq("id", ancien.id);
+      if (arch.error) return json({ erreur: "base" }, 500);
+      const neuve = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: ancien.titre, dossier_id: ancien.dossier_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id }).select("id, titre, dossier_id, cree_le").single();
+      if (neuve.error) {
+        await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", ancien.id);
+        return json({ erreur: "base" }, 500);
+      }
+      remplace = ancien.id;
+      conv = { ...neuve.data, whatsapp_conversation_id: ancien.whatsapp_conversation_id };
+      const resume = resumeReport({ client: cl.error ? null : cl.data, dossiers: ds.error ? [] : ds.data || [], prix: ct.error ? null : dernierPrixAccepte(ct.data || []), raison: plein });
+      message = message ? `${resume}\n\n${message}` : resume;
+    }
+  }
   // Apporteur d'affaires (apporteur.js) : la fiche reliée et, en espace unifié, la fiche « apporteur » de l'autre entreprise, lues avec la
   // session (RLS : celles que la personne voit). Une lecture refusée laisse l'apporteur sans fiche : les dossiers se créent sans apporteur.
   let apporteur: Record<string, any> | null = null;
@@ -306,7 +351,9 @@ Deno.serve(async (req) => {
   // table (migration pas encore passée), une conversation sans fichier marche comme avant ; un envoi de fichier est refusé.
   // Un refus après la création d'une nouvelle conversation la retire : pas de conversation vide dans la liste.
   const abandonner = async (corps: Record<string, unknown>, status: number) => {
-    if (!conversationId) await sb.from("agent_conversations").delete().eq("id", conv!.id);
+    if (!conversationId || remplace) await sb.from("agent_conversations").delete().eq("id", conv!.id);
+    // La discussion pleine remplacée redevient celle de la conversation WhatsApp : rien n'a été fait dans la nouvelle.
+    if (remplace) await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", remplace);
     return json(corps, status);
   };
   const meta = await sb.from("agent_fichiers").select("id, nom, media_type, taille, cree_le").eq("conversation_id", conv!.id).order("cree_le", { ascending: true }).limit(100);
@@ -964,7 +1011,7 @@ Deno.serve(async (req) => {
     let dernierTexte = "";
     let motifErreur = "";
     try {
-      await envoyer({ t: "conversation", id: conv!.id, titre: conv!.titre, dossier_id: conv!.dossier_id, ...(waId && waEcrit ? { whatsapp_conversation_id: waId } : {}) });
+      await envoyer({ t: "conversation", id: conv!.id, titre: conv!.titre, dossier_id: conv!.dossier_id, ...(waId && waEcrit ? { whatsapp_conversation_id: waId } : {}), ...(remplace ? { remplace, whatsapp_conversation_id: conv!.whatsapp_conversation_id } : {}) });
       const contenuPersonne = [...blocsNouveaux, ...(message ? [{ type: "text", text: message }] : [])];
       await garder("user", contenuPersonne, contenuPourClaude(contenuPersonne, donnees));
       const garderCarte = async (carte: { genre: string; titre: string; donnees: unknown; avertissements?: string[] }) => {

@@ -588,11 +588,23 @@ const motsDe = (q) =>
 export const GROUPES_ZONE_LANTA = ["private taxi"];
 const MOTS_HORS_ZONE = ["lanta", "private", "prive", "privee", "taxi", "taxis", "minivan", "minivans", "van", "vans", "minibus", "car", "cars", "voiture", "sedan", "transfer", "transfers", "transfert", "transferts", "vip", "pickup", "drop", "off", "from", "depuis", "vers"];
 export const ligneDeZoneLanta = (p) => !!p && p.famille === "transfert" && GROUPES_ZONE_LANTA.includes(sansAccents(String(p.groupe || "")).trim());
+// Relecture de la PR 318 : des mots entiers (« ao » ne trouve pas « Khao »), et le véhicule demandé respecté (une voiture ne rend jamais
+// « Minivan to … », un minivan jamais « Car to … ») ; un libellé qui ne nomme aucun véhicule vaut pour tous.
+const VEHICULES_ZONE = { minivan: ["minivan", "minivans", "van", "vans", "minibus"], voiture: ["car", "cars", "voiture", "voitures", "sedan", "berline", "suv"] };
+const motsEntiers = (t) => sansAccents(String(t || "")).replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean);
+const vehiculesDe = (mots) => Object.keys(VEHICULES_ZONE).filter((g) => mots.some((m) => VEHICULES_ZONE[g].includes(m)));
 export function zonesLanta(prestations = [], mots = []) {
   if (!mots.includes("lanta")) return [];
   const restes = mots.filter((m) => !MOTS_HORS_ZONE.includes(m));
   if (!restes.length) return [];
-  return (prestations || []).filter((p) => ligneDeZoneLanta(p) && correspond(sansAccents([p.libelle, p.libelle_en].join(" ")), restes));
+  const demandes = vehiculesDe(mots);
+  return (prestations || []).filter((p) => {
+    if (!ligneDeZoneLanta(p)) return false;
+    const libelle = motsEntiers([p.libelle, p.libelle_en].join(" "));
+    if (!restes.every((m) => libelle.includes(m))) return false;
+    const nommes = vehiculesDe(libelle);
+    return !demandes.length || !nommes.length || nommes.some((g) => demandes.includes(g));
+  });
 }
 export const CONSEIL_ZONE_LANTA = "Les lignes « depuis_koh_lanta » sont des taxis privés entre Koh Lanta et la zone de leur libellé : garde-la seulement si l'autre bout du trajet est dans cette zone (champ « lieu » de situer_hotels) ; sinon dis que ce trajet n'est pas au catalogue.";
 
@@ -1019,6 +1031,9 @@ export function retenirLecture(resultat, memo, nom = "lire_conversation") {
   // ceux d'une autre conversation lue (un autre client, un partenaire non typé) : revue de sécurité de la PR 306.
   if (nom === "lire_conversation" && memo.conversationClient === true && memo.conversationLiee && resultat && resultat.conversation === memo.conversationLiee) {
     if (!(memo.nani instanceof Set)) memo.nani = new Set();
+    // Un client seulement probable (relecture de la PR 318) : un montant près d'un mot de coût, écrit par le contact ou par Nani, reste
+    // interne, comme dans le bloc joint.
+    if (memo.clientProbable === true) for (const x of textesDe(resultat)) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
     for (const n of montantsDeNaniLus(resultat, { confirme: true })) memo.nani.add(n);
   }
   ajouterNoms(memo, noms);
@@ -1316,30 +1331,38 @@ export const conversationDeClient = (c) => !!c && (!c.type_contact || c.type_con
 // une telle conversation donne des prix écrits par Nani : un partenaire jamais typé reste exclu.
 export const clientConfirme = (c) => conversationDeClient(c) && (c.type_contact === "client" || !!c.client_id || !!c.dossier_id);
 // Un client probable (22.11.2026, nouveau client sans fiche) : personne ne type un contact « client » et la fiche n'existe qu'après la
-// validation du premier dossier, si bien que les prix écrits par Nani n'étaient jamais repris pour le premier dossier d'un client. Une
-// conversation de client (aucun type non client, aucune fiche partenaire reliée, pas Contact personnel), dont le tri ne dit pas « pas un
-// client », ET :
-//   - une étape client existe pour l'entreprise du dossier (faits des étapes, whatsapp_conversations.avancee, migration 105 : une demande,
-//     un prix en bahts ou « Prêt à réserver » chez Secret ou chez Taxi, ou sans entreprise encore connue) ; une réservation nette qui finit
-//     sur « Perfect, many thanks » (tri « remerciement ») est ainsi couverte ;
-//   - OU le tri l'a rangée parmi les demandes de client (les deux motifs pour lesquels la boîte prépare déjà une réponse,
-//     whatsapp/proposer.js, MOTIFS_A_PREPARER).
-// Ses prix écrits par Nani sont admis pour une carte, marqués à vérifier (prix_nani_a_verifier). Jamais les prix du client
-// (prixClientValides reste au client confirmé), jamais un contact typé partenaire, chauffeur, hôtel ou apporteur.
+// validation du premier dossier, si bien que les prix écrits par Nani n'étaient jamais repris pour le premier dossier d'un client.
+// Resserré après la relecture de la PR 318 (un chauffeur non typé qui écrit « net 1,800 THB », Nani qui répond « OK 1,800 THB » et le
+// chauffeur « ok » ne doit jamais donner un prix de vente). Une conversation :
+//   - de client : aucun type non client, aucune fiche partenaire reliée, pas Contact personnel, pas reconnue comme partenaire
+//     (partenaireDeduit), et un tri qui ne dit pas « pas un client » ;
+//   - ET une DEMANDE ENTRANTE du contact pour l'entreprise du dossier : demande_le des faits des étapes (whatsapp_conversations.avancee,
+//     migration 105), posé seulement par un message du contact qui demande un prix, une réservation ou une disponibilité (etapes.js). Un
+//     prix de Nani (prix_le) ou « Prêt à réserver » ne suffisent jamais : un partenaire en a aussi ;
+//   - OU un tri demande_client ou suivi_reservation (les motifs pour lesquels la boîte prépare déjà une réponse, MOTIFS_A_PREPARER) dont
+//     l'entreprise est celle du dossier. « remerciement », « autre », « media_seul », « tri_illisible », « ia_coupee » ou un tri nul ne
+//     suffisent jamais.
+// Seulement Secret et Taxi : chez ZTP (ou toute autre entreprise), rien ne compte. Ses prix écrits par Nani sont admis pour une carte,
+// marqués à vérifier (prix_nani_a_verifier), jamais sous le net (prix_sous_net) ; les montants écrits par le contact près d'un mot de coût
+// restent internes (memoDepuis, clientProbable). Jamais les prix du client (prixClientValides reste au client confirmé).
 export const MOTIFS_CLIENT = ["demande_client", "suivi_reservation"];
 // Les motifs du tri qui disent « pas un client » (comme l'écran, whatsapp-etapes-calc.mjs, MOTIFS_TRI_NON_CLIENT, avec « non_client »).
 export const MOTIFS_NON_CLIENT = ["personnel", "partenaire", "publicite", "contact_jamais", "non_client"];
-// Une étape client dans les faits gardés pour l'entreprise du dossier (`entreprises` : « secret », « taxi ») ou encore sans entreprise.
+// Un contact reconnu comme partenaire d'après le sens de toute la conversation. L'endroit est prêt : la fonction « déduit partenaire » de
+// la session « Prêt à réserver » viendra ici. D'ici là, seuls le type, la fiche reliée et le tri l'écartent.
+export const partenaireDeduit = (_c) => false;
+const entreprisesDuDossier = (entreprises) => (entreprises || []).filter((e) => ENTREPRISES_UNIFIEES.includes(e));
+// Une demande entrante du contact, pour l'entreprise du dossier (`entreprises` : « secret », « taxi »), d'après les faits gardés.
 export function etapeClient(c, entreprises = []) {
   const f = c && c.avancee;
   if (!f || typeof f !== "object" || f.jamais) return false;
-  const cles = [...(entreprises || []).filter((e) => ENTREPRISES_UNIFIEES.includes(e)), "inconnu"];
   const par = f.par && typeof f.par === "object" ? f.par : {};
-  if (cles.some((k) => par[k] && typeof par[k] === "object" && (par[k].demande_le || par[k].prix_le))) return true;
-  return !!(f.pret && typeof f.pret === "object" && f.pret.le && cles.includes(f.pret.entreprise || "inconnu"));
+  return entreprisesDuDossier(entreprises).some((k) => !!par[k] && typeof par[k] === "object" && typeof par[k].demande_le === "string" && !!par[k].demande_le);
 }
-const motifDuTri = (c) => (c && c.tri && typeof c.tri === "object" ? c.tri.motif : null);
-export const clientProbable = (c, entreprises = []) => conversationDeClient(c) && !MOTIFS_NON_CLIENT.includes(motifDuTri(c)) && (etapeClient(c, entreprises) || MOTIFS_CLIENT.includes(motifDuTri(c)));
+const triDe = (c) => (c && c.tri && typeof c.tri === "object" ? c.tri : {});
+// Un tri de demande de client, pour l'entreprise du dossier.
+export const triClient = (c, entreprises = []) => MOTIFS_CLIENT.includes(triDe(c).motif) && entreprisesDuDossier(entreprises).includes(triDe(c).entreprise);
+export const clientProbable = (c, entreprises = []) => conversationDeClient(c) && !partenaireDeduit(c) && !MOTIFS_NON_CLIENT.includes(triDe(c).motif) && (etapeClient(c, entreprises) || triClient(c, entreprises));
 // Les prix écrits par Nani dans la conversation liée valent prix de vente : client confirmé, ou client probable.
 export const clientPourPrixDeNani = (c, entreprises = []) => clientConfirme(c) || clientProbable(c, entreprises);
 // Les messages de la base (boîte WhatsApp, reponse.ts) : sortants, écrits depuis l'app ou depuis Gestion, d'un client confirmé.
@@ -1409,7 +1432,13 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     const interdit = (memo.internes instanceof Set && memo.internes.has(saisi)) || netsDuControle(memo).bloquants.has(saisi);
     // Le prix du client que Nani n'a pas corrigé (demande de Jérémy du 22.11.2026, montantsClientValides) : admis, marqué comme tel.
     const duClient = !tapes.has(saisi) && memo.clientValides instanceof Set && memo.clientValides.has(saisi);
+    // Le montant vient seulement d'un message de Nani (pas tapé par la personne dans l'Assistant).
+    const nani = !(memo.tapes instanceof Set && memo.tapes.has(saisi)) && memo.nani instanceof Set && memo.nani.has(saisi);
     if ((tapes.has(saisi) || duClient) && interdit) avert.push("prix_egal_net");
+    // Un prix écrit par Nani à un client seulement probable (relecture de la PR 318) : jamais sous le net du service ni à son niveau, jamais
+    // quand les nets sont illisibles. Un service sans net connu (course de Taxi) passe.
+    else if (tapes.has(saisi) && nani && memo.clientProbable === true && memo.controleImpossible === true) avert.push("prix_client_sans_net");
+    else if (tapes.has(saisi) && nani && memo.clientProbable === true && netService !== null && saisi <= netService) avert.push("prix_sous_net");
     else if (tapes.has(saisi)) {
       prix = saisi;
       origine = "saisi";
@@ -1433,7 +1462,7 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
       origine = "catalogue";
     } else avert.push("prix_non_tape");
     // Un prix écrit par Nani à un client probable (pas encore de fiche) : repris, mais à vérifier sur la carte.
-    if (origine === "saisi" && memo.clientProbable === true && !(memo.tapes instanceof Set && memo.tapes.has(saisi))) avert.push("prix_nani_a_verifier");
+    if (origine === "saisi" && memo.clientProbable === true && nani) avert.push("prix_nani_a_verifier");
   } else if (prixCatalogue !== null) {
     prix = prixCatalogue;
     origine = "catalogue";
@@ -1912,7 +1941,8 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
       memo.tapes = new Set([...memo.tapes, ...montantsTapes([sansConversation(t)])]);
       // Le texte de la personne (hors blocs joints) et les lignes de Nani d'un bloc. Celles du client seulement quand le contact n'est pas un
       // client confirmé : « cost 1,500? » écrit par un client confirmé ne rend rien interne.
-      const jointes = conversationClient ? lignesDeNani(conversationsJointes(t)) : lignesJointes(conversationsJointes(t));
+      // Un client seulement probable (relecture de la PR 318) : toutes les lignes, le contact compris. Un net écrit par lui reste interne.
+      const jointes = conversationClient && !memo.clientProbable ? lignesDeNani(conversationsJointes(t)) : lignesJointes(conversationsJointes(t));
       for (const x of [sansConversation(t), ...jointes]) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
       if (conversationInterne) for (const n of montantsInternesDe(conversationsJointes(t))) memo.internes.add(n);
       // Le prix du client non corrigé ne vient jamais du bloc joint (revue de la PR 307) : la fonction le calcule sur la base à chaque échange.

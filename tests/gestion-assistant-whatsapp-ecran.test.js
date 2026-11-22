@@ -197,7 +197,7 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
   const i403 = f.indexOf('if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);');
   assert.ok(i403 > 0, "contact personnel : 403");
   assert.ok(i403 < f.indexOf('sb.from("whatsapp_messages").select("sens, texte, medias'), "refusé avant de lire un seul message");
-  assert.match(f, /select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses"\)/);
+  assert.match(f, /"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
   assert.match(f, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: waId \}\)/);
   assert.match(f, /if \(!waEcrit && waMode !== "question"\) return json\(\{ erreur: "whatsapp_lecture_seule" \}, 403\);/, "créer et mettre à jour refusés");
   assert.match(f, /\.\.\.\(waId && waEcrit \? \{ whatsapp_conversation_id: waId \} : \{\}\)/, "en lecture seule, aucune liaison");
@@ -216,7 +216,7 @@ test("revue 297, point 4 : une question dans la conversation liée rouverte join
   const f = lire("supabase/functions/agent/index.ts");
   // 22.11.2026 : créer et mettre à jour le dossier passent aussi dans la conversation liée, avec le même contrôle de liaison.
   assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id;/);
-  assert.match(f, /lie\.data\.whatsapp_conversation_id !== waId\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
+  assert.match(f, /lie\.data\.whatsapp_conversation_id !== waId \|\| lie\.data\.statut === "archivee"\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
   const vue = lire("src/gestion/js/views/agent.mjs");
   assert.match(vue, /\.\.\.\(conv \? \{ conversation_id: conv\.id \} : \{\}\), whatsapp_conversation_id: question\.whatsapp_conversation_id, whatsapp_mode: "question"/);
 });
