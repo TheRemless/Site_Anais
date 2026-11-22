@@ -19,6 +19,7 @@ import { demandesPourDossier, choixDemandes, telephonesDuDossier, dossiersRecent
 import { titreDemande } from "../demandes-site-calc.mjs";
 import { lecteurWhatsApp } from "../whatsapp-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
+import { PRODUITS_CARNET } from "../carnet-produits.mjs";
 
 const entiteDe = (id) => ((etat.brut && etat.brut.entites) || []).find((e) => e.id === id) || null;
 const refDemande = (d) => d.ref || titreDemande(d);
@@ -187,7 +188,7 @@ export async function relierDemandesApresDossier(dossiers = []) {
       const telephones = telephonesDuDossier({ dossier, clients: etat.brut.clients || [], conversations: etat.brut.whatsapp_conversations || [] });
       const liste = demandesPourDossier({ demandes: etat.brut.demandes_site || [], dossier, telephones });
       const reservations = (etat.brut.reservations || []).filter((r) => r.dossier_id === dossier.id);
-      const choix = choixDemandes(liste, { correspond: (d) => serviceCorrespond({ demande: d, reservations, produits: PRODUITS_SITE }) });
+      const choix = choixDemandes(liste, { correspond: (d) => serviceCorrespond({ demande: d, reservations, produits: [...PRODUITS_SITE, ...PRODUITS_CARNET] }) });
       if (choix === "relier") await relierUne(liste[0], dossier);
       // La fenêtre n'est pas attendue : la carte se valide, Nani coche quand elle veut.
       else if (choix === "choisir") choisirDemandes(liste, dossier);

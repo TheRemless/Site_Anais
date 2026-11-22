@@ -2,12 +2,14 @@
 // Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
+import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET } from "./carnet-produits.mjs";
+import { agesDuMessage, ajusterAgesCarnet } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
 export const MOTIFS_REFUS = { complet: N_("Complet ce jour-là"), mer: N_("Mer trop agitée"), indisponible: N_("Pas possible ce jour-là"), autre: N_("Sans motif") };
 
-export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || null;
+export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || PRODUITS_CARNET.find((p) => p.id === id) || null;
 export const nomProduit = (d) => d.produit || (produitSite(d.produit_id) || {}).nom || d.produit_id;
 // Ce que le client demande, pour l'écran et les réponses. Une page taxi sert les deux sens : son nom (« Krabi Airport to Koh Lanta ») peut être
 // l'inverse du trajet demandé. Le trajet est alors celui du message (« Transfer request: Koh Lanta to Krabi Airport », demande du 18.11.2026).
@@ -115,7 +117,9 @@ export function changements(d, final) {
   if (final.heure && d.heure && final.heure !== d.heure) ajoute("heure", d.heure, final.heure);
   const optAvant = titreOption(d);
   if (final.option_titre && optAvant && final.option_titre !== optAvant) ajoute("option", optAvant, final.option_titre);
-  const gensAvant = personnesAnglais(d.adultes || 0, d.enfants || 0);
+  // Les personnes de la demande comme elles sont tarifées : un enfant du carnet plus âgé que le barème compte adulte (même règle que la fenêtre de création).
+  const tarifee = demandeTarifee(d);
+  const gensAvant = personnesAnglais(tarifee.adultes || 0, tarifee.enfants || 0);
   const gensApres = personnesAnglais(final.adultes || 0, final.enfants || 0);
   if (gensAvant && gensApres && gensAvant !== gensApres) ajoute("personnes", gensAvant, gensApres);
   if (final.total !== null && final.total !== undefined && d.total_estime !== null && d.total_estime !== undefined && Number(final.total) !== Number(d.total_estime)) ajoute("prix", Number(d.total_estime), Number(final.total));
@@ -207,6 +211,63 @@ export function imposerTotal(lignes, total) {
   const parUnite = Math.round((montant / qte) * 100) / 100;
   const juste = Math.round(parUnite * qte * 100) === Math.round(montant * 100);
   return lignes.map((l) => (l !== premiere ? l : juste ? { ...l, unite: parUnite } : { ...l, unite: Math.round(montant * 100) / 100, qte: 1 }));
+}
+
+// ---- Demandes venues d'une page privée du carnet de ZTP ----------------------------------------------------------------------
+// Une page « /carnet/… » du site de ZTP envoie sa demande à la même fonction que le site Secret (brand « secret » : elle arrive dans Secret).
+// On la reconnaît à l'adresse de la page (page_url), jamais à un mot du texte : le client ne voit pas le nom de Secret sur ces pages.
+// Une demande est « du carnet » si sa page est sur l'origine d'un site de ZTP ET sous le chemin du carnet : le chemin seul ne suffit pas (une page /carnet/ du site
+// Secret n'est pas un carnet). La fonction ne garde d'ailleurs page_url que si elle est sur l'origine de la requête.
+export function estCarnet(d) {
+  try {
+    const u = new URL(d && d.page_url);
+    return ORIGINES_CARNET.includes(u.origin) && u.pathname.startsWith(CHEMIN_CARNET);
+  } catch {
+    return false;
+  }
+}
+// La demande comme Gestion la tarife : un enfant d'une sortie du carnet plus âgé que le barème de la sortie compte adulte (ajusterAgesCarnet). Les adultes, enfants et
+// bébés viennent du message (agesDuMessage), comme dans la fenêtre de création, et non du compteur de la table qui compte tous les enfants : une seule source
+// pour tous les chemins (fenêtre de création, changements, réponse de confirmation).
+export function demandeTarifee(d) {
+  if (!estCarnet(d) || !PRODUITS_CARNET.some((p) => p.id === d.produit_id)) return d;
+  const invites = agesDuMessage(d.message);
+  return ajusterAgesCarnet({ ...d, ...(invites || {}), carnet: carnetDeLaDemande(d) });
+}
+// La sortie et l'option que la fenêtre de création lit dans une demande du carnet (product_id et option), ou null pour une demande qui n'en est pas une.
+export const carnetDeLaDemande = (d) => (estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null);
+// Le titre de la page, tiré de son adresse : « /carnet/koh-samui-excursions-bateau/ » donne « Koh Samui Excursions Bateau ». La fonction a déjà retiré le code d'accès.
+export function titreCarnet(d) {
+  const mots = (cheminPage(d && d.page_url).split("/").filter(Boolean)[1] || "").split("-").filter(Boolean);
+  return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(" ");
+}
+// Les autres sorties du même guide que celle de la demande (« Proposer une autre sortie ») : celles du carnet pour une demande du carnet,
+// celles du site pour les autres. Jamais les sorties de Koh Lanta pour un guide de Koh Samui.
+export function autresSorties(d) {
+  if (estCarnet(d)) {
+    const ici = PRODUITS_CARNET.find((p) => p.id === d.produit_id);
+    return PRODUITS_CARNET.filter((p) => p.id !== d.produit_id && p.marque === d.marque && (!ici || p.guide === ici.guide));
+  }
+  return PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
+}
+// Tout ce que la page a envoyé, pour la fiche de la demande : la sortie et son option, la date, les adultes, les enfants avec leurs âges (lus dans
+// la ligne « Guests: » du message, la fonction ne garde que leur nombre), l'hôtel (le lieu de prise en charge), le nom, le numéro WhatsApp et le total estimé.
+export function champsCarnet(d) {
+  const lu = agesDuMessage(d.message);
+  const option = titreOption(d);
+  return {
+    prestation: [nomProduit(d), option].filter(Boolean).join(" – "),
+    date: d.date_service || "",
+    heure: d.heure || "",
+    adultes: d.adultes ?? 0,
+    enfants: d.enfants ?? 0,
+    ages: lu ? lu.ages : [],
+    hotel: d.pickup || "",
+    nom: d.nom || "",
+    whatsapp: numeroWhatsApp(d),
+    total: d.total_estime ?? null,
+    devise: d.devise || "THB",
+  };
 }
 
 // ---- Liste et chiffres -----------------------------------------------------------------------------------------------

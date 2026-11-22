@@ -1738,6 +1738,14 @@ button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1p
 .dsite-produit span { display: block; font-size: 0.9rem; font-weight: 600; color: var(--texte-2); }
 .dsite-quand { margin: 0; font-weight: 600; }
 .dsite-client, .dsite-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+/* Demande venue d'une page du carnet : l'origine en étiquette, tous les champs reçus en liste. */
+.dsite-source { margin: 0 8px 0 0; background: var(--teal-100); color: var(--teal-700); font-weight: 600; }
+.dsite-champs { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 6px 0 0; font-size: 0.92rem; }
+.dsite-champs .dsite-champ { display: contents; }
+.dsite-champs dt { color: var(--texte-2); }
+.dsite-champs .manque dd { color: var(--danger); }
+.dsite-champs dd { margin: 0; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.dsite-carnet-aide { margin: 8px 0 0; }
 .dsite-etat { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 10px 0 0; font-size: 0.9rem; }
 .dsite-etat .tag { margin-left: 0; }
 .dsite-statut.s-confirmee { background: var(--teal-100); color: var(--teal-700); }

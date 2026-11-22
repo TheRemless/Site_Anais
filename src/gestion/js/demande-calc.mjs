@@ -5,6 +5,8 @@ import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSu
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
+import { PRODUITS_CARNET } from "./carnet-produits.mjs";
+import { lireInvites, ajusterAgesCarnet } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -47,15 +49,8 @@ const heureDe = (v) => {
 };
 const BOUT_SANS_HOTEL = /\b(?:airport|pier|ferry|bus|terminal|KBV|HKT|port)\b/i;
 
-// « 2 adults, 1 child (age 7) », « 2 adults, 3 children (ages under 1, 3 and 10) » : adultes, enfants (3 ans et plus), bébés (moins de 3 ans) et âges.
-function lireInvites(v) {
-  const adultes = Number((/(\d+)\s+adults?/i.exec(v) || [])[1] || 0);
-  const m = /(\d+)\s+child(?:ren)?(?:\s*\(ages?\s*([^)]*)\))?/i.exec(v);
-  let ages = [];
-  if (m && m[2]) ages = m[2].split(/,|\band\b/).map((x) => x.trim()).filter(Boolean).map((x) => (/under\s*1/i.test(x) ? 0 : parseInt(x, 10))).filter((n) => Number.isFinite(n));
-  const enfants = ages.length ? ages.filter((a) => a >= 3).length : m ? Number(m[1]) : 0;
-  return { adultes, enfants, bebes: ages.filter((a) => a < 3).length, ages };
-}
+// Lecture des invités (« 2 adults, 1 child (age 7) ») : module partagé avec la liste des demandes (carnet-ages.mjs), ré-exportée ici.
+export { lireInvites, ajusterAgesCarnet };
 
 function trajetDe(texte) {
   const m = /^(.+?) to (.+)$/.exec(texte.trim());
@@ -803,6 +798,26 @@ const cleTelephone = (t) => {
   return n.length >= 8 ? n.slice(-9) : "";
 };
 const cleNom = (c) => sansAcc(`${c.prenom || ""} ${c.nom || ""}`).split(/\s+/).filter(Boolean).sort().join(" ");
+// Les clients indexés par numéro (une seule fois pour une liste de demandes) : la clé est celle de clientsProches (les 9 derniers chiffres). Un numéro partagé
+// par deux fiches garde la première.
+export function indexClientsParTelephone(clients) {
+  const index = new Map();
+  for (const c of clients) {
+    const cle = cleTelephone(c.telephone);
+    if (cle && !index.has(cle)) index.set(cle, c);
+  }
+  return index;
+}
+export const clientParTelephone = (index, telephone) => index.get(cleTelephone(telephone)) || null;
+// La recherche d'une fiche par numéro, dont l'index n'est construit qu'au premier appel (`clients` : une fonction qui rend les fiches) : une liste sans demande du
+// carnet n'index rien, une liste avec plusieurs ne l'index qu'une fois.
+export function fichesParNumero(clients) {
+  let index = null;
+  return (telephone) => {
+    if (!index) index = indexClientsParTelephone(clients());
+    return clientParTelephone(index, telephone);
+  };
+}
 export function clientsProches(d, clients) {
   const tel = cleTelephone(d.telephone);
   const nom = cleNom({ prenom: "", nom: d.nom || "" });
@@ -956,14 +971,39 @@ const trancheGroupe = (ligne) => {
 // Ce qui distingue une ligne d'une autre une fois l'âge retiré : « Adult rider » et « Child rider, 6 to 12 » donnent « rider ».
 const fondLigne = (l) => cleTexte(l).replace(/\b(?:adults?|child(?:ren)?|from|age|to|and|per|person|\d+)\b/g, " ").replace(/\s+/g, " ").trim();
 
-// L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus du site).
+// La sortie d'une page du carnet (carnet-produits.mjs) citée par `d.carnet` ({ produit, option } : product_id et option de la demande du site).
+// L'option se retrouve par son titre écrit dans le message (« Modifier » le change), puis par son identifiant ; une sortie à une seule option n'en demande pas.
+function optionDuCarnet(d) {
+  const c = d.carnet;
+  const produit = c && c.produit ? PRODUITS_CARNET.find((p) => p.id === c.produit) : null;
+  if (!produit) return null;
+  const titre = cleTexte(d.option);
+  const option = (titre ? produit.options.find((o) => cleTexte(o.titre) === titre) : null) || produit.options.find((o) => c.option && o.id === c.option) || (produit.options.length === 1 ? produit.options[0] : null);
+  return option ? { produit, option } : null;
+}
+
+// L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus).
 // Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
+// Deux sources, jamais mélangées : une demande d'une page du carnet porte son identifiant (`d.carnet`) et se lit parmi les sorties du carnet ; tout autre message
+// (collé, ou venu du site Secret) se lit par son nom parmi les sorties du site Secret seulement.
+// Un message collé sans identifiant du carnet ne retrouve jamais une sortie du carnet par son nom : c'est voulu (deux sorties peuvent porter le même nom,
+// et le tarif d'une autre entreprise ne se devine pas).
 export function optionDuSite(d) {
-  if (!d || !d.site || d.libre || !d.prestation) return null;
+  if (!d || !d.site || d.libre) return null;
+  // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : l'identifiant d'abord. Une sortie connue dont l'option n'est pas
+  // reconnue ne donne aucun tarif (on ne devine pas une autre sortie) ; un identifiant inconnu se cherche par le nom, dans les sorties du carnet seulement,
+  // jamais parmi celles du site Secret (deux sorties peuvent porter le même nom).
+  if (d.carnet && d.carnet.produit) return optionDuCarnet(d) || (PRODUITS_CARNET.some((p) => p.id === d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
+  if (!d.prestation) return null;
+  return optionParNom(d, PRODUITS_SITE);
+}
+// Le produit et l'option d'un message qui les nomme (« Booking request: Produit – Option », « Rental request: Modèle »), cherchés par leur nom parmi `catalogue` seulement.
+function optionParNom(d, catalogue) {
+  if (!d.prestation) return null;
   const location = d.type === "location";
   if (!location && d.type !== "tour") return null;
   const nom = cleTexte(d.prestation);
-  const produits = location ? PRODUITS_SITE.filter((p) => p.section === "rental") : PRODUITS_SITE.filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
+  const produits = location ? catalogue.filter((p) => p.section === "rental") : catalogue.filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
   const titre = location ? nom : cleTexte(d.option);
   for (const produit of produits) {
     if (!titre && produit.options.length === 1) return { produit, option: produit.options[0] };
@@ -1016,6 +1056,22 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
     for (const o of offres) {
       o.avertissement = o.avertissement || "groupe_hors_tranche";
       if (groupe > o.tranche[1]) o.score += o.tranche[1] / 1000;
+    }
+  }
+  // Sortie du carnet : l'âge d'un enfant est jugé d'après la règle de chaque sortie (celle du partenaire, `enfant` dans carnet-produits.mjs), pas d'après
+  // le seuil unique du site. Au-dessus du barème, l'enfant a déjà été compté adulte (ajusterAgesCarnet) ; en dessous, aucun tarif n'est publié :
+  // l'offre le signale, Nani vérifie avec le partenaire.
+  // Les âges de moins de 3 ans sont des bébés (comptés à part par le message, gratuits) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème
+  // l'est. Une sortie sans ligne enfant (adulte seul) le dit autrement : cet enfant n'a aucun tarif propre.
+  const bareme = trouve.produit.enfant;
+  // Des enfants annoncés sans âge : le tarif enfant dépend de l'âge, on le dit plutôt que de se taire.
+  if (bareme && (d.enfants || 0) > (d.ages || []).filter((a) => a >= 3).length) {
+    for (const o of offres) (o.avertissement = o.avertissement || "ages_manquants"), (o.bareme = bareme);
+  } else if (bareme && (d.ages || []).some((a) => a >= 3 && a < bareme.min)) {
+    for (const o of offres) {
+      const sansEnfant = !o.enfantSite && !prestationEnfant(o.source, prestations);
+      o.avertissement = o.avertissement || (sansEnfant ? "age_enfant_sans_tarif" : "age_enfant");
+      o.bareme = bareme;
     }
   }
   return offres.sort((a, b) => b.score - a.score);
@@ -1186,7 +1242,7 @@ export function notesDemande(d) {
     d.siegeEnfant ? "Child seat needed" : "",
     d.siegeBebe ? "Baby seat needed" : "",
     d.bebes ? `Babies (0-2): ${d.bebes}` : "",
-    d.ages && d.ages.length ? `Child ages: ${d.ages.map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
+    (d.agesDeclares || d.ages) && (d.agesDeclares || d.ages).length ? `Child ages: ${(d.agesDeclares || d.ages).map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
     d.bagages ? `Bags: ${d.bagages}` : "",
     d.extras ? `Extras: ${d.extras}` : "",
     d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",

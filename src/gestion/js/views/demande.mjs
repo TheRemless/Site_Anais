@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, adresseEstHotel } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -79,6 +79,7 @@ function lignesSite(d) {
     d.retourDepart ? tr("Retour au point de départ : {programme}", { programme: d.retourDepart.programme || tr("programme à demander") }) : "",
     d.retourDepart && d.dureeTexte ? tr("Durée indiquée : {duree}", { duree: d.dureeTexte }) : "",
     d.vol ? tr("Vol ou bateau : {vol}", { vol: d.vol }) : "",
+    d.plusGrands ? tr("{n} enfant de plus de {max} ans compté au tarif adulte du partenaire. L'entrée du parc reste au tarif enfant.", { n: d.plusGrands, max: d.plusGrandsMax }) : "",
     d.ages && d.ages.length ? tr("Âges des enfants : {ages}", { ages: d.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") }) : "",
     d.prixSite ? tr("Prix indiqué sur le site : {prix}", { prix: d.prixSite }) : "",
     d.sorties && d.sorties.length ? tr("Liste de {n} sorties : seule la première est préparée, les autres sont dans les notes du dossier.", { n: d.sorties.length + 1 }) : "",
@@ -86,7 +87,7 @@ function lignesSite(d) {
   ].filter(Boolean);
 }
 
-// `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, avantCreer, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
+// `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, carnet, avantCreer, surCree } (`carnet` : { produit, option } d'une demande venue d'une page du carnet). Le message vient de la demande, pas du presse-papiers ni du brouillon
 // de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
 // la réponse au client se prépare après la création) ; `avantCreer()` (migration 72) relit la demande juste avant d'écrire et rend le motif
 // d'arrêt (traitée entre-temps, second dossier refusé) ou null pour créer ; une fois le dossier créé, `surCree({ dossier, services, total })`
@@ -206,7 +207,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (!sv.date) alertes.push(tr("Date à préciser."));
     else if (sv.date < aujourdhui()) alertes.push(tr("La date du service est passée."));
     if (sv.adultes + sv.enfants === 0) alertes.push(tr("Nombre de personnes à préciser."));
-    if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
+    if (offre && offre.avertissement === "ages_manquants") alertes.push(tr("Âges des enfants manquants : le tarif enfant dépend de l'âge. Demandez-les au client."));
+    else if (offre && offre.avertissement === "age_enfant_sans_tarif" && offre.bareme) alertes.push(tr("Cette sortie n'a pas de tarif enfant : un enfant de moins de {min} ans n'a aucun tarif propre. Vérifiez avec le partenaire.", { min: offre.bareme.min }));
+    else if (offre && offre.avertissement === "age_enfant" && offre.bareme) alertes.push(tr("Âge d'un enfant hors du barème de cette sortie ({min} à {max} ans) : vérifiez le tarif avec le partenaire.", { min: offre.bareme.min, max: offre.bareme.max }));
+    else if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
     if (sv.copie) alertes.push(tr("Même service, autre date."));
     // Plus de sièges que d'enfants et de bébés : à vérifier avant de créer (relecture de la PR 315).
     const saisie = sv.saisie || {};
@@ -635,7 +639,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function lire(valeur) {
     texte = valeur;
     erreur.textContent = "";
-    const lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
+    let lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
+    // Demande d'une page du carnet : la sortie et l'option viennent de la demande du site (product_id, option), le tarif se choisit sur elles.
+    // Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
+    if (lu && depuisSite && depuisSite.carnet) lu = ajusterAgesCarnet({ ...lu, carnet: depuisSite.carnet });
     if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
     d = null;
     vider();

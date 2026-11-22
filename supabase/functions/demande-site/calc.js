@@ -8,6 +8,38 @@ export const LIMITE_TOTALE = { nombre: 300, minutes: 60 }; // garde-fou par orga
 
 // Site de l'organisation qui reçoit les demandes : celui d'Anaïs par défaut, un autre client pose SITE_ORIGINES (adresses séparées par des virgules).
 export const ORIGINES_DEFAUT = ["https://secrettravelandtour.com", "https://www.secrettravelandtour.com"];
+// Pages privées du carnet de ZTP (zwaldtravelplanner.com/carnet/…) : les clients d'Anaïs y réservent une sortie directement. Même organisation
+// (Zwald), mais seulement l'entreprise « secret » : une demande venue de ces pages avec une autre marque (« taxi ») est refusée. Ces adresses sont dans
+// le code, pas dans SITE_ORIGINES : ce réglage appartient à l'autre client du logiciel, et elles ne comptent que pour l'organisation Zwald.
+export const ORGANISATION_ZWALD = "00000000-0000-0000-0000-00000000a000";
+export const ORIGINES_CARNET = ["https://zwaldtravelplanner.com", "https://www.zwaldtravelplanner.com"];
+export const MARQUES_CARNET = ["secret"];
+export const origineCarnet = (origine) => ORIGINES_CARNET.includes(origine);
+// Une page du carnet : sur l'origine d'un site de ZTP ET sous le chemin « /carnet/ » (le chemin seul ne suffit pas : une page /carnet/ du site Secret n'en est pas une).
+// Seule définition (la fonction, la notification) ; l'outil en garde une copie, CHEMIN_CARNET et ORIGINES_CARNET de src/gestion/js/carnet-produits.mjs,
+// que tests/gestion-carnet-produits.test.js tient égales.
+export const CHEMIN_CARNET = "/carnet/";
+export const estPageCarnet = (url) => {
+  try {
+    const u = new URL(String(url));
+    return ORIGINES_CARNET.includes(u.origin) && u.pathname.startsWith(CHEMIN_CARNET);
+  } catch {
+    return false;
+  }
+};
+// L'adresse d'une page du carnet sans son code d'accès : « /carnet/<guide>-<code>/ » devient « /carnet/<guide>/ » (ni requête, ni ancre, ni sous-page). Le code est le
+// dernier morceau du nom de la page ; un nom d'un seul morceau est le code lui-même. Une autre adresse reste telle quelle.
+export function sansCodeCarnet(url) {
+  if (!estPageCarnet(url)) return url;
+  const u = new URL(String(url));
+  const morceaux = u.pathname.slice(CHEMIN_CARNET.length).split("/")[0].split("-").filter(Boolean);
+  const guide = morceaux.slice(0, -1).join("-");
+  return `${u.origin}${CHEMIN_CARNET}${guide ? `${guide}/` : ""}`;
+}
+// Le même effacement dans un texte : toute adresse d'une page du carnet y perd son code.
+export const effacerCodes = (texteLibre) => (texteLibre === null ? null : texteLibre.replace(/https?:\/\/[^\s)]+/g, (u) => (estPageCarnet(u) ? sansCodeCarnet(u) : u)));
+// Les origines admises d'une organisation : les siennes (SITE_ORIGINES ou le site d'Anaïs), plus celles du carnet pour Zwald seulement.
+export const originesAdmises = (origines, organisation = ORGANISATION_ZWALD) => (organisation === ORGANISATION_ZWALD ? [...new Set([...origines, ...ORIGINES_CARNET])] : origines);
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
 const ORIGINE = /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(:\d{1,5})?$/;
 
@@ -90,7 +122,10 @@ const champ = (nom, f) => {
 
 // Lit le corps reçu (texte JSON) et renvoie la ligne à écrire, ou lève une erreur avec `code` et `champ`.
 // `piege: true` : le champ piège (« website ») est rempli, c'est un robot ; l'appelant répond « ok » sans rien écrire.
-export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT }) {
+// `origines` : les adresses du site de l'organisation (SITE_ORIGINES ou le site d'Anaïs), pas celles du carnet. `origine` : l'origine de la requête.
+// Une requête d'une page du carnet de ZTP n'écrit que dans l'entreprise « secret » (MARQUES_CARNET) et doit dire une page « /carnet/… » de sa propre origine ;
+// sa page_url n'est jamais comparée aux adresses du site Secret, ni celle d'une requête du site Secret à celles du carnet.
+export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, origine = null }) {
   if (typeof corps !== "string" || !corps) throw erreur("vide");
   if (new TextEncoder().encode(corps).length > TAILLE_MAX) throw erreur("trop_gros");
   let d;
@@ -102,7 +137,7 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT }) {
   if (!d || typeof d !== "object" || Array.isArray(d)) throw erreur("json");
   if (d.website) return { piege: true };
   const marque = typeof d.brand === "string" && MARQUE.test(d.brand) ? d.brand : null;
-  if (!marque) throw Object.assign(erreur("marque"), { champ: "brand" });
+  if (!marque || (origineCarnet(origine) && !MARQUES_CARNET.includes(marque))) throw Object.assign(erreur("marque"), { champ: "brand" });
   const produitId = champ("product_id", () => texte(d.product_id, 60));
   if (!produitId || !/^[a-z0-9-]{1,60}$/.test(produitId)) throw Object.assign(erreur("produit"), { champ: "product_id" });
   const ref = champ("ref", () => texte(d.ref, 24));
@@ -119,7 +154,11 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT }) {
   if (!/^[A-Z]{3}$/.test(devise)) throw Object.assign(erreur("format"), { champ: "currency" });
   // L'adresse de la page n'est gardée que si elle est sur le site (ou la machine de développement) : on n'enregistre pas un lien choisi par un tiers.
   const page = champ("page_url", () => texte(d.page_url, 300));
-  const pageUrl = page && pageDuSite(page, origines) ? page : null;
+  const carnet = origineCarnet(origine);
+  // La page est gardée si elle est sur l'origine de la requête (les adresses du site pour une requête sans origine, comme les essais) ; sinon elle est mise de côté.
+  const pageUrl = page && pageDuSite(page, carnet ? ORIGINES_CARNET : origines) && (!origine || memeOrigine(page, origine)) ? page : null;
+  // Depuis le carnet, la page est obligatoire : une page « /carnet/… » du site de la requête, sinon refus (400 sur page_url).
+  if (carnet && !(pageUrl && estPageCarnet(pageUrl))) throw Object.assign(erreur("page"), { champ: "page_url" });
   return {
     marque,
     ref,
@@ -136,12 +175,24 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT }) {
     ...telephoneE164(d.whatsapp, d.whatsapp_country),
     total_estime: total === null ? null : Math.round(total * 100) / 100,
     devise,
-    page_url: pageUrl,
-    message: champ("message", () => texte(d.message, 2000, { lignes: true })),
+    // L'adresse d'une page privée du carnet porte un code d'accès : il n'est écrit nulle part (ni page_url, ni message), jamais retrouvable dans la base.
+    page_url: pageUrl ? sansCodeCarnet(pageUrl) : null,
+    message: effacerCodes(champ("message", () => texte(d.message, 2000, { lignes: true }))),
   };
 }
 
 // Adresse d'une page du site : une origine admise suivie d'un chemin (ou de rien), sans espace.
+// Même site : même protocole, même port, même nom d'hôte à « www. » près (secrettravelandtour.com et www.secrettravelandtour.com sont un même site, comme avant).
+const sansWww = (hote) => hote.replace(/^www\./, "");
+const memeOrigine = (page, origine) => {
+  try {
+    const a = new URL(page);
+    const b = new URL(origine);
+    return a.protocol === b.protocol && a.port === b.port && sansWww(a.hostname) === sansWww(b.hostname);
+  } catch {
+    return false;
+  }
+};
 function pageDuSite(page, origines) {
   const m = /^(https?:\/\/[^/?#\s]+)([/?#][^\s]*)?$/.exec(page);
   return !!m && origineAdmise(m[1], origines);
@@ -171,6 +222,8 @@ export function notification(ligne, aujourdhui, entreprise = "") {
     const mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"][d.getUTCMonth()];
     morceaux.push(ecart === 0 ? "aujourd'hui" : ecart === 1 ? "demain" : `${JOURS[d.getUTCDay()]} ${d.getUTCDate()}${ecart < 0 || ecart > 30 ? ` ${mois}` : ""}`);
   }
+  // Une demande d'une page du carnet de ZTP le dit en tête du texte (la notification va à l'équipe seulement).
+  if (estPageCarnet(ligne.page_url)) morceaux.unshift("Carnet ZTP");
   return { titre: entreprise ? `Nouvelle demande ${entreprise}` : "Nouvelle demande du site", corps: morceaux.join(", "), tag: `demande-site-${ligne.marque}` };
 }
 
