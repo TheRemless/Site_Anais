@@ -2,39 +2,41 @@
 // Assistant ou depuis une conversation WhatsApp. Le calcul est fait ici, dans le navigateur, par devis-calc.mjs : aucun appel IA, rien
 // d'écrit en base, rien d'envoyé. Nani relit la réponse anglaise et la copie ; la copie est bloquée tant qu'un net ou un nom de partenaire
 // reste dans le texte (resteBloque, agent-calc.mjs).
-import { etat, reglages, nomPartenaire, peut } from "../etat.mjs";
+import { etat, reglages, nomPartenaire } from "../etat.mjs";
 import { h, toast } from "../ui.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { formatMontant } from "../calc.mjs";
 import { resteBloque } from "../agent-calc.mjs";
-import { devisPossible, calculerDevis, reponseDevis, netsDuDevis, resumeDevis, appliquerDevis, remarquesDuDevis } from "../devis-calc.mjs";
+import { devisPossible, calculerDevis, reponseDevis, netsDuDevis, resumeDevis, appliquerDevis, remarquesDuDevis, VEHICULES_MAX, PLACES_SUGGEREES, genreVehicule } from "../devis-calc.mjs";
 
 // Le dernier devis complet calculé sur chaque carte (id de la carte -> resumeDevis), gardé pour l'onglet (sessionStorage) : « Créer le
 // dossier » et « Vérifier avant » le reprennent (donneesAvecDevis, appelé par donneesCarte dans agent.mjs). Rien n'est écrit en base.
+// Le nombre de véhicules choisi d'un geste sur la carte (id -> { index du service: nombre }) est gardé de la même façon.
 const CLE_DEVIS = "gestion-devis-cartes";
-const devisCartes = new Map();
-function lireDevis(id) {
-  if (devisCartes.has(id)) return devisCartes.get(id);
+const CLE_CHOIX = "gestion-devis-vehicules";
+const memoire = { [CLE_DEVIS]: new Map(), [CLE_CHOIX]: new Map() };
+function lire(cle, id) {
+  if (memoire[cle].has(id)) return memoire[cle].get(id);
   try {
-    const tout = JSON.parse(sessionStorage.getItem(CLE_DEVIS) || "{}");
+    const tout = JSON.parse(sessionStorage.getItem(cle) || "{}");
     return tout && tout[id] ? tout[id] : null;
   } catch {
     return null;
   }
 }
-function noterDevis(id, resume) {
+function noter(cle, id, valeur) {
   if (!id) return;
-  devisCartes.set(id, resume);
+  memoire[cle].set(id, valeur);
   try {
-    const tout = JSON.parse(sessionStorage.getItem(CLE_DEVIS) || "{}") || {};
-    if (resume) tout[id] = resume;
+    const tout = JSON.parse(sessionStorage.getItem(cle) || "{}") || {};
+    if (valeur) tout[id] = valeur;
     else delete tout[id];
-    sessionStorage.setItem(CLE_DEVIS, JSON.stringify(tout));
+    sessionStorage.setItem(cle, JSON.stringify(tout));
   } catch {
-    // Stockage refusé : le devis reste en mémoire pour cette page.
+    // Stockage refusé : la valeur reste en mémoire pour cette page.
   }
 }
-export const donneesAvecDevis = (id, donnees) => appliquerDevis(donnees, id ? lireDevis(id) : null);
+export const donneesAvecDevis = (id, donnees) => appliquerDevis(donnees, id ? lire(CLE_DEVIS, id) : null);
 
 // Pourquoi un service n'a pas été calculé, dit à Nani (écran interne).
 const MOTIFS = {
@@ -44,37 +46,58 @@ const MOTIFS = {
   autre_entreprise: N_("Ce service est d'une autre entreprise : calculez-le depuis son Assistant."),
   sans_prix: N_("Le tarif n'a pas de prix de vente au catalogue : aucun calcul."),
   sur_place: N_("Ce service se paie sur place : aucun prix à annoncer."),
-  capacite_inconnue: N_("Capacité du véhicule à renseigner dans le catalogue."),
-  capacite_depassee: N_("Le groupe dépasse la capacité écrite au catalogue ({n} personnes) : prix à fixer par vous."),
 };
 const ORIGINES = { catalogue: N_("catalogue"), saisi: N_("donné par vous"), client_non_corrige: N_("prix du client, non corrigé par Nani") };
 
-// `donnees` : celles de la carte (entreprises corrigées comprises). Rien si les trois éléments ne sont pas connus.
-export function blocDevis(donnees, { id = null, client = (donnees && donnees.client) || {} } = {}) {
+// D'où vient le nombre de véhicules, dit discrètement sous le service.
+function origineVehicules(l) {
+  if (l.vehiculesOrigine === "choix") return tr("choisi par vous");
+  if (l.vehiculesOrigine === "conversation") return tr("écrit dans la conversation");
+  if (l.vehiculesOrigine === "suggestion") {
+    const genre = genreVehicule(l.tarif);
+    return l.bagages ? tr("suggestion : {n} personnes au plus par minivan, selon les bagages", { n: PLACES_SUGGEREES.minivan }) : tr("suggestion : {n} personnes au plus par {vehicule}", { n: PLACES_SUGGEREES[genre] || "", vehicule: genre === "taxi" ? tr("taxi ou voiture") : genre });
+  }
+  return tr("1 par défaut");
+}
+
+// `donnees` : celles de la carte (entreprises corrigées comprises). Rien si les trois éléments ne sont pas connus. `textes()` : les textes
+// de Nani dans le fil (textesDeNani), lus au clic.
+export function blocDevis(donnees, { id = null, textes = () => [], client = (donnees && donnees.client) || {} } = {}) {
   if (!devisPossible(donnees)) return null;
   const resultat = h("div", { class: "devis-resultat", "aria-live": "polite" });
   const bouton = h("button", { type: "button", class: "secondaire petit" }, tr("Calculer le devis"));
   const refaire = () => {
-    resultat.replaceChildren(...dessiner(donnees, client, refaire, id));
+    resultat.replaceChildren(...dessiner(donnees, client, refaire, id, textes()));
     bouton.textContent = tr("Recalculer le devis");
   };
   bouton.addEventListener("click", refaire);
   return h("div", { class: "devis-carte" }, bouton, resultat);
 }
 
-// Le tarif à compléter, ouvert dans sa fiche habituelle (Partenaires). Sans le droit d'écrire le catalogue : le dire, sans bouton.
-function lienTarif(tarif, apres) {
-  const x = (etat.db.prestations || []).find((p) => p.id === tarif.id);
-  if (!x || !peut("partenaires.ecrire")) return h("span", null, tr("Une administratrice peut le renseigner dans le tarif « {libelle} ».", { libelle: tarif.libelle }));
-  return h("button", { type: "button", class: "lien", onclick: async () => (await import("./partenaires.mjs")).ouvrirPrestation(x, apres) }, tr("Ouvrir le tarif « {libelle} »", { libelle: tarif.libelle }));
+// Moins un, plus un véhicule : d'un geste, le total et la réponse se refont, et le dossier reprendra ce nombre.
+function reglageVehicules(l, id, refaire) {
+  const changer = (n) => {
+    if (n < 1 || n > VEHICULES_MAX) return;
+    noter(CLE_CHOIX, id, { ...(lire(CLE_CHOIX, id) || {}), [l.index]: n });
+    refaire();
+  };
+  return h(
+    "span",
+    { class: "devis-vehicules" },
+    h("button", { type: "button", class: "secondaire petit", "aria-label": tr("Un véhicule de moins"), disabled: l.vehicules <= 1, onclick: () => changer(l.vehicules - 1) }, "−"),
+    " ",
+    pluriel(l.vehicules, N_("{n} véhicule"), N_("{n} véhicules")),
+    " ",
+    h("button", { type: "button", class: "secondaire petit", "aria-label": tr("Un véhicule de plus"), disabled: l.vehicules >= VEHICULES_MAX, onclick: () => changer(l.vehicules + 1) }, "+")
+  );
 }
 
-function dessiner(donnees, client, refaire, id) {
+function dessiner(donnees, client, refaire, id, textes) {
   const devise = reglages().devise || "THB";
   const contexte = { prestations: etat.db.prestations || [], trajets: etat.db.trajets || [], partenaires: etat.db.partenaires || [], nomPartenaire };
-  const devis = calculerDevis(donnees, contexte, { activeId: etat.entiteId });
+  const devis = calculerDevis(donnees, contexte, { activeId: etat.entiteId, textes, choix: lire(CLE_CHOIX, id) || {} });
   // Complet : le dossier reprendra ce devis. Incomplet : plus aucun devis gardé pour cette carte.
-  noterDevis(id, resumeDevis(devis));
+  noter(CLE_DEVIS, id, resumeDevis(devis));
   // Les partenaires de toutes les entreprises chargées (espace unifié Secret et Taxi), pas seulement de l'entreprise active.
   const noms = ((etat.brut && etat.brut.partenaires) || etat.db.partenaires || []).map((p) => p.nom).filter(Boolean);
   const tousNets = [...(etat.db.prestations_nets || []).flatMap((n) => [n.net, n.net_enfant]), ...(etat.db.trajets_nets || []).flatMap((n) => [n.net_adulte, n.net_enfant])].filter((v) => v !== null && v !== undefined && Number(v) > 0).map(Number);
@@ -90,7 +113,13 @@ function dessiner(donnees, client, refaire, id) {
           h(
             "li",
             null,
-            h("span", null, h("strong", null, l.libelle), h("small", null, [l.vehicules ? pluriel(l.vehicules, N_("{n} véhicule"), N_("{n} véhicules")) : "", l.vehicules > 1 && l.unitaire !== null ? `${l.vehicules} × ${formatMontant(l.unitaire, devise)}` : "", tr(ORIGINES[l.origine] || ORIGINES.catalogue)].filter(Boolean).join(", "))),
+            h(
+              "span",
+              null,
+              h("strong", null, l.libelle),
+              l.vehicules ? h("span", { class: "devis-ligne-vehicules" }, reglageVehicules(l, id, refaire), h("small", null, ` ${origineVehicules(l)}`)) : null,
+              h("small", null, [l.vehicules > 1 && l.unitaire !== null ? `${l.vehicules} × ${formatMontant(l.unitaire, devise)}` : "", tr(ORIGINES[l.origine] || ORIGINES.catalogue)].filter(Boolean).join(", "))
+            ),
             h("span", { class: "agent-prix" }, formatMontant(l.total, devise))
           )
         )
@@ -103,9 +132,7 @@ function dessiner(donnees, client, refaire, id) {
         { class: "erreur-form", role: "alert" },
         h("strong", null, m.libelle || tr("Service")),
         " : ",
-        tr(MOTIFS[m.motif] || MOTIFS.incomplet, { n: m.capacite || "" }),
-        // Le lien vers le tarif à compléter (fiche habituelle du catalogue) ; le devis se refait quand la fiche est enregistrée.
-        m.tarif ? [" ", lienTarif(m.tarif, () => refaire())] : null
+        tr(MOTIFS[m.motif] || MOTIFS.incomplet)
       )
     );
   out.push(...remarques);

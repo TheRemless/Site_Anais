@@ -27,6 +27,7 @@ import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsA
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
+import { textesDeNani } from "../devis-calc.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -826,7 +827,7 @@ export async function vueAgent(idOuvert = "") {
       // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
-      if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id }));
+      if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages) }));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
       corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol })].filter(Boolean).join(", "))), prixTexte(s))));

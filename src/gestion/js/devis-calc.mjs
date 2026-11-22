@@ -9,7 +9,7 @@
 //     (origine_prix « saisi » ou « client_non_corrige ») et reprise telle quelle par propositionDepuisCarte et auPrixCarte ;
 //   - un service sans ligne au catalogue (ni prix accepté), une capacité absente ou dépassée, un prix vide : pas de calcul, un motif clair,
 //     et aucune réponse préparée tant qu'un service manque (un devis partiel oublierait un service).
-import { propositionDepuisCarte, resteBloque } from "./agent-calc.mjs";
+import { propositionDepuisCarte, resteBloque, echangeWhatsApp } from "./agent-calc.mjs";
 import { offreDepuisBase, auPrixCarte } from "./assistant-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte } from "./operations-calc.mjs";
@@ -36,15 +36,79 @@ export function devisPossible(donnees = {}) {
   return services.length > 0 && services.every((s) => serviceConnu(s) && nbPersonnes(personnesDuService(s, donnees)) > 0 && dateValide(s.date));
 }
 
-// ---- Capacité du catalogue -------------------------------------------------------------------------------------------------------
-// Tarifs vendus au véhicule ou au bateau : le nombre de véhicules suit la capacité.
+// ---- Nombre de véhicules (Jérémy, 22.11.2026) -------------------------------------------------------------------------------------
+// Pas de capacité au catalogue : c'est Nani qui dit au client s'il faut plusieurs véhicules. Pour un tarif au véhicule ou au bateau :
+//   1. le nombre choisi par Nani sur la carte (choix, d'un geste) ;
+//   2. sinon le nombre écrit par Nani dans la conversation (« 2 minivans », « two taxis ») ;
+//   3. sinon une suggestion d'après le type de véhicule du tarif : taxi ou voiture, 4 personnes au plus ; minivan, 8 au plus (selon les
+//      bagages, dit sur la carte) ;
+//   4. sinon 1 véhicule.
+// Aucune remarque ni texte « Capacité » du tarif n'est lu.
 export const PAR_VEHICULE = ["veh", "boat"];
-// La capacité vient seulement du champ chiffré « Personnes au plus par véhicule » du tarif (prestations.places_vehicule, migration 90).
-// Jamais du texte « Capacité » (details.capacite) ni d'une remarque : chez Taxi, la remarque dit « Price for 1 to 2 guests… ferry crossing
-// included up to 4 people », une tranche de prix et un billet de ferry, pas les places du minivan. null : à renseigner, rien ne se devine.
-export function capaciteDe(p) {
-  const n = p ? Number(p.places_vehicule) : NaN;
-  return Number.isInteger(n) && n >= 1 && n <= 60 ? n : null;
+export const PLACES_SUGGEREES = { taxi: 4, minivan: 8 };
+export const VEHICULES_MAX = 20;
+
+// Le genre du véhicule d'un tarif, pour relier un nombre écrit à ce tarif et choisir la suggestion.
+export function genreVehicule(p) {
+  const t = `${(p && p.groupe) || ""} ${(p && p.libelle_en) || ""} ${(p && p.libelle) || ""}`.toLowerCase();
+  if (/minivan|mini van|minibus|\bvan\b/.test(t)) return "minivan";
+  if (/speed ?boat|longtail|\bboat\b|bateau/.test(t) || (p && p.unite === "boat")) return "bateau";
+  if (/\btaxi\b|\bcar\b|sedan|berline|voiture|\bsuv\b/.test(t)) return "taxi";
+  return "";
+}
+
+// Les nombres de véhicules écrits dans des textes de Nani, du plus ancien au plus récent : le dernier de chaque genre gagne.
+// « 2 minivans », « two taxis », « deux voitures », « 3 vehicles » (tous genres). « 1 car seat » n'est pas un véhicule.
+const NOMBRES = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, sept: 7, huit: 8, neuf: 9, dix: 10 };
+const MOTS_VEHICULES = [
+  ["minivan", "minivans?|mini ?vans?|minibus(?:es)?|vans?"],
+  ["taxi", "taxis?|cars?|voitures?"],
+  ["bateau", "speed ?boats?|longtails?|boats?|bateaux?"],
+  ["tous", "vehicles?|véhicules?|vehicules?"],
+];
+const RE_VEHICULES = new RegExp(`(?<![\\p{L}\\d])(\\d{1,2}|${Object.keys(NOMBRES).join("|")})\\s+(?:(?:private|big|large|small|grands?|petits?|privés?)\\s+)?(${MOTS_VEHICULES.map(([, r]) => r).join("|")})(?![\\p{L}])(?!\\s*seats?)`, "giu");
+export function vehiculesEcrits(textes = []) {
+  const out = {};
+  for (const t of textes || [])
+    for (const m of String(t || "").matchAll(RE_VEHICULES)) {
+      const n = /^\d+$/.test(m[1]) ? Number(m[1]) : NOMBRES[m[1].toLowerCase()];
+      if (!n || n > VEHICULES_MAX) continue;
+      const mot = m[2].toLowerCase();
+      const genre = (MOTS_VEHICULES.find(([, r]) => new RegExp(`^(?:${r})$`, "iu").test(mot)) || [])[0];
+      if (genre) out[genre] = n;
+    }
+  return out;
+}
+
+// Les textes de Nani dans le fil de l'Assistant : ce qu'elle tape, et ses lignes d'un échange WhatsApp joint (jamais celles du client ou
+// de l'apporteur, echangeWhatsApp).
+export function textesDeNani(messages = []) {
+  const out = [];
+  for (const m of messages || []) {
+    if (!m || m.role !== "user" || !Array.isArray(m.contenu)) continue;
+    for (const b of m.contenu) {
+      if (!b || b.type !== "text" || typeof b.text !== "string") continue;
+      const echange = echangeWhatsApp(b.text);
+      if (!echange) out.push(b.text);
+      else {
+        if (echange.question) out.push(echange.question);
+        for (const x of echange.messages) if (!x.deClient) out.push(x.texte);
+      }
+    }
+  }
+  return out;
+}
+
+// Le nombre de véhicules d'un tarif et d'où il vient : { n, origine: "choix" | "conversation" | "suggestion" | "defaut", bagages }.
+export function nombreVehicules(p, places, { choix = null, ecrits = {} } = {}) {
+  const genre = genreVehicule(p);
+  const c = Number(choix);
+  if (Number.isInteger(c) && c >= 1 && c <= VEHICULES_MAX) return { n: c, origine: "choix", bagages: false };
+  const ecrit = (genre && ecrits[genre]) || ecrits.tous;
+  if (ecrit) return { n: ecrit, origine: "conversation", bagages: false };
+  const parVehicule = PLACES_SUGGEREES[genre];
+  if (parVehicule && places > 0) return { n: Math.max(1, Math.ceil(places / parVehicule)), origine: "suggestion", bagages: genre === "minivan" };
+  return { n: 1, origine: "defaut", bagages: false };
 }
 
 // Le mot du véhicule pour le client, d'après le groupe et le libellé du tarif.
@@ -77,8 +141,11 @@ function libelleDuService(base, s) {
 // Rend { lignes, manquants, total, complet } :
 //   ligne : { index, libelle, date, personnes, total, unitaire, vehicules, vehicule, origine ("catalogue" | "saisi" | "client_non_corrige"),
 //             avertissement, offre: { genre, id } | null, tarif (la ligne du catalogue, pour le contrôle des nets) } ;
-//   manquant : { index, libelle, motif, capacite?, tarif? (id et libellé du tarif à compléter) } ; total : la somme des lignes, null tant qu'un service manque.
-export function calculerDevis(donnees = {}, contexte = {}, { activeId = null } = {}) {
+//             vehiculesOrigine, bagages (suggestion pour un minivan : selon les bagages) ;
+//   manquant : { index, libelle, motif } ; total : la somme des lignes, null tant qu'un service manque.
+// `textes` : les textes de Nani (textesDeNani) ; `choix` : { index du service: nombre de véhicules choisi sur la carte }.
+export function calculerDevis(donnees = {}, contexte = {}, { activeId = null, textes = [], choix = {} } = {}) {
+  const ecrits = vehiculesEcrits(textes);
   const services = (donnees && donnees.services) || [];
   // Les prix acceptés dans la conversation (PR 306 et 307) : prix_carte d'un service du catalogue, prix_libre d'un service hors catalogue.
   const prop = propositionDepuisCarte(donnees);
@@ -104,23 +171,18 @@ export function calculerDevis(donnees = {}, contexte = {}, { activeId = null } =
     if (!base) return accepte(sp.prix_carte) ? ligne(null, Number(sp.prix_carte), { origine: sp.prix_origine }) : manque("introuvable");
     const p = base.genre === "prestation" ? base.source : null;
     const parVehicule = !!p && PAR_VEHICULE.includes(p.unite);
-    const capacite = p ? capaciteDe(p) : null;
-    // Les bébés de la carte prennent une place (siège) dans un véhicule : comptés pour la capacité, jamais pour le prix.
-    const vehicules = parVehicule && capacite ? Math.ceil((nb + entier(donnees.bebes)) / capacite) : null;
+    // Les bébés de la carte prennent une place (siège) : comptés pour la suggestion, jamais pour le prix.
+    const nv = parVehicule ? nombreVehicules(p, nb + entier(donnees.bebes), { choix: choix && choix[index], ecrits }) : null;
+    const vehicules = nv ? nv.n : null;
     const vehicule = vehicules ? motVehicule(p, vehicules) : "";
+    const infoVehicules = nv ? { vehicules, vehicule, vehiculesOrigine: nv.origine, bagages: nv.bagages } : {};
     // Le prix accepté passe avant le catalogue (auPrixCarte, PR 307) : il vaut pour tout le service, quel que soit le nombre de véhicules.
     if (accepte(sp.prix_carte)) {
       const o = auPrixCarte(base, sp.prix_carte, { pax: personnes, origine: sp.prix_origine });
-      return ligne(o, o.total, { origine: sp.prix_origine, vehicules, vehicule, avertissement: "" });
+      return ligne(o, o.total, { origine: sp.prix_origine, ...infoVehicules, avertissement: "" });
     }
     if (base.total === null || base.total === undefined) return manque(p && p.sur_place ? "sur_place" : "sans_prix");
-    if (parVehicule) {
-      // Sans capacité, la quantité de véhicules n'est pas connue : rien à multiplier. Le tarif est rendu pour que Nani le complète.
-      if (!capacite) return manque("capacite_inconnue", { tarif: { id: p.id, libelle: p.libelle } });
-      return ligne(base, Number(base.total) * vehicules, { unitaire: Number(base.total), vehicules, vehicule });
-    }
-    // Un tarif de groupe ou à la personne au-delà de la capacité écrite : la sortie ne prend pas tout le monde, Nani tranche.
-    if (capacite && nb > capacite) return manque("capacite_depassee", { capacite });
+    if (parVehicule) return ligne(base, Number(base.total) * vehicules, { unitaire: Number(base.total), ...infoVehicules });
     return ligne(base, Number(base.total));
   });
   const complet = !manquants.length && lignes.length > 0;
