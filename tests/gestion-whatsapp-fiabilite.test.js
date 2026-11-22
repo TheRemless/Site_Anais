@@ -194,7 +194,9 @@ test("Assistant I7 : une coupure du flux (iPhone en arrière-plan) rend « coupu
   const store = lire("src/gestion/js/store-supabase.mjs");
   assert.match(store, /try \{\s+lu = await lecteur\.read\(\);\s+\} catch \{\s+return fini \? \{ ok: true \} : \{ erreur: "coupure" \};/, "seule la lecture est protégée");
   const vue = lire("src/gestion/js/views/agent.mjs");
-  assert.match(vue, /\}\)\.catch\(\(\) => \(\{ erreur: "coupure" \}\)\);\s+etape\.remove\(\);/, "jamais « L'assistant réfléchit » sans fin");
+  // Les deux appels (le second : repli vers une nouvelle discussion, PR 318) rendent « coupure » sur une exception, puis l'étape s'efface.
+  assert.match(vue, /let r = await etat\.store\.agentEnvoyer\(corps, surEvenement\)\.catch\(\(\) => \(\{ erreur: "coupure" \}\)\);/, "jamais « L'assistant réfléchit » sans fin");
+  assert.match(vue, /r = await etat\.store\.agentEnvoyer\(sansLiee, surEvenement\)\.catch\(\(\) => \(\{ erreur: "coupure" \}\)\);\n\s+\}\n\s+etape\.remove\(\);/, "jamais « L'assistant réfléchit » sans fin");
   assert.match(vue, /if \(\(!conv \|\| r\.erreur !== "coupure"\) && !champ\.value\.trim\(\)\) champ\.value = texte;/, "texte remis après une erreur propre, même dans une conversation existante");
 });
 
