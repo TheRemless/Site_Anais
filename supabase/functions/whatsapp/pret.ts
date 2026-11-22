@@ -9,14 +9,47 @@
 // Migration 110 : les repères « partenaire » sans IA (type-contact.js) sont refaits au même moment (colonne type_signaux, des codes et des
 // nombres, jamais un texte), et le type « partenaire » est déduit si les décisions du tri le disent déjà (reponse.ts, poserTypeDeduit).
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { MESSAGES_LUS, etatPret, pretChange } from "./pret.js";
-import { faitsAvancee } from "./etapes.js";
+import { MESSAGES_LUS, etatPret, pretChange, memeNumero } from "./pret.js";
+import { faitsAvancee, entrepriseDuMessage } from "./etapes.js";
 import { signauxPartenaire, typeADeduire } from "./type-contact.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 export const RATTRAPAGE_MAX = 20;
-const COLONNES = "id, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";
+const COLONNES = "id, organisation_id, telephone, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";
 const COLONNES_TYPE = "type_source, type_avis, type_signaux";
+
+// Les services des dossiers du client, chez Secret et Taxi seulement (ZTP jamais) : le dossier relié, ceux de la fiche reliée et ceux des
+// fiches du même numéro (comme l'écran, whatsapp-pret-calc.mjs, fichesDuClient), non annulés, chacun avec son entreprise (« secret », « taxi »).
+// Un service créé depuis le prix donné retire « prêt à réserver » (relecture du 22.11.2026 : la carte de l'Assistant a ajouté la course à un
+// dossier plus ancien que le prix, la confirmation envoyée ensuite refaisait « prêt »). Une lecture en échec rend [] : la décision reste
+// celle des messages, comme avant.
+// deno-lint-ignore no-explicit-any
+export async function reservationsDuClient(db: SupabaseClient, conv: any) {
+  try {
+    if (!conv || !conv.organisation_id) return [];
+    const { data: ents, error: errE } = await db.from("entites").select("id, slug").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+    if (errE || !ents || !ents.length) return [];
+    const ids = ents.map((e: { id: string }) => e.id);
+    const slugDe = new Map(ents.map((e: { id: string; slug: string }) => [e.id, e.slug]));
+    const fiches = new Set<string>(conv.client_id ? [conv.client_id] : []);
+    // Les fiches du même numéro : les deux derniers chiffres filtrent en base (un séparateur ne les coupe pas), memeNumero tranche.
+    const fin = String(conv.telephone || "").replace(/\D/g, "").slice(-2);
+    if (fin.length === 2) {
+      const { data: cl, error: errC } = await db.from("clients").select("id, telephone").in("entite_id", ids).ilike("telephone", `%${fin}`).limit(1000);
+      if (!errC) for (const c of cl || []) if (memeNumero(c.telephone, conv.telephone)) fiches.add(c.id);
+    }
+    const filtres = [conv.dossier_id ? `id.eq.${conv.dossier_id}` : "", ...[...fiches].slice(0, 20).map((id) => `client_id.eq.${id}`)].filter(Boolean).join(",");
+    if (!filtres) return [];
+    const { data: dossiers, error: errD } = await db.from("dossiers").select("id").in("entite_id", ids).eq("annule", false).or(filtres).limit(50);
+    if (errD || !dossiers || !dossiers.length) return [];
+    const { data: resas, error: errR } = await db.from("reservations").select("created_at, statut, entite_id").in("dossier_id", dossiers.map((d: { id: string }) => d.id)).in("entite_id", ids).order("created_at", { ascending: false }).limit(50);
+    if (errR) return [];
+    return (resas || []).map((r: { created_at: string; statut: string; entite_id: string }) => ({ created_at: r.created_at, statut: r.statut, entreprise: slugDe.get(r.entite_id) || null }));
+  } catch (err) {
+    console.error("whatsapp : services du client illisibles", String((err as Error)?.message || err).slice(0, 200));
+    return [];
+  }
+}
 
 export async function pretApresMessage(db: SupabaseClient, conversationId: string) {
   try {
@@ -43,11 +76,12 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
     const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, supprime_le, statut_envoi").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
     if (errM) return console.error("whatsapp : prêt à réserver, messages illisibles", errM.message);
     const messages = [...(msgs || [])].reverse();
+    const reservations = await reservationsDuClient(db, conv);
     const patch: Record<string, unknown> = {};
-    const decision = etatPret(conv, messages);
+    const decision = etatPret(conv, messages, undefined, { reservations, entrepriseDu: (v: unknown[], i: number) => entrepriseDuMessage(v, i, conv) });
     if (pretChange(conv.pret_reserver, decision)) patch.pret_reserver = decision;
     if (avecAvancee) {
-      const faits = faitsAvancee(conv, messages);
+      const faits = faitsAvancee(conv, messages, undefined, { reservations });
       if (pretChange(conv.avancee, faits)) patch.avancee = faits;
     }
     let signaux = null;

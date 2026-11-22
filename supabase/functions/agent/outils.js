@@ -32,6 +32,7 @@ import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
 import { apporteurDeCarte } from "./apporteur.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
+import { contientLien, lieuSansLien, sansLiens, sessionMaps } from "./maps.js";
 import { NOM_OUTIL_VOUCHERS, OUTIL_VOUCHERS, criteresVouchers, trouverVouchers as trouverVouchersLus, vouchersPermis } from "./vouchers.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
@@ -218,9 +219,9 @@ const SERVICE = obj({
   ref: S("La référence du catalogue (P-… ou T-…) rendue par un outil, ou \"\" pour un service hors catalogue."),
   date: S("AAAA-MM-JJ ou \"\"."),
   heure_pickup: S("HH:MM, de préférence celle de planifier_course, ou \"\"."),
-  lieu_pickup: S("Hôtel ou point de prise en charge, ou \"\"."),
-  de: S("Lieu de départ d'un transfert, ou \"\"."),
-  vers: S("Lieu d'arrivée d'un transfert, ou \"\"."),
+  lieu_pickup: S("Hôtel ou point de prise en charge (nom de l'établissement), ou \"\". Jamais un lien."),
+  de: S("Lieu de départ d'un transfert, ou \"\". Jamais un lien."),
+  vers: S("Lieu d'arrivée d'un transfert : le nom de l'établissement de dépose (celui d'un lien Google Maps lu, nom thaï suivi de sa transcription latine : « บ้านตัวอย่าง / Baan Tua Yang »), sinon la zone, ou \"\". Jamais un lien."),
   adultes: I("0 si inconnu."),
   enfants: I("0 si inconnu."),
   // Les sièges par type et le « aucun siège » (Jérémy, 22.11.2026) : dès qu'il y a un enfant ou un bébé, le choix est fait avant la carte.
@@ -231,8 +232,8 @@ const SERVICE = obj({
   prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes."),
   vol: S("Numéro du vol d'un transfert qui part d'un aéroport ou y va (« FD3217 »), seulement s'il est écrit dans la conversation, le WhatsApp lu ou une pièce jointe, sinon \"\". Jamais l'heure du vol, jamais un numéro deviné."),
   // Deux remarques (Jérémy, 22.11.2026) : le voucher sert au client ET au chauffeur ; la note interne ne sort jamais.
-  remarque_voucher: S("EN ANGLAIS, ce que le client et le chauffeur doivent lire sur le voucher (« Ferry included. Cash payment to the driver. Expected arrival 13:26 (latest 13:36). », point de rendez-vous, attente), ou \"\". Jamais un net, une commission, une marge ni un nom de partenaire. Ni les bagages, ni les sièges, ni le numéro de vol : ils ont leur champ."),
-  note_interne: S("Seulement ce qui reste interne à l'équipe (net, partenaire, commission, rappel pour Nani), ou \"\". Jamais imprimé."),
+  remarque_voucher: S("\"\" par défaut. EN ANGLAIS, une seule information pratique pour le client ou le chauffeur qu'aucun champ du voucher ne porte (« Meet at the pier exit, the driver holds a name sign. », « One surfboard. »). Jamais ce que le voucher imprime déjà : véhicule, paiement (en espèces au chauffeur), lieux, heure, personnes, sièges, bagages, vol, prix ou ce qu'il comprend (ferry). Jamais un lien, un net, une commission, une marge ni un nom de partenaire."),
+  note_interne: S("\"\" par défaut. Une ligne au plus, seulement ce qui reste interne et sert encore après la réservation (net, partenaire, commission, point à vérifier). Jamais l'histoire de la conversation ni un prix déjà sur la carte. Jamais imprimé."),
 });
 // Espace unifié Secret et Taxi : le service dit son entreprise quand il est hors catalogue (celle de la ligne compte sinon).
 const SERVICE_UNIFIE = obj({
@@ -335,11 +336,11 @@ export const OUTILS = [
   },
   {
     name: "proposer_modification",
-    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, ses sièges enfant (champ « sieges », un nombre), ses sièges bébé (champ « sieges_bebe », un nombre), « aucun siège » (champ « sans_siege », valeur « oui »), ses bagages (champ « bagages », un nombre), son numéro de vol (champ « vol », écrit dans la conversation), une remarque imprimée sur le voucher, en anglais (champ « remarque_voucher »), une note interne (champ « note_interne »), ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
+    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, sa dépose (champ « drop_off », le nom de l'établissement, jamais un lien), ses sièges enfant (champ « sieges », un nombre), ses sièges bébé (champ « sieges_bebe », un nombre), « aucun siège » (champ « sans_siege », valeur « oui »), ses bagages (champ « bagages », un nombre), son numéro de vol (champ « vol », écrit dans la conversation), une remarque imprimée sur le voucher, en anglais (champ « remarque_voucher »), une note interne (champ « note_interne »), ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
     input_schema: obj({
       titre: S("Titre court de la carte."),
       reservation: S("Référence R-… rendue par lire_dossier."),
-      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "sieges", "sieges_bebe", "sans_siege", "bagages", "vol", "remarque_voucher", "note_interne", "annulation"] },
+      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "sieges", "sieges_bebe", "sans_siege", "bagages", "vol", "drop_off", "remarque_voucher", "note_interne", "annulation"] },
       valeur: S("La nouvelle valeur (AAAA-MM-JJ, HH:MM, texte ou nombre)."),
       raison: S("Pourquoi, en une phrase, pour la personne."),
     }),
@@ -426,10 +427,31 @@ export const OUTILS_WHATSAPP_LECTURE = [
 // l'entreprise active vrai (session de la personne) ; le slug de l'entreprise active est contrôlé ici aussi.
 export const peutLireWhatsApp = (ctx) =>
   !!(ctx && ctx.whatsapp && ctx.whatsapp.permis === true && ENTREPRISES_WHATSAPP.includes(marqueWhatsApp(ctx.whatsapp.slug)) && ["candidats", "conversation", "aFaire"].every((f) => typeof ctx.whatsapp[f] === "function"));
-async function executerWhatsApp(nom, e, ctx) {
+// Les liens Google Maps des messages lus (relecture du 22.11.2026) : remplacés par l'établissement qu'ils désignent (maps.js), le
+// lien n'est jamais rendu. `ctx.lieuxMaps` : la résolution de la fonction (réseau, hôtes de Google seulement) ; sans elle, rien ne change.
+// Les lieux lus vont dans memo.lieuxMaps : la garde de la carte remplace un lien recopié par leur nom.
+export async function avecLieuxMaps(resultat, ctx = {}, memo = {}) {
+  if (!resultat || !Array.isArray(resultat.messages) || typeof ctx.lieuxMaps !== "function") return resultat;
+  const messages = [];
+  for (const m of resultat.messages) {
+    if (!m || typeof m.texte !== "string" || !contientLien(m.texte)) {
+      messages.push(m);
+      continue;
+    }
+    const { texte: t, lieux } = await ctx.lieuxMaps(m.texte);
+    if (!Array.isArray(memo.lieuxMaps)) memo.lieuxMaps = [];
+    for (const l of lieux || []) if (memo.lieuxMaps.length < 20) memo.lieuxMaps.push(l);
+    messages.push({ ...m, texte: t });
+  }
+  return { ...resultat, messages };
+}
+// Une session par échange (maps.js, sessionMaps) : le message et chaque lire_conversation partagent le plafond de 6 liens, l'échéance de
+// 8 secondes et le cache.
+export const lieuxMapsPourCtx = (options = {}) => sessionMaps(options);
+async function executerWhatsApp(nom, e, ctx, memo = {}) {
   const w = ctx.whatsapp;
   if (nom === "chercher_conversations") return { resultat: chercherConversations(e, await w.candidats(e)) };
-  if (nom === "lire_conversation") return { resultat: lireConversation(e, await w.conversation(e.conversation, messagesAPrendre(e)), { qui: w.qui || "Nani" }) };
+  if (nom === "lire_conversation") return { resultat: await avecLieuxMaps(lireConversation(e, await w.conversation(e.conversation, messagesAPrendre(e)), { qui: w.qui || "Nani" }), ctx, memo) };
   return { resultat: aFaireWhatsApp(await w.aFaire(), { maintenant: ctx.maintenant ? ctx.maintenant() : Date.now(), ...(typeof w.typeContact === "function" ? { typeContact: w.typeContact } : {}) }) };
 }
 // ---- Vouchers (21.11.2026) -------------------------------------------------------------------------------------------------------
@@ -1511,9 +1533,8 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     libelle: p ? texte(p.libelle, 160) : t ? `${texte(t.de, 80)} → ${texte(t.vers, 80)}${t.depart ? ` ${texte(t.depart, 5)}` : ""}` : texte(s.texte, 160),
     date,
     heure_pickup: heureValide(s.heure_pickup) ? s.heure_pickup : "",
-    lieu_pickup: texte(s.lieu_pickup, 120),
-    de: texte(s.de, 120),
-    vers: texte(s.vers, 120),
+    // Un lieu ne porte jamais de lien (22.11.2026) : un lien Maps lu devient le nom de l'établissement, un autre lien est retiré.
+    ...lieuxDuService(s, memo, avert),
     adultes,
     enfants,
     // Les sièges par type (22.11.2026, sieges-calc.mjs) : enfant (details.sieges), bébé (details.sieges_bebe), ou « aucun siège »
@@ -1587,15 +1608,71 @@ export function partenairesCitesParMot(t, noms = []) {
   const plat = ` ${sansAccents(t).replace(/[^a-z0-9\u0e00-\u0e7f]+/g, " ")} `;
   return noms.filter((n) => sansAccents(n).replace(/[^a-z0-9\u0e00-\u0e7f]+/g, " ").split(" ").some((w) => w.length >= 3 && !MOTS_COMMUNS_NOM.has(w) && !/^\d+$/.test(w) && plat.includes(` ${w} `)));
 }
+// Les lieux d'un service de carte, sans lien : { lieu_pickup, de, vers }. Un lien Maps résolu dans cet échange (memo.lieuxMaps) devient le nom
+// de l'établissement ; un lien non résolu est retiré et la carte avertit (« lieu_a_verifier ») : Nani vérifie la dépose avant de valider.
+// Un lien Maps lu dans la conversation mais pas résolu avertit aussi un transfert (de ou vers rempli) : son lieu est peut-être vague.
+export function lieuxDuService(s = {}, memo = {}, avert = []) {
+  const lieux = Array.isArray(memo.lieuxMaps) ? memo.lieuxMaps : [];
+  const out = {};
+  let douteux = false;
+  for (const [cle, n] of [["lieu_pickup", 120], ["de", 120], ["vers", 120]]) {
+    const r = lieuSansLien(texte(s[cle], 300), lieux);
+    if (r.lien && !lieux.some((l) => l && l.nom && String(s[cle] || "").includes(l.url))) douteux = true;
+    out[cle] = texte(r.valeur, n);
+  }
+  if ((out.de || out.vers) && lieux.some((l) => l && !l.nom)) douteux = true;
+  if (douteux && !avert.includes("lieu_a_verifier")) avert.push("lieu_a_verifier");
+  return out;
+}
+
+// La remarque du voucher (Jérémy et Anaïs, 22.11.2026) : vide par défaut, une information pratique qu'AUCUN champ du voucher ne porte. Le
+// voucher imprime déjà le nom, la date, l'heure, le pickup, la dépose, les personnes et leurs sièges, les bagages, le prix, et en pied « payé en
+// espèces au chauffeur » et « le chauffeur vous attend au point de rendez-vous » (voucher-taxi.mjs, taxi-calc.mjs champsBooking) ; le type de
+// véhicule est dans le libellé. Une phrase qui le redit est retirée, comme tout lien. Ce que le prix comprend (ferry, péages) a été dit au
+// client dans la conversation : retiré aussi (la remarque « Ferry tickets included » vidée par Anaïs).
+const PHRASE_DOUBLON = [
+  // Le paiement : « Cash payment to the driver », « Payment in cash on arrival », « Pay the driver directly ».
+  /\b(?:cash|pay(?:ment|able)?|paid)\b[^.]*\b(?:driver|cash|arrival|on board|directly|on site|on the day)\b/i,
+  /\bpay(?:ment)?\b.*\b(?:wise|transfer)\b/i,
+  // Le véhicule : « Private minivan. », « Private taxi for 4 ».
+  /^\s*(?:a |one |1 )?(?:private|shared|vip)?\s*(?:minivans?|vans?|taxis?|cars?|sedans?|suvs?|minibus)\b(?:\s+(?:for|with)\s+\d+\s*(?:pax|people|persons|guests|passengers|adults)?)?\s*$/i,
+  // Les lieux, l'heure, les personnes : « Drop-off at … », « Pick-up from … at 10:00 », « 4 passengers ».
+  /^\s*(?:drop[- ]?off|pick[- ]?up|pickup|departure|destination)\b/i,
+  /^\s*\d+\s*(?:pax|people|persons|guests|passengers|adults)\b/i,
+  // Ce que le prix comprend.
+  /\b(?:ferry|boat|tickets?|tolls?|fees?|fuel|petrol)\b[^.]*\b(?:included|include|includes|inclusive)\b/i,
+  /\b(?:included|including|includes|incl\.?)\b[^.]*\b(?:ferry|boat|tickets?|tolls?|fees?|fuel|petrol)\b/i,
+  /\ball (?:fees|costs) included\b/i,
+];
+const SAUF = /\b(?:not|excluded|exclude|excludes|extra|without)\b/i;
+export function remarqueSansDoublons(t) {
+  const phrases = sansLiens(t).split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  const gardees = phrases.filter((p) => {
+    const nu = p.replace(/[.!?:;,\s]+$/, "").trim();
+    // Une exclusion ou un supplément est une information que le voucher ne porte pas : « Ferry tickets not included », « Extra fee for … ».
+    if (SAUF.test(nu)) return nu.length > 1;
+    return nu.length > 1 && !PHRASE_DOUBLON.some((r) => r.test(nu));
+  });
+  return gardees.join(" ").slice(0, 300);
+}
+// La note interne tient en une ligne (Jérémy, 22.11.2026) : jamais l'histoire de la conversation. Une seule phrase, sans retour à la ligne,
+// 140 caractères au plus.
+export const NOTE_MAX = 140;
+export function noteCourte(t) {
+  const plat = String(t || "").replace(/\s+/g, " ").trim();
+  if (plat.length <= NOTE_MAX) return plat;
+  const premiere = (plat.match(/^.+?[.!?](?=\s|$)/) || [plat])[0];
+  return premiere.length <= NOTE_MAX ? premiere : `${premiere.slice(0, NOTE_MAX - 1).replace(/\s+\S*$/, "")}…`;
+}
 // Rend { remarque_voucher, note_interne } ; une ancienne carte (« remarque » seule) reste une note interne, comme avant.
 export function remarquesDuService(s = {}, memo = {}, avert = []) {
-  const voucher = texte(s.remarque_voucher, 300);
+  const voucher = remarqueSansDoublons(texte(s.remarque_voucher, 300));
   const interne = [texte(s.note_interne, 300), texte(s.remarque, 300)].filter(Boolean);
   if (voucher && remarqueInterne(voucher, memo)) {
     avert.push("remarque_voucher_interne");
-    return { remarque_voucher: "", note_interne: [...interne, voucher].join(" ").slice(0, 400) };
+    return { remarque_voucher: "", note_interne: noteCourte([...interne, voucher].join(" ")) };
   }
-  return { remarque_voucher: voucher, note_interne: interne.join(" ").slice(0, 400) };
+  return { remarque_voucher: voucher, note_interne: noteCourte(interne.join(" ")) };
 }
 
 // ---- Numéro de vol (21.11.2026) ----------------------------------------------------------------------------------------------
@@ -1813,7 +1890,7 @@ export function partenairesCites(t, noms = []) {
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
 // Avec le prix du client non corrigé par Nani et le prix refusé parce qu'égal à un net (22.11.2026) : la carte les montre, rien n'est bloqué.
 // Et une remarque de voucher passée en note interne parce qu'elle citait un net ou un partenaire (22.11.2026).
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net", "remarque_voucher_interne"];
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net", "remarque_voucher_interne", "lieu_a_verifier"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
@@ -1862,17 +1939,19 @@ export async function proposer(nom, e, ctx, memo) {
     if (!r) return { erreur: "reservation_introuvable" };
     // Un numéro de vol : sa forme, et une source dans la conversation (volSource) ; sans source, la carte n'est pas proposée.
     const avertVol = [];
-    const v = e.champ === "vol" ? volSource(e.valeur, ctx, memo, avertVol) : texte(e.valeur, 300);
+    // Une remarque du voucher sans lien ni redite des champs, une note interne d'une ligne, un lieu sans lien (22.11.2026).
+    const brut = e.champ === "vol" ? volSource(e.valeur, ctx, memo, avertVol) : texte(e.valeur, 300);
+    const v = e.champ === "remarque_voucher" ? remarqueSansDoublons(brut) : e.champ === "note_interne" ? noteCourte(brut) : ["lieu_pickup", "drop_off"].includes(e.champ) ? texte(lieuSansLien(brut, Array.isArray(memo.lieuxMaps) ? memo.lieuxMaps : []).valeur, 120) : brut;
     if (e.champ === "vol" && !v) return { erreur: avertVol[0] || "valeur_invalide" };
     // Les sièges enfant et bébé ensemble : 10 au plus pour le service (relecture de la PR 315).
     const siegesR = siegesReservation(r);
     const autreSieges = e.champ === "sieges" ? siegesR.sieges_bebe : e.champ === "sieges_bebe" ? siegesR.sieges : 0;
-    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), sieges: /^\d{1,2}$/.test(v) && Number(v) + autreSieges <= SIEGES_MAX, sieges_bebe: /^\d{1,2}$/.test(v) && Number(v) + autreSieges <= SIEGES_MAX, sans_siege: v === "oui", bagages: /^\d{1,2}$/.test(v), vol: !!v, remarque_voucher: !!v, note_interne: !!v, annulation: v === "annule" }[e.champ];
+    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), sieges: /^\d{1,2}$/.test(v) && Number(v) + autreSieges <= SIEGES_MAX, sieges_bebe: /^\d{1,2}$/.test(v) && Number(v) + autreSieges <= SIEGES_MAX, sans_siege: v === "oui", bagages: /^\d{1,2}$/.test(v), vol: !!v, drop_off: !!v, remarque_voucher: !!v, note_interne: !!v, annulation: v === "annule" }[e.champ];
     if (!ok) return { erreur: "valeur_invalide" };
     // Une remarque pour le voucher qui cite un net, une commission ou un partenaire : refusée, elle va dans « note_interne » (22.11.2026).
     if (e.champ === "remarque_voucher" && remarqueInterne(v, memo)) return { erreur: "remarque_interne_utiliser_note_interne" };
     if (e.champ === "annulation" && r.statut === "annule") return { erreur: "deja_annule" };
-    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), sieges: String(siegesR.sieges), sieges_bebe: String(siegesR.sieges_bebe), sans_siege: siegesR.sans_siege ? "oui" : "", bagages: texte(r.bagages ?? (r.details || {}).bagages ?? "", 20), vol: texte(r.vol || (r.details && r.details.vol) || "", 20), remarque_voucher: texte(r.remarques_voucher ?? (r.details || {}).remarques ?? "", 300), note_interne: "", annulation: r.statut || "" }[e.champ];
+    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), sieges: String(siegesR.sieges), sieges_bebe: String(siegesR.sieges_bebe), sans_siege: siegesR.sans_siege ? "oui" : "", bagages: texte(r.bagages ?? (r.details || {}).bagages ?? "", 20), vol: texte(r.vol || (r.details && r.details.vol) || "", 20), drop_off: texte((r.details || {}).drop_off || "", 120), remarque_voucher: texte(r.remarques_voucher ?? (r.details || {}).remarques ?? "", 300), note_interne: "", annulation: r.statut || "" }[e.champ];
     const ent = entrepriseDe(ctx, r.entite_id);
     return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), libelle: texte(r.libelle, 160), champ: e.champ, avant, valeur: v, raison: texte(e.raison, 240) }, ...(avertVol.length ? { avertissements: avertVol } : {}) };
   }

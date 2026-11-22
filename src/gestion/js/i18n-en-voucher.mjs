@@ -6,6 +6,7 @@ export const EN_VOUCHER = {
   "Remarque sur le voucher": "Remark on the voucher",
   "Note interne": "Internal note",
   "Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant ».": "A child or a baby is travelling: child seat, baby seat or no seat? Ask the client, or choose with “Check first”.",
+  "Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose.": "A Google Maps link in the conversation could not be read, or a place contained a link: check the pickup and the drop-off.",
   "La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne.": "The remark meant for the voucher mentioned a net price, a commission or a partner: it stays as an internal note.",
   "{n} siège bébé": "{n} baby seat",
   "{n} sièges bébé": "{n} baby seats",

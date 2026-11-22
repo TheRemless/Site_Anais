@@ -176,6 +176,27 @@ const estDemandeTransferee = (texte) => /^\s*(?:transfer request|customer|client
 const DEMANDE_RECOPIEE = re("we would like|i would like|could you|can you|please let (?:us|me) know|availability|disponibilite");
 export const estRecapitulatif = (texte) => !estDemandeTransferee(texte) && !DEMANDE_RECOPIEE.test(plat(texte)) && !/\?/.test(String(texte || "")) && Object.keys(champsDe(texte)).length >= 3;
 
+// Même numéro de téléphone (copie de src/gestion/js/demandes-whatsapp-calc.mjs, la fonction ne lit pas src ; un test compare les deux) :
+// les 9 derniers chiffres, ou le numéro complet quand les deux ont leur indicatif.
+export const cleTelephone = (t) => {
+  const n = String(t ?? "").replace(/\D/g, "");
+  return n.length >= 9 ? n.slice(-9) : "";
+};
+const international = (t) => {
+  const s = String(t ?? "").trim();
+  if (s.startsWith("+")) return s.replace(/\D/g, "");
+  if (/^00/.test(s.replace(/[\s().-]/g, ""))) return s.replace(/\D/g, "").slice(2);
+  return null;
+};
+export const memeNumero = (a, b) => {
+  const x = cleTelephone(a);
+  const y = cleTelephone(b);
+  if (!x || !y) return false;
+  const ia = international(a);
+  const ib = international(b);
+  return ia !== null && ib !== null ? ia === ib : x === y;
+};
+
 // ---- Messages --------------------------------------------------------------------------------------------------------------------
 const texteDe = (m) => [m.texte || "", ...((m.medias || []).map((x) => (x && x.legende) || ""))].join("\n").trim();
 const vivants = (messages = []) =>
@@ -266,9 +287,34 @@ export function carteDe(messages = [], jusque = null) {
   return carte;
 }
 
+// La réservation faite pour ce signal (relecture du 22.11.2026) : le dernier service non annulé créé (par carte de l'Assistant ou à la main)
+// dans un dossier de Secret ou de Taxi du client. `reservations` : [{ created_at, statut, entreprise }] (pret.ts les lit, jamais ZTP).
+// `entreprise` : celle du signal (« secret », « taxi ») ; un service de l'autre entreprise ne fait pas tomber le drapeau (une course de Taxi
+// réservée ne répond pas à une excursion de Secret demandée ensuite). Entreprise inconnue : tous comptent. Rend l'heure, ou null.
+export function dernierService(reservations = [], entreprise = null) {
+  const faits = (reservations || []).filter((r) => r && r.statut !== "annule" && !r.dossier_annule && !Number.isNaN(Date.parse(r.created_at || "")) && (!entreprise || !r.entreprise || r.entreprise === entreprise)).map((r) => r.created_at);
+  return faits.sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) || null;
+}
+// Le signal est-il celui d'une réservation déjà faite ? Oui quand le dernier service est créé depuis le prix (`depuis`), ou quand aucun message
+// du client ne se place entre ce service et le prix : un récapitulatif avec son prix ou « here is your voucher » envoyé par Nani après
+// la création n'est pas une nouvelle demande (relecture de la PR 329). Seul un message entrant du client, après le service et avant le prix,
+// en fait une. `v` : les messages vivants. Rend l'heure du service, ou null.
+export function reserveDepuis(reservations = [], depuis, { v = [], entreprise = null } = {}) {
+  const d = Date.parse(depuis || "");
+  if (Number.isNaN(d)) return null;
+  const dernier = dernierService(reservations, entreprise);
+  if (!dernier) return null;
+  const r = Date.parse(dernier);
+  if (r >= d) return dernier;
+  const demande = v.some((m) => m && m.sens === "entrant" && Date.parse(m.envoye_le) > r && Date.parse(m.envoye_le) <= d);
+  return demande ? null : dernier;
+}
+
 // La décision gardée sur la conversation (colonne pret_reserver) : courte, sans texte de message.
-//   { pret: true, le, depuis, message_id, source, motif, carte, calcule_le } ou { pret: false, motif, calcule_le }.
-export function etatPret(conv, messages = [], maintenant = new Date().toISOString()) {
+//   { pret: true, le, depuis, message_id, source, motif, carte, calcule_le } ou { pret: false, motif, calcule_le } ; motif « reserve » : le
+//   service de cette réservation est créé (reserve_le).
+// `entrepriseDu(v, i)` : l'entreprise du message v[i] (etapes.js, entrepriseDuMessage), pour ne compter que les services de l'entreprise du prix.
+export function etatPret(conv, messages = [], maintenant = new Date().toISOString(), { reservations = [], entrepriseDu = null } = {}) {
   if (!conversationPossible(conv)) return { pret: false, motif: "exclue", calcule_le: maintenant };
   const v = vivants(messages).slice(-MESSAGES_LUS);
   let signal = null;
@@ -281,10 +327,15 @@ export function etatPret(conv, messages = [], maintenant = new Date().toISOStrin
   // `depuis` : le prix donné par Nani avant le signal. Un dossier du client créé depuis ce moment est celui de cette réservation (Nani crée
   // souvent le dossier avant d'envoyer la confirmation : deux minutes avant, dans la conversation réelle C36).
   const prix = v.slice(0, signal.index).filter((m) => m.sens === "sortant" && contientPrix(texteDe(m))).at(-1);
+  const depuis = prix ? prix.envoye_le : signal.message.envoye_le;
+  const iPrix = prix ? v.indexOf(prix) : -1;
+  const ent = typeof entrepriseDu === "function" ? entrepriseDu(v, iPrix >= 0 ? iPrix : signal.index) : null;
+  const reserve = reserveDepuis(reservations, depuis, { v, entreprise: ["secret", "taxi"].includes(ent) ? ent : null });
+  if (reserve) return { pret: false, motif: "reserve", reserve_le: reserve, calcule_le: maintenant };
   return {
     pret: true,
     le: signal.message.envoye_le,
-    depuis: prix ? prix.envoye_le : signal.message.envoye_le,
+    depuis,
     message_id: signal.message.id || null,
     source: signal.source,
     motif: signal.motif,

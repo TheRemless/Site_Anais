@@ -179,17 +179,41 @@ export function propositionDepuisCarte(donnees = {}) {
 }
 
 // Les `details` d'une réservation depuis un service de carte : rien quand rien n'est dit.
+// La dépose de la carte (« vers ») va dans details.drop_off, que le voucher imprime (relecture du 22.11.2026 : la carte avait la dépose, la
+// réservation l'avait perdue). Jamais un lien : la fonction les retire déjà, l'écran aussi.
+// Même reconnaissance que la fonction (maps.js, UNE_URL) : avec schéma, en « www. », ou un domaine suivi d'un chemin (« goo.gl/x »).
+const UNE_URL = /(?:\b(?:https?:\/\/|www\.)|(?<![\w@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?=\/))[^\s<>"']+/gi;
+export const sansLien = (t) => String(t || "").replace(UNE_URL, " ").replace(/\s+/g, " ").trim();
 function detailsDeCarte(s) {
+  const depose = sansLien(s.vers);
   const details = detailsAvecSieges(
-    { ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
+    { ...(depose ? { drop_off: depose } : {}), ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
     siegesDeCarte(s),
   );
   return Object.keys(details).length ? { details } : {};
 }
+// Le partenaire d'une course de Taxi ajoutée par carte : celui de sa ligne du catalogue s'il en a un, sinon le chauffeur réglé de l'entreprise
+// (`defaut`, partenaireDeTaxi). Hors mode taxi : aucun. Rend un id ou null.
+export function chauffeurCarte(service = {}, { taxi = false, defaut = null, prestations = [], trajets = [] } = {}) {
+  if (!taxi) return null;
+  const o = (service && service.offre) || null;
+  const ligne = o ? (o.genre === "trajet" ? trajets : prestations).find((x) => x && x.id === o.id) : null;
+  return (ligne && ligne.partenaire_id) || (defaut && defaut.id) || null;
+}
+// Payée sur place ? Toute course de Taxi, ou un partenaire dont le mode de règlement par défaut est « sur place » (operations-calc.mjs,
+// modeParDefaut, passé par `modeDe`).
+export const payeSurPlaceCarte = ({ taxi = false, partenaire = null, modeDe = () => null } = {}) => taxi || (!!partenaire && modeDe(partenaire) === "sur_place");
 // La réservation à ouvrir dans le formulaire de l'outil, depuis une carte « service » (ajout à un dossier).
-export function reservationDepuisCarte(donnees = {}) {
+// `partenaireId` : le chauffeur de l'entreprise Taxi (Réglages > Booking confirmation, partenaireDeTaxi), posé par l'écran quand le service est
+// une course de Taxi. Comme une course créée à la main (creation-course.mjs, demande.mjs) : la commission se suit sur sa fiche et l'accès
+// partenaire (migration 115) la lui montre. Jamais chez Secret ni ZTP (taxi indépendant, aucun partenaire deviné).
+// `surPlace` : une course de Taxi se paie au chauffeur (relecture de la PR 329), comme ligneVoucher et courseTaxi ; sinon le formulaire
+// garde son défaut.
+export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surPlace = false } = {}) {
   const s = donnees.service || {};
   return {
+    ...(partenaireId ? { partenaire_id: partenaireId } : {}),
+    ...(surPlace ? { paye_sur_place: true } : {}),
     dossier_id: donnees.dossier_id,
     libelle: s.libelle || s.texte || "",
     date_service: s.date || "",
@@ -239,6 +263,9 @@ export function reservationModifiee(r, donnees = {}) {
     // La remarque du voucher, en anglais : ajoutée à `details.remarques`, que le voucher et la Booking confirmation impriment.
     case "remarque_voucher":
       return { ...r, details: { ...(r.details || {}), remarques: [(r.details || {}).remarques, String(v || "").trim()].filter(Boolean).join("\n") } };
+    // La dépose (relecture de la PR 329) : dans `details.drop_off`, ce que le voucher imprime ; jamais un lien.
+    case "drop_off":
+      return { ...r, details: { ...(r.details || {}), drop_off: sansLien(v) } };
     // Le numéro de vol : dans `details.vol`, ce que le voucher et la Booking confirmation impriment (le reste de `details` est gardé).
     case "vol":
       return { ...r, details: { ...(r.details || {}), vol: String(v || "").trim() } };

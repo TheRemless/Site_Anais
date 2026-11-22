@@ -2,7 +2,7 @@
 // et les tests. La décision vient de la fonction « whatsapp » (supabase/functions/whatsapp/pret.js, sans IA), gardée dans
 // whatsapp_conversations.pret_reserver. Ici, l'écran décide seulement si la conversation est encore à montrer :
 //   - entre : la décision dit « prêt » (le client a dit oui après un prix, ou Nani a annoncé ou envoyé la confirmation) ;
-//   - sort : un dossier relié à la conversation, ou Nani qui l'enlève (« Retirer ») ; elle revient seulement sur un signal plus récent que
+//   - sort : un dossier relié à la conversation, un service créé depuis le prix dans un dossier du client (22.11.2026), ou Nani qui l'enlève (« Retirer ») ; elle revient seulement sur un signal plus récent que
 //     le retrait. Un dossier du même client (fiche reliée ou même numéro) créé depuis le prix donné, mais pas relié, ne la fait pas sortir :
 //     la carte propose « Relier au dossier » (cas réel C36 : dossier créé, conversation restée à trier sans lien).
 //   - jamais : un Contact personnel, un partenaire (posé par Nani ou déduit, migration 110), un apporteur, une fiche partenaire reliée, ou un tri
@@ -37,11 +37,27 @@ const depuisDe = (p) => {
   return Number.isNaN(Date.parse(p.depuis || "")) ? le : Date.parse(p.depuis);
 };
 
+// Le service de cette réservation déjà créé (relecture du 22.11.2026) : un service non annulé d'un dossier de Secret ou de Taxi du
+// client (dossier relié, fiche reliée ou même numéro), créé depuis le prix donné. La carte de l'Assistant crée souvent le service dans un
+// dossier plus ancien (client qui revient) : le dossier est d'avant le prix, le service non. Même règle que la fonction (pret.js, reserveDepuis).
+export function serviceCree(c, { dossiers = [], clients = [], reservations = null, marqueDe = () => null } = {}) {
+  const p = decisionPret(c);
+  if (!p || !Array.isArray(reservations)) return null;
+  const depuis = depuisDe(p);
+  const siens = fichesDuClient(c, clients);
+  // L'entreprise du signal (avancee.pret.entreprise, etapes.js) : un service de l'autre entreprise ne répond pas à cette demande (relecture
+  // de la PR 329). Inconnue : les deux comptent.
+  const ent = c.avancee && c.avancee.pret && ["secret", "taxi"].includes(c.avancee.pret.entreprise) ? c.avancee.pret.entreprise : null;
+  const ids = new Set(dossiers.filter((d) => dansBoite(d, marqueDe) && (!ent || marqueDe(d.entite_id) === ent) && (d.id === c.dossier_id || siens.has(d.client_id))).map((d) => d.id));
+  return reservations.filter((r) => r && r.statut !== "annule" && ids.has(r.dossier_id) && Date.parse(r.created_at || "") >= depuis).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
+}
+
 // La conversation est-elle à montrer dans « Prêt à réserver » ? Rend la décision, ou null.
 // Elle sort quand le dossier de CETTE réservation est relié : le dossier relié a été créé depuis le prix donné. Un dossier relié plus ancien
 // (client qui revient, arrivée puis transfert retour) ne l'exclut pas. Sans les dossiers chargés, un dossier relié compte comme celui-ci.
 // `retrait` à false : sans compter le retrait de Nani (pour lui proposer « Remettre »).
-export function pretAReserver(c, { dossiers = null, marqueDe = () => null, retrait = true } = {}) {
+// `reservations` (et `clients`) : un service créé depuis le prix la fait sortir aussi (serviceCree), elle revient sur un nouveau prix.
+export function pretAReserver(c, { dossiers = null, clients = [], reservations = null, marqueDe = () => null, retrait = true } = {}) {
   const p = decisionPret(c);
   if (!p) return null;
   if (c.reponses === "jamais" || c.partenaire_id || TYPES_EXCLUS.includes(String(c.type_contact || ""))) return null;
@@ -54,6 +70,7 @@ export function pretAReserver(c, { dossiers = null, marqueDe = () => null, retra
     const relie = dossiers.find((d) => d && d.id === c.dossier_id);
     if (relie && dansBoite(relie, marqueDe) && Date.parse(relie.created_at || "") >= depuisDe(p)) return null;
   }
+  if (dossiers && serviceCree(c, { dossiers, clients, reservations, marqueDe })) return null;
   return p;
 }
 

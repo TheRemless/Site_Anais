@@ -80,7 +80,7 @@ const vivants = (messages = []) => messages.filter((m) => m && !m.supprime_le &&
 const entrepriseTri = (conv) => (conv && conv.tri && ENTREPRISES.includes(conv.tri.entreprise) ? conv.tri.entreprise : null);
 
 // L'entreprise d'un message de Nani : ses propres mots, puis le tri (déjà calculé), puis les mots des messages du client juste avant.
-function entrepriseDuMessage(v, i, conv) {
+export function entrepriseDuMessage(v, i, conv) {
   const avant = [];
   for (let j = i - 1; j >= 0 && avant.length < 3; j--) if (v[j].sens === "entrant") avant.push(texteDe(v[j]));
   return entrepriseDesMots([texteDe(v[i])]) || entrepriseTri(conv) || entrepriseDesMots(avant);
@@ -92,7 +92,8 @@ const TROIS_MIN = 3 * 60 * 1000;
 const t = (iso) => Date.parse(iso || "") || 0;
 
 // Les faits gardés sur la conversation (colonne avancee).
-export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOString()) {
+// `reservations` : comme etatPret, les services des dossiers du client (un service créé depuis le prix retire « prêt »).
+export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOString(), { reservations = [] } = {}) {
   if (!conv || conv.reponses === "jamais") return { v: VERSION_FAITS, jamais: true, calcule_le: maintenant };
   const v = vivants(messages).slice(-MESSAGES_LUS);
   const entrants = v.filter((m) => m.sens === "entrant");
@@ -106,6 +107,11 @@ export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOS
       if (prixEnBahts(texte)) {
         const cle = entrepriseDuMessage(v, i, conv) || "inconnu";
         par[cle].prix_le = m.envoye_le;
+        // Le dernier message du client avant ce prix (relecture de la PR 329) : un prix ne vaut nouvelle demande après un service que si le
+        // client a écrit entre les deux (whatsapp-etapes-calc.mjs).
+        const avantPrix = entrants.filter((x) => String(x.envoye_le) <= String(m.envoye_le)).at(-1);
+        if (avantPrix) par[cle].client_avant_prix_le = avantPrix.envoye_le;
+        else delete par[cle].client_avant_prix_le;
         dernierEchange = cle;
       }
       // Voucher envoyé depuis Gestion : le média rangé par whatsapp-envoi, sauf un envoi en échec.
@@ -132,7 +138,7 @@ export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOS
       dernierEchange = cle;
     }
   });
-  const p = etatPret(conv, v, maintenant);
+  const p = etatPret(conv, v, maintenant, { reservations, entrepriseDu: (w, i) => entrepriseDuMessage(w, i, conv) });
   let pret = null;
   if (p.pret) {
     const i = v.findIndex((m) => m.envoye_le === p.depuis && m.sens === "sortant");

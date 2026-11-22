@@ -38,7 +38,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { lireApprentissages } from "./apprentissages.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule, lieuxMapsPourCtx } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -961,6 +961,11 @@ Deno.serve(async (req) => {
   const typeLu = waLue && typeof waLue.type_contact === "string" ? waLue.type_contact : "";
   // Les entreprises où le dossier peut naître (l'active, les deux en espace unifié) : leurs étapes client comptent (clientProbable).
   const slugsDossier = unifie ? unifie.entites.map((e) => e.slug) : [ent.data?.slug || ""];
+  // Les liens Google Maps du message (tapé, ou conversation WhatsApp jointe) : remplacés par l'établissement qu'ils désignent (maps.js, hôtes de
+  // Google seulement, 3 secondes, trois liens au plus). Le modèle écrit le nom dans la carte, jamais le lien ; un lien illisible reste marqué.
+  const lieuxMaps = lieuxMapsPourCtx();
+  const maps = message ? await lieuxMaps(message) : { texte: message, lieux: [] };
+  message = maps.texte;
   const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
@@ -984,6 +989,7 @@ Deno.serve(async (req) => {
   // 21.11.2026). Ils ne vont que dans memo.nets : ni dans les consignes, ni dans les messages, ni dans un résultat d'outil, ni dans le flux
   // vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
   memo.nets = lusNets.nets;
+  (memo as Record<string, unknown>).lieuxMaps = maps.lieux;
   // Nets illisibles : la réponse au client ne se copie pas (controle_impossible, outils.js).
   memo.controleImpossible = lusNets.erreur;
   // Le dossier relié : ses services (leurs nets bloquent), ses nets, marges et commissions (bloquent aussi).
@@ -999,7 +1005,7 @@ Deno.serve(async (req) => {
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
-  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();
