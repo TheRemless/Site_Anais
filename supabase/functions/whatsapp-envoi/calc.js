@@ -294,3 +294,13 @@ export const cleVerrouVoucher = (reservationId, essaiId) => `gestion-voucher:${r
 // Refus de whatsapp_ranger_voucher (migration 73) : a_verifier (un envoi précédent du voucher au résultat inconnu, levé seulement par
 // « C'est parti » ou « Pas parti »), recent (parti depuis moins de 2 minutes), deja (même confirmation rejouée).
 export const REFUS_VERROU = ["a_verifier", "recent", "deja"];
+
+// Les entreprises dont le texte d'un envoi est contrôlé (nets, prix de vente, noms de partenaires). Secret et Taxi partagent leurs clients et
+// un message de l'une peut porter le contenu de l'autre (« Proposer une excursion » : une sortie de Secret depuis une conversation Taxi,
+// revue de la PR 310) : une conversation de Secret, de Taxi ou à trier est contrôlée dans les deux. Une conversation d'une autre entreprise :
+// la sienne seule. `entites` : les lignes { id, slug } de l'organisation lues pour « secret » et « taxi ».
+export function entitesControlees(conv, entites = []) {
+  const paire = (entites || []).filter((e) => e && ["secret", "taxi"].includes(e.slug)).map((e) => e.id);
+  if (!conv || !conv.entite_id) return paire;
+  return paire.includes(conv.entite_id) ? paire : [conv.entite_id];
+}

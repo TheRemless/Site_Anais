@@ -10,7 +10,7 @@
 // client par voucher.js, avec les mêmes garde-fous (session, whatsapp_peut_ecrire, fenêtre, contenuInterne, verrou, résultat incertain)
 // et en plus la coexistence et la fenêtre relues chez Telnyx. Même fonction que le texte : mêmes secrets, mêmes origines, un seul déploiement.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, controleEnvoi, refusEnvoi, IMAGE_MAX_OCTETS, CORPS_MAX_OCTETS } from "./calc.js";
+import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, controleEnvoi, refusEnvoi, entitesControlees, IMAGE_MAX_OCTETS, CORPS_MAX_OCTETS } from "./calc.js";
 import { envoyerVoucherImage } from "./voucher.js";
 import { fenetreOuverte, servicesDeProposition } from "../whatsapp/proposer.js";
 import { dossierPourControle, netsPourControle } from "../agent/outils.js";
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
   if (errM) return json({ erreur: "base" }, 500);
   if (!fenetreOuverte(msgs || [])) return json({ erreur: "fenetre_fermee" }, 409);
   // Garde-fou de la PR 278, aussi côté serveur : jamais un net, une commission ni un nom de partenaire vers le client, même si l'écran a été
-  // contourné. Lu avec la clé de service dans l'entreprise de la conversation (les deux si elle est à trier). Un montant égal au net d'un
+  // contourné. Lu avec la clé de service dans Secret et Taxi ensemble pour une conversation de l'une, de l'autre ou à trier. Un montant égal au net d'un
   // autre service du catalogue : 409 « montant_a_confirmer », la personne confirme et l'écran renvoie la même liste (refusEnvoi).
   const refus = refusEnvoi(await contenuInterne(admin, conv, demande.texte, { sb, propositionId: demande.proposition_id }), demande.montants_confirmes);
   if (refus) return json(refus.corps, refus.status);
@@ -230,14 +230,12 @@ async function lireBorne(req: Request, max: number) {
 // deno-lint-ignore no-explicit-any
 async function contenuInterne(admin: any, conv: { id?: string; organisation_id: string; entite_id: string | null; dossier_id?: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string, { sb = null, propositionId = null }: { sb?: any; propositionId?: string | null } = {}) {
   const ferme = { a_retirer: ["nom_prestataire:lecture_impossible"], a_confirmer: [] as number[] };
-  let ids: string[] = conv.entite_id ? [conv.entite_id] : [];
-  // Conversation à trier : le texte est contrôlé dans Secret et Taxi ensemble. Sans cette liste, rien n'est contrôlable : on ferme
-  // (revue de sécurité de la PR 304).
-  if (!ids.length) {
-    const { data, error } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
-    if (error) return ferme;
-    ids = (data || []).map((e: { id: string }) => e.id);
-  }
+  // Conversation de Secret, de Taxi ou à trier : le texte est contrôlé dans Secret et Taxi ensemble (entitesControlees, revue de la PR 310 :
+  // un net de Secret tapé dans une conversation Taxi partait sans contrôle). Sans cette liste, rien n'est contrôlable : on ferme (revue de
+  // sécurité de la PR 304).
+  const { data: paire, error: errE } = await admin.from("entites").select("id, slug").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+  if (errE) return ferme;
+  const ids: string[] = entitesControlees(conv, paire || []);
   if (!ids.length) return { a_retirer: [], a_confirmer: [] };
   const [lusNets, relie, pr, tr, pa, prop, droits] = await Promise.all([
     netsPourControle(admin, ids),

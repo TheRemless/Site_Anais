@@ -1,6 +1,7 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 import { EN_POINT_SOIR } from "./i18n-en-point-soir.mjs";
+import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
 
 export const EN = {
   // « Pas bien » sur une réponse de l'Assistant (migration 74)
@@ -4627,6 +4628,7 @@ export const EN = {
   "{n} sièges enfant ou bébé au plus.": "{n} child or baby seats at most.",
   "Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer.": "More seats than children and babies: check, then save again to confirm.",
   ...EN_POINT_SOIR,
+  ...EN_EXCURSION,
 };
 
 // Prêt à réserver (migration 85) : traductions à part, ajoutées sans remplacer une clé déjà là.

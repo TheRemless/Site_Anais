@@ -37,6 +37,7 @@ import { clientCommun } from "../whatsapp-pret-calc.mjs";
 import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
 // Étapes des conversations de clients (migration 105), à part dans whatsapp-etapes.mjs.
 import { etapesDisponibles, conversationClient, filtresEtapes, estFiltreEtape, filtrerParEtape, dansEntreprise, aTrierNonClient, pastillesEtapes, blocEtapes, basculerIA } from "./whatsapp-etapes.mjs";
+import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -438,7 +439,10 @@ function blocFaits(c, prop) {
       : client
         ? h("span", { class: "wa-sans" }, tr("{nom}, aucun dossier", { nom: nomClient(client) }))
         : h("span", { class: "wa-sans" }, tr("Aucun dossier relié")),
-    actions
+    actions,
+    // « Proposer une excursion » (composant à part, views/proposer-excursion.mjs) : séjour de plusieurs jours après un transfert ; jamais en
+    // lecture seule.
+    dossier && !lectureSeule ? boutonProposerExcursion({ dossier, conversation: c }) : null
   );
   if (!lignes.length) return h("section", { class: "wa-faits", "aria-label": tr("Faits du client") }, tete);
   const valeurDe = (l) => (l.cle === "reste" && l.paye ? tr("Payé") : l.aFixer ? `${l.valeur}, ${tr("heure à fixer")}` : l.valeur);

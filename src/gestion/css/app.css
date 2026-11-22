@@ -2555,3 +2555,10 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .point-soir-signal { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .point-soir-destinataire { margin: 0; flex: 1 0 100%; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
 .point-soir-numero { flex: 1 0 100%; font-size: 0.9rem; }
+
+/* Proposer une excursion (22.11.2026) : une ou deux excursions cochées, le message relu avant de partir. */
+.excursion-choix { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.excursion-choix label { display: block; padding: 8px 10px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); cursor: pointer; overflow-wrap: anywhere; }
+.excursion-choix input { margin-right: 6px; }
+.proposer-excursion textarea { width: 100%; }
+.proposer-excursion .actions a[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
