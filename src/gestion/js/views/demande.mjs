@@ -207,7 +207,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (!sv.date) alertes.push(tr("Date à préciser."));
     else if (sv.date < aujourdhui()) alertes.push(tr("La date du service est passée."));
     if (sv.adultes + sv.enfants === 0) alertes.push(tr("Nombre de personnes à préciser."));
-    if (offre && offre.avertissement === "age_enfant_sans_tarif" && offre.bareme) alertes.push(tr("Cette sortie n'a pas de tarif enfant : un enfant de moins de {min} ans n'a aucun tarif propre. Vérifiez avec le partenaire.", { min: offre.bareme.min }));
+    if (offre && offre.avertissement === "ages_manquants") alertes.push(tr("Âges des enfants manquants : le tarif enfant dépend de l'âge. Demandez-les au client."));
+    else if (offre && offre.avertissement === "age_enfant_sans_tarif" && offre.bareme) alertes.push(tr("Cette sortie n'a pas de tarif enfant : un enfant de moins de {min} ans n'a aucun tarif propre. Vérifiez avec le partenaire.", { min: offre.bareme.min }));
     else if (offre && offre.avertissement === "age_enfant" && offre.bareme) alertes.push(tr("Âge d'un enfant hors du barème de cette sortie ({min} à {max} ans) : vérifiez le tarif avec le partenaire.", { min: offre.bareme.min, max: offre.bareme.max }));
     else if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
     if (sv.copie) alertes.push(tr("Même service, autre date."));

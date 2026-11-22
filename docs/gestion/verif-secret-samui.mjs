@@ -3,8 +3,8 @@
 // rejeu sans effet (rien d'écrasé), mêmes identifiants que carnet-produits.mjs, bon tarif pour une demande lue, retour en arrière, retour refusé après une réservation.
 // Le SQL nomme les partenaires et leurs commissions : il vit HORS du dépôt (public), dans ~/Desktop/Site_Anais-import/ ou dans GESTION_SQL_PRIVE. Sans lui, ce contrôle s'arrête sans erreur.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17 && cp <repo>/docs/gestion/verif-secret-samui.mjs .
-//   GESTION_SQL=<repo>/docs/gestion/ GESTION_SRC=file://<repo>/src/gestion/js/ GESTION_SQL_PRIVE=<dossier privé> node verif-secret-samui.mjs
-import { PGlite } from "@electric-sql/pglite";
+//   GESTION_SQL=<repo>/docs/gestion/ GESTION_SRC=file://<repo>/src/gestion/js/ GESTION_SQL_PRIVE=<dossier privé> node verif-secret-samui.mjs [--exiger]
+// Sans le SQL privé : « SAUTÉ » en grand et code 0 ; avec --exiger, code 3.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,9 +16,12 @@ const privee = (nom) => { try { return fs.readFileSync(path.join(PRIVE, nom), "u
 const DONNEES = privee("donnees-secret-samui.sql");
 const RETOUR = privee("retour-secret-samui.sql");
 if (!DONNEES || !RETOUR) {
-  console.log(`SQL privé absent de ${PRIVE} : contrôle sauté.`);
-  process.exit(0);
+  // Sauté sans erreur (le SQL privé n'est pas dans le dépôt), mais jamais en silence ; --exiger fait échouer (code 3), pour une mise en service ou une CI qui doit l'avoir lu.
+  const ligne = "#".repeat(78);
+  console.log(`${ligne}\n#  SAUTÉ : SQL privé absent de ${PRIVE}\n#  Rien n'a été vérifié. Donner GESTION_SQL_PRIVE=<dossier privé> pour contrôler le catalogue.\n${ligne}`);
+  process.exit(process.argv.includes("--exiger") ? 3 : 0);
 }
+const { PGlite } = await import("@electric-sql/pglite");
 let echecs = 0;
 const ok = (c, msg) => { if (!c) { echecs++; console.log("  ECHEC:", msg); } else console.log("  ok:", msg); };
 const harnais = `

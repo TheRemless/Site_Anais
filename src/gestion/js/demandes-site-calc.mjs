@@ -232,13 +232,13 @@ export function estCarnet(d) {
 export function demandeTarifee(d) {
   if (!estCarnet(d) || !PRODUITS_CARNET.some((p) => p.id === d.produit_id)) return d;
   const invites = agesDuMessage(d.message);
-  return ajusterAgesCarnet({ ...d, ...(invites || {}), carnet: { produit: d.produit_id, option: d.option_id || "" } });
+  return ajusterAgesCarnet({ ...d, ...(invites || {}), carnet: carnetDeLaDemande(d) });
 }
-// Le titre de la page, tiré de son adresse : « /carnet/koh-samui-excursions-bateau-xc8do3/ » donne « Koh Samui Excursions Bateau ».
-// Le dernier morceau, mêlé de lettres et de chiffres, est le code de la page privée : il ne fait pas partie du titre.
+// La sortie et l'option que la fenêtre de création lit dans une demande du carnet (product_id et option), ou null pour une demande qui n'en est pas une.
+export const carnetDeLaDemande = (d) => (estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null);
+// Le titre de la page, tiré de son adresse : « /carnet/koh-samui-excursions-bateau/ » donne « Koh Samui Excursions Bateau ». La fonction a déjà retiré le code d'accès.
 export function titreCarnet(d) {
   const mots = (cheminPage(d && d.page_url).split("/").filter(Boolean)[1] || "").split("-").filter(Boolean);
-  if (mots.length > 1 && /^(?=.*\d)(?=.*[a-z])[a-z0-9]{4,10}$/.test(mots[mots.length - 1])) mots.pop();
   return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(" ");
 }
 // Les autres sorties du même guide que celle de la demande (« Proposer une autre sortie ») : celles du carnet pour une demande du carnet,

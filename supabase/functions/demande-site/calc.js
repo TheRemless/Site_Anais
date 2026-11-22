@@ -27,6 +27,17 @@ export const estPageCarnet = (url) => {
     return false;
   }
 };
+// L'adresse d'une page du carnet sans son code d'accès : « /carnet/<guide>-<code>/ » devient « /carnet/<guide>/ » (ni requête, ni ancre, ni sous-page). Le code est le
+// dernier morceau du nom de la page ; un nom d'un seul morceau est le code lui-même. Une autre adresse reste telle quelle.
+export function sansCodeCarnet(url) {
+  if (!estPageCarnet(url)) return url;
+  const u = new URL(String(url));
+  const morceaux = u.pathname.slice(CHEMIN_CARNET.length).split("/")[0].split("-").filter(Boolean);
+  const guide = morceaux.slice(0, -1).join("-");
+  return `${u.origin}${CHEMIN_CARNET}${guide ? `${guide}/` : ""}`;
+}
+// Le même effacement dans un texte : toute adresse d'une page du carnet y perd son code.
+export const effacerCodes = (texteLibre) => (texteLibre === null ? null : texteLibre.replace(/https?:\/\/[^\s)]+/g, (u) => (estPageCarnet(u) ? sansCodeCarnet(u) : u)));
 // Les origines admises d'une organisation : les siennes (SITE_ORIGINES ou le site d'Anaïs), plus celles du carnet pour Zwald seulement.
 export const originesAdmises = (origines, organisation = ORGANISATION_ZWALD) => (organisation === ORGANISATION_ZWALD ? [...new Set([...origines, ...ORIGINES_CARNET])] : origines);
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
@@ -145,9 +156,9 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, ori
   const page = champ("page_url", () => texte(d.page_url, 300));
   const carnet = origineCarnet(origine);
   // La page est gardée si elle est sur l'origine de la requête (les adresses du site pour une requête sans origine, comme les essais) ; sinon elle est mise de côté.
-  const pageUrl = page && pageDuSite(page, carnet ? [origine] : origines) && (!origine || memeOrigine(page, origine)) ? page : null;
-  // Depuis le carnet, la page est obligatoire : une page « /carnet/… » de la requête elle-même, sinon refus (400 sur page_url).
-  if (carnet && !(pageUrl && estPageCarnet(pageUrl) && new URL(pageUrl).origin === origine)) throw Object.assign(erreur("page"), { champ: "page_url" });
+  const pageUrl = page && pageDuSite(page, carnet ? ORIGINES_CARNET : origines) && (!origine || memeOrigine(page, origine)) ? page : null;
+  // Depuis le carnet, la page est obligatoire : une page « /carnet/… » du site de la requête, sinon refus (400 sur page_url).
+  if (carnet && !(pageUrl && estPageCarnet(pageUrl))) throw Object.assign(erreur("page"), { champ: "page_url" });
   return {
     marque,
     ref,
@@ -164,15 +175,20 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, ori
     ...telephoneE164(d.whatsapp, d.whatsapp_country),
     total_estime: total === null ? null : Math.round(total * 100) / 100,
     devise,
-    page_url: pageUrl,
-    message: champ("message", () => texte(d.message, 2000, { lignes: true })),
+    // L'adresse d'une page privée du carnet porte un code d'accès : il n'est écrit nulle part (ni page_url, ni message), jamais retrouvable dans la base.
+    page_url: pageUrl ? sansCodeCarnet(pageUrl) : null,
+    message: effacerCodes(champ("message", () => texte(d.message, 2000, { lignes: true }))),
   };
 }
 
 // Adresse d'une page du site : une origine admise suivie d'un chemin (ou de rien), sans espace.
+// Même site : même protocole, même port, même nom d'hôte à « www. » près (secrettravelandtour.com et www.secrettravelandtour.com sont un même site, comme avant).
+const sansWww = (hote) => hote.replace(/^www\./, "");
 const memeOrigine = (page, origine) => {
   try {
-    return new URL(page).origin === origine;
+    const a = new URL(page);
+    const b = new URL(origine);
+    return a.protocol === b.protocol && a.port === b.port && sansWww(a.hostname) === sansWww(b.hostname);
   } catch {
     return false;
   }

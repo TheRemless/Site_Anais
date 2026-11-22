@@ -10,13 +10,13 @@ import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { ouvrirDemande } from "./demande.mjs";
-import { indexClientsParTelephone, clientParTelephone } from "../demande-calc.mjs";
+import { fichesParNumero } from "../demande-calc.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
   STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
-  estCarnet, titreCarnet, champsCarnet, autresSorties, produitSite,
+  estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties, produitSite,
 } from "../demandes-site-calc.mjs";
 import { boutonMessageClient } from "./message-client.mjs";
 import { relierConversationApresDemande, avertissementDossier, accordSecondDossier, boutonDelier } from "./demandes-whatsapp.mjs";
@@ -116,7 +116,7 @@ async function confirmer_(d, modifs = {}) {
     telephone: numeroWhatsApp(d),
     prixImpose: modifs.prix ?? null,
     // Demande d'une page du carnet : la sortie et l'option de la page donnent le tarif de Gestion (carnet-produits.mjs).
-    carnet: estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null,
+    carnet: carnetDeLaDemande(d),
     // Juste avant d'écrire le dossier : la demande est-elle toujours à traiter ? Une autre demande du même client a-t-elle déjà son dossier
     // (moins de 30 jours) ? Rend le motif d'arrêt, ou null pour créer (pas de second dossier sans l'accord de Nani).
     avantCreer: async () => {
@@ -300,7 +300,7 @@ function revoirReponse(d) {
 function champsDuCarnet(d) {
   const c = champsCarnet(d);
   const ligne = (libelle, valeur, manque = false) => (valeur ? h("div", { class: `dsite-champ${manque ? " manque" : ""}` }, h("dt", null, libelle), h("dd", null, valeur)) : null);
-  const enfants = c.enfants ? `${c.enfants}${c.ages.length ? ` (${tr("âges : {ages}", { ages: c.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") })})` : ""}` : "";
+  const enfants = c.enfants ? `${c.enfants} (${c.ages.length ? tr("âges : {ages}", { ages: c.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") }) : tr("âges manquants")})` : "";
   const quand = [jourCourt(c.date), c.heure].filter(Boolean).join(" · ");
   return h(
     "dl",
@@ -317,14 +317,14 @@ function champsDuCarnet(d) {
   );
 }
 // Le client est-il déjà connu par son numéro WhatsApp ? Une fiche de ZTP (partagée avec Secret pour les administrateurs) est retrouvée comme une fiche d'ici ;
-// « Créer le dossier » la reprend sans créer de doublon (la fenêtre de création fait la même recherche). `index` : les fiches indexées par numéro,
-// construites une fois par affichage de la liste (indexClientsParTelephone), pas une fois par carte.
-const ficheConnue = (d, index) => (numeroWhatsApp(d) ? clientParTelephone(index, numeroWhatsApp(d)) : null);
+// « Créer le dossier » la reprend sans créer de doublon (la fenêtre de création fait la même recherche). `trouverFiche` : la recherche par numéro de la liste
+// (fichesParNumero), dont l'index n'est construit qu'à la première demande du carnet rencontrée.
+const ficheConnue = (d, trouverFiche) => (numeroWhatsApp(d) ? trouverFiche(numeroWhatsApp(d)) : null);
 
-function carte(d, index) {
+function carte(d, trouverFiche) {
   const ecrit = peut("dossiers.ecrire");
   const carnet = estCarnet(d);
-  const connue = carnet && d.statut === "nouvelle" ? ficheConnue(d, index) : null;
+  const connue = carnet && d.statut === "nouvelle" ? ficheConnue(d, trouverFiche) : null;
   const option = titreOption(d);
   const dossier = d.dossier_id ? etat.db.dossiers.find((x) => x.id === d.dossier_id) : null;
   const quand = [jourCourt(d.date_service), d.heure].filter(Boolean).join(" · ");
@@ -375,6 +375,9 @@ function carte(d, index) {
         : null
   );
 }
+
+// Les cartes d'une liste, avec la recherche de fiche partagée.
+const carteAvec = (trouverFiche) => (d) => carte(d, trouverFiche);
 
 // ---- Chiffres -------------------------------------------------------------------------------------------------------------
 function blocChiffres(demandes) {
@@ -448,7 +451,7 @@ export async function vueDemandesSite() {
     onglet === "chiffres"
       ? blocChiffres(demandes)
       : liste.length
-        ? h("ul", { class: "dsite-liste" }, liste.map(((index) => (d) => carte(d, index))(indexClientsParTelephone(clientsProposes()))))
+        ? h("ul", { class: "dsite-liste" }, liste.map(carteAvec(fichesParNumero(clientsProposes))))
         : vide(onglet === "a_traiter" ? tr("Aucune demande à traiter") : tr("Aucune demande"), onglet === "a_traiter" ? tr("Les demandes envoyées depuis le site arrivent ici, avec une notification sur le téléphone si la cloche est activée.") : tr("Les demandes traitées apparaîtront ici."))
   );
 }

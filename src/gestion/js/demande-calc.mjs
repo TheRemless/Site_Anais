@@ -809,6 +809,15 @@ export function indexClientsParTelephone(clients) {
   return index;
 }
 export const clientParTelephone = (index, telephone) => index.get(cleTelephone(telephone)) || null;
+// La recherche d'une fiche par numéro, dont l'index n'est construit qu'au premier appel (`clients` : une fonction qui rend les fiches) : une liste sans demande du
+// carnet n'index rien, une liste avec plusieurs ne l'index qu'une fois.
+export function fichesParNumero(clients) {
+  let index = null;
+  return (telephone) => {
+    if (!index) index = indexClientsParTelephone(clients());
+    return clientParTelephone(index, telephone);
+  };
+}
 export function clientsProches(d, clients) {
   const tel = cleTelephone(d.telephone);
   const nom = cleNom({ prenom: "", nom: d.nom || "" });
@@ -973,8 +982,12 @@ function optionDuCarnet(d) {
   return option ? { produit, option } : null;
 }
 
-// L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus du site).
+// L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus).
 // Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
+// Deux sources, jamais mélangées : une demande d'une page du carnet porte son identifiant (`d.carnet`) et se lit parmi les sorties du carnet ; tout autre message
+// (collé, ou venu du site Secret) se lit par son nom parmi les sorties du site Secret seulement.
+// Un message collé sans identifiant du carnet ne retrouve jamais une sortie du carnet par son nom : c'est voulu (deux sorties peuvent porter le même nom,
+// et le tarif d'une autre entreprise ne se devine pas).
 export function optionDuSite(d) {
   if (!d || !d.site || d.libre) return null;
   // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : l'identifiant d'abord. Une sortie connue dont l'option n'est pas
@@ -982,16 +995,14 @@ export function optionDuSite(d) {
   // jamais parmi celles du site Secret (deux sorties peuvent porter le même nom).
   if (d.carnet && d.carnet.produit) return optionDuCarnet(d) || (PRODUITS_CARNET.some((p) => p.id === d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
   if (!d.prestation) return null;
-  // Un message qui n'a pas d'identifiant du carnet (collé, ou d'un autre site) ne cherche que parmi les sorties du site Secret : jamais le tarif d'une sortie du carnet.
   return optionParNom(d, PRODUITS_SITE);
 }
-// Le produit et l'option d'un message qui les nomme (« Booking request: Produit – Option », « Rental request: Modèle »), parmi `catalogue`.
+// Le produit et l'option d'un message qui les nomme (« Booking request: Produit – Option », « Rental request: Modèle »), cherchés par leur nom parmi `catalogue` seulement.
 function optionParNom(d, catalogue) {
   if (!d.prestation) return null;
   const location = d.type === "location";
   if (!location && d.type !== "tour") return null;
   const nom = cleTexte(d.prestation);
-  // Les sorties du carnet se retrouvent aussi par leur nom, pour un message collé sans identifiant.
   const produits = location ? catalogue.filter((p) => p.section === "rental") : catalogue.filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
   const titre = location ? nom : cleTexte(d.option);
   for (const produit of produits) {
@@ -1053,7 +1064,10 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   // Les âges de moins de 3 ans sont des bébés (comptés à part par le message, gratuits) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème
   // l'est. Une sortie sans ligne enfant (adulte seul) le dit autrement : cet enfant n'a aucun tarif propre.
   const bareme = trouve.produit.enfant;
-  if (bareme && (d.ages || []).some((a) => a >= 3 && a < bareme.min)) {
+  // Des enfants annoncés sans âge : le tarif enfant dépend de l'âge, on le dit plutôt que de se taire.
+  if (bareme && (d.enfants || 0) > (d.ages || []).filter((a) => a >= 3).length) {
+    for (const o of offres) (o.avertissement = o.avertissement || "ages_manquants"), (o.bareme = bareme);
+  } else if (bareme && (d.ages || []).some((a) => a >= 3 && a < bareme.min)) {
     for (const o of offres) {
       const sansEnfant = !o.enfantSite && !prestationEnfant(o.source, prestations);
       o.avertissement = o.avertissement || (sansEnfant ? "age_enfant_sans_tarif" : "age_enfant");

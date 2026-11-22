@@ -92,13 +92,14 @@ Nani valide d'abord la demande avec le partenaire, en dehors de l'outil. La dema
   "whatsapp": "+41 79 123 45 67",
   "estimated_total": 4500,
   "currency": "THB",
-  "page_url": "https://zwaldtravelplanner.com/carnet/koh-samui-excursions-bateau-xc8do3/",
+  "page_url": "https://zwaldtravelplanner.com/carnet/koh-samui-excursions-bateau-<code>/",
   "message": "Booking request: Pig Island and Koh Tan by private longtail, 4 hours – Whole boat\nDate: Sun 20 Dec 2026\nGuests: 2 adults, 2 children (ages 5 and 9)\nPickup: Hotel Example, Chaweng\nName: Anna Keller\nEstimated total: 4,500 THB",
   "website": ""
 }
 ```
 
-- Contrôles propres à ces origines (la fonction les fait elle-même) : `page_url` est obligatoire, doit être une page `/carnet/…` de l'origine même de la requête (`zwaldtravelplanner.com` ou `www.`, pas l'autre ni le site Secret), sinon 400 sur `page_url` ; `brand` doit être `"secret"`, sinon 400 sur `brand`. Pour toute origine, `page_url` n'est gardée que si elle est sur l'origine de la requête (sinon la demande passe sans page). Une demande n'est « du carnet » (étiquette « Carnet ZTP », notification, tarif de la sortie du carnet, bouton « Créer le dossier ») que si sa page est sur `zwaldtravelplanner.com` ou `www.` ET sous `/carnet/` : une page `/carnet/…` du site Secret n'en est pas une.
+- Le code d'accès de la page : la page envoie son adresse complète, la fonction retire le code avant d'écrire (`…/carnet/<guide>-<code>/` devient `…/carnet/<guide>/`, ni requête ni ancre), aussi dans le `message` : la base, les fiches, les notifications et les messages ne contiennent jamais l'adresse qui ouvre la page privée.
+- Contrôles propres à ces origines (la fonction les fait elle-même) : `page_url` est obligatoire, doit être une page `/carnet/…` de l'origine même de la requête (`zwaldtravelplanner.com` ou `www.`, pas l'autre ni le site Secret), sinon 400 sur `page_url` ; `brand` doit être `"secret"`, sinon 400 sur `brand`. Pour toute origine, `page_url` n'est gardée que si elle est sur l'origine de la requête (www et sans www sont un même site) (sinon la demande passe sans page). Une demande n'est « du carnet » (étiquette « Carnet ZTP », notification, tarif de la sortie du carnet, bouton « Créer le dossier ») que si sa page est sur `zwaldtravelplanner.com` ou `www.` ET sous `/carnet/` : une page `/carnet/…` du site Secret n'en est pas une.
 - `ref` : `SAM-` suivi de 4 caractères (même forme que les autres, `[A-Z0-9-]{3,24}`). Aucun préfixe n'est à déclarer : Gestion ne lit pas la référence, il la montre en grand pour retrouver la conversation WhatsApp, et relie un message WhatsApp à une demande par le numéro de téléphone (migration 72), jamais par la référence. Il n'y a donc pas de dédoublonnage par `ref` : un second envoi crée une seconde demande, à classer.
 - `product_id` : l'identifiant d'une sortie de `src/gestion/js/carnet-produits.mjs` (`id`). `option` : l'identifiant de l'option cochée (`options[].id`), `option_label` son titre (`options[].titre`). Une sortie à une seule option envoie `standard`.
 - Gestion retrouve le tarif par `product_id` et l'option, puis par le nombre de personnes pour un bateau privé (tranche « 1 to 3 people »…). Un enfant de moins de 4 ans ne compte pas dans le groupe.
