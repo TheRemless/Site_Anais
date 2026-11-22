@@ -4640,3 +4640,7 @@ for (const [k, v] of Object.entries(EN_PRET)) if (!(k in EN)) EN[k] = v;
 // Type du contact déduit (migration 110) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_TYPE } from "./i18n-en-type.mjs";
 for (const [k, v] of Object.entries(EN_TYPE)) if (!(k in EN)) EN[k] = v;
+
+// Commission saisie par le partenaire chauffeur (migration 115) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_PARTENAIRE } from "./i18n-en-partenaire.mjs";
+for (const [k, v] of Object.entries(EN_PARTENAIRE)) if (!(k in EN)) EN[k] = v;

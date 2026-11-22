@@ -40,6 +40,8 @@ export const TH = {
   erreur_montant: "ใส่ตัวเลขเท่านั้น เช่น 300", // Seulement un nombre, par exemple 300
   erreur_trop: "ค่าคอมมากกว่าราคาที่ลูกค้าจ่าย", // La commission est plus élevée que le prix payé par le client
   erreur_payee: "จ่ายแล้ว แก้ไม่ได้", // Déjà payée, ne se modifie plus
+  erreur_zero: "ใส่ตัวเลขมากกว่า 0", // Mettre un nombre plus grand que 0
+  posee_equipe: `${DESTINATAIRE} ใส่ค่าคอมนี้แล้ว แก้ไม่ได้`, // Nani a déjà mis cette commission, elle ne se modifie pas
   erreur_reseau: "บันทึกไม่ได้ ลองใหม่อีกครั้ง", // Pas enregistré, réessayer
   chargement: "กำลังโหลด…", // Chargement…
   erreur_chargement: "โหลดไม่ได้", // Chargement impossible
@@ -107,14 +109,20 @@ export function lireMontant(texte) {
 export const resteDu = (c) => (c.reglee || c.commission === null || c.commission === undefined ? 0 : Math.max(0, Number(c.commission) - Number(c.commission_payee || 0)));
 // Le total que l'écran affiche en tête : la somme de ce qui reste dû sur toutes ses courses, passées et à venir.
 export const totalDu = (courses = []) => Math.round(courses.reduce((s, c) => s + resteDu(c), 0) * 100) / 100;
-// Une commission payée, même en partie, ne se modifie plus (la base refuse aussi).
-export const verrouillee = (c) => !!c.reglee || Number(c.commission_payee || 0) !== 0;
+// Plafond de la commission (relecture de sécurité, 22.11.2026) : le prix de vente de la course, 10 000 si le prix est vide.
+export const PLAFOND_SANS_PRIX = 10000;
+export const plafond = (c) => (c.prix === null || c.prix === undefined || c.prix === "" ? PLAFOND_SANS_PRIX : Number(c.prix));
+// Une commission payée, même en partie, ne se modifie plus ; une commission posée par Nani ou l'équipe non plus (la base refuse aussi).
+export const posee_par_equipe = (c) => c.commission !== null && c.commission !== undefined && !c.par_moi;
+export const verrouillee = (c) => !!c.reglee || Number(c.commission_payee || 0) !== 0 || posee_par_equipe(c) || c.modifiable === false;
 
 // Contrôle avant l'envoi, comme la base : un nombre, pas plus que le prix payé par le client. Rend le texte d'erreur ou null.
 export function erreurMontant(c, montant) {
-  if (verrouillee(c)) return TH.erreur_payee;
+  if (!!c.reglee || Number(c.commission_payee || 0) !== 0) return TH.erreur_payee;
+  if (verrouillee(c)) return TH.posee_equipe;
   if (montant === undefined || (montant !== null && !(montant >= 0))) return TH.erreur_montant;
-  if (montant !== null && c.prix !== null && c.prix !== undefined && montant > Number(c.prix)) return TH.erreur_trop;
+  if (montant === 0) return TH.erreur_zero;
+  if (montant !== null && montant > plafond(c)) return TH.erreur_trop;
   return null;
 }
 
@@ -146,15 +154,15 @@ export function accesLocal(data, userId) {
   return { partenaire: p, entite: e, devise: reglages.devise || "THB" };
 }
 
-// partenaire_courses : toutes les courses de l'entreprise Taxi, avec ou sans partenaire (ni annulées, ni d'un dossier annulé), d'aujourd'hui
-// à plus tard, plus les 60 derniers jours encore à payer.
+// partenaire_courses : les courses de l'entreprise Taxi confiées à sa fiche ou sans partenaire (ni annulées, ni d'un dossier annulé),
+// d'aujourd'hui à 60 jours, plus les courses passées tant que leur commission n'est pas payée.
 export function coursesLocales(data, userId, aujourdhui) {
   const acces = accesLocal(data, userId);
   if (!acces) return [];
-  const limite = jourSuivant(aujourdhui, -60);
+  const limite = jourSuivant(aujourdhui, 60);
   const nets = (id) => (data.reservations_nets || []).find((n) => n.reservation_id === id) || {};
   return (data.reservations || [])
-    .filter((r) => r.entite_id === acces.entite.id && r.statut !== "annule" && r.date_service)
+    .filter((r) => r.entite_id === acces.entite.id && (!r.partenaire_id || r.partenaire_id === acces.partenaire.id) && r.statut !== "annule" && r.date_service)
     .map((r) => {
       const d = (data.dossiers || []).find((x) => x.id === r.dossier_id && x.entite_id === r.entite_id);
       const c = d && (data.clients || []).find((x) => x.id === d.client_id);
@@ -168,8 +176,10 @@ export function coursesLocales(data, userId, aujourdhui) {
         adultes: Number(p.adultes) || 0, enfants: Number(p.enfants) || 0, bebes: Number(p.bebes) || 0,
         client: `${c.prenom || ""} ${c.nom || ""}`.trim(), telephone: c.telephone || "", vol: details.vol || "",
         prix: r.montant_vente ?? null, commission: n.commission_prevue ?? null, commission_payee: n.commission_recue ?? null, reglee: !!n.commission_recue_le,
+        par_moi: commissionDuPartenaire(n),
       };
-      const garde = r.date_service >= aujourdhui || (r.date_service >= limite && !course.reglee && (course.commission === null || resteDu(course) > 0));
+      course.modifiable = !course.reglee && !Number(course.commission_payee || 0) && (course.commission === null || course.par_moi);
+      const garde = (r.date_service >= aujourdhui && r.date_service <= limite) || (r.date_service < aujourdhui && !course.reglee && (course.commission === null || resteDu(course) > 0));
       return garde ? course : null;
     })
     .filter(Boolean)
@@ -182,5 +192,19 @@ export function saisieLocale(data, userId, aujourdhui, reservationId, montant) {
   if (!c) throw new Error("Course introuvable.");
   const erreur = erreurMontant(c, montant);
   if (erreur) throw new Error(erreur);
-  return { commission_prevue: montant };
+  return { commission_prevue: montant, commission_partenaire: montant, commission_partenaire_le: montant === null ? null : new Date().toISOString() };
+}
+
+// La commission prévue est celle du partenaire tant qu'elle égale le montant qu'il a saisi (migration 115). Sert aussi aux écrans de Nani.
+export function commissionDuPartenaire(n) {
+  return !!n && n.commission_prevue !== null && n.commission_prevue !== undefined && n.commission_partenaire !== null && n.commission_partenaire !== undefined && Number(n.commission_prevue) === Number(n.commission_partenaire);
+}
+
+// Relire les courses quand on revient sur l'application. Rend la fonction qui retire l'écouteur, appelée quand on quitte l'écran.
+export function suivreRetour(doc, relire, { saisieEnCours = () => false } = {}) {
+  const ecouteur = () => {
+    if (doc.visibilityState === "visible" && !saisieEnCours()) relire();
+  };
+  doc.addEventListener("visibilitychange", ecouteur);
+  return () => doc.removeEventListener("visibilitychange", ecouteur);
 }

@@ -83,6 +83,10 @@ const R = {
   passeePayee: await course(ent.taxi, P.vip, -5, { nets: { prevue: 300, recue: 300, recue_le: await jour(-1) } }),
   futurePayee: await course(ent.taxi, P.vip, 2, { nets: { prevue: 200, recue: 200, recue_le: await jour(0) } }),
   vieille: await course(ent.taxi, P.vip, -70),
+  vieillePayee: await course(ent.taxi, P.vip, -80, { nets: { prevue: 300, recue: 300, recue_le: await jour(-60) } }),
+  dans60: await course(ent.taxi, P.vip, 60),
+  dans61: await course(ent.taxi, P.vip, 61),
+  sansPrix: await course(ent.taxi, null, 4, { prix: null }),
   annulee: await course(ent.taxi, P.vip, 1, { statut: "annule" }),
   dossierAnnule: await course(ent.taxi, P.vip, 1, { dossierAnnule: true }),
   autreChauffeur: await course(ent.taxi, P.autreTaxi, 1),
@@ -137,13 +141,18 @@ ok(r.ok && r.rows.length === 1 && r.rows[0].partenaire === "VIP Taxi test" && r.
 r = await essaie(u.brown, "select * from partenaire_courses()");
 ok(r.ok, "partenaire_courses répond pour Mr. Brown " + (r.err || ""));
 const ids = (r.rows || []).map((x) => x.id);
-const attendues = ["passeeDue", "passeeSansCom", "passeePartielle", "aujourdhui", "demain", "autreChauffeur", "futurePayee", "sansPartenaire", "plusTard"];
-ok(attendues.every((k) => ids.includes(R[k])) && ids.length === attendues.length, `les ${attendues.length} courses de Taxi : à venir (même payée) et passées à payer`);
-ok(ids.includes(R.sansPartenaire), "une course de Taxi sans partenaire apparaît (filtre sur l'entreprise, pas sur le partenaire)");
-ok(ids.includes(R.autreChauffeur), "une course de Taxi posée sur une autre fiche partenaire apparaît aussi");
-for (const k of ["passeePayee", "vieille", "annulee", "dossierAnnule", "secretAvecVip", "secret"]) ok(!ids.includes(R[k]), `pas la course « ${k} »`);
+const attendues = ["vieille", "passeeDue", "passeeSansCom", "passeePartielle", "aujourdhui", "demain", "futurePayee", "sansPartenaire", "sansPrix", "plusTard", "dans60"];
+ok(attendues.every((k) => ids.includes(R[k])) && ids.length === attendues.length, `ses ${attendues.length} courses : sa fiche et sans partenaire, d'aujourd'hui à 60 jours, passées non payées`);
+ok(ids.includes(R.sansPartenaire), "point 2 : une course de Taxi sans partenaire apparaît");
+ok(!ids.includes(R.autreChauffeur), "point 2 : une course confiée à une autre fiche de Taxi reste invisible");
+ok(ids.includes(R.dans60) && !ids.includes(R.dans61), "point 3 : jusqu'à 60 jours dans le futur, pas au-delà");
+ok(ids.includes(R.vieille) && !ids.includes(R.vieillePayee), "point 3 : une course passée reste visible tant que sa commission n'est pas payée, même ancienne");
+for (const k of ["passeePayee", "vieillePayee", "annulee", "dossierAnnule", "autreChauffeur", "dans61", "secretAvecVip", "secret"]) ok(!ids.includes(R[k]), `pas la course « ${k} »`);
 ok(r.rows.find((x) => x.id === R.demain)?.client === "Partage Ztp", "un client partagé de ZTP (migration 46) garde son nom sur la course de Taxi");
-ok(ids[0] === R.passeeDue && ids[ids.length - 1] === R.plusTard, "triées par date");
+ok(ids[0] === R.vieille && ids[ids.length - 1] === R.dans60, "triées par date");
+const ligneDe = (id) => r.rows.find((x) => x.id === id);
+ok(ligneDe(R.passeeDue).par_moi === false && ligneDe(R.passeeDue).modifiable === false && Number(ligneDe(R.passeeDue).commission) === 300, "point 1 : une commission posée par Nani s'affiche, en lecture seule pour lui");
+ok(ligneDe(R.demain).modifiable === true && ligneDe(R.demain).par_moi === false, "une course sans commission est modifiable");
 const auj = r.rows.find((x) => x.id === R.aujourdhui);
 ok(auj && auj.heure === "14:30" && auj.pickup === "Hotel Test, Long Beach" && auj.dropoff === "Krabi Airport" && auj.vol === "FD0000" && auj.adultes === 2 && auj.enfants === 1 && Number(auj.prix) === 1800 && /^Test Client/.test(auj.client) && auj.telephone.startsWith("+44"), "chaque course : heure, lieux, vol, personnes, client, téléphone, prix");
 ok(r.rows.find((x) => x.id === R.plusTard).retour === true && r.rows.find((x) => x.id === R.plusTard).programme === "Old Town tour", "un retour au point de départ est signalé avec son programme");
@@ -157,13 +166,18 @@ for (const k of ["nani", "mook", "autre"]) {
 ok(!(await anonyme("select * from partenaire_courses()")).ok, "anon n'appelle pas partenaire_courses");
 
 // ---- Saisir sa commission -------------------------------------------------------------------------------------------------------------------
-const com = async (id) => un("select commission_prevue, net_prevu from reservations_nets where reservation_id = $1", [id]);
+const com = async (id) => un("select commission_prevue, net_prevu, commission_partenaire, commission_partenaire_le from reservations_nets where reservation_id = $1", [id]);
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 350) v", [R.aujourdhui]);
 ok(r.ok && Number(r.rows[0].v) === 350, "Mr. Brown saisit 350 sur la course d'aujourd'hui " + (r.err || ""));
 let n = await com(R.aujourdhui);
 ok(Number(n.commission_prevue) === 350 && Number(n.net_prevu) === 1234, "la commission prévue est posée, le net reste tel quel");
-r = await essaie(u.nani, "select commission_prevue from reservations_nets where reservation_id = $1", [R.aujourdhui]);
-ok(r.ok && Number(r.rows[0].commission_prevue) === 350, "Nani voit la commission annoncée par Mr. Brown");
+ok(Number(n.commission_partenaire) === 350 && !!n.commission_partenaire_le, "point 1 : la saisie est marquée « saisie par le partenaire » (montant et moment)");
+r = await essaie(u.brown, "select par_moi, modifiable from partenaire_courses() where id = $1", [R.aujourdhui]);
+ok(r.ok && r.rows[0].par_moi === true && r.rows[0].modifiable === true, "point 1 : il voit que la commission est la sienne et peut la corriger");
+r = await essaie(u.nani, "select commission_prevue, commission_partenaire from reservations_nets where reservation_id = $1", [R.aujourdhui]);
+ok(r.ok && Number(r.rows[0].commission_prevue) === 350 && Number(r.rows[0].commission_partenaire) === 350, "Nani voit la commission et qu'elle vient de Mr. Brown");
+r = await essaie(u.brown, "select partenaire_saisir_commission($1, 100) v", [R.passeeDue]);
+ok(!r.ok && /équipe/.test(r.err) && Number((await com(R.passeeDue)).commission_prevue) === 300, "point 1 : il n'écrase jamais une commission posée par Nani");
 const j = await un("select user_id, details from journal where table_name = 'reservations_nets' and cible = $1 order by id desc limit 1", [R.aujourdhui]);
 ok(j && j.user_id === u.brown && j.details.commission_prevue, "le journal des nets note la saisie et le compte de Mr. Brown");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 250) v", [R.passeeSansCom]);
@@ -172,7 +186,15 @@ r = await essaie(u.brown, "select partenaire_saisir_commission($1, 320) v", [R.a
 ok(r.ok && Number((await com(R.aujourdhui)).commission_prevue) === 320, "il corrige sa saisie tant que rien n'est payé");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, null) v", [R.demain]);
 ok(r.ok && !(await com(R.demain)), "effacer une commission jamais saisie ne crée rien");
-for (const [m, quoi] of [[-1, "négatif"], [10.555, "trois décimales"], [1801, "plus que le prix"]]) {
+r = await essaie(u.brown, "select partenaire_saisir_commission($1, 10000) v", [R.sansPrix]);
+ok(r.ok, "point 4 : prix de vente vide, 10 000 est accepté " + (r.err || ""));
+r = await essaie(u.brown, "select partenaire_saisir_commission($1, 10000.01) v", [R.sansPrix]);
+ok(!r.ok && Number((await com(R.sansPrix)).commission_prevue) === 10000, "point 4 : prix de vente vide, plafond de 10 000");
+r = await essaie(u.brown, "select partenaire_saisir_commission($1, 1800) v", [R.demain]);
+ok(r.ok, "point 4 : jusqu'au prix de vente compris");
+await essaie(u.brown, "select partenaire_saisir_commission($1, null) v", [R.demain]);
+ok(!(await com(R.demain)).commission_prevue && !(await com(R.demain)).commission_partenaire, "il efface sa propre commission (montant et marquage)");
+for (const [m, quoi] of [[0, "zéro (point 1)"], [-1, "négatif"], [10.555, "trois décimales"], [1801, "plus que le prix de vente (point 4)"]]) {
   r = await essaie(u.brown, `select partenaire_saisir_commission($1, ${m}) v`, [R.demain]);
   ok(!r.ok, `refusé : montant ${quoi}`);
 }
@@ -182,7 +204,7 @@ r = await essaie(u.brown, "select partenaire_saisir_commission($1, 100) v", [R.f
 ok(!r.ok && /payée/.test(r.err), "refusé : commission déjà payée");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 150) v", [R.sansPartenaire]);
 ok(r.ok && Number((await com(R.sansPartenaire)).commission_prevue) === 150, "il saisit la commission d'une course de Taxi sans partenaire");
-for (const k of ["passeePayee", "vieille", "annulee", "dossierAnnule", "secretAvecVip", "secret"]) {
+for (const k of ["passeePayee", "annulee", "dossierAnnule", "autreChauffeur", "dans61", "secretAvecVip", "secret"]) {
   r = await essaie(u.brown, "select partenaire_saisir_commission($1, 10) v", [R[k]]);
   ok(!r.ok, `refusé sur la course « ${k} »`);
 }
@@ -193,6 +215,13 @@ ok(r.ok && r.rows.some((x) => x.id === R.passeeSansCom), "la course passée sais
 await db.query("update reservations_nets set commission_recue = 250, commission_recue_le = $2 where reservation_id = $1", [R.passeeSansCom, await jour(0)]);
 r = await essaie(u.brown, "select * from partenaire_courses()");
 ok(r.ok && !r.rows.some((x) => x.id === R.passeeSansCom), "une fois payée par Nani, la course passée quitte sa liste");
+
+// Nani change la commission saisie par Mr. Brown : elle redevient la sienne, il ne peut plus y toucher.
+await essaie(u.nani, "update reservations_nets set commission_prevue = 280 where reservation_id = $1", [R.aujourdhui]);
+r = await essaie(u.brown, "select par_moi, modifiable, commission from partenaire_courses() where id = $1", [R.aujourdhui]);
+ok(r.ok && r.rows[0].par_moi === false && r.rows[0].modifiable === false && Number(r.rows[0].commission) === 280, "point 1 : corrigée par Nani, la commission n'est plus marquée comme la sienne et passe en lecture seule");
+r = await essaie(u.brown, "select partenaire_saisir_commission($1, 350) v", [R.aujourdhui]);
+ok(!r.ok && Number((await com(R.aujourdhui)).commission_prevue) === 280, "point 1 : … et il ne peut plus l'écraser");
 
 // ---- Coupures --------------------------------------------------------------------------------------------------------------------------
 await db.query("update profils set actif = false where user_id = $1", [u.brown]);
@@ -208,6 +237,26 @@ r = await essaie(u.brown, "select partenaire_saisir_commission($1, 10) v", [R.de
 ok(!r.ok, "entreprise sortie du mode taxi : plus de saisie");
 await db.query("update reglages set valeur = valeur || '{\"fonctionnement\": \"taxi\"}'::jsonb where entite_id = $1", [ent.taxi]);
 
+// ---- Point 5 : le SQL de création du compte, tel qu'écrit dans acces-partenaire.md ------------------------------------------------------
+const doc = fs.readFileSync(W + "acces-partenaire.md", "utf8");
+const blocSql = doc.slice(doc.indexOf("```sql") + 6, doc.indexOf("```", doc.indexOf("```sql") + 6));
+ok(ent.taxi === "00000000-0000-4000-8000-000000000003", "(témoin) l'entreprise Taxi de test est bien la 0003 de la doc");
+const creer = async (email) => { try { await db.exec(blocSql.replaceAll("EMAIL_DE_MR_BROWN", email)); return null; } catch (e) { return e.message; } };
+const brown2 = (await un("insert into auth.users (email) values ('brown2@test') returning id")).id;
+await partenaire(ent.taxi, "Vip taxi lanta");
+let e5 = await creer("brown2@test");
+ok(/introuvable sous ce nom exact/.test(e5 || "") && !(await un("select 1 x from partenaires_acces where user_id = $1", [brown2])), "point 5 : sans fiche « VIP Taxi Lanta » au nom exact, la création est refusée et rien n'est écrit (pas de repli)");
+e5 = await creer("personne@test");
+ok(/Compte introuvable/.test(e5 || ""), "point 5 : compte inexistant, création refusée");
+const fiche = await partenaire(ent.taxi, "VIP Taxi Lanta");
+e5 = await creer("brown2@test");
+const pose = await un("select partenaire_id from partenaires_acces where user_id = $1", [brown2]);
+ok(e5 === null && pose && pose.partenaire_id === fiche, "point 5 : avec la fiche exacte, l'accès est posé sur elle " + (e5 || ""));
+await db.query("delete from partenaires_acces where user_id = $1", [brown2]);
+await partenaire(ent.taxi, "VIP Taxi Lanta");
+e5 = await creer("brown2@test");
+ok(/en double/.test(e5 || "") && !(await un("select 1 x from partenaires_acces where user_id = $1", [brown2])), "point 5 : deux fiches au même nom, création refusée");
+
 // ---- Se rejoue, retour en arrière ------------------------------------------------------------------------------------------------------
 const photo = async () => JSON.stringify((await db.query("select * from partenaires_acces order by user_id")).rows) + JSON.stringify((await db.query("select reservation_id, commission_prevue from reservations_nets order by reservation_id")).rows);
 const p1 = await photo();
@@ -217,7 +266,7 @@ r = await essaie(u.brown, "select * from partenaire_courses()");
 ok(r.ok && r.rows.length > 0, "… et l'accès marche toujours");
 await db.exec(lire("retour-115-acces-partenaire.sql"));
 ok(!(await un("select 1 x from pg_class where relname = 'partenaires_acces'")) && !(await un("select 1 x from pg_proc where proname like 'partenaire_%'")), "retour : table et fonctions parties");
-ok(Number((await com(R.aujourdhui)).commission_prevue) === 320, "retour : les commissions saisies restent");
+ok(Number((await com(R.aujourdhui)).commission_prevue) === 280 && Number((await com(R.aujourdhui)).commission_partenaire) === 320, "retour : les commissions et leur marquage restent");
 await membre("brown", ent.taxi, "Vouchers test");
 ok(!!(await un("select 1 x from membres where user_id = $1", [u.brown])), "retour : le compte peut de nouveau recevoir un rôle");
 

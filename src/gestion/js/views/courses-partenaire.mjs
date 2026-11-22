@@ -5,7 +5,7 @@
 import { etat } from "../etat.mjs";
 import { h, vider } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
-import { TH, parJour, totalDu, montantTh, personnesTh, destinationTh, lireMontant, erreurMontant, verrouillee, resteDu } from "../courses-partenaire-calc.mjs";
+import { TH, parJour, totalDu, montantTh, personnesTh, destinationTh, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
 
 const telLien = (t) => `tel:${String(t || "").replace(/[^\d+]/g, "")}`;
 
@@ -36,13 +36,14 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
           await etat.store.partenaireSaisirCommission(c.id, montant);
           c.commission = montant;
           majTotal();
+          c.par_moi = montant !== null;
           rendre(`${TH.enregistre} ✓`);
         } catch (x) {
           const m = String((x && x.message) || "");
-          rendre(/payée/.test(m) ? TH.erreur_payee : /prix/.test(m) ? TH.erreur_trop : /négatif|décimales|élevé/.test(m) ? TH.erreur_montant : TH.erreur_reseau, true);
+          rendre(/payée/.test(m) ? TH.erreur_payee : /équipe/.test(m) ? TH.posee_equipe : /prix/.test(m) ? TH.erreur_trop : /nul/.test(m) ? TH.erreur_zero : /négatif|décimales/.test(m) ? TH.erreur_montant : TH.erreur_reseau, true);
         }
       };
-      const payee = c.reglee ? TH.payee : Number(c.commission_payee || 0) ? `${TH.payee_partie} · ${TH.reste} ${montantTh(resteDu(c), devise)}` : null;
+      const payee = c.reglee ? TH.payee : Number(c.commission_payee || 0) ? `${TH.payee_partie} · ${TH.reste} ${montantTh(resteDu(c), devise)}` : posee_par_equipe(c) ? TH.posee_equipe : null;
       vider(li).append(
         h("div", { class: "cp-tete" }, h("span", { class: "cp-heure" }, c.heure || "–"), h("span", { class: "cp-client" }, c.client)),
         h(
@@ -103,10 +104,10 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
       liste
     )
   );
-  // Revenir sur l'application (téléphone déverrouillé, onglet repris) relit ses courses, sauf pendant une saisie.
-  document.addEventListener("visibilitychange", () => {
-    const saisie = document.activeElement && document.activeElement.tagName === "INPUT" && racine.contains(document.activeElement);
-    if (document.visibilityState === "visible" && racine.isConnected && !saisie) charger();
+  // Revenir sur l'application (téléphone déverrouillé, onglet repris) relit ses courses, sauf pendant une saisie. L'écouteur est retiré
+  // quand on quitte l'écran (racine.arreter, appelé par app.mjs) : il ne s'accumule pas d'un compte ou d'un affichage à l'autre.
+  racine.arreter = suivreRetour(document, () => racine.isConnected && charger(), {
+    saisieEnCours: () => !!document.activeElement && document.activeElement.tagName === "INPUT" && racine.contains(document.activeElement),
   });
   charger();
   return racine;

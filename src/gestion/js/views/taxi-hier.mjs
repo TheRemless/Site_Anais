@@ -1,6 +1,7 @@
 // Taxi, après une course : demander la commission à Mr. Brown, puis la saisir (aucune commission par défaut, décision du 12.11.2026).
 // Depuis le 13.11.2026 : toutes les courses des 14 derniers jours sans commission saisie, et un seul message par chauffeur.
 // La commission saisie est la « commission prévue » de la réservation : l'écran À encaisser la suit ensuite comme pour Secret.
+// Saisie par le partenaire lui-même (migration 115) : la carte le dit (« Commission annoncée par Mr. Brown »).
 import { etat, modifier, enregistrerLie, nomClient, partenaireDe, dossiersAnnules, reglages, entiteActive, peut } from "../etat.mjs";
 import { h, icone, toast, confirmer } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatDate } from "../calc.mjs";
@@ -9,6 +10,7 @@ import { variablesMessage } from "../operations-calc.mjs";
 import { telWhatsApp } from "../partenaires-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { lienDossier } from "./commun.mjs";
+import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
 import { tr } from "../i18n.mjs";
 
 const netDe = (r) => etat.db.reservations_nets.find((n) => n.reservation_id === r.id) || null;
@@ -110,7 +112,7 @@ export function sectionCommissionsHier(rafraichir) {
       h(
         "span",
         { class: "carte-pied" },
-        h("span", { class: "tag" }, x.recue ? (x.recueLe ? tr("Commission reçue le {date} : {montant}", { date: formatDate(x.recueLe), montant: formatMontant(x.montant, devise) }) : tr("Commission reçue : {montant}", { montant: formatMontant(x.montant, devise) })) : tr("Commission annoncée : {montant}", { montant: formatMontant(x.montant, devise) })),
+        h("span", { class: "tag" }, x.recue ? (x.recueLe ? tr("Commission reçue le {date} : {montant}", { date: formatDate(x.recueLe), montant: formatMontant(x.montant, devise) }) : tr("Commission reçue : {montant}", { montant: formatMontant(x.montant, devise) })) : commissionDuPartenaire(netDe(r)) ? tr("Commission annoncée par {nom} : {montant}", { nom: nomContact(p), montant: formatMontant(x.montant, devise) }) : tr("Commission annoncée : {montant}", { montant: formatMontant(x.montant, devise) })),
         h("button", { class: "secondaire petit", type: "button", onclick: () => rendre(true) }, tr("Modifier"))
       );
     // `edition` : la commission saisie s'affiche dans son formulaire prérempli.

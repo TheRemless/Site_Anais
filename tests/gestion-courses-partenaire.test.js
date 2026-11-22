@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { TH, parJour, totalDu, resteDu, verrouillee, lireMontant, erreurMontant, montantTh, personnesTh, destinationTh, dateTh, titreJour, jourSuivant, accesLocal, coursesLocales, saisieLocale } from "../src/gestion/js/courses-partenaire-calc.mjs";
+import { TH, parJour, totalDu, resteDu, verrouillee, lireMontant, erreurMontant, montantTh, personnesTh, destinationTh, dateTh, titreJour, jourSuivant, accesLocal, coursesLocales, saisieLocale, commissionDuPartenaire, suivreRetour, plafond } from "../src/gestion/js/courses-partenaire-calc.mjs";
 import { donneesDemo } from "../src/gestion/js/defauts.mjs";
 import { ajouterJours } from "../src/gestion/js/calc.mjs";
 
@@ -71,7 +71,45 @@ test("saisie : refusée sur une commission payée, un montant illisible ou plus 
   assert.equal(erreurMontant({ ...c, commission_payee: 50 }, 10), TH.erreur_payee);
   assert.equal(erreurMontant({ ...c, reglee: true }, 10), TH.erreur_payee);
   assert.equal(verrouillee({ commission_payee: 0, reglee: false }), false);
-  assert.equal(erreurMontant({ ...c, prix: null }, 99999), null);
+  // Point 4 : plafond = prix de vente, 10 000 si le prix est vide.
+  assert.equal(plafond({ ...c, prix: null }), 10000);
+  assert.equal(erreurMontant({ ...c, prix: null }, 10000), null);
+  assert.equal(erreurMontant({ ...c, prix: null }, 10000.01), TH.erreur_trop);
+  // Point 1 : zéro refusé, une commission posée par l'équipe en lecture seule, la sienne modifiable.
+  assert.equal(erreurMontant(c, 0), TH.erreur_zero);
+  assert.equal(erreurMontant({ ...c, commission: 300, par_moi: false }, 250), TH.posee_equipe);
+  assert.equal(verrouillee({ ...c, commission: 300, par_moi: false }), true);
+  assert.equal(erreurMontant({ ...c, commission: 300, par_moi: true }, 250), null);
+});
+
+test("point 1 : la commission est « du partenaire » tant qu'elle égale le montant qu'il a saisi", () => {
+  assert.equal(commissionDuPartenaire({ commission_prevue: 300, commission_partenaire: 300 }), true);
+  assert.equal(commissionDuPartenaire({ commission_prevue: "300.00", commission_partenaire: 300 }), true);
+  assert.equal(commissionDuPartenaire({ commission_prevue: 280, commission_partenaire: 300 }), false);
+  assert.equal(commissionDuPartenaire({ commission_prevue: 300, commission_partenaire: null }), false);
+  assert.equal(commissionDuPartenaire({ commission_prevue: null, commission_partenaire: 300 }), false);
+  assert.equal(commissionDuPartenaire(null), false);
+});
+
+test("point 7 : l'écouteur de retour sur l'application se retire en quittant l'écran", () => {
+  const ecouteurs = new Set();
+  const doc = { visibilityState: "visible", addEventListener: (t, f) => t === "visibilitychange" && ecouteurs.add(f), removeEventListener: (t, f) => t === "visibilitychange" && ecouteurs.delete(f) };
+  let relu = 0;
+  let saisie = false;
+  const arreter = suivreRetour(doc, () => relu++, { saisieEnCours: () => saisie });
+  assert.equal(ecouteurs.size, 1);
+  for (const f of ecouteurs) f();
+  assert.equal(relu, 1);
+  saisie = true;
+  for (const f of ecouteurs) f();
+  assert.equal(relu, 1, "pas de relecture pendant une saisie");
+  arreter();
+  assert.equal(ecouteurs.size, 0);
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/courses-partenaire.mjs", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../src/gestion/js/app.mjs", import.meta.url), "utf8");
+  assert.match(vue, /racine\.arreter = suivreRetour\(/);
+  assert.doesNotMatch(vue, /document\.addEventListener\("visibilitychange"/);
+  assert.ok((app.match(/quitterPartenaire\(\)/g) || []).length >= 4, "app.mjs retire l'écouteur en quittant l'écran");
 });
 
 test("jours : aujourd'hui et demain toujours là, la suite dans l'ordre, les jours passés à part", () => {
@@ -122,7 +160,7 @@ test("démo : ses courses de Taxi seulement, à venir et passées encore à paye
   assert.deepEqual(coursesLocales(d, u, AJD), []);
 });
 
-test("démo : toutes les courses de l'entreprise Taxi, même sans partenaire, jamais une autre entreprise", () => {
+test("point 2 : les courses de sa fiche et sans partenaire, jamais une autre fiche ni une autre entreprise", () => {
   const d = demo();
   const u = chauffeurDe(d);
   const taxi = d.entites.find((e) => e.slug === "taxi");
@@ -136,14 +174,41 @@ test("démo : toutes les courses de l'entreprise Taxi, même sans partenaire, ja
   const autre = d.reservations.find((x) => x.entite_id !== taxi.id && x.date_service >= AJD);
   autre.partenaire_id = d.partenaires_acces[0].partenaire_id;
   assert.ok(!coursesLocales(d, u, AJD).some((c) => c.id === autre.id), "une course d'une autre entreprise reste invisible, même posée sur sa fiche");
+  const autreFiche = { ...d.partenaires.find((p) => p.id === d.partenaires_acces[0].partenaire_id), id: "autre-fiche", nom: "Autre chauffeur" };
+  d.partenaires.push(autreFiche);
+  r.partenaire_id = autreFiche.id;
+  assert.ok(!coursesLocales(d, u, AJD).some((c) => c.id === r.id), "une course confiée à une autre fiche de Taxi reste invisible");
+});
+
+test("point 3 : d'aujourd'hui à 60 jours, et les courses passées tant que la commission n'est pas payée", () => {
+  const d = demo();
+  const u = chauffeurDe(d);
+  const r = d.reservations.find((x) => x.id === coursesLocales(d, u, AJD).find((c) => c.date_service >= AJD).id);
+  r.date_service = jourSuivant(AJD, 60);
+  assert.ok(coursesLocales(d, u, AJD).some((c) => c.id === r.id));
+  r.date_service = jourSuivant(AJD, 61);
+  assert.ok(!coursesLocales(d, u, AJD).some((c) => c.id === r.id));
+  r.date_service = jourSuivant(AJD, -120);
+  assert.ok(coursesLocales(d, u, AJD).some((c) => c.id === r.id), "passée sans commission : visible, même ancienne");
+  d.reservations_nets.push({ id: "n-test", entite_id: r.entite_id, reservation_id: r.id, commission_prevue: 300, commission_recue: 300, commission_recue_le: AJD });
+  assert.ok(!coursesLocales(d, u, AJD).some((c) => c.id === r.id), "payée : elle disparaît");
 });
 
 test("démo : la saisie suit les règles de la base", () => {
   const d = demo();
   const u = chauffeurDe(d);
   const c = coursesLocales(d, u, AJD).find((x) => x.date_service === AJD);
-  assert.deepEqual(saisieLocale(d, u, AJD, c.id, 300), { commission_prevue: 300 });
+  const v = saisieLocale(d, u, AJD, c.id, 300);
+  assert.equal(v.commission_prevue, 300);
+  assert.equal(v.commission_partenaire, 300, "point 1 : marquée comme la sienne");
+  assert.ok(v.commission_partenaire_le);
   assert.throws(() => saisieLocale(d, u, AJD, c.id, c.prix + 1));
+  assert.throws(() => saisieLocale(d, u, AJD, c.id, 0), "point 1 : zéro refusé");
+  d.reservations_nets.push({ id: "n-equipe", entite_id: d.reservations.find((x) => x.id === c.id).entite_id, reservation_id: c.id, commission_prevue: 200, commission_partenaire: null });
+  const apres = coursesLocales(d, u, AJD).find((x) => x.id === c.id);
+  assert.equal(apres.modifiable, false);
+  assert.equal(apres.par_moi, false);
+  assert.throws(() => saisieLocale(d, u, AJD, c.id, 150), "point 1 : jamais écraser la commission de l'équipe");
   assert.throws(() => saisieLocale(d, u, AJD, "inconnue", 10));
   const autre = d.profils.find((p) => p.super_admin).user_id;
   assert.throws(() => saisieLocale(d, autre, AJD, c.id, 10));

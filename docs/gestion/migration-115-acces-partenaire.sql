@@ -14,12 +14,13 @@
 -- Les trois passent par partenaire_acces_actuel(), qui ne rend l'accès que si : le profil est actif, n'est ni administrateur ni éditeur du
 -- logiciel, appartient à l'organisation de l'entreprise ; le partenaire est actif ; l'entreprise est active et en mode taxi. Désactiver le compte
 -- (Administration, Utilisateurs) ou le partenaire coupe donc l'accès tout de suite.
--- Les courses montrées : TOUTES les réservations de l'entreprise Taxi du partenaire (décision de Jérémy, 22.11.2026 : Mr. Brown fait toutes les
--- courses de VIP Taxi Lanta), avec ou sans partenaire posé sur la réservation, ni annulées ni dans un dossier annulé. Le lien vers la fiche
--- partenaire sert à l'accès (fiche active, entreprise en mode taxi, nom affiché) ; ce n'est pas lui qui filtre. Rien d'une autre entreprise.
--- La commission saisie est la « commission prévue » (reservations_nets.commission_prevue) : la carte « Commissions à demander » de Nani la
--- reprend telle quelle (« Commission annoncée »), l'écran « À encaisser » aussi. Le journal des nets (migration 37) note chaque saisie avec
--- le compte qui l'a faite. Une commission reçue, même en partie, ne se modifie plus. Aucune notification n'est envoyée.
+-- Les courses montrées : celles de l'entreprise Taxi confiées à sa fiche ou sans partenaire (décision de Jérémy, 22.11.2026), ni annulées
+-- ni dans un dossier annulé, d'aujourd'hui à 60 jours, plus les passées dont la commission n'est pas payée. Jamais une course confiée à
+-- une autre fiche, jamais une autre entreprise.
+-- La commission saisie devient la « commission prévue » (reservations_nets.commission_prevue), marquée comme la sienne (commission_partenaire) :
+-- la fiche de la course et la carte « Commissions à demander » de Nani disent « annoncée par le partenaire ». Une commission posée par Nani ou
+-- l'équipe n'est jamais écrasée. Le journal des nets (migration 37) note chaque saisie avec le compte. Une commission reçue, même en partie,
+-- ne se modifie plus. Aucune notification n'est envoyée.
 -- L'accès se donne à la main (docs/gestion/acces-partenaire.md) : une ligne dans `partenaires_acces`, posée par Jérémy dans l'éditeur SQL.
 
 begin;
@@ -107,35 +108,49 @@ language sql stable security definer set search_path = public as $$
   join reglages g on g.entite_id = a.entite_id
 $$;
 
--- Les courses de l'entreprise : d'aujourd'hui à plus tard, plus celles des 60 derniers jours dont la commission n'est pas encore saisie ou reste à payer.
--- Rien d'autre que ces colonnes : ni net, ni note interne, ni référence de dossier, ni nom du partenaire de la réservation.
-create or replace function partenaire_courses() returns table (
+-- La commission saisie par le partenaire (relecture de sécurité, 22.11.2026) : elle reste marquée comme la sienne, jamais confondue avec celle
+-- de Nani. `commission_partenaire` garde le montant qu'il a saisi, `commission_partenaire_le` le moment. La commission prévue est « la sienne »
+-- tant qu'elle est égale à ce montant ; si Nani ou l'équipe la changent, elle redevient la leur et il ne peut plus y toucher.
+alter table reservations_nets add column if not exists commission_partenaire numeric(12, 2);
+alter table reservations_nets add column if not exists commission_partenaire_le timestamptz;
+alter table reservations_nets drop constraint if exists reservations_nets_commission_partenaire_check;
+alter table reservations_nets add constraint reservations_nets_commission_partenaire_check check (commission_partenaire is null or commission_partenaire > 0);
+comment on column reservations_nets.commission_partenaire is 'Commission saisie par le partenaire chauffeur (migration 115). Égale à commission_prevue : la commission prévue est la sienne.';
+
+-- Les courses qu'il voit (décisions de Jérémy, 22.11.2026) : celles de l'entreprise Taxi confiées à sa fiche ou sans partenaire (jamais une
+-- course confiée à une autre fiche) ; d'aujourd'hui à 60 jours ; et les courses passées tant que leur commission n'est pas payée.
+-- Rien d'autre que ces colonnes : ni net, ni note interne, ni référence de dossier.
+-- `modifiable` : il peut saisir (rien de payé, et aucune commission posée par quelqu'un d'autre) ; `par_moi` : la commission affichée est la sienne.
+drop function if exists partenaire_courses();
+create function partenaire_courses() returns table (
   id uuid, date_service date, heure text, pickup text, dropoff text, retour boolean, programme text,
   adultes integer, enfants integer, bebes integer, client text, telephone text, vol text, prix numeric,
-  commission numeric, commission_payee numeric, reglee boolean
+  commission numeric, commission_payee numeric, reglee boolean, par_moi boolean, modifiable boolean
 )
 language sql stable security definer set search_path = public as $$
   select r.id, r.date_service, r.heure_pickup, r.lieu_pickup,
     coalesce(r.details->>'drop_off', ''), coalesce(r.details->>'type_trajet', '') = 'retour_depart', coalesce(r.details->>'programme_trajet', ''),
     coalesce(nombre_json(r.personnes->'adultes'), 0)::integer, coalesce(nombre_json(r.personnes->'enfants'), 0)::integer, coalesce(nombre_json(r.personnes->'bebes'), 0)::integer,
     trim(coalesce(c.prenom, '') || ' ' || coalesce(c.nom, '')), coalesce(c.telephone, ''), coalesce(r.details->>'vol', ''), r.montant_vente,
-    n.commission_prevue, n.commission_recue, n.commission_recue_le is not null
+    n.commission_prevue, n.commission_recue, n.commission_recue_le is not null,
+    coalesce(n.commission_prevue = n.commission_partenaire, false),
+    n.commission_recue_le is null and coalesce(n.commission_recue, 0) = 0 and (n.commission_prevue is null or coalesce(n.commission_prevue = n.commission_partenaire, false))
   from partenaire_acces_actuel() a
-  -- Toute l'entreprise Taxi, quel que soit le partenaire de la réservation (même aucun).
-  join reservations r on r.entite_id = a.entite_id
+  join reservations r on r.entite_id = a.entite_id and (r.partenaire_id is null or r.partenaire_id = a.partenaire_id)
   join dossiers d on d.id = r.dossier_id and d.entite_id = r.entite_id
   -- Le client peut être une fiche partagée d'une autre entreprise (migration 46) : seuls son nom et son téléphone sortent.
   join clients c on c.id = d.client_id
   left join reservations_nets n on n.reservation_id = r.id
   where r.statut <> 'annule' and not d.annule and r.date_service is not null
-    and (r.date_service >= a.jour
-      or (r.date_service >= a.jour - 60 and n.commission_recue_le is null
+    and ((r.date_service >= a.jour and r.date_service <= a.jour + 60)
+      or (r.date_service < a.jour and n.commission_recue_le is null
           and (n.commission_prevue is null or n.commission_prevue - coalesce(n.commission_recue, 0) > 0)))
   order by r.date_service, r.heure_pickup, r.created_at
 $$;
 
--- La commission d'une de ses courses (null l'efface). Refusée sur une course qui n'est pas dans sa liste, sur une commission déjà payée
--- (même en partie), pour un montant négatif, à plus de deux décimales ou supérieur au prix payé par le client.
+-- Sa commission sur une course de sa liste (null efface la sienne). Refusée : course hors de sa liste, commission déjà payée (même en partie),
+-- commission posée par Nani ou l'équipe (jamais écrasée), montant nul ou négatif, à plus de deux décimales, au-dessus du prix de vente de la
+-- course (ou de 10 000 si le prix est vide).
 create or replace function partenaire_saisir_commission(p_reservation uuid, p_montant numeric) returns numeric
 language plpgsql security definer set search_path = public as $$
 declare
@@ -149,17 +164,19 @@ begin
   if n.id is not null and (n.commission_recue_le is not null or coalesce(n.commission_recue, 0) <> 0) then
     raise exception 'Commission déjà payée : elle ne se modifie plus.';
   end if;
+  if n.id is not null and n.commission_prevue is not null and n.commission_prevue is distinct from n.commission_partenaire then
+    raise exception 'Commission déjà posée par l''équipe : elle ne se modifie pas ici.';
+  end if;
   if p_montant is not null then
-    if p_montant < 0 then raise exception 'Montant négatif.'; end if;
+    if p_montant <= 0 then raise exception 'Montant nul ou négatif.'; end if;
     if p_montant <> round(p_montant, 2) then raise exception 'Montant à deux décimales au plus.'; end if;
-    if r.montant_vente is not null and p_montant > r.montant_vente then raise exception 'Commission plus élevée que le prix de la course.'; end if;
-    if p_montant >= 10000000 then raise exception 'Montant trop élevé.'; end if;
+    if p_montant > coalesce(r.montant_vente, 10000) then raise exception 'Commission plus élevée que le prix de la course.'; end if;
   end if;
   if n.id is null then
     if p_montant is null then return null; end if;
-    insert into reservations_nets (entite_id, reservation_id, commission_prevue) values (r.entite_id, r.id, p_montant);
-  elsif n.commission_prevue is distinct from p_montant then
-    update reservations_nets set commission_prevue = p_montant where id = n.id;
+    insert into reservations_nets (entite_id, reservation_id, commission_prevue, commission_partenaire, commission_partenaire_le) values (r.entite_id, r.id, p_montant, p_montant, now());
+  elsif n.commission_prevue is distinct from p_montant or n.commission_partenaire is distinct from p_montant then
+    update reservations_nets set commission_prevue = p_montant, commission_partenaire = p_montant, commission_partenaire_le = case when p_montant is null then null else now() end where id = n.id;
   end if;
   return p_montant;
 end
