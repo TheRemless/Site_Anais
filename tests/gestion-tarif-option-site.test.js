@@ -111,10 +111,11 @@ test("options à plusieurs lignes de prix : la ligne choisie sur le site (cours,
     t("c17460d1-0000-4000-8000-000000000001", "p-dive", "Courses", "Open Water Diver (18 m, 3 days, 4 dives)", "pp", 14000),
     t("65a7e434-0000-4000-8000-000000000001", "p-kart", "Electric go-karting", "15 min · Large single seat", "veh", 699),
     t("8518f7b6-0000-4000-8000-000000000001", "p-kart", "Electric go-karting", "15 min · Small single seat", "veh", 499),
-    t("bc64fa51-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), driver", "pp", 1500),
-    t("6efaea15-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), passenger", "pp", 1300),
-    t("7addd7fd-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), driver child (6-12)", "ch", 1200),
-    t("e3de51b5-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), passenger child (4-12)", "ch", 900),
+    // Quad du nouveau partenaire (22.11.2026) : « 1 hour to Lung Sod Beach », tarifs T2.
+    t("656886ad-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), driver", "ad", 1800),
+    t("34e877a6-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger", "ad", 1300),
+    t("696bcf75-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), driver child (4-12)", "ch", 1500),
+    t("f6bb9c2f-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger child (4-12)", "ch", 1000),
   ];
   // Identifiants inventés : les tarifs se retrouvent par leur libellé, seul à le porter.
   const ctx = { ...CONTEXTE, prestations: P };
@@ -122,12 +123,15 @@ test("options à plusieurs lignes de prix : la ligne choisie sur le site (cours,
   assert.equal(premiere(plongee, ctx).offre.titre, "Advanced Open Water (2 days, 5 dives)");
   const kart = "Booking request: Electric go-kart – 15 minutes\nKarts: 1 × Large single seat\nDate: Wed 25 Nov 2026\nPickup: Lanta Sand Resort\nName: Anna Keller\nEstimated total: 699 THB";
   assert.equal(premiere(kart, ctx).offre.titre, "15 min · Large single seat");
-  const quad = "Booking request: ATV (quad bike) – 1 hour, forest and viewpoint\nRiders and passengers: 2 × Adult passenger\nDate: Wed 25 Nov 2026\nPickup: Lanta Sand Resort\nName: Anna Keller\nEstimated total: 2,600 THB";
-  assert.equal(premiere(quad, ctx).offre.titre, "P2: ATV 1 hour (forest & viewpoint), passenger");
+  const quad = "Booking request: ATV (quad bike) – 1 hour to Lung Sod Beach\nRiders and passengers: 2 × Adult passenger\nDate: Wed 25 Nov 2026\nPickup: Lanta Sand Resort\nName: Anna Keller\nEstimated total: 2,600 THB";
+  assert.equal(premiere(quad, ctx).offre.titre, "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger");
+  // Message envoyé avant le changement de partenaire (ancien titre « 1 hour, forest and viewpoint ») : même tarif.
+  const ancien = quad.replace("1 hour to Lung Sod Beach", "1 hour, forest and viewpoint");
+  assert.equal(premiere(ancien, ctx).offre.titre, "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger");
   // Passager adulte avec un enfant : le tarif enfant est celui du passager, pas celui du pilote.
   const d = { ...lireMessage(quad, AJD), adultes: 1, enfants: 1, ages: [8] };
   const [passager] = tarifsDuSite(d, ctx);
-  assert.equal(passager.enfantSite.id, "e3de51b5-0000-4000-8000-000000000001");
+  assert.equal(passager.enfantSite.id, "f6bb9c2f-0000-4000-8000-000000000001");
 });
 
 test("location : le véhicule cité donne son tarif ; sans véhicule, rien n'est imposé (pas le modèle le plus cher de la liste)", () => {
