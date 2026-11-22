@@ -64,7 +64,8 @@ function dessiner(donnees, client) {
   zone.value = reponseDevis(devis, { client, devise });
   const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
   const copier = h("button", { type: "button", class: "principal" }, tr("Copier la réponse"));
-  const bloquants = { montants: netsDuDevis(devis, etat.db), noms: (etat.db.partenaires || []).map((p) => p.nom).filter(Boolean) };
+  // Les partenaires de toutes les entreprises chargées (espace unifié Secret et Taxi), pas seulement de l'entreprise active.
+  const bloquants = { montants: netsDuDevis(devis, etat.db), noms: ((etat.brut && etat.brut.partenaires) || etat.db.partenaires || []).map((p) => p.nom).filter(Boolean) };
   const maj = () => {
     const reste = resteBloque(zone.value, bloquants);
     copier.disabled = reste.length > 0;

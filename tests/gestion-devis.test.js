@@ -186,3 +186,14 @@ test("catalogue Taxi : le libellé « destination » prend le groupe et le traje
   assert.deepEqual(devis.lignes.map((l) => l.libelle), ["Private Taxi: Lanta Sand → Krabi Airport", "Private Taxi: Krabi Airport"]);
   assert.match(reponseDevis(devis), /Price: 2 taxis × THB 2,300 = THB 4,600/);
 });
+
+test("revue : bébés comptés dans les places, date impossible refusée, prix accepté sans ligne du catalogue", () => {
+  // 9 adultes et 1 bébé : 10 places, 2 minivans de 9 ; le bébé ne paie pas.
+  const bebe = calculerDevis(carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 9 })], { bebes: 1 }), contexte);
+  assert.equal(bebe.lignes[0].vehicules, 2);
+  assert.match(reponseDevis(bebe), /People: 9 adults\n/);
+  assert.equal(devisPossible(carte([service({ offre: { genre: "prestation", id: "van" }, date: "2026-02-31" })])), false);
+  const masque = calculerDevis(carte([service({ offre: { genre: "prestation", id: "efface" }, adultes: 2, prix: 3900, origine_prix: "saisi" })]), contexte);
+  assert.equal(masque.complet, true);
+  assert.equal(masque.total, 3900);
+});

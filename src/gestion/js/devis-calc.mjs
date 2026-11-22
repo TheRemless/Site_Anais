@@ -14,7 +14,8 @@ import { offreDepuisBase, auPrixCarte } from "./assistant-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte } from "./operations-calc.mjs";
 
-const dateValide = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+// Même contrôle que la fonction agent (outils.js) : un 31 février ne passe pas.
+const dateValide = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const entier = (x) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.floor(Number(x)) : 0);
 const arrondi2 = (x) => Math.round(x * 100) / 100;
 
@@ -107,11 +108,13 @@ export function calculerDevis(donnees = {}, contexte = {}, { activeId = null } =
       return manque("hors_catalogue");
     }
     const base = offreDepuisBase(s.offre, personnes, contexte);
-    if (!base) return manque("introuvable");
+    // Un prix accepté reste le prix de vente même si la ligne du catalogue a disparu ou est masquée.
+    if (!base) return accepte(sp.prix_carte) ? ligne(null, Number(sp.prix_carte), { origine: sp.prix_origine }) : manque("introuvable");
     const p = base.genre === "prestation" ? base.source : null;
     const parVehicule = !!p && PAR_VEHICULE.includes(p.unite);
     const capacite = p ? capaciteDe(p) : null;
-    const vehicules = parVehicule && capacite ? Math.ceil(nb / capacite) : null;
+    // Les bébés de la carte prennent une place (siège) dans un véhicule : comptés pour la capacité, jamais pour le prix.
+    const vehicules = parVehicule && capacite ? Math.ceil((nb + entier(donnees.bebes)) / capacite) : null;
     const vehicule = vehicules ? motVehicule(p, vehicules) : "";
     // Le prix accepté passe avant le catalogue (auPrixCarte, PR 307) : il vaut pour tout le service, quel que soit le nombre de véhicules.
     if (accepte(sp.prix_carte)) {
