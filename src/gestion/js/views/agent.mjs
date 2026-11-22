@@ -1089,7 +1089,8 @@ export async function vueAgent(idOuvert = "") {
     for (const r of etat.brut.reservations || []) if (dossierId && r.dossier_id === dossierId) ajouter(ventes, r.montant_vente);
     filDepuis(fil.messages, []).forEach((it, i) => {
       if (it.genre !== "personne" || echangeWhatsApp(it.texte, { depuisWhatsApp: i === 0 && !!(conv && conv.whatsapp_conversation_id) }) || /<\/?(?:conversation|question)>/.test(it.texte)) return;
-      for (const phrase of String(it.texte).split(/\n+|(?<=[.!?;])\s+/)) if (!phraseInterne(phrase)) for (const n of montantsDuTexte(phrase)) ajouter(ventes, n);
+      // Le résumé d'une discussion pleine remplacée : du contexte, jamais un prix accepté.
+      for (const phrase of String(separerResume(it.texte).reste).split(/\n+|(?<=[.!?;])\s+/)) if (!phraseInterne(phrase)) for (const n of montantsDuTexte(phrase)) ajouter(ventes, n);
     });
     if (!(permissionsDe(ent) || []).includes("partenaires.nets")) return { ventes, nets: null };
     const nets = new Set(dossierId ? netsDuDossier(dossierId) : []);

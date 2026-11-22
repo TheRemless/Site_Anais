@@ -978,6 +978,10 @@ export async function lireDossier(e, ctx) {
 // une source pour la réponse au client (memoDepuis). Seuls le texte de la personne et sa <question> comptent.
 const BLOC_CONVERSATION = /<conversation>[\s\S]*?(?:<\/conversation>|$)/g;
 export const sansConversation = (t) => String(t || "").replace(BLOC_CONVERSATION, " ");
+// Le résumé d'une discussion pleine remplacée (discussion-pleine.js) : du contexte seulement. Ses montants ne sont jamais tapés par la
+// personne ni des prix acceptés pour la nouvelle demande (un client fidèle qui demande un autre trajet ne reçoit pas l'ancien prix).
+const BLOC_RESUME = /<resume_discussion>[\s\S]*?<\/resume_discussion>/g;
+export const sansResume = (t) => String(t || "").replace(BLOC_RESUME, " ");
 export const conversationsJointes = (t) => [...String(t || "").matchAll(BLOC_CONVERSATION)].map((m) => m[0]);
 // Ce que le contrôle retient d'une lecture de la boîte (chercher_conversations, lire_conversation, a_faire_whatsapp) : pour chaque
 // conversation typée partenaire, chauffeur ou hôtel, ses montants (des nets possibles : montant_interne, sauf égaux à un prix de vente
@@ -1937,7 +1941,8 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   const nomsAppels = new Map();
   for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "assistant" && b && b.type === "tool_use") nomsAppels.set(b.id, b.name);
   for (const m of messages) {
-    const tapes = (t) => {
+    const tapes = (brut) => {
+      const t = sansResume(brut);
       memo.tapes = new Set([...memo.tapes, ...montantsTapes([sansConversation(t)])]);
       // Le texte de la personne (hors blocs joints) et les lignes de Nani d'un bloc. Celles du client seulement quand le contact n'est pas un
       // client confirmé : « cost 1,500? » écrit par un client confirmé ne rend rien interne.
@@ -1967,7 +1972,7 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   }
   // Les heures tapées par la personne sont admises aussi (« vol à 19:30 »), et ses durées (« compte 2h30 »).
   for (const m of messages) {
-    const t = m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "";
+    const t = sansResume(m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "");
     for (const x of t.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)) memo.heures.add(`${x[1].padStart(2, "0")}:${x[2]}`);
     for (const d of dureesTapees([t])) memo.durees.add(d);
     if (t.trim()) memo.textes.push(t);

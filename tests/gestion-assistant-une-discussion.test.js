@@ -112,7 +112,7 @@ test("compatibilité : avec l'ancienne fonction agent, « Créer le dossier » r
 // ---- 2. Le prix écrit par Nani à un nouveau client ---------------------------------------------------------------------------------
 const ENT = "22222222-2222-4222-8222-222222222222";
 const ZONE = "b1000000-0000-4000-8000-000000000001";
-const AEROPORT = "b1000000-0000-4000-8000-000000000002";
+const AEROPORT = "c2000000-0000-4000-8000-000000000002"; // un autre début : la référence courte (P-…) prend 8 caractères
 const prestations = [
   { id: ZONE, entite_id: ENT, famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Town", libelle_en: "Krabi Town", prix_vente: 2500, unite: "veh", actif: true },
   { id: AEROPORT, entite_id: ENT, famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Airport", libelle_en: "Krabi Airport", prix_vente: 2300, unite: "veh", actif: true },
@@ -380,4 +380,32 @@ test("constat 4 : une discussion liée pleine est archivée et remplacée, avec 
   assert.match(vue, /if \(ev\.t === "conversation" && conv && ev\.remplace && ev\.remplace === conv\.id && ev\.id !== conv\.id\) \{\n\s+conversations = \(conversations \|\| \[\]\)\.map\(\(c\) => \(c\.id === ev\.remplace \? \{ \.\.\.c, statut: "archivee" \} : c\)\);\n\s+conv = null;/);
   assert.match(vue, /const \{ resume, reste \} = separerResume\(it\.texte\);/);
   assert.match(lire("src/gestion/js/i18n-en.mjs"), /"The discussion was full: it is archived and a new one picks up its summary\."/);
+});
+
+test("le résumé d'une discussion remplacée n'est que du contexte : jamais un montant tapé ni un prix accepté", async () => {
+  // Discussion remplacée, résumé à 2 500, puis le client fidèle demande un autre trajet (Koh Lanta → Krabi Airport, 2 300 au catalogue).
+  const resume = resumeReport({ client: { prenom: "Ella", nom: "Test" }, dossiers: [{ ref: "TX-2026-001" }], prix: { prix: 2500, service: "Private Taxi: Koh Lanta → Krabi Town" }, raison: "historique" });
+  const AUTRE = [{ sens: "entrant", texte: "Hello again! Could you also arrange a taxi from Koh Lanta to Krabi Airport on 30 Nov at 08:00?", envoye_le: "2026-11-25T03:00:00Z" }];
+  const message = `${resume}\n\n${texteDepuisWhatsApp({ mode: "creer", conv: { ...NOUVEAU, client_id: "c1" }, messages: AUTRE })}`;
+  const memo = () => memoDepuis([{ role: "user", content: message }], { conversationClient: true, conversationLiee: W });
+  assert.ok(!memo().tapes.has(2500), "le prix du résumé n'est pas tapé");
+  assert.ok(!memo().nani.has(2500));
+  const service = async (o) => (await executer("proposer_dossier", { ...carte(), services: [{ ...carte().services[0], ...o }] }, ctx, memo())).carte.donnees.services[0];
+  // Le modèle reprend l'ancien prix : refusé, à fixer.
+  const repris = await service({ ref: "", prix_saisi: "2500" });
+  assert.deepEqual([repris.prix, repris.origine_prix], [null, "a_fixer"]);
+  assert.ok(repris.avertissements.includes("prix_non_tape"));
+  // Avec la ligne du catalogue : le prix du catalogue, jamais 2 500.
+  const ligne = await service({ ref: refDe("P", AEROPORT), prix_saisi: "2500" });
+  assert.notEqual(ligne.prix, 2500);
+  assert.equal(ligne.prix, null, "2 500 n'est pas le prix du catalogue : à fixer");
+  const catalogue = await service({ ref: refDe("P", AEROPORT), prix_saisi: "" });
+  assert.deepEqual([catalogue.prix, catalogue.origine_prix], [2300, "catalogue"]);
+  // La réponse au client ne peut pas citer 2 500 non plus.
+  const r = await executer("proposer_reponse", { titre: "Prix", langue: "en", message: "Hello Ella, the taxi to Krabi Airport is 2,500 THB." }, ctx, memo());
+  assert.ok(r.carte.avertissements.includes("montant_non_source:2500"));
+  // Le même montant tapé par la personne hors du résumé compte, lui.
+  assert.ok(memoDepuis([{ role: "user", content: `${resume}\n\nLe prix est 2500` }], {}).tapes.has(2500));
+  // L'écran : les prix connus pour « Pas bien » ignorent le résumé.
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /for \(const phrase of String\(separerResume\(it\.texte\)\.reste\)\.split\(/);
 });
