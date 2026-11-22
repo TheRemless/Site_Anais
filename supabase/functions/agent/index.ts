@@ -910,7 +910,7 @@ Deno.serve(async (req) => {
   // conversation WhatsApp liée, lus en base avec la session, dans l'ordre d'envoi. Jamais du bloc joint ni de lire_conversation : une
   // correction faite ensuite dans WhatsApp retire le prix au prochain échange. Une lecture en échec ne valide rien.
   if (waLue && clientConfirme(waLue)) {
-    const lusWa = await sb.from("whatsapp_messages").select("sens, origine, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).order("envoye_le", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
+    const lusWa = await sb.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
     if (!lusWa.error) memo.clientValides = prixClientValides([...(lusWa.data || [])].reverse(), waLue);
   }
   // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte

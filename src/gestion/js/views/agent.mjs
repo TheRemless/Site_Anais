@@ -99,6 +99,7 @@ const AVERTISSEMENTS = {
   // 22.11.2026 : le prix écrit par le client, que Nani n'a pas corrigé ensuite. Repère seulement, rien n'est bloqué.
   prix_client_non_corrige: N_("Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider."),
   prix_egal_net: N_("Un prix proposé est égal à un net interne : il a été laissé vide."),
+  prix_client_sans_net: N_("Le prix écrit par le client n'a pas pu être comparé au net : il a été laissé vide."),
   prix_sous_net: N_("Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant »."),
   reference_inconnue: N_("Un service proposé n'existe pas au catalogue : choisissez-le à la main."),
   date_illisible: N_("Une date n'a pas pu être lue."),

@@ -17,6 +17,7 @@ export const EN = {
   "écrit par le contact": "written by the contact",
   "un montant égal à un net interne": "an amount equal to an internal net",
   "prix du client, non corrigé par Nani": "client's price, not corrected by Nani",
+  "Le prix écrit par le client n'a pas pu être comparé au net : il a été laissé vide.": "The price written by the client could not be compared with the net: it was left empty.",
   "Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation.": "The number of people changed: the price goes back to the catalogue. Check the price agreed in the conversation.",
   "Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant ».": "The price written by the client is at or below the net: it was left empty. Set it with “Check first”.",
   "Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».": "The price written by the client is at or below the net: set it with “Check first”.",

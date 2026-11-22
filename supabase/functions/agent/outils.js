@@ -1222,38 +1222,49 @@ export function lignesJointes(blocs = []) {
   return out;
 }
 // Les montants écrits par le client que Nani n'a pas corrigés (demande de Jérémy du 22.11.2026 : « si un client met le prix et que Nani ne
-// le corrige pas, c'est que le prix est validé finalement »), resserré par la revue de la PR 307. `messages` : les messages de la
-// conversation WhatsApp liée lus en base, dans l'ordre d'envoi ({ sens, origine, texte, medias, modifie_le, supprime_le }). Un montant du
-// client compte seulement si :
-//   - son message n'a été ni modifié ni supprimé ;
-//   - le premier message texte non vide de Nani qui le suit (app ou Gestion), avant le message suivant du client, l'accepte : aucun montant
-//     (en chiffres ou en toutes lettres), aucun point d'interrogation, aucun refus ni attente (no, sorry, check, later, désolé, je regarde…).
-// Un message de Nani fait seulement de médias ne valide rien. Seulement pour le prix_saisi d'une carte : jamais une source de la réponse.
+// le corrige pas, c'est que le prix est validé finalement »), resserré par les revues de la PR 307. `messages` : les messages de la
+// conversation WhatsApp liée lus en base, dans l'ordre d'envoi ({ sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le }).
+// Un montant du client compte seulement si :
+//   - son message n'a été ni modifié ni supprimé ; aucun message du client n'a été supprimé avant la réponse de Nani ;
+//   - parmi TOUS les messages texte de Nani (app ou Gestion, sans média) envoyés après lui et avant le message suivant du client, aucun ne
+//     contient de montant (en chiffres ou en lettres), de « ? », de refus ni d'attente ;
+//   - au moins un dit un accord explicite (ok, yes, perfect, confirmed, deal, d'accord, parfait, c'est bon, ça marche, 👍, ✅…).
+// Sans accord reconnu (« Too low unfortunately », « Let me ask the team », du thaï, « 🙏 » seul), le prix reste à fixer. Un message de
+// Nani à la même heure que celui du client ne valide rien. Seulement pour le prix_saisi d'une carte : jamais une source de la réponse.
 const MOTS_NOMBRES = /(?<![a-z])(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|deux|trois|quatre|cinq|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize|vingts?|trente|quarante|cinquante|soixante|cents?|milles?|millions?)(?![a-z])/;
-const REFUS_ATTENTE = /(?<![a-z])(?:no|not|sorry|can't|cant|cannot|check|checking|boss|later|desolee?s?|non|pas|verifie|verifier|je regarde|je demande)(?![a-z])/;
-export function accordDeNani(texte) {
-  const t = String(texte || "").trim();
-  if (!t) return false;
-  const plat = sansAccents(t).replace(/[’‘]/g, "'");
-  return !/[?？]/.test(t) && !montantsTapes([t]).size && !montantsDuTexte(t).length && !MOTS_NOMBRES.test(plat) && !REFUS_ATTENTE.test(plat);
-}
+const REFUS_ATTENTE = /(?<![a-z])(?:no|not|sorry|can't|cant|cannot|check|checking|boss|later|wait|moment|ask|unfortunately|low|desolee?s?|non|pas|verifie|verifier|je regarde|je demande|attends?|attendez|nein|leider)(?![a-z])/;
+const ACCORD = /(?<![a-z])(?:ok|okay|yes|perfect|confirmed|deal|great|sure|done|d'accord|parfait|c'est bon|ca marche)(?![a-z])|👍|✅/u;
+const platAccord = (t) => sansAccents(String(t || "")).replace(/[’‘]/g, "'");
+// Un message de Nani qui annule tout : un montant, une question, un refus ou une attente.
+export const vetoDeNani = (texte) => {
+  const t = String(texte || "");
+  const plat = platAccord(t);
+  return /[?？]/.test(t) || montantsTapes([t]).size > 0 || montantsDuTexte(t).length > 0 || MOTS_NOMBRES.test(plat) || REFUS_ATTENTE.test(plat);
+};
+export const accordExplicite = (texte) => ACCORD.test(platAccord(texte));
+// Compatibilité de lecture : un message seul qui vaut accord.
+export const accordDeNani = (texte) => !!String(texte || "").trim() && !vetoDeNani(texte) && accordExplicite(texte);
+const texteDeNani = (x) => x && x.sens === "sortant" && ["app", "gestion"].includes(x.origine) && !x.supprime_le && typeof x.texte === "string" && x.texte.trim() && !(Array.isArray(x.medias) && x.medias.length) && !["image", "document", "video", "audio", "sticker"].includes(x.type);
 export function montantsClientValides(messages = []) {
   const out = new Set();
-  const vivants = (messages || []).filter((m) => m && !m.supprime_le);
-  vivants.forEach((m, i) => {
-    if (m.sens !== "entrant" || m.modifie_le || typeof m.texte !== "string") return;
+  const liste = (messages || []).filter(Boolean);
+  liste.forEach((m, i) => {
+    if (m.sens !== "entrant" || m.modifie_le || m.supprime_le || typeof m.texte !== "string") return;
     const montants = [...montantsTapes([m.texte])];
     if (!montants.length) return;
-    // Le premier message texte de Nani avant le prochain message du client.
-    let reponse = null;
-    for (const x of vivants.slice(i + 1)) {
-      if (x.sens === "entrant") break;
-      if (x.sens === "sortant" && ["app", "gestion"].includes(x.origine) && typeof x.texte === "string" && x.texte.trim()) {
-        reponse = x;
+    const reponses = [];
+    for (const x of liste.slice(i + 1)) {
+      if (x.sens === "entrant") {
+        // Un message du client supprimé avant la réponse de Nani : rien n'est validé.
+        if (x.supprime_le && !reponses.length) return;
         break;
       }
+      if (texteDeNani(x)) reponses.push(x);
     }
-    if (reponse && accordDeNani(reponse.texte)) for (const n of montants) out.add(n);
+    if (!reponses.length || reponses.some((x) => vetoDeNani(x.texte))) return;
+    // L'accord doit venir après le message du client : à la même heure, il ne compte pas.
+    const apres = reponses.filter((x) => !(m.envoye_le && x.envoye_le && String(x.envoye_le) <= String(m.envoye_le)));
+    if (apres.some((x) => accordExplicite(x.texte))) for (const n of montants) out.add(n);
   });
   return out;
 }
@@ -1334,9 +1345,10 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
         ? Number(t.prix_adulte) * Math.max(1, adultes) + (enfants && nombre(t.prix_enfant) !== null ? Number(t.prix_enfant) * enfants : 0)
         : null;
   // Le net du service, mêmes quantités (memo.nets, lus avec la clé de service ; jamais rendus). Inconnu : null.
+  // Le plus haut net du service, toutes lignes confondues (revue de la PR 307).
   const netDe = (id, genre) => {
-    const n = (Array.isArray(memo.nets) ? memo.nets : []).find((x) => x && (x.prestation_id === id || x.trajet_id === id) && x.genre === genre);
-    return n ? Number(n.montant) : null;
+    const v = (Array.isArray(memo.nets) ? memo.nets : []).filter((x) => x && (x.prestation_id === id || x.trajet_id === id) && x.genre === genre).map((x) => Number(x.montant)).filter((x) => x > 0);
+    return v.length ? Math.max(...v) : null;
   };
   const netService = p && netDe(p.id, "adulte") !== null ? netDe(p.id, "adulte") * qte : t && netDe(t.id, "adulte") !== null ? netDe(t.id, "adulte") * Math.max(1, adultes) + (enfants && netDe(t.id, "enfant") !== null ? netDe(t.id, "enfant") * enfants : 0) : null;
   let catalogueAffiche = null;
@@ -1351,6 +1363,9 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
       origine = "saisi";
       // Les deux prix sur la carte quand ils diffèrent (revue de la PR 307).
       if (prixCatalogue !== null && prixCatalogue !== saisi) catalogueAffiche = prixCatalogue;
+    } else if (duClient && (memo.controleImpossible === true || ((p || t) && netService === null))) {
+      // Nets illisibles, ou aucun net connu pour ce service du catalogue : le prix du client ne se compare à rien, il n'est pas repris.
+      avert.push("prix_client_sans_net");
     } else if (duClient && netService !== null && saisi <= netService) {
       // Un prix du client au niveau du net ou en dessous n'est jamais repris : à fixer, la carte ne se valide pas d'un geste (revue PR 307).
       avert.push("prix_sous_net");
@@ -1609,7 +1624,7 @@ export function partenairesCites(t, noms = []) {
 
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
 // Avec le prix du client non corrigé par Nani et le prix refusé parce qu'égal à un net (22.11.2026) : la carte les montre, rien n'est bloqué.
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_egal_net", "prix_sous_net"];
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_egal_net", "prix_sous_net", "prix_client_sans_net"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).

@@ -345,6 +345,8 @@ const valides = (messages) => [...montantsClientValides(messages)];
 const memoClient = (messages, conv = { type_contact: "client" }) => {
   const memo = memoDepuis([], { conversationClient: true });
   memo.clientValides = prixClientValides(messages, conv);
+  // Un net connu pour le service (sans lui, le prix du client ne se compare à rien et n'est pas repris).
+  memo.nets = [{ montant: 1000, prestation_id: P, genre: "adulte" }];
   return memo;
 };
 
@@ -357,19 +359,20 @@ test("PR 307, point 1 : seul le premier message texte de Nani, sans montant, san
   assert.deepEqual(valides([base(1, "entrant", "800 ok?"), base(2, "sortant", "No sorry, 1.2k per person")]), [], "c : corrigé en 1.2k");
   assert.deepEqual(valides([base(1, "entrant", "800 ok?"), base(2, "sortant", "No, twelve hundred baht")]), [], "d : corrigé en lettres");
   assert.deepEqual(valides([base(1, "entrant", "500?"), base(2, "sortant", "I check")]), [], "e : j'attends");
-  for (const reponse of ["Ok?", "Sorry", "not possible", "I can't", "later", "Désolée", "non", "pas possible", "je vérifie", "je regarde", "je demande", "mille", "five thousand", "trois cents"]) assert.deepEqual(valides([client, base(2, "sortant", reponse)]), [], reponse);
+  for (const reponse of ["Ok?", "Sorry", "not possible", "I can't", "later", "Désolée", "non", "pas possible", "je vérifie", "je regarde", "je demande", "mille", "five thousand", "trois cents", "Ok, je vérifie", "Perfect, but not today"]) assert.deepEqual(valides([client, base(2, "sortant", reponse)]), [], reponse);
   // Une image puis un accord : l'accord valide ; un accord après un nouveau message du client ne vaut pas pour l'ancien.
   assert.deepEqual(valides([client, base(2, "sortant", "", { medias: [{ type: "image" }] }), base(3, "sortant", "Perfect")]), [10000]);
   assert.deepEqual(valides([client, base(2, "entrant", "hello?"), base(3, "sortant", "Perfect")]), []);
-  // Le premier message texte compte seul : un accord après une correction ne rattrape rien.
+  // Tous les messages de Nani comptent : une correction annule l'accord, avant comme après lui.
   assert.deepEqual(valides([client, base(2, "sortant", "It is 12,000"), base(3, "sortant", "Perfect")]), []);
+  assert.deepEqual(valides([client, base(2, "sortant", "Perfect"), base(3, "sortant", "Sorry, it is 12,000")]), []);
   // Origine : seulement l'app ou Gestion.
   assert.deepEqual(valides([client, base(2, "sortant", "Perfect", { origine: "autre" })]), []);
 });
 
 test("PR 307, points 2 et 3 : calculé par la fonction sur la base à chaque échange ; un message du client modifié ne compte pas", () => {
   const idx = lire("supabase/functions/agent/index.ts");
-  assert.match(idx, /if \(waLue && clientConfirme\(waLue\)\) \{\n    const lusWa = await sb\.from\("whatsapp_messages"\)\.select\("sens, origine, texte, medias, envoye_le, modifie_le, supprime_le"\)\.eq\("conversation_id", waLue\.id\)\.order\("envoye_le", \{ ascending: false \}\)\.limit\(MESSAGES_PRIX_CLIENT\);\n    if \(!lusWa\.error\) memo\.clientValides = prixClientValides\(\[\.\.\.\(lusWa\.data \|\| \[\]\)\]\.reverse\(\), waLue\);/);
+  assert.match(idx, /if \(waLue && clientConfirme\(waLue\)\) \{\n    const lusWa = await sb\.from\("whatsapp_messages"\)\.select\("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le"\)\.eq\("conversation_id", waLue\.id\)\.order\("envoye_le", \{ ascending: false \}\)\.order\("id", \{ ascending: false \}\)\.limit\(MESSAGES_PRIX_CLIENT\);\n    if \(!lusWa\.error\) memo\.clientValides = prixClientValides\(\[\.\.\.\(lusWa\.data \|\| \[\]\)\]\.reverse\(\), waLue\);/);
   assert.equal(MESSAGES_PRIX_CLIENT, 60);
   // Ni le bloc joint ni lire_conversation (sonde f) : la lecture ne pose rien.
   const joint = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "Perfect")]) }], { conversationClient: true });
@@ -380,7 +383,7 @@ test("PR 307, points 2 et 3 : calculé par la fonction sur la base à chaque éc
   // Une correction de Nani faite ensuite : au prochain échange, la base la montre et le prix tombe.
   const avant = [base(1, "entrant", "so 10,000 THB for both vans, ok?"), base(2, "sortant", "Perfect")];
   assert.deepEqual(valides(avant), [10000]);
-  assert.deepEqual(valides([...avant, base(3, "sortant", "Sorry, it is 12,000")]), [10000], "le premier message de Nani reste l'accord");
+  assert.deepEqual(valides([...avant, base(3, "sortant", "Sorry, it is 12,000")]), [], "une correction ensuite retire le prix");
   // Message du client modifié ou supprimé : rien.
   assert.deepEqual(valides([base(1, "entrant", "so 10,000 THB?", { modifie_le: "2026-11-21T10:30:00Z" }), base(2, "sortant", "Perfect")]), []);
   assert.deepEqual(valides([base(1, "entrant", "so 10,000 THB", { supprime_le: "x" }), base(2, "sortant", "Perfect")]), []);
@@ -523,4 +526,68 @@ test("validation : une carte d'origine catalogue reste au prix du catalogue", as
   const o = propositionVersDemande(p, { prestations: [prestation], trajets: [], partenaires: [], nomPartenaire: () => "" }).services[0].offres[0];
   assert.equal(o.total, 9000);
   assert.equal(o.prixCarte, undefined);
+});
+
+test("PR 307 contre-vérification, point 1 : un accord explicite est exigé ; tout refus, montant ou question dans un message de Nani annule (sonde 5)", () => {
+  const c = (t, o = {}) => ({ sens: "entrant", origine: "client", texte: t, ...o });
+  const n = (t, o = {}) => ({ sens: "sortant", origine: "app", texte: t, ...o });
+  const cas = [
+    ["salut puis correction", [c("Can you do 500 per person?"), n("Hello Stefan!"), n("Sorry, the price is 1,200")], []],
+    ["too low", [c("500 per person ok"), n("Too low unfortunately")], []],
+    ["let me ask", [c("500 per person ok"), n("Let me ask the team")], []],
+    ["one moment", [c("500 ok"), n("One moment please")], []],
+    ["wait", [c("500 ok"), n("Please wait, I will confirm tomorrow")], []],
+    ["nein leider", [c("500 ok"), n("Leider nein")], []],
+    ["thaï", [c("500 ok"), n("รอสักครู่นะคะ")], []],
+    ["emoji seul", [c("500 ok"), n("🙏")], []],
+    ["ok", [c("500 ok"), n("Ok perfect")], [500]],
+    ["message client supprimé entre", [c("500?"), c("actually 400", { supprime_le: "x" }), n("Perfect")], []],
+    ["voucher Gestion texte", [c("2,000 total ok"), { sens: "sortant", origine: "gestion", texte: "Your voucher is attached" }], []],
+    ["voucher Gestion avec image", [c("2,000 total ok"), { sens: "sortant", origine: "gestion", type: "image", texte: "Ok 👍", medias: [{ type: "image", statut: "voucher" }] }], []],
+    ["Perfect, confirmation", [c("so 10,000 THB for both vans, ok?"), n("Perfect, I will send the confirmation")], [10000]],
+    ["d'accord", [c("2,000 ?"), n("D'accord, c'est bon")], [2000]],
+    ["ça marche", [c("2,000 ?"), n("ça marche 👍")], [2000]],
+    ["✅", [c("2,000 total"), n("✅")], [2000]],
+  ];
+  for (const [nom, messages, attendu] of cas) assert.deepEqual([...montantsClientValides(messages)], attendu, nom);
+});
+
+test("PR 307 contre-vérification, point 4 : ordre par heure puis id ; un message de Nani à la même heure ne valide rien", () => {
+  const h = "2026-11-21T10:00:00Z";
+  assert.deepEqual([...montantsClientValides([{ sens: "entrant", origine: "client", texte: "2,000 ok", envoye_le: h }, { sens: "sortant", origine: "app", texte: "Perfect", envoye_le: h }])], []);
+  assert.deepEqual([...montantsClientValides([{ sens: "entrant", origine: "client", texte: "2,000 ok", envoye_le: h }, { sens: "sortant", origine: "app", texte: "Perfect", envoye_le: "2026-11-21T10:00:01Z" }])], [2000]);
+  assert.match(lire("supabase/functions/agent/index.ts"), /\.order\("envoye_le", \{ ascending: false \}\)\.order\("id", \{ ascending: false \}\)\.limit\(MESSAGES_PRIX_CLIENT\)/);
+});
+
+test("PR 307 contre-vérification, point 2 : contrôle fermé ou net inconnu, le prix du client n'est pas repris ; le plus haut net compte", async () => {
+  const messages = [base(1, "entrant", "so 5,000 THB, ok?"), base(2, "sortant", "Perfect")];
+  const ferme = memoClient(messages);
+  ferme.controleImpossible = true;
+  const r1 = await executer("proposer_dossier", carte("5000"), ctx, ferme);
+  assert.deepEqual([r1.carte.donnees.services[0].prix, r1.carte.donnees.services[0].origine_prix], [null, "a_fixer"]);
+  assert.ok(r1.carte.avertissements.includes("prix_client_sans_net"));
+  const inconnu = memoClient(messages);
+  inconnu.nets = [];
+  assert.equal((await executer("proposer_dossier", carte("5000"), ctx, inconnu)).carte.donnees.services[0].origine_prix, "a_fixer");
+  // Deux lignes de net (saison basse 4 000, haute 6 000) : 5 000 est sous le plus haut, refusé.
+  const deux = memoClient(messages);
+  deux.nets = [{ montant: 4000, prestation_id: P, genre: "adulte" }, { montant: 6000, prestation_id: P, genre: "adulte" }];
+  assert.ok((await executer("proposer_dossier", carte("5000"), ctx, deux)).carte.avertissements.includes("prix_sous_net"));
+  // Hors catalogue (aucune référence) : aucun net à comparer, le prix est repris.
+  const libre = memoClient(messages);
+  libre.nets = [];
+  const sansRef = { ...carte("5000"), services: [{ ...carte("5000").services[0], ref: "" }] };
+  assert.equal((await executer("proposer_dossier", sansRef, ctx, libre)).carte.donnees.services[0].origine_prix, "client_non_corrige");
+});
+
+test("PR 307 contre-vérification, point 3 : details.prix_origine gardé à l'édition et à la copie d'une réservation", () => {
+  const vue = lire("src/gestion/js/views/reservations.mjs");
+  // Le formulaire repart des details existants (tout sauf la zone et le modèle, recalculés) : prix_origine reste.
+  assert.match(vue, /const d = \{ \.\.\.Object\.fromEntries\(Object\.entries\(dt\)\.filter\(\(\[k\]\) => k !== "pickup_zone" && k !== "modele_voucher"\)\), /);
+  // La copie d'une réservation garde l'origine du prix.
+  assert.match(vue, /details: \{ \.\.\.\(r\.details && r\.details\.prix_origine \? \{ prix_origine: r\.details\.prix_origine \} : \{\}\),/);
+  // L'alignement sur la facture repart des details d'avant (suivi-facture.mjs).
+  assert.match(lire("src/gestion/js/views/suivi-facture.mjs"), /valeurs\.details = \{ \.\.\.\(valeurs\.details \|\| r\.details \|\| \{\}\), lignes_ids: ids \};/);
+  // Les autres écritures de details d'une réservation repartent des details d'avant.
+  for (const f of ["annulation-dossier.mjs", "taxi-hier.mjs", "dashboard.mjs"]) assert.match(lire(`src/gestion/js/views/${f}`), /details: \{ \.\.\.\((?:x|actuelle)\.details \|\| \{\}\)/, f);
 });
