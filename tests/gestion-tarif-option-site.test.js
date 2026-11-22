@@ -114,8 +114,8 @@ test("options à plusieurs lignes de prix : la ligne choisie sur le site (cours,
     // Quad du nouveau partenaire (22.11.2026) : « 1 hour to Lung Sod Beach », tarifs T2.
     t("656886ad-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), driver", "ad", 1800),
     t("34e877a6-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger", "ad", 1300),
-    t("696bcf75-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), driver child (4-12)", "ch", 1500),
-    t("f6bb9c2f-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger child (4-12)", "ch", 1000),
+    t("696bcf75-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), driver child (5-12)", "ch", 1500),
+    t("f6bb9c2f-0000-4000-8000-000000000001", "p-atv", "All-terrain quad", "T2: ATV 1 hour (Koh Lanta Noi, Lung Sod Beach), passenger child (3-12)", "ch", 1000),
   ];
   // Identifiants inventés : les tarifs se retrouvent par leur libellé, seul à le porter.
   const ctx = { ...CONTEXTE, prestations: P };
