@@ -1,5 +1,7 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
+import { EN_POINT_SOIR } from "./i18n-en-point-soir.mjs";
+
 export const EN = {
   // Faux blocage du 21.11.2026 : net d'un autre service du catalogue, avertissement et confirmation à l'envoi
   "Le montant {valeur} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {valeur} is also the net of another service in the catalogue. Check that it is really a selling price.",
@@ -4544,4 +4546,5 @@ export const EN = {
   "Réponse à l'apporteur": "Reply to the referrer",
   "Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant.": "Partner records could not be read to check the text. Nothing was sent, try again in a moment.",
   "Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur.": "File created without a referrer: the WhatsApp contact is no longer marked as a referrer.",
+  ...EN_POINT_SOIR,
 };
