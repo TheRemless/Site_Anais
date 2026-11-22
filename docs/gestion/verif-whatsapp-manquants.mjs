@@ -101,16 +101,16 @@ try { await db.query("insert into whatsapp_conversations (organisation_id) value
 ok(!!err && (await un("select count(*)::int n from whatsapp_conversations")).n === avant, "la base refuse une conversation sans numéro ni BSUID");
 
 // ---- Ligne « non transmis » remplacée par le vrai message ----------------------------------------------------------------------------
-const nt = (await ranger(A, msg(11, { telnyx_id: null, type: "non_transmis", texte: "Message du client non transmis par WhatsApp, 09:00. Ouvre WhatsApp sur le téléphone pour le lire." }), BA)).r;
+const nt = (await ranger(A, msg(11, { telnyx_id: null, type: "non_transmis", texte: null }), BA)).r;
 const nonLus = (await conv(convA)).non_lus;
-ok(nt.nouveau === true, "ligne « non transmis » rangée");
-ok((await conv(convA)).dernier_texte?.startsWith("Message du client non transmis"), "elle apparaît dans l'aperçu de la liste");
+ok(nt.nouveau === true, "ligne « non transmis » rangée, sans texte");
+ok((await conv(convA)).dernier_type === "non_transmis" && (await conv(convA)).attend_depuis !== null, "elle apparaît dans la liste (type) et le client attend une réponse");
 r = (await ranger(A, msg(11, { evenement_id: "e11-vrai", texte: "The real text" }), BA)).r;
 let m = await un("select type, texte, telnyx_id from whatsapp_messages where id = $1", [nt.message_id]);
 ok(r.nouveau === true && r.remplace === true && r.message_id === nt.message_id, "le vrai message (même wamid) remplace la ligne");
 ok(m.type === "text" && m.texte === "The real text" && m.telnyx_id === "tx-11", "type, texte et id Telnyx du vrai message");
 ok((await conv(convA)).non_lus === nonLus, "pas de non-lu de plus");
-r = (await ranger(A, msg(11, { evenement_id: "e11-bis", type: "non_transmis", texte: "x" }), BA)).r;
+r = (await ranger(A, msg(11, { evenement_id: "e11-bis", type: "non_transmis", texte: null }), BA)).r;
 ok(r.nouveau === false && (await un("select texte from whatsapp_messages where id = $1", [nt.message_id])).texte === "The real text", "une ligne « non transmis » tardive n'écrase pas le vrai message");
 
 // ---- Rattrapage puis message.received : l'id Telnyx est complété ----------------------------------------------------------------
@@ -130,6 +130,62 @@ ok((await conv(convB)).manque_le === null, "pas posé si le client a écrit depu
 await ranger(B, msg(14, { sens: "sortant", origine: "app", envoye_le: new Date(Date.now() + 60000).toISOString() }), BB1);
 ok((await conv(convB)).manque_le === null, "une réponse de Nani ne pose rien d'elle-même");
 const idM = (await un("select id from whatsapp_messages where evenement_id = 'e14'")).id;
+
+// Repère effacé par le message du client arrivé en retard (envoyé AVANT la réponse de Nani qui portait le repère).
+const echo = (await ranger(B, msg(15, { sens: "sortant", origine: "app", envoye_le: new Date(Date.now() + 120000).toISOString() }), BB1)).r;
+await db.query("update whatsapp_messages set repere = 'semble_manquer' where id = $1", [echo.message_id]);
+await un("select whatsapp_signaler_manque($1, $2) x", [convB, new Date(Date.now() + 120000).toISOString()]);
+ok((await conv(convB)).manque_le !== null, "(témoin) repère posé sur la réponse de Nani et sur la liste");
+await ranger(B, msg(16, { envoye_le: new Date(Date.now() + 90000).toISOString() }), BB1);
+ok((await conv(convB)).manque_le === null, "message du client en retard : repère de la liste effacé");
+ok((await un("select repere from whatsapp_messages where id = $1", [echo.message_id])).repere === null, "… et celui de la réponse de Nani qu'il précède");
+await db.query("update whatsapp_messages set repere = 'semble_manquer' where id = $1", [echo.message_id]);
+await ranger(B, msg(17, { envoye_le: new Date(Date.now() + 300000).toISOString() }), BB1);
+ok((await un("select repere from whatsapp_messages where id = $1", [echo.message_id])).repere === "semble_manquer", "un message du client plus récent laisse le repère de la réponse (le message manquant manque toujours)");
+
+// ---- Même BSUID, autre numéro : jamais de changement de numéro, une nouvelle conversation signalée ------------------------------------
+const A2 = "+447700900411";
+r = (await ranger(A2, msg(40), BA)).r;
+const convA2 = r.conversation_id;
+let c2 = await conv(convA2);
+ok(convA2 !== convA && c2.telephone === A2 && c2.meme_client_que === convA && c2.bsuid === null, "nouveau numéro : nouvelle conversation qui pointe vers l'ancienne");
+ok((await conv(convA)).telephone === A && (await conv(convA)).bsuid === BA, "l'ancienne garde son numéro et son BSUID");
+r = (await ranger(A2, msg(41), BA)).r;
+ok(r.conversation_id === convA2, "le message suivant du nouveau numéro va dans sa conversation");
+r = (await ranger(null, msg(42), BA)).r;
+ok(r.conversation_id === convA, "un message sans numéro va à la conversation du BSUID");
+
+// ---- Conversation vue d'abord sans numéro, rattachée dès que son numéro arrive ----------------------------------------------------
+const Y = "+447700900420";
+const convY = (await ranger0(Y, msg(50))).r.conversation_id;
+// Réglé par Nani (le déclencheur de la migration 60 garde ce réglage contre la clé de service) : ici, déclencheur coupé le temps du réglage.
+const reglerPersonnel = async (id) => {
+  await db.exec("alter table whatsapp_conversations disable trigger whatsapp_proteger_classement");
+  await db.query("update whatsapp_conversations set reponses = 'jamais' where id = $1", [id]);
+  await db.exec("alter table whatsapp_conversations enable trigger whatsapp_proteger_classement");
+};
+await reglerPersonnel(convY);
+ok((await conv(convY)).reponses === "jamais", "(témoin) Contact personnel réglé");
+const BZ = "GB.10000000000000000420";
+const convZ = (await ranger(null, msg(51), BZ)).r.conversation_id;
+await ranger(null, msg(52), BZ);
+ok(convZ !== convY && (await conv(convZ)).telephone === null, "(témoin) le Contact personnel écrit sans numéro : conversation à part");
+await db.query("insert into taches (entite_id, titre, whatsapp_conversation_id) values ($1, 'Rappeler', $2)", [ent.secret, convZ]).catch(() => {});
+r = (await ranger(Y, msg(53), BZ)).r;
+ok(r.conversation_id === convY, "son numéro arrive avec le même BSUID : rangé chez le Contact personnel");
+ok(!(await conv(convZ)), "la conversation sans numéro est rattachée puis disparaît");
+ok((await un("select count(*)::int n from whatsapp_messages where conversation_id = $1", [convY])).n === 4, "ses messages sont passés à la conversation du numéro");
+const cy = await conv(convY);
+ok(cy.bsuid === BZ && cy.reponses === "jamais", "BSUID noté, toujours Contact personnel");
+const tache = await un("select whatsapp_conversation_id from taches where titre = 'Rappeler'");
+ok(!tache || tache.whatsapp_conversation_id === convY, "ce qui citait la conversation rattachée suit");
+// L'inverse : une conversation sans numéro réglée « Contact personnel » ne se fond pas dans une conversation ouverte à l'IA.
+const Q = "+447700900430", BQ = "GB.10000000000000000430";
+const convQ = (await ranger0(Q, msg(60))).r.conversation_id;
+const convP = (await ranger(null, msg(61), BQ)).r.conversation_id;
+await reglerPersonnel(convP);
+r = (await ranger(Q, msg(62), BQ)).r;
+ok(r.conversation_id === convQ && !!(await conv(convP)) && (await conv(convQ)).meme_client_que === convP, "Contact personnel sans numéro : pas de fusion, seulement « nouveau numéro pour ce client »");
 await db.query("update whatsapp_messages set repere = 'semble_manquer' where id = $1", [idM]);
 err = null;
 try { await db.query("update whatsapp_messages set repere = 'autre' where id = $1", [idM]); } catch (e) { err = e.message; }
@@ -140,7 +196,8 @@ for (const [qui, role] of [[nani, "authenticated"], [null, "anon"]]) {
   const nom = qui ? "Nani" : "anon";
   ok(!(await essaie(qui, "select whatsapp_ranger($1, $2, null, $3::jsonb)", [ORG, A, JSON.stringify(msg(20))], role)).ok, `${nom} n'appelle pas whatsapp_ranger`);
   ok(!(await essaie(qui, "select whatsapp_signaler_manque($1, now())", [convA], role)).ok, `${nom} n'appelle pas whatsapp_signaler_manque`);
-  for (const col of ["bsuid", "manque_le", "telephone"]) {
+  ok(!(await essaie(qui, "select whatsapp_rattacher($1, $2)", [convA2, convA], role)).ok, `${nom} n'appelle pas whatsapp_rattacher`);
+  for (const col of ["bsuid", "manque_le", "telephone", "meme_client_que"]) {
     const t = await essaie(qui, `update whatsapp_conversations set ${col} = null where id = $1`, [convB], role);
     ok(!t.ok || t.n === 0, `${nom} ne modifie pas ${col}`);
   }
@@ -164,7 +221,7 @@ ok(/sans numéro/.test(err || ""), "le retour s'arrête tant qu'une conversation
 ok(!!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name = 'bsuid'")), "… sans rien défaire");
 await db.query("delete from whatsapp_conversations where telephone is null");
 await db.exec(lire("retour-100-whatsapp-manquants.sql"));
-ok(!(await un("select 1 x from information_schema.columns where table_name in ('whatsapp_conversations', 'whatsapp_messages') and column_name in ('bsuid', 'manque_le', 'repere')")), "retour : colonnes retirées");
+ok(!(await un("select 1 x from information_schema.columns where table_name in ('whatsapp_conversations', 'whatsapp_messages') and column_name in ('bsuid', 'manque_le', 'meme_client_que', 'repere')")), "retour : colonnes retirées");
 r = (await ranger0("+447700900499", msg(30))).r;
 ok(r.nouveau === true, "retour : l'ancien whatsapp_ranger range de nouveau");
 await db.exec(lire("migration-100-whatsapp-manquants.sql"));

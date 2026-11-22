@@ -221,7 +221,8 @@ Deno.serve(async (req) => {
       const ent = wc.data.entite_id === null ? await sb.from("entites").select("slug").eq("id", entiteId).maybeSingle() : null;
       if (!ent || ent.error || !ent.data || !["secret", "taxi"].includes(ent.data.slug)) return json({ erreur: "whatsapp_introuvable" }, 404);
     }
-    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
+    // Ligne « non transmis » (migration 100) : jamais envoyée à l'Assistant.
+    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
     if (wm.error) return json({ erreur: "base" }, 500);
     const messagesWa = wm.data || [];
     // Seulement les pièces cochées par la personne dans l'écran (rien par défaut) : une capture de virement ou de compte ne part jamais
@@ -654,7 +655,8 @@ Deno.serve(async (req) => {
           const conv = convs[0] || null;
           if (!conv || conv.reponses === "jamais") return { conversation: conv, messages: [] };
           const n = Math.min(200, Math.max(1, Number(derniers) || 40));
-          const base = (cols: string, opts?: any) => sb.from("whatsapp_messages").select(cols, opts).eq("conversation_id", id).is("supprime_le", null);
+          // Ligne « non transmis » (migration 100) : jamais lue par l'Assistant.
+          const base = (cols: string, opts?: any) => sb.from("whatsapp_messages").select(cols, opts).eq("conversation_id", id).is("supprime_le", null).neq("type", "non_transmis");
           let q = base("id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le");
           if (depuis) q = q.gte("envoye_le", borneJour(depuis));
           else if (avant) q = q.lt("envoye_le", borneJour(avant));
@@ -910,7 +912,7 @@ Deno.serve(async (req) => {
   // conversation WhatsApp liée, lus en base avec la session, dans l'ordre d'envoi. Jamais du bloc joint ni de lire_conversation : une
   // correction faite ensuite dans WhatsApp retire le prix au prochain échange. Une lecture en échec ne valide rien.
   if (waLue && clientConfirme(waLue)) {
-    const lusWa = await sb.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
+    const lusWa = await sb.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).neq("type", "non_transmis").order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
     if (!lusWa.error) memo.clientValides = prixClientValides([...(lusWa.data || [])].reverse(), waLue);
   }
   // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte

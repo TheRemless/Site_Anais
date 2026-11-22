@@ -31,7 +31,7 @@ import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
-import { estNonTransmis, repereManque, conversationManque, TEXTE_NON_TRANSMIS, LIBELLE_MANQUE } from "../whatsapp-calc.mjs";
+import { estNonTransmis, repereManque, conversationManque, TEXTE_NON_TRANSMIS, LIBELLE_MANQUE, LIBELLE_NOUVEAU_NUMERO, ancienneConversation } from "../whatsapp-calc.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -98,7 +98,8 @@ function ligneConversation(c, prop, ouverte) {
         )
       ),
       // Repère discret (migration 100) : effacé au prochain message du client.
-      conversationManque(c) ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_MANQUE)) : null
+      conversationManque(c) ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_MANQUE)) : null,
+      c.meme_client_que ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_NOUVEAU_NUMERO)) : null
     )
   );
 }
@@ -320,7 +321,23 @@ function enTete(c, prop) {
     bandeauFiche(c),
     blocFaits(c, prop),
     blocResume(c),
+    // Même client depuis un autre numéro (migration 100).
+    noteNouveauNumero(c),
   ];
+}
+
+// Même client (même BSUID) qui écrit depuis un autre numéro (migration 100) : le numéro n'est jamais changé seul, Nani voit l'ancienne
+// conversation et décide.
+function noteNouveauNumero(c) {
+  if (!c.meme_client_que) return null;
+  const ancienne = ancienneConversation(c, etat.brut.whatsapp_conversations || []);
+  return h(
+    "p",
+    { class: "wa-nouveau-numero", role: "note" },
+    icone("alerte", 16),
+    tr(LIBELLE_NOUVEAU_NUMERO),
+    ancienne ? h("a", { href: adresseConversation(ancienne), class: "lien" }, tr("Voir la conversation de l'ancien numéro")) : null
+  );
 }
 
 // ---- Nom écrit par le client (21.11.2026) -------------------------------------------------------------------------------------------

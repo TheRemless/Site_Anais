@@ -147,12 +147,6 @@ export function nonTransmis(body) {
   const erreurs = Array.isArray(body.errors) ? body.errors : [];
   return erreurs.some((e) => e && CODES_NON_TRANSMIS.includes(Number(e.code)));
 }
-// Le texte de la ligne gardée dans la conversation (heure de Bangkok, le fuseau de Nani). L'écran l'affiche traduit, à partir de l'heure.
-export function texteNonTransmis(iso) {
-  const t = Date.parse(iso || "");
-  const heure = Number.isFinite(t) ? new Date(t + 7 * 3600000).toISOString().slice(11, 16) : "?";
-  return `Message du client non transmis par WhatsApp, ${heure}. Ouvre WhatsApp sur le téléphone pour le lire.`;
-}
 
 const nomSur = (v) => (typeof v === "string" ? texteSur(v, 100)?.replace(/\s+/g, " ").trim() || null : null);
 
@@ -268,7 +262,8 @@ export function interpreter(ev) {
       sens: echo ? "sortant" : "entrant",
       origine: echo ? "app" : "client",
       type: manque ? "non_transmis" : typeSur(body.type),
-      texte: manque ? texteNonTransmis(quand) : texteDe(body),
+      // Sans texte : l'écran écrit la ligne à partir de l'heure, et rien n'en part à l'IA (tri, réponse, suivi, Assistant, recherche).
+      texte: manque ? null : texteDe(body),
       medias: manque ? [] : mediasDe(body),
       envoye_le: quand,
       repond_a: typeof body.context?.id === "string" ? body.context.id.slice(0, 200) : null,

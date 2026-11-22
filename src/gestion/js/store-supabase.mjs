@@ -196,9 +196,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     let nomDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      // manque_le, bsuid (migration 100, message du client qui semble manquer) : relues sans elles tant que la migration n'est pas appliquée.
-      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source, manque_le, bsuid`);
-      if (r.error && (colonneAbsente(r.error, "manque_le") || colonneAbsente(r.error, "bsuid"))) r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
+      // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
+      // la migration n'est pas appliquée.
+      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source, manque_le, bsuid, meme_client_que`);
+      if (r.error && ["manque_le", "bsuid", "meme_client_que"].some((c) => colonneAbsente(r.error, c))) r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
       if (r.error && colonneAbsente(r.error, "nom_source")) {
         nomDisponible = false;
         r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);

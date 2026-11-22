@@ -13,7 +13,8 @@ const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e
 async function lire(db: SupabaseClient, conversationId: string) {
   const { data: conv } = await db.from("whatsapp_conversations").select("*").eq("id", conversationId).maybeSingle();
   if (!conv || !("resume_le" in conv)) return null; // migration 62 absente : rien à faire
-  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, type, texte, medias, envoye_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(60);
+  // Ligne « non transmis » (migration 100) : jamais lue par l'IA.
+  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, type, texte, medias, envoye_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(60);
   return { conv, messages: [...(msgs || [])].reverse() };
 }
 

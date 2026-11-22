@@ -18,7 +18,7 @@ import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
-import { interpreterWaba, rattrapageAttend, sembleManquer, REPERE } from "./manquants.js";
+import { interpreterWaba, rattrapageAttend, sembleManquer, citationDatable, repereAutorise, REPERE } from "./manquants.js";
 import { BUCKET_SORTANT, cheminsSortants, sansFichierSortant, statutLibereFichier, sortantsAPurger } from "../whatsapp-envoi/calc.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
@@ -180,7 +180,8 @@ async function traiterUn(db: SupabaseClient, id: string) {
   try {
     const d = pris.brut?.data || {};
     const ev = { id: pris.id, type: pris.type, survenu_le: pris.survenu_le, payload: d.payload || {} };
-    const action = interpreterStatut(ev) || interpreterWaba(ev) || interpreter(ev);
+    // Webhook du compte WhatsApp : seulement les messages adressés au numéro de Nani, lu dans les réglages (jamais l'inverse).
+    const action = interpreterStatut(ev) || interpreterWaba(ev, { numero: (await reglages(db)).numero }) || interpreter(ev);
     await appliquer(db, action, pris);
     await fermer({ traite_le: new Date().toISOString(), erreur: null });
     return true;
@@ -236,7 +237,7 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
   // Statut d'envoi (migration 64) : sur le message sortant qui porte cet id, sans jamais revenir en arrière (remis puis « sent » en retard).
   if (a.action === "statut") {
     const ids = [a.telnyx_id ? `telnyx_id.eq.${filtre(a.telnyx_id)}` : null, a.meta_id ? `meta_id.eq.${filtre(a.meta_id)}` : null].filter(Boolean).join(",");
-    const { data: msgs, error } = await db.from("whatsapp_messages").select("id, statut_envoi, medias").eq("sens", "sortant").or(ids).limit(5);
+    const { data: msgs, error } = await db.from("whatsapp_messages").select("id, statut_envoi, medias, meta_id").eq("sens", "sortant").or(ids).limit(5);
     if (error) throw new Error(error.message);
     // Message inconnu : statut arrivé avant que whatsapp-envoi note l'id Telnyx (repris), ou message hors de Gestion.
     if (!msgs || !msgs.length) throw new CibleAbsente("statut_message_inconnu", STATUT_FENETRE_MS);
@@ -247,6 +248,13 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
       const q = db.from("whatsapp_messages").update({ statut_envoi: a.statut, erreur_envoi: a.erreur, statut_le: a.quand || maintenant }).eq("id", m.id);
       const { error: errU } = await (m.statut_envoi === null ? q.is("statut_envoi", null) : q.in("statut_envoi", avant));
       if (errU) throw new Error(errU.message);
+    }
+    // Un message envoyé depuis Gestion n'a que l'id Telnyx : son wamid (foreign_id du statut) est noté une fois (migration 100), pour qu'une
+    // citation par wamid le retrouve. Un wamid déjà pris ailleurs (index unique) n'empêche pas le statut.
+    if (a.meta_id) for (const m of msgs) {
+      if (m.meta_id) continue;
+      const { error: errW } = await db.from("whatsapp_messages").update({ meta_id: a.meta_id }).eq("id", m.id).is("meta_id", null);
+      if (errW) console.warn("wamid d'un envoi non noté :", errW.code || "");
     }
     // Voucher envoyé depuis Gestion (whatsapp-envoi/voucher.js) : remis ou lu, Meta a pris l'image ; en échec, elle ne partira plus.
     // Le fichier temporaire du bucket « whatsapp-sortant » est effacé. Un effacement manqué est repris par la purge (une heure au plus).
@@ -270,14 +278,20 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
   // Sans wamid, impossible de savoir s'il est déjà là : classé.
   if (a.action === "rattrapage") {
     if (!a.message.meta_id) throw new Classe("rattrapage_sans_id");
-    const { data: deja, error: errD } = await db.from("whatsapp_messages").select("id").eq("meta_id", a.message.meta_id).limit(1);
+    const { data: deja, error: errD } = await db.from("whatsapp_messages").select("id, type").eq("meta_id", a.message.meta_id).limit(1);
     if (errD) throw new Error(errD.message);
-    if (deja && deja.length) return;
+    // Une ligne « non transmis » du même wamid ne bloque pas le vrai contenu : whatsapp_ranger la remplace (migration 100).
+    if (deja && deja.length && deja[0].type !== "non_transmis") return;
     if (rattrapageAttend(pris.recu_le)) throw new Patiente("rattrapage");
   }
+  // Client sans numéro : l'ancienne whatsapp_ranger (migration 100 pas encore passée) exige un numéro. L'événement attend la migration,
+  // sans consommer d'essai, au lieu d'échouer cinq fois.
+  if (!a.telephone && !(await migration100(db))) throw new Patiente("migration_100");
   // Nouveau message (ou rattrapage, ou ligne « non transmis »).
   const r = await reglages(db);
-  if (a.entreprise && a.entreprise !== r.numero) {
+  // Le numéro de l'entreprise n'est appris que du profil de messagerie (message.received, message.echo), jamais du webhook du compte :
+  // whatsapp-envoi l'utilise comme expéditeur.
+  if (a.entreprise && !a.waba && a.entreprise !== r.numero) {
     await db.from("whatsapp_reglages").update({ numero: a.entreprise }).eq("organisation_id", ORGANISATION);
     reglagesLus = null;
   }
@@ -287,9 +301,15 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
   await db.from("whatsapp_reglages").update({ dernier_evenement_le: maintenant }).eq("organisation_id", ORGANISATION);
   // Ligne « Message du client non transmis » : visible dans la conversation et la liste, sans réponse préparée, sans suivi, sans notification.
   if (a.action === "non_transmis") return;
+  // Client connu par son seul BSUID : ni tri, ni réponse, ni suivi par l'IA tant que la conversation n'a pas de numéro ou que Nani ne l'a pas
+  // typée (un Contact personnel pourrait s'y cacher : dans le doute, pas d'IA).
+  if (data?.nouveau && data.message_id && !a.telephone && !(await iaPourBsuid(db, data.conversation_id))) {
+    if (a.message.medias.length) await copierMedias(db, data.conversation_id, data.message_id, a.message.medias, r.numero);
+    return;
+  }
   // Réponse de Nani depuis l'app : un message du client semble-t-il manquer avant elle ? Repère discret, aucune IA, aucune notification.
   // Une réaction n'est pas une réponse : elle ne pose aucun repère.
-  if (data?.nouveau && data.message_id && a.message.origine === "app" && a.message.type !== "reaction") await reperer(db, data.conversation_id, data.message_id, a.message);
+  if (data?.nouveau && data.message_id && a.message.origine === "app" && a.message.type !== "reaction" && !data.remplace) await reperer(db, data.conversation_id, data.message_id, a.message);
   if (data?.nouveau && data.message_id) {
     // Suivi (migration 62) : signal de paiement, promesse de Nani, résumé. Hors de ce traitement, comme la réponse préparée.
     enFond(suiviApresMessage(db, data.conversation_id, data.message_id));
@@ -319,6 +339,22 @@ class Classe extends Error {}
 // Rattrapage trop récent : repris plus tard, l'essai ne compte pas.
 class Patiente extends Error {}
 
+// Migration 100 passée (colonne bsuid) : relu à chaque fois tant qu'elle manque, puis gardé.
+let colonneBsuid = false;
+async function migration100(db: SupabaseClient) {
+  if (colonneBsuid) return true;
+  const { error } = await db.from("whatsapp_conversations").select("bsuid").limit(1);
+  colonneBsuid = !error;
+  return colonneBsuid;
+}
+
+// Une conversation sans numéro n'a d'IA que si Nani l'a typée. Lecture impossible : pas d'IA.
+async function iaPourBsuid(db: SupabaseClient, conversation: string) {
+  const { data, error } = await db.from("whatsapp_conversations").select("telephone, type_contact, reponses").eq("id", conversation).maybeSingle();
+  if (error || !data || data.reponses === "jamais") return false;
+  return !!data.telephone || !!data.type_contact;
+}
+
 // Conversation du client : par son numéro, sinon par son BSUID (client sans numéro, migration 100).
 async function conversationDe(db: SupabaseClient, telephone: string | null, bsuid: string | null) {
   for (const [col, val] of [["telephone", telephone], ["bsuid", bsuid]] as const) {
@@ -338,17 +374,21 @@ async function conversationDe(db: SupabaseClient, telephone: string | null, bsui
 // deno-lint-ignore no-explicit-any
 async function reperer(db: SupabaseClient, conversation: string, message: string, m: any) {
   try {
+    // Jamais pour un partenaire, un chauffeur, un hôtel, un apporteur, une fiche partenaire ni un Contact personnel (lecture impossible : rien).
+    const { data: conv, error: errV } = await db.from("whatsapp_conversations").select("type_contact, partenaire_id, reponses").eq("id", conversation).maybeSingle();
+    if (errV || !repereAutorise(conv)) return;
     const { data: avant, error } = await db.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conversation).neq("id", message)
       .lte("envoye_le", m.envoye_le).order("envoye_le", { ascending: false }).limit(1);
     if (error) throw new Error(error.message);
+    // Seul un id Telnyx cité se date (passé par Telnyx, donc depuis le 20.11.2026) : un wamid cité inconnu ne pose aucun repère.
     let citeInconnu = false;
-    if (m.repond_a) {
+    if (m.repond_a && citationDatable(m.repond_a)) {
       const id = filtre(m.repond_a);
       const { data: cite, error: errC } = await db.from("whatsapp_messages").select("id").or(`telnyx_id.eq.${id},meta_id.eq.${id}`).limit(1);
       if (errC) throw new Error(errC.message);
       citeInconnu = !cite || !cite.length;
     }
-    const raison = sembleManquer({ envoyeLe: m.envoye_le, precedent: (avant || [])[0] || null, citeInconnu });
+    const raison = sembleManquer({ conv, envoyeLe: m.envoye_le, texte: m.texte || "", precedent: (avant || [])[0] || null, citeInconnu });
     if (!raison) return;
     const { error: e1 } = await db.from("whatsapp_messages").update({ repere: REPERE }).eq("id", message);
     if (e1) throw new Error(e1.message);

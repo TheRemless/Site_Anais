@@ -184,7 +184,8 @@ async function nommerConversation(db: SupabaseClient, conv: Conv, nom: string) {
 async function lireConversation(db: SupabaseClient, conversationId: string) {
   const { data: conv } = await db.from("whatsapp_conversations").select("*").eq("id", conversationId).maybeSingle();
   if (!conv) return null;
-  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(40);
+  // Ligne « non transmis » (migration 100) : jamais lue par l'IA, ni le tri ni la réponse.
+  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(40);
   return { conv: conv as Conv, messages: [...(msgs || [])].reverse() as Record<string, any>[] };
 }
 
@@ -358,7 +359,7 @@ async function tonDeNani(db: SupabaseClient, entiteId: string, conversationId: s
   const ids = (convs || []).map((c) => c.id);
   if (!ids.length) return "";
   const [msgs, props] = await Promise.all([
-    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).order("envoye_le", { ascending: false }).limit(400),
+    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(400),
     db.from("whatsapp_propositions").select("conversation_id, cree_le, texte, statut").in("conversation_id", ids).not("texte", "is", null).order("cree_le", { ascending: false }).limit(60),
   ]);
   const tous = msgs.data || [];

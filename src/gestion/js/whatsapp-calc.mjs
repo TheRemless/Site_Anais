@@ -296,6 +296,10 @@ export const LIBELLE_MANQUE = N_("Un message du client semble manquer");
 export const estNonTransmis = (m) => !!m && m.type === "non_transmis";
 export const repereManque = (m) => !!m && m.repere === "semble_manquer";
 export const conversationManque = (c) => !!c && !!c.manque_le;
+// Même client (même BSUID) qui écrit depuis un autre numéro : la conversation de l'ancien numéro (migration 100). Jamais de changement de
+// numéro automatique : Nani décide.
+export const LIBELLE_NOUVEAU_NUMERO = N_("Nouveau numéro pour ce client");
+export const ancienneConversation = (c, conversations = []) => (c && c.meme_client_que ? conversations.find((x) => x.id === c.meme_client_que) || null : null);
 export const libelleType = (type) => LIBELLES_TYPE[type] || LIBELLES_TYPE.inconnu;
 export const ORIGINES = { app: N_("depuis l'app"), gestion: N_("depuis Gestion") };
 

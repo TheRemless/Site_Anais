@@ -2253,6 +2253,7 @@ button.agent-joint { cursor: pointer; }
 .wa-repere-manque { align-self: center; margin: 6px auto 2px; font-size: 0.8125rem; font-style: italic; color: var(--texte-2); text-align: center; }
 .wa-bulle.wa-non-transmis { align-self: flex-start; display: flex; gap: 6px; align-items: flex-start; max-width: min(85%, 520px); margin: 4px 0; padding: 8px 12px; border: 1px dashed var(--bord-fort); border-radius: 12px; background: transparent; font-size: 0.9rem; color: var(--texte-2); }
 .wa-bulle.wa-non-transmis svg { flex: none; margin-top: 2px; }
+.wa-nouveau-numero { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; font-size: 0.9rem; color: var(--texte-2); }
 .wa-statut-detail { margin: 4px 0 0; font-size: 0.84rem; color: var(--danger); text-align: right; }
 .wa-verifier { border-top-color: var(--danger); }
 .wa-verifier > p:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; }

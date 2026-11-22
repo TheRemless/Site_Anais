@@ -117,6 +117,8 @@ export const MOTIFS_A_PREPARER = ["demande_client", "suivi_reservation"];
 // de Taxi. `agents` : { entite_id: true | false } lus dans reglages.valeur.agent_ia ; une valeur absente ou illisible ferme.
 export function iaPermise({ receptionActive, conv, agents = {} }) {
   if (receptionActive !== true || !conv || conv.reponses === "jamais") return false;
+  // Client connu par son seul BSUID (migration 100) : pas d'IA tant que la conversation n'a pas de numéro ou que Nani ne l'a pas typée.
+  if (conv.telephone === null && !conv.type_contact) return false;
   if (conv.entite_id) return agents[conv.entite_id] === true;
   return Object.values(agents).some((v) => v === true);
 }

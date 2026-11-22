@@ -17,6 +17,7 @@ begin
 end $$;
 
 drop function if exists whatsapp_signaler_manque(uuid, timestamptz);
+drop function if exists whatsapp_rattacher(uuid, uuid);
 
 -- whatsapp_ranger de la migration 64 (lu en production le 22.11.2026).
 create or replace function whatsapp_ranger(org uuid, tel text, nom_profil text, m jsonb) returns jsonb
@@ -73,9 +74,9 @@ end $$;
 drop index if exists whatsapp_conversations_bsuid;
 alter table whatsapp_conversations drop constraint if exists whatsapp_conversations_identifiant_check;
 alter table whatsapp_conversations alter column telephone set not null;
-alter table whatsapp_conversations drop column if exists bsuid, drop column if exists manque_le;
+alter table whatsapp_conversations drop column if exists bsuid, drop column if exists manque_le, drop column if exists meme_client_que;
 alter table whatsapp_messages drop column if exists repere;
 
 commit;
 -- Contrôle après (aucune ligne) :
---   select column_name from information_schema.columns where table_name in ('whatsapp_conversations', 'whatsapp_messages') and column_name in ('bsuid', 'manque_le', 'repere');
+--   select column_name from information_schema.columns where table_name in ('whatsapp_conversations', 'whatsapp_messages') and column_name in ('bsuid', 'manque_le', 'meme_client_que', 'repere');

@@ -13,13 +13,16 @@
 --      « Message du client non transmis » (type non_transmis) par le vrai message s'il arrive ensuite avec le même wamid ; complète l'id
 --      Telnyx d'un message d'abord rattrapé par le webhook du compte ; refuse un message sans numéro ni BSUID (un envoi depuis Gestion vers
 --      une conversation sans numéro échoue donc avant tout appel à Telnyx).
---   5. whatsapp_signaler_manque (clé de service seulement) : pose manque_le, sauf si le client a écrit depuis.
+--   5. whatsapp_signaler_manque (clé de service seulement) : pose manque_le, sauf si le client a écrit depuis. Un message du client, même
+--      en retard, efface manque_le, et le repère des réponses de Nani qu'il précède.
+--   6. Même BSUID, autre numéro : jamais de changement de numéro, une nouvelle conversation qui porte meme_client_que (« Nouveau numéro pour
+--      ce client »). Une conversation sans numéro est rattachée à celle du même client dès que son numéro arrive (whatsapp_rattacher).
 -- Aucune IA, aucune notification. Aucun texte de client n'est lu ni écrit par ce fichier.
 --
 -- À exécuter une seule fois, AVANT de déployer la fonction « whatsapp » de cette PR. Ne modifie aucun message existant. Se rejoue sans effet.
 -- Retour en arrière : docs/gestion/retour-100-whatsapp-manquants.sql.
 -- Contrôle :
---   select count(*) filter (where bsuid is not null) avec_bsuid, count(*) filter (where telephone is null) sans_numero, count(*) total from whatsapp_conversations;
+--   select count(*) filter (where bsuid is not null) avec_bsuid, count(*) filter (where telephone is null) sans_numero, count(meme_client_que) nouveau_numero, count(*) total from whatsapp_conversations;
 --   select count(*) from whatsapp_messages where repere = 'semble_manquer' or type = 'non_transmis';
 -- Contrôle PGlite : docs/gestion/verif-whatsapp-manquants.mjs.
 
@@ -28,6 +31,8 @@ begin;
 -- 1. BSUID et numéro facultatif.
 alter table whatsapp_conversations add column if not exists bsuid text;
 alter table whatsapp_conversations add column if not exists manque_le timestamptz;
+-- Même client (même BSUID) écrivant depuis un autre numéro : la conversation de l'ancien numéro. L'écran dit « Nouveau numéro pour ce client ».
+alter table whatsapp_conversations add column if not exists meme_client_que uuid references whatsapp_conversations (id) on delete set null;
 alter table whatsapp_messages add column if not exists repere text;
 do $$
 begin
@@ -67,13 +72,23 @@ where c.id = s.conv and c.bsuid is null
   and not exists (select 1 from whatsapp_conversations x where x.organisation_id = c.organisation_id and x.bsuid = s.b);
 
 -- 2. Rangement (remplace celui de la migration 64, même signature). m->>'bsuid' : le BSUID du client, s'il est connu.
+--    Numéro connu : sa conversation. Sinon, par BSUID :
+--      - conversation sans numéro : la même, et elle reçoit ce numéro ;
+--      - conversation avec un AUTRE numéro : le numéro n'est jamais changé, une nouvelle conversation est ouverte pour ce numéro et
+--        porte meme_client_que (l'écran dit « Nouveau numéro pour ce client ») ;
+--      - message sans numéro : la conversation du BSUID.
+--    Conversation trouvée par son numéro alors qu'une conversation SANS numéro porte ce BSUID (client vu d'abord sans numéro, un Contact
+--    personnel par exemple) : elle est rattachée (ses messages et tout ce qui la cite passent à la conversation du numéro, elle disparaît).
+--    Avec un autre numéro : seulement le signal meme_client_que.
 create or replace function whatsapp_ranger(org uuid, tel text, nom_profil text, m jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   conv uuid;
+  autre uuid;
   msg uuid;
   trouve record;
   deja record;
+  w record;
   ident text := case when m->>'bsuid' ~ '^[A-Z]{2}(\.ENT)?\.[A-Za-z0-9]{1,128}$' then m->>'bsuid' end;
   quand timestamptz := coalesce((m->>'envoye_le')::timestamptz, now());
   statut text := case when m->>'origine' = 'gestion' and m->>'statut_envoi' in ('envoi', 'envoye') then m->>'statut_envoi' end;
@@ -85,11 +100,18 @@ begin
     select id into conv from whatsapp_conversations where organisation_id = org and telephone = tel for update;
   end if;
   if conv is null and ident is not null then
-    select id into conv from whatsapp_conversations where organisation_id = org and bsuid = ident for update;
-    -- Une conversation rangée sans numéro reçoit son numéro quand il arrive (s'il n'est pas déjà celui d'une autre conversation).
-    if conv is not null and tel is not null then
-      update whatsapp_conversations set telephone = tel where id = conv and telephone is null
-        and not exists (select 1 from whatsapp_conversations x where x.organisation_id = org and x.telephone = tel);
+    select id, telephone into w from whatsapp_conversations where organisation_id = org and bsuid = ident for update;
+    if w.id is not null then
+      if w.telephone is null or tel is null then
+        conv := w.id;
+        -- Première fois qu'un numéro arrive pour ce client : noté (ce n'est pas un changement de numéro).
+        if tel is not null then
+          update whatsapp_conversations set telephone = tel where id = conv and telephone is null
+            and not exists (select 1 from whatsapp_conversations x where x.organisation_id = org and x.telephone = tel);
+        end if;
+      else
+        autre := w.id;
+      end if;
     end if;
   end if;
   if conv is null then
@@ -98,18 +120,29 @@ begin
     if tel is not null then
       select * into trouve from whatsapp_trouver_client(org, tel);
     end if;
-    insert into whatsapp_conversations (organisation_id, telephone, bsuid, nom, entite_id, entite_source, client_id, dossier_id)
-    values (org, tel, ident, nullif(left(nom_profil, 100), ''), trouve.entite_id, case when trouve.entite_id is null then 'auto' else 'client' end, trouve.client_id, trouve.dossier_id)
+    insert into whatsapp_conversations (organisation_id, telephone, bsuid, meme_client_que, nom, entite_id, entite_source, client_id, dossier_id)
+    values (org, tel, case when autre is null then ident end, autre, nullif(left(nom_profil, 100), ''), trouve.entite_id,
+      case when trouve.entite_id is null then 'auto' else 'client' end, trouve.client_id, trouve.dossier_id)
     on conflict do nothing
     returning id into conv;
     if conv is null then
-      select id into conv from whatsapp_conversations where organisation_id = org and ((tel is not null and telephone = tel) or (ident is not null and bsuid = ident))
-        order by (tel is not null and telephone = tel) desc limit 1 for update;
+      select id into conv from whatsapp_conversations where organisation_id = org and ((tel is not null and telephone = tel) or (tel is null and bsuid = ident))
+        limit 1 for update;
     end if;
   elsif ident is not null then
-    -- Le BSUID d'une conversation connue par son numéro est noté une fois.
-    update whatsapp_conversations set bsuid = ident where id = conv and bsuid is null
-      and not exists (select 1 from whatsapp_conversations x where x.organisation_id = org and x.bsuid = ident);
+    select x.id, x.telephone, x.reponses, (select y.reponses from whatsapp_conversations y where y.id = conv) as reponses_cible
+      into w from whatsapp_conversations x where x.organisation_id = org and x.bsuid = ident and x.id <> conv for update;
+    if w.id is null then
+      -- Le BSUID d'une conversation connue par son numéro est noté une fois.
+      update whatsapp_conversations set bsuid = ident where id = conv and bsuid is null;
+    elsif w.telephone is null and (w.reponses is distinct from 'jamais' or w.reponses_cible = 'jamais') then
+      -- La conversation du numéro garde ses réglages (un Contact personnel le reste). Celle sans numéro réglée « jamais » par Nani ne se
+      -- fond pas dans une conversation ouverte à l'IA : seulement le signal ci-dessous (dans le doute, pas d'IA).
+      perform whatsapp_rattacher(w.id, conv);
+      update whatsapp_conversations set bsuid = ident where id = conv and bsuid is null;
+    else
+      update whatsapp_conversations set meme_client_que = w.id where id = conv and meme_client_que is null;
+    end if;
   end if;
 
   insert into whatsapp_messages (conversation_id, evenement_id, telnyx_id, meta_id, sens, origine, type, texte, medias, envoye_le, repond_a, statut_envoi, statut_le)
@@ -145,10 +178,43 @@ begin
     -- Un message du client ajoute un non-lu ; une réponse de Nani (app ou Gestion) remet le compteur à zéro.
     -- Un écho en retard (plus ancien que le dernier message) ne remet pas le compteur à zéro.
     non_lus = case when m->>'sens' = 'entrant' then non_lus + 1 when dernier_message_le is null or quand >= dernier_message_le then 0 else non_lus end,
-    -- Le client a écrit après le repère : il n'a plus lieu d'être.
-    manque_le = case when m->>'sens' = 'entrant' and quand >= coalesce(manque_le, quand) then null else manque_le end
+    -- Un message du client, même arrivé en retard : le repère de la liste n'a plus lieu d'être.
+    manque_le = case when m->>'sens' = 'entrant' then null else manque_le end
   where id = conv;
+  -- Arrivé en retard, il précède les réponses de Nani qui portaient le repère : elles ne le portent plus.
+  if m->>'sens' = 'entrant' then
+    update whatsapp_messages set repere = null where conversation_id = conv and repere is not null and envoye_le >= quand;
+  end if;
   return jsonb_build_object('conversation_id', conv, 'message_id', msg, 'nouveau', true);
+end
+$$;
+
+-- Rattache une conversation sans numéro (source) à celle du même client (cible) : tout ce qui cite la source (messages, propositions,
+-- conversations de l'Assistant, tâches, et toute autre colonne qui la référence) passe à la cible, puis la source disparaît. Clé de service.
+create or replace function whatsapp_rattacher(p_source uuid, p_cible uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r record;
+  src record;
+begin
+  select * into src from whatsapp_conversations where id = p_source and telephone is null for update;
+  if src.id is null or p_source = p_cible then return; end if;
+  for r in
+    select c.conrelid::regclass as t, a.attname as col
+    from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.contype = 'f' and c.confrelid = 'public.whatsapp_conversations'::regclass and array_length(c.conkey, 1) = 1
+  loop
+    execute format('update %s set %I = $1 where %I = $2', r.t, r.col, r.col) using p_cible, p_source;
+  end loop;
+  update whatsapp_conversations set meme_client_que = null where id = p_cible and meme_client_que = p_cible;
+  update whatsapp_conversations c set
+    nom = coalesce(c.nom, src.nom),
+    non_lus = c.non_lus + src.non_lus,
+    manque_le = coalesce(c.manque_le, src.manque_le)
+  where c.id = p_cible;
+  delete from whatsapp_conversations where id = p_source;
+  perform whatsapp_recalculer_dernier(p_cible);
+  perform whatsapp_apercu(p_cible);
 end
 $$;
 
@@ -160,11 +226,11 @@ language sql security definer set search_path = public as $$
     and not exists (select 1 from whatsapp_messages w where w.conversation_id = c.id and w.sens = 'entrant' and w.envoye_le > p_quand);
 $$;
 
-revoke all on function whatsapp_ranger(uuid, text, text, jsonb), whatsapp_signaler_manque(uuid, timestamptz) from public, anon, authenticated;
+revoke all on function whatsapp_ranger(uuid, text, text, jsonb), whatsapp_signaler_manque(uuid, timestamptz), whatsapp_rattacher(uuid, uuid) from public, anon, authenticated;
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    execute 'grant execute on function whatsapp_ranger(uuid, text, text, jsonb), whatsapp_signaler_manque(uuid, timestamptz) to service_role';
+    execute 'grant execute on function whatsapp_ranger(uuid, text, text, jsonb), whatsapp_signaler_manque(uuid, timestamptz), whatsapp_rattacher(uuid, uuid) to service_role';
   end if;
 end $$;
 

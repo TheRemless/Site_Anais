@@ -372,7 +372,7 @@ test("PR 307, point 1 : seul le premier message texte de Nani, sans montant, san
 
 test("PR 307, points 2 et 3 : calculé par la fonction sur la base à chaque échange ; un message du client modifié ne compte pas", () => {
   const idx = lire("supabase/functions/agent/index.ts");
-  assert.match(idx, /if \(waLue && clientConfirme\(waLue\)\) \{\n    const lusWa = await sb\.from\("whatsapp_messages"\)\.select\("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le"\)\.eq\("conversation_id", waLue\.id\)\.order\("envoye_le", \{ ascending: false \}\)\.order\("id", \{ ascending: false \}\)\.limit\(MESSAGES_PRIX_CLIENT\);\n    if \(!lusWa\.error\) memo\.clientValides = prixClientValides\(\[\.\.\.\(lusWa\.data \|\| \[\]\)\]\.reverse\(\), waLue\);/);
+  assert.match(idx, /if \(waLue && clientConfirme\(waLue\)\) \{\n    const lusWa = await sb\.from\("whatsapp_messages"\)\.select\("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le"\)\.eq\("conversation_id", waLue\.id\)(?:\.neq\("type", "non_transmis"\))?\.order\("envoye_le", \{ ascending: false \}\)\.order\("id", \{ ascending: false \}\)\.limit\(MESSAGES_PRIX_CLIENT\);\n    if \(!lusWa\.error\) memo\.clientValides = prixClientValides\(\[\.\.\.\(lusWa\.data \|\| \[\]\)\]\.reverse\(\), waLue\);/);
   assert.equal(MESSAGES_PRIX_CLIENT, 60);
   // Ni le bloc joint ni lire_conversation (sonde f) : la lecture ne pose rien.
   const joint = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "Perfect")]) }], { conversationClient: true });
