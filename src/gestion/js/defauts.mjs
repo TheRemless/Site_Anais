@@ -613,15 +613,14 @@ export function donneesDemo(ajd, ajouterJours) {
   prestation(taxi, "transfert", "Private minivan", "Koh Lanta → Phuket Airport", 4500, "veh", 4050, {});
   prestation(taxi, "transfert", "Local taxi", "Saladan → Klong Dao", 80, "pp", null, { note: "Taxi association rates." });
   prestation(longtail, "activite", "Sunset trip", "Sunset by longtail, 2 hours", 700, "pp", 500, { duree: "17:00 - 19:00" });
-  // Koh Phi Phi et Koh Rok en speedboat, aux libellés et prix de vente publics du site (18.11.2026) : une demande collée depuis le site trouve
+  // Koh Phi Phi et Koh Rok en speedboat, aux libellés et prix de vente publics du site (18.11.2026, sorties au coucher du soleil du 22.11.2026) : une demande collée depuis le site trouve
   // le tarif de son option (site-produits.mjs les relie par leur libellé, faute d'identifiant en démonstration). Aucun net : rien de confidentiel ici.
   const speedTours = partenaire("Speedboat tours démo", "Excursions bateaux", "mer", "Koh Phi Phi et Koh Rok en speedboat, en groupe et au coucher du soleil", { contact: { telephones: [{ numero: "082-000-0005", libelle: "", whatsapp: true }] } });
   for (const [groupe, libelle, prix, enfant] of [
     ["Shared speedboat excursions (join trip)", "One Day Trip Koh Phi Phi + Bamboo Island", 2000, 1000],
-    ["Lazy Day sunset trips (small group)", "Lazy Day Sunset Trip Koh Phi Phi + Bamboo Island", 3900, 2900],
+    ["Sunset island trips", "Phi Phi Bamboo Island + Sunset", 2900, 1900],
     ["Shared speedboat excursions (join trip)", "One Day Trip Koh Rok + Koh Ha", 2000, 1000],
-    ["Shared speedboat excursions (join trip)", "One Day Trip Koh Rok + Koh Ha Sunset", 2500, 1800],
-    ["Lazy Day sunset trips (small group)", "Lazy Day Sunset Trip Koh Rok + Koh Haa", 3900, 2900],
+    ["Sunset island trips", "Rok Haa Island + Sunset", 2900, 1900],
   ]) {
     prestation(speedTours, "excursion", groupe, libelle, prix, "pp", null, {}, { libelle_en: libelle });
     prestation(speedTours, "excursion", groupe, `${libelle}, child (4-11)`, enfant, "ch", null, {}, { libelle_en: `${libelle}, child (4-11)` });
