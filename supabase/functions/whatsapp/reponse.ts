@@ -22,13 +22,14 @@ import { debutMois, estCreditEpuise, plafondRetenu } from "../assistant/budget.j
 import { dateBangkok, reglagesAssistant } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
 import { clientCommun, entrepriseReponse, refusDemande } from "./proposer.js";
-import { avisApres, partenaireProbable, typeADeduire } from "./type-contact.js";
+import { decisionPourBase, prixDeVentePermis, traiterEnPartenaire, typeADeduire } from "./type-contact.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
-// Le contact est un partenaire (migration 68), posé par Nani, déduit ou probable (migration 110, type-contact.js), ou relié à une fiche
-// partenaire : réponse sur demande seulement, sans client ni dossier relié, et aucun prix de la conversation repris comme prix de vente.
-const versPartenaire = (conv: Conv) => partenaireProbable(conv);
+// Le contact est un partenaire (migration 68), posé par Nani ou déduit (migration 110, type-contact.js), ou relié à une fiche partenaire :
+// réponse sur demande seulement, sans client ni dossier relié. Jamais sur des repères seuls ni sur une décision du tri seule (relecture du
+// 22.11.2026) : un partenaire seulement probable reste traité en client, mais aucun prix de la conversation n'est repris (prixDeVentePermis).
+const versPartenaire = (conv: Conv) => traiterEnPartenaire(conv);
 
 // deno-lint-ignore no-explicit-any
 type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; nom_source?: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null; reponses?: string; tri?: Record<string, any>; type_contact?: string | null; partenaire_id?: string | null; type_source?: string | null; type_avis?: Record<string, any> | null; type_signaux?: Record<string, any> | null };
@@ -63,7 +64,10 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
       try {
         // deno-lint-ignore no-explicit-any
         // Un client est commun à Secret et à Taxi : le tri donne toujours l'entreprise de la demande en cours, même si la conversation est rangée.
-        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id || clientCommun(conv) }) as any);
+        // Le début de la conversation : ses vrais premiers messages (lus à part quand la conversation dépasse les 40 lus), et les repères
+        // déjà calculés sans IA sur 60 messages (type_signaux), donnés à Haiku comme des indices.
+        const debut = messages.length >= 40 ? await premiersMessages(db, conv.id) : null;
+        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id || clientCommun(conv), debut, signaux: conv.type_signaux || null }) as any);
         appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
         decision = decisionDepuisReponse(m);
         if (decision.motif === "tri_illisible") console.error("whatsapp : tri illisible", m.stop_reason, (m.usage as { output_tokens?: number })?.output_tokens);
@@ -76,7 +80,7 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     await garderTri(db, conv.id, decision);
     // Migration 110 : la décision « type du contact » du même tri (aucun autre appel), puis le type « partenaire » déduit si la règle le dit.
     const contact = (decision as { contact?: { type: string; raison: string } }).contact;
-    if (contact) await garderAvisType(db, conv, contact);
+    if (contact) await garderAvisType(db, conv, contact, messageId);
     // Le nom que le client a écrit (champ nom_client du même tri, aucun autre appel à l'IA) : sur la conversation, jamais un nom saisi à la
     // main ni un contact qui n'est pas un client (proposer.js, nomAEcrire ; la base protège aussi le nom manuel, migration 70).
     const nomPropose = (decision as { nom_client?: string }).nom_client || "";
@@ -84,7 +88,7 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     const nomEcrit = interdits ? nomAEcrire(conv, nomPropose, interdits) : null;
     if (nomEcrit) await nommerConversation(db, conv, nomEcrit);
     if (!decision.preparer) return;
-    // Revue de sécurité de la PR 299 : un partenaire (posé, déduit ou probable) n'a jamais de réponse préparée seule, même avec la case
+    // Revue de sécurité de la PR 299 : un partenaire (posé par Nani ou déduit) n'a jamais de réponse préparée seule, même avec la case
     // cochée. « Préparer une réponse » reste possible, sur demande.
     if (versPartenaire(conv)) return;
     // Réponses sur demande (défaut) : le tri est gardé pour l'écran, rien n'est rédigé.
@@ -165,23 +169,24 @@ async function preparationAutoPermise(db: SupabaseClient, conv: Conv, suggestion
   return !!lu && !lu.error && preparationAuto(lu.data ? lu.data.valeur : null);
 }
 
-// Migration 110 : la décision du tri sur le type du contact, gardée dans type_avis (5 dernières). Puis, si la règle le dit (type-contact.js,
-// typeADeduire), « partenaire » est posé : seulement si la conversation n'a toujours ni type, ni source, ni fiche partenaire, et n'est pas un
-// Contact personnel (la base le vérifie aussi et marque le type « déduit », whatsapp_type_source). Sans la migration 110 : rien.
-async function garderAvisType(db: SupabaseClient, conv: Conv, contact: { type: string; raison: string }) {
+// Migration 110 : la décision du tri sur le type du contact, ajoutée par la base à type_avis (whatsapp_ajouter_avis_type : une décision par
+// message, les 5 dernières, deux tris en même temps n'en perdent aucune ; relecture n° 6). Puis, si la règle le dit (type-contact.js,
+// typeADeduire), « partenaire » est posé : seulement si la conversation n'a toujours ni type, ni source, ni fiche partenaire, ni fiche
+// client, ni dossier, et n'est pas un Contact personnel (la base le vérifie aussi et marque le type « déduit », whatsapp_type_source).
+// Sans la migration 110 : rien.
+async function garderAvisType(db: SupabaseClient, conv: Conv, contact: { type: string; raison: string }, messageId: string) {
   if (!("type_avis" in conv)) return;
-  const avis = avisApres(conv.type_avis, contact);
-  const { error } = await db.from("whatsapp_conversations").update({ type_avis: avis }).eq("id", conv.id);
+  const { data: avis, error } = await db.rpc("whatsapp_ajouter_avis_type", { conv: conv.id, decision: decisionPourBase(contact, messageId) });
   if (error) {
-    if (error.code !== "42703" && error.code !== "PGRST204") console.error("whatsapp : type du contact non gardé", error.message);
+    if (!["42703", "42883", "PGRST202", "PGRST204"].includes(String(error.code))) console.error("whatsapp : type du contact non gardé", error.message);
     return;
   }
-  await poserTypeDeduit(db, { ...conv, type_avis: avis });
+  if (avis) await poserTypeDeduit(db, { ...conv, type_avis: avis });
 }
 export async function poserTypeDeduit(db: SupabaseClient, conv: Conv) {
   const type = typeADeduire(conv);
   if (!type) return false;
-  const { error } = await db.from("whatsapp_conversations").update({ type_contact: type }).eq("id", conv.id).is("type_contact", null).is("type_source", null).is("partenaire_id", null).neq("reponses", "jamais");
+  const { error } = await db.from("whatsapp_conversations").update({ type_contact: type }).eq("id", conv.id).is("type_contact", null).is("type_source", null).is("partenaire_id", null).is("client_id", null).is("dossier_id", null).neq("reponses", "jamais");
   if (error && error.code !== "42703" && error.code !== "PGRST204") console.error("whatsapp : type déduit non posé", error.message);
   return !error;
 }
@@ -212,6 +217,12 @@ async function nommerConversation(db: SupabaseClient, conv: Conv, nom: string) {
   const base = db.from("whatsapp_conversations").update({ nom }).eq("id", conv.id).or("nom_source.is.null,nom_source.eq.whatsapp").or("type_contact.is.null,type_contact.eq.client").is("partenaire_id", null).neq("reponses", "jamais");
   const { error } = await (conv.nom ? base.eq("nom", conv.nom) : base.is("nom", null));
   if (error && error.code !== "42703") console.error("whatsapp : nom du client non écrit", error.message);
+}
+
+// Les vrais premiers messages d'une conversation (pour le tri, quand la conversation dépasse les 40 lus). Jamais une ligne « non transmis ».
+async function premiersMessages(db: SupabaseClient, conversationId: string) {
+  const { data, error } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: true }).limit(4);
+  return error ? null : ((data || []) as Record<string, any>[]);
 }
 
 async function lireConversation(db: SupabaseClient, conversationId: string) {
@@ -290,8 +301,8 @@ async function preparer(
   // Les références des services rendus par les outils pendant la préparation : gardées sur la proposition pour l'envoi (elementServices).
   let refsVues: string[] = [];
   try {
-    // Un partenaire, posé, déduit ou probable (revue de sécurité de la PR 299, migration 110) : ni client ni dossier relié, donc aucun prix de vente, total
-    // ni solde d'un client ne peut être lu pour lui répondre.
+    // Un partenaire posé par Nani ou déduit, ou une fiche partenaire (revue de sécurité de la PR 299, migration 110) : ni client ni dossier
+    // relié, donc aucun prix de vente, total ni solde d'un client ne peut être lu pour lui répondre.
     const partenaire = versPartenaire(conv);
     const ctx = contexteOutils(db, ent.id, reglages, conv.entite_id === ent.id && !partenaire ? { clientId: conv.client_id, dossierId: conv.dossier_id } : { clientId: null, dossierId: null }, unifie);
     const client = conv.client_id && conv.entite_id === ent.id && !partenaire ? (await db.from("clients").select("prenom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
@@ -317,7 +328,7 @@ async function preparer(
       return "";
     });
     const unifieConsignes = unifie && autre ? { entreprises: [{ nom: ent.nom, slug: ent.slug, reglages }, { nom: autre.nom, slug: autre.slug, reglages: reglagesAutre }] } : null;
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.erreur ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? "partenaire" : null });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.erreur ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? "partenaire" : null, prixRepris: prixDeVentePermis(conv) });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
@@ -333,7 +344,7 @@ async function preparer(
     memo.servicesEnCours = relie.services;
     for (const n of relie.internes) memo.internes.add(n);
     memo.ventesDossier = relie.ventes;
-    // La conversation d'un partenaire (posé, déduit ou probable) : ses montants sont des nets possibles (revue de sécurité de la PR 299).
+    // La conversation d'un partenaire (posé par Nani ou déduit) : ses montants sont des nets possibles (revue de sécurité de la PR 299).
     if (partenaire) for (const n of montantsInternesDe(messages.map((m) => String(m.texte || "")))) memo.internes.add(n);
     // Une conversation de client : les montants écrits par Nani (messages sortants, app ou Gestion) sont des prix de vente donnés au client
     // (21.11.2026). Jamais ceux du client, jamais chez un partenaire ou un apporteur (conversationDeClient).

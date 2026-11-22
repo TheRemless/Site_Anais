@@ -2,16 +2,14 @@
 // la fonction (supabase/functions/whatsapp/type-contact.js : partenaireProbable, partenaireDeduit, typeDeNani), un test compare les deux.
 //   - « déduit » : le type « partenaire » posé par la fonction (type_source = 'deduit'). Nani le confirme ou le change d'un tap ;
 //   - « partenaire probable » : pas encore de type, la dernière décision du tri dit « partenaire » ou les repères sans IA sont nets. Rien
-//     n'est posé : l'écran le dit, Nani tape « Partenaire » si c'est juste ;
+//     n'est posé et rien ne change pour ce contact (seul le prix reste à fixer, côté fonction) : l'écran le dit, Nani tape « Partenaire » si
+//     c'est juste ;
 //   - un type posé ou retiré par Nani n'est jamais touché ; un Contact personnel n'est jamais lu.
 import { N_ } from "./i18n.mjs";
 
 const TYPES = ["client", "partenaire", "apporteur", "personnel", "inconnu"];
-const decisionsDe = (conv) => {
-  const d = conv && conv.type_avis && Array.isArray(conv.type_avis.decisions) ? conv.type_avis.decisions.filter((x) => x && TYPES.includes(x.type)) : [];
-  if (d.length) return d;
-  return conv && conv.tri && conv.tri.motif === "partenaire" ? [{ type: "partenaire", raison: "", le: conv.tri.le || null }] : [];
-};
+// Seule la décision type_contact du tri compte (relecture du 22.11.2026 : l'ancien motif « partenaire » ne compte plus).
+const decisionsDe = (conv) => (conv && conv.type_avis && Array.isArray(conv.type_avis.decisions) ? conv.type_avis.decisions.filter((x) => x && TYPES.includes(x.type)) : []);
 const derniereNette = (decisions) => [...decisions].reverse().find((d) => d.type !== "inconnu") || null;
 const signauxNets = (conv) => !!(conv && conv.type_signaux && conv.type_signaux.nets === true && !conv.type_signaux.jamais);
 
@@ -31,12 +29,13 @@ export const LIBELLES_REPERES = {
   transfert_demande: N_("vous lui transférez la demande d'un client"),
   dispo_demandee: N_("vous lui demandez s'il est disponible"),
   prix_du_contact: N_("il vous donne ses prix"),
+  pax_prix: N_("il parle en « pax » avec un prix"),
   clients_nani: N_("vous lui parlez de vos clients"),
   clients_contact: N_("il parle de clients"),
   prise_en_charge: N_("il confirme une prise en charge"),
-  sur_place: N_("il dit qu'il est sur place"),
+  sur_place: N_("il dit qu'il est sur place ou « done »"),
   thai_nani: N_("vous lui écrivez en thaï"),
-  commission: N_("il est question de commission"),
+  commission: N_("il est question de net ou de commission"),
 };
 // La raison à montrer : celle du tri (une phrase courte de Haiku), sinon deux repères au plus. Rend { texte } ou { cles: [...] } (à
 // traduire à l'écran), ou null.

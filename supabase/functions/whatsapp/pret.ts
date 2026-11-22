@@ -15,7 +15,7 @@ import { signauxPartenaire, typeADeduire } from "./type-contact.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 export const RATTRAPAGE_MAX = 20;
-const COLONNES = "id, reponses, type_contact, partenaire_id, tri, pret_reserver";
+const COLONNES = "id, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";
 const COLONNES_TYPE = "type_source, type_avis, type_signaux";
 
 export async function pretApresMessage(db: SupabaseClient, conversationId: string) {
@@ -61,7 +61,7 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
     }
     // Le type « partenaire » déduit (mêmes gardes que reponse.ts ; la base le marque « déduit » et ne touche jamais un type de Nani).
     if (avecType && typeADeduire({ ...conv, type_signaux: signaux })) {
-      const { error: errT } = await db.from("whatsapp_conversations").update({ type_contact: "partenaire" }).eq("id", conversationId).is("type_contact", null).is("type_source", null).is("partenaire_id", null).neq("reponses", "jamais");
+      const { error: errT } = await db.from("whatsapp_conversations").update({ type_contact: "partenaire" }).eq("id", conversationId).is("type_contact", null).is("type_source", null).is("partenaire_id", null).is("client_id", null).is("dossier_id", null).neq("reponses", "jamais");
       if (errT && !absente(errT)) console.error("whatsapp : type déduit non posé", errT.message);
     }
   } catch (err) {

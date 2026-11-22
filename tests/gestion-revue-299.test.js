@@ -262,8 +262,8 @@ test("point 6 : partenaire : sans client ni dossier, consigne « destinataire pa
   assert.match(p.texte, /un partenaire, pas un client/);
   assert.doesNotMatch(promptPreparation({ entreprise: "Secret", reglages: {}, messages: [msg(c, "hello")], aujourdhui: "2026-11-21" }).texte, /Destinataire partenaire/);
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
-  // Migration 110 : posé par Nani, déduit ou probable (type-contact.js, partenaireProbable).
-  assert.match(rep, /const versPartenaire = \(conv: Conv\) => partenaireProbable\(conv\);/);
+  // Migration 110 : posé par Nani ou déduit, ou fiche partenaire (type-contact.js, traiterEnPartenaire) ; jamais sur des repères seuls.
+  assert.match(rep, /const versPartenaire = \(conv: Conv\) => traiterEnPartenaire\(conv\);/);
   assert.match(rep, /conv\.entite_id === ent\.id && !partenaire \? \{ clientId: conv\.client_id, dossierId: conv\.dossier_id \} : \{ clientId: null, dossierId: null \}/);
   assert.match(rep, /conv\.client_id && conv\.entite_id === ent\.id && !partenaire \?/);
   assert.match(rep, /conv\.dossier_id && conv\.entite_id === ent\.id && !partenaire \?/);

@@ -58,5 +58,5 @@ test("ton : le bloc part avec les consignes de la réponse préparée", () => {
   assert.match(p.appris, /Le ton de Nani : test/);
   const r = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(r, /\.from\("whatsapp_conversations"\)\.select\("id"\)\.eq\("entite_id", entiteId\)/, "seulement l'entreprise de la conversation");
-  assert.match(r, /aujourdhui: dateBangkok\(\), ton, unifie: unifieConsignes, contact: partenaire \? "partenaire" : null \}\)/);
+  assert.match(r, /aujourdhui: dateBangkok\(\), ton, unifie: unifieConsignes, contact: partenaire \? "partenaire" : null, prixRepris: prixDeVentePermis\(conv\) \}\)/);
 });

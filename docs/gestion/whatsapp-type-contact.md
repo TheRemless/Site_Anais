@@ -13,7 +13,7 @@ Ce dépôt est public : les cas ci-dessous sont **reformulés**. Aucun nom, aucu
 | Groupe | Conversations | Résultat des repères sans IA |
 |---|---|---|
 | Partenaires posés par Nani | 5 (C3, C4, C5, C11, C19) | C4 et C11 nets ; C3 et C5 un repère ; C19 aucun (il demande un numéro de compte en thaï). Rien ne change pour eux : le type de Nani reste |
-| **Partenaires mal classés, lisibles par l'IA** | **2** | C12 (bateau) : repères nets. C39 (opérateur d'excursion) : un repère, mais le tri a déjà dit « partenaire » une fois |
+| **Partenaires mal classés, lisibles par l'IA** | **2** | C12 (bateau) : repères nets. C39 (opérateur d'excursion) : un repère ; l'ancien tri l'avait dit « partenaire », ce qui ne compte plus comme décision de type |
 | Partenaire probable réglé « Contact personnel » | 1 (C28, commissions) | Jamais lu : rien ne part à l'IA, aucun repère |
 | Clients | 33 | **Aucun repère** sur aucun |
 | Personnel (Contact personnel ou cours privés) | 8 | Les 5 « Contact personnel » ne sont pas lus. 3 cours privés non réglés (C21, C22, C29) : aucun repère, le tri les dira « personnel » sans rien poser |
@@ -26,7 +26,7 @@ Le compte réel est donc plus faible que prévu : 2 partenaires lisibles mal cla
 | Cas | Ce qui le montre | Repères |
 |---|---|---|
 | C12, bateau | Nani demande si son bateau est libre mardi, lui écrit en thaï, il propose un prix pour 10 personnes, Nani parle de ses clients | disponibilité, thaï de Nani, prix du contact, clients de Nani : 7 points, nets |
-| C39, opérateur d'excursion | Nani lui écrit que des clients sont intéressés et demande ce qui est inclus | clients de Nani : 2 points. Le tri l'a déjà classé « partenaire » |
+| C39, opérateur d'excursion | Nani lui écrit que des clients sont intéressés et demande ce qui est inclus | clients de Nani : 2 points |
 | C4, chauffeur (posé) | Nani transfère les demandes (« Customer: … », entre guillemets, le formulaire du site), il donne ses prix, il dépose un client, il parle des clients de Nani | 5 repères, 11 points |
 | C11, activité (posé) | Nani parle des clients à la 3e personne, transmet leur numéro, il les a emmenés à une activité | 3 repères, 8 points |
 
@@ -44,7 +44,18 @@ Le compte réel est donc plus faible que prévu : 2 partenaires lisibles mal cla
 | C9 | Message type de Nani qui parle de « local partners » | « partners » seul ne compte pas |
 | C46 | « Sawasdee kha » en lettres latines | Pas du thaï écrit |
 
-Un client ne peut presque pas atteindre des repères nets seul : « I am at the pier » vaut 1 point, son thaï 0, ses questions 0.
+Relecture du 22.11.2026, quatre cas qui donnaient des repères nets chez un client et n'en donnent plus aucun (un test chacun) :
+
+| Cas | Correction |
+|---|---|
+| « we are 4 guests » | « guest » n'est plus un client à la 3e personne |
+| « 1,500 THB per guest » de Nani | idem |
+| Un client thaï, Nani qui lui répond en thaï, des prix en bahts écrits en thaï | Le thaï de Nani ne compte pas quand le contact écrit lui-même en thaï ; un prix en thaï n'est plus un repère |
+| Un client qui négocie sans « ? » (« 2,400 baht please », « the price is 2,500 ok ») | Un prix annoncé exige « around », « approximately », « about » ou « propose a price of », et trois chiffres |
+
+Surtout, des repères ne changent plus jamais le traitement d'un client (section 2) : au pire, le prix reste à fixer.
+
+Un client ne peut presque pas atteindre des repères nets seul : « I am at the pier » ou « done » valent 1 point, son thaï 0, ses questions 0.
 
 ## 2. La règle
 
@@ -53,40 +64,54 @@ Un client ne peut presque pas atteindre des repères nets seul : « I am at the 
 | Repère | Qui | Poids |
 |---|---|---|
 | Nani transfère la demande ou les coordonnées d'un client (« Customer: », « -> », entre guillemets, le formulaire, un numéro étranger) | Nani | 3 |
-| Commission ou prix net | les deux | 3 |
+| Commission, ou « net » (net rate, agent rate, marge) avec un montant dans la même phrase, comme `montantsPresDuNet` de l'Assistant (« ok net 1,800 THB ») | les deux | 3 |
+| « N pax » avec un prix (« 2 pax 1,350 THB ») | les deux | 2 |
 | Nani demande une disponibilité (question) | Nani | 2 |
-| Le contact donne un prix, sans question | contact | 2 |
+| Le contact annonce un prix, sans question, avec « around », « approximately », « about » ou « propose a price of » | contact | 2 |
 | Nani parle de ses clients à la 3e personne | Nani | 2 |
 | Le contact parle de clients à la 3e personne | contact | 2 |
-| Le contact confirme une prise en charge de clients | contact | 2 |
-| Le contact dit qu'il est au port, à l'aéroport, à l'hôtel | contact | 1 |
-| Nani écrit une phrase en thaï | Nani | 1 |
+| Le contact confirme une prise en charge (« picked up », « drop off done », « on my way to pick up ») | contact | 2 |
+| Le contact dit qu'il est au port, à l'aéroport, à l'hôtel, ou écrit « done » seul | contact | 1 |
+| Nani écrit une phrase en thaï, à un contact qui n'écrit pas en thaï | Nani | 1 |
+
+« Guest », « passengers », un intitulé suivi de « : », « cost » et un prix en thaï ne comptent pas.
 
 **Nets** : 4 points au moins, sur 2 repères différents au moins. Les repères sont des codes et des nombres, jamais un texte.
 
-**Décision du tri** (même appel Haiku qu'avant, aucun de plus) : `type_contact` (client, partenaire, apporteur, personnel, inconnu) et `raison_type` (12 mots, sans nom, sans numéro, sans prix), décidés sur toute la conversation. Haiku reçoit les 8 derniers messages comme avant, plus les 4 premiers de la conversation et la liste des repères (sans texte). Les 5 dernières décisions sont gardées dans `type_avis`.
+**Décision du tri** (même appel Haiku qu'avant, aucun de plus, consigne courte) : `type_contact` (client, partenaire, apporteur, personnel, inconnu) et `raison_type` (12 mots, sans nom, sans numéro, sans prix), décidés sur toute la conversation. Haiku reçoit :
+- les 8 derniers messages, comme avant ;
+- les 4 vrais premiers messages de la conversation (lus à part quand la conversation dépasse les 40 messages lus) ;
+- les repères de `type_signaux`, sans texte, présentés comme des « indices possibles, souvent trompeurs chez un client ».
 
-**Pose automatique** (`typeADeduire`) : le contact n'a ni type, ni source, ni fiche partenaire, n'est pas un Contact personnel, la dernière décision qui dit quelque chose est « partenaire » (« inconnu » ne compte pas) et :
-- « partenaire » revient sur au moins 2 décisions, ou
-- sur une seule, avec des repères nets.
+Chaque décision est ajoutée par la base (`whatsapp_ajouter_avis_type`, migration 110), avec l'id du message trié. Une décision par message, les 5 dernières : deux tris en même temps n'en perdent aucune.
 
-Avant la migration, le motif « partenaire » du tri compte pour une décision (cas C39).
+**Pose automatique** (`typeADeduire`), si toutes ces conditions sont réunies :
+- le contact n'a ni type, ni source, ni fiche partenaire, **ni fiche client, ni dossier** ;
+- ce n'est pas un Contact personnel ;
+- la dernière décision qui dit quelque chose est « partenaire » (« inconnu » ne compte pas) ;
+- « partenaire » revient sur **2 décisions venues de 2 messages différents**. Une seule ne suffit jamais, même avec des repères nets.
+
+L'ancien motif « partenaire » du tri ne compte plus comme décision. Une conversation reliée à une fiche client ou à un dossier n'est jamais déduite : la base effacerait le lien client (`whatsapp_reclasser`) et les apprentissages (`oublier_apprentissages`). La même garde est dans la fonction et dans la base.
 
 Le type posé est marqué « déduit » par la base (`type_source = 'deduit'`). Seul « partenaire » se déduit : client reste le défaut, apporteur et personnel se choisissent à la main.
 
 **Nani a toujours le dernier mot.** Un type posé, changé ou retiré par Nani n'est jamais écrasé (`whatsapp_type_source`, migration 110). À l'écran, sous les puces du type : « Partenaire déduit d'après la conversation : <raison>. Ses prix ne sont jamais repris comme prix de vente. » avec « Confirmer ». Une autre puce le change d'un tap.
 
-**Partenaire probable** (`partenaireProbable`) : pas encore de type, et la dernière décision dit « partenaire » ou les repères sont nets. Rien n'est posé, l'écran affiche « Partenaire probable : … Touchez « Partenaire » si c'est juste. » Dès maintenant :
-- la réponse préparée suit la consigne partenaire ;
-- les montants de la conversation sont des nets possibles ;
-- aucun prix n'est repris comme prix de vente.
+**Deux effets séparés** (relecture du 22.11.2026) :
+
+| Effet | Quand | Fonction |
+|---|---|---|
+| Traité en partenaire : consigne partenaire, contexte client retiré, montants internes, hors étapes, « Prêt à réserver » et tri | Type posé par Nani ou déduit, ou fiche partenaire reliée. **Jamais** sur des repères ni sur une décision seule | `traiterEnPartenaire` |
+| Prix à fixer : aucun prix écrit dans la conversation n'est repris comme prix de vente | En plus, un partenaire **probable** : pas de type, et la dernière décision dit « partenaire » ou les repères sont nets | `prixDeVentePermis` |
+
+Un partenaire probable reste traité en client. La réponse préparée lui demande seulement de prendre le prix des outils ou de laisser un blanc. L'écran affiche « Partenaire probable : … Touchez « Partenaire » si c'est juste. »
 
 ### Ce que devient C12 et C39 après la mise en service
 
-| Cas | Dès la reprise (sans IA) | Au prochain message du contact (tri) |
+| Cas | Dès la reprise (sans IA) | Aux prochains messages du contact (tri) |
 |---|---|---|
-| C12 | Repères nets : partenaire probable, aucun prix repris | Si le tri dit « partenaire » : posé, marqué déduit |
-| C39 | Décision « partenaire » déjà là : probable | Si le tri redit « partenaire » : posé (2 décisions) |
+| C12 | Repères nets : prix à fixer, toujours traité en client | « Partenaire » sur 2 messages : posé, marqué déduit |
+| C39 | Un repère : rien ne change | Idem |
 
 ## 3. Chauffeur et hôtel retirés
 
@@ -100,24 +125,26 @@ Le type posé est marqué « déduit » par la base (`type_source = 'deduit'`). 
 ## 4. Coordination avec la #318
 
 La #318 (session WhatsApp, `clientConfirme` et `etapeClient` dans `supabase/functions/agent/outils.js`) doit appeler, depuis `../whatsapp/type-contact.js` :
-- `partenaireProbable(conv)` : vrai pour un partenaire posé, déduit ou probable. Un tel contact n'est jamais un client probable ;
-- `prixDeVentePermis(conv)` : faux pour lui, et pour un Contact personnel.
+- `traiterEnPartenaire(conv)` : vrai pour un partenaire posé (Nani ou déduit) ou une fiche partenaire. Un tel contact n'est jamais un client probable ni à une étape client. Des repères seuls ne comptent pas ;
+- `prixDeVentePermis(conv)` : faux aussi pour un partenaire seulement probable, et pour un Contact personnel. Le prix de Nani n'est alors pas repris : il reste à fixer.
+
+`type-contact.js` n'importe rien de l'Assistant : aucun import circulaire avec `outils.js`.
 
 Pour cela, les lectures de conversations de l'Assistant (`agent/index.ts`) doivent ajouter `type_source, type_avis, type_signaux`, avec le repli habituel si la colonne manque (42703).
 
 Un partenaire **posé** (Nani ou déduit) est déjà écarté par `conversationDeClient`, sur `type_contact`. Cette PR ne touche à `outils.js` que dans deux commentaires.
 
-**Ordre de fusion** : cette PR d'abord, puis la #318 rebasée qui appelle `partenaireProbable`. Si la #318 part avant, un partenaire non typé (C12, C39) reste un client probable jusqu'à cette PR.
+**Ordre de fusion** : cette PR d'abord, puis la #318 rebasée qui appelle `traiterEnPartenaire` et `prixDeVentePermis`. Si la #318 part avant, un partenaire non typé (C12) garde un prix de vente repris jusqu'à cette PR.
 
 ## Où est quoi
 
 | Fichier | Rôle |
 |---|---|
-| `supabase/functions/whatsapp/type-contact.js` | Repères, décision, règle de pose, `partenaireProbable`, `prixDeVentePermis` |
+| `supabase/functions/whatsapp/type-contact.js` | Repères, décision, règle de pose, `traiterEnPartenaire`, `partenaireProbable`, `prixDeVentePermis` |
 | `supabase/functions/whatsapp/proposer.js` | Consigne du tri (type du contact), lecture de la décision, consigne partenaire |
-| `supabase/functions/whatsapp/reponse.ts` | Décision gardée (`type_avis`), type posé ; partenaire probable : réponse en consigne partenaire |
+| `supabase/functions/whatsapp/reponse.ts` | Décision ajoutée par la base, type posé ; vrais premiers messages pour le tri ; prix à fixer pour un partenaire probable |
 | `supabase/functions/whatsapp/pret.ts` | Repères (`type_signaux`), type posé, reprise des conversations déjà là |
-| `docs/gestion/migration-110-whatsapp-type-contact.sql` | Colonnes, conversion, contrainte, `whatsapp_type_source` |
+| `docs/gestion/migration-110-whatsapp-type-contact.sql` | Colonnes, conversion, contrainte, `whatsapp_type_source`, `whatsapp_ajouter_avis_type` |
 | `docs/gestion/retour-110-whatsapp-type-contact.sql`, `verif-whatsapp-type-contact.mjs` | Retour en arrière, contrôle PGlite |
 | `src/gestion/js/whatsapp-type-calc.mjs`, `views/whatsapp-type.mjs` | Écran : « Partenaire déduit », « Confirmer », « Partenaire probable » |
 | `src/gestion/js/demo-type-contact.mjs` | Démonstration (un bateau déduit partenaire) |

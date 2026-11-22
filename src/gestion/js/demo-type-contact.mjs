@@ -19,8 +19,9 @@ export function conversationTypeDeduit({ secret, uid, organisation, maintenant =
     type_contact: "partenaire",
     type_source: "deduit",
     tri: { preparer: false, motif: "partenaire", entreprise: "secret", contact: "partenaire", le: il_y_a(60 * 5) },
-    type_avis: { v: 1, decisions: [{ type: "partenaire", raison: "donne ses disponibilités et ses prix à Nani", le: il_y_a(60 * 5) }] },
-    type_signaux: { v: 1, codes: { dispo_demandee: 1, thai_nani: 1, prix_du_contact: 1, clients_nani: 1 }, score: 7, nets: true, calcule_le: il_y_a(60 * 5) },
+    // Deux décisions du tri, sur deux messages différents du contact : la règle pose « partenaire » (type-contact.js, typeADeduire).
+    type_avis: { v: 1, decisions: [messages[1], messages[3]].map((m, i) => ({ type: "partenaire", raison: i ? "donne ses disponibilités et ses prix à Nani" : "répond à une demande de disponibilité", m: m.id, le: m.envoye_le })) },
+    type_signaux: { v: 2, codes: { dispo_demandee: 1, thai_nani: 1, prix_du_contact: 1, clients_nani: 1 }, score: 7, nets: true, calcule_le: il_y_a(60 * 5) },
   });
   Object.assign(c, { dernier_message_le: messages.at(-1).envoye_le, dernier_sens: messages.at(-1).sens }, apercuDepuisMessages(messages));
   return { whatsapp_conversations: [c], whatsapp_messages: messages };

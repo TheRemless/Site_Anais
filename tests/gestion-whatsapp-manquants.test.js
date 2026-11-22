@@ -324,7 +324,7 @@ test("fonction : la ligne « non transmis » et le repère n'appellent ni l'IA n
 test("IA : la ligne « non transmis » n'est lue ni par le tri, ni par la réponse, ni par le suivi, ni par l'Assistant", () => {
   const NT = 'neq("type", "non_transmis")';
   const compte = (f) => lire(f).split(NT).length - 1;
-  assert.equal(compte("supabase/functions/whatsapp/reponse.ts"), 2, "tri et réponse (lireConversation), ton de Nani");
+  assert.equal(compte("supabase/functions/whatsapp/reponse.ts"), 3, "tri et réponse (lireConversation), premiers messages du tri (migration 110), ton de Nani");
   assert.equal(compte("supabase/functions/whatsapp/suivi.ts"), 1, "suivi");
   assert.equal(compte("supabase/functions/agent/index.ts"), 3, "Assistant : conversation jointe, lire_conversation, prix du client");
 });

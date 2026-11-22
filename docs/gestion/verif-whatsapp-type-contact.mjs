@@ -70,6 +70,7 @@ ok((await conv2(chauffeur)).type_contact === "chauffeur" && (await conv2(hotel))
 await db.exec(lire("migration-110-whatsapp-type-contact.sql"));
 
 // ---- Structure et conversion -------------------------------------------------------------------------------------------------------
+ok(!!(await un("select 1 x from pg_proc where proname = 'whatsapp_ajouter_avis_type'")), "la fonction whatsapp_ajouter_avis_type existe");
 for (const col of ["type_source", "type_avis", "type_signaux"]) ok(!!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name = $1", [col])), `la colonne ${col} existe`);
 const droit = async (col) => (await db.query("select privilege_type from information_schema.column_privileges where table_name = 'whatsapp_conversations' and column_name = $1 and grantee = 'authenticated' and privilege_type = 'UPDATE'", [col])).rows.length > 0;
 ok(await droit("type_source"), "authenticated peut écrire type_source (confirmer un type déduit)");
@@ -109,6 +110,49 @@ await db.query("update whatsapp_conversations set type_contact = 'partenaire' wh
 ok((await conv(perso)).type_contact === null, "jamais sur un Contact personnel");
 await db.query("update whatsapp_conversations set type_source = 'deduit' where id = $1", [perso]);
 ok((await conv(perso)).type_source === null, "la clé de service ne pose jamais la source seule");
+
+// ---- Relecture n° 1 : jamais sur une conversation reliée à un client ou à un dossier ---------------------------------------------------
+const fiche = (await un("insert into clients (entite_id, prenom, nom, telephone) values ($1, 'Test', 'Client', '+447700900699') returning id", [ent.secret])).id;
+const dos = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'S-110-1', $2) returning id", [ent.secret, fiche])).id;
+for (const [nom, col, val] of [["une fiche client", "client_id", fiche], ["un dossier", "dossier_id", dos]]) {
+  const z = await ranger(`+44770090069${col === "client_id" ? 1 : 2}`, "Hello");
+  await db.query("update whatsapp_conversations set entite_id = $1 where id = $2", [ent.secret, z]);
+  await db.query(`update whatsapp_conversations set ${col} = $1 where id = $2`, [val, z]);
+  ok((await un(`select ${col} v from whatsapp_conversations where id = $1`, [z])).v === val, `(témoin) conversation reliée à ${nom}`);
+  await db.query("update whatsapp_conversations set type_contact = 'partenaire' where id = $1", [z]);
+  const cz = await un(`select type_contact, type_source, ${col} v from whatsapp_conversations where id = $1`, [z]);
+  ok(cz.type_contact === null && cz.type_source === null && cz.v === val, `jamais « partenaire » déduit sur une conversation reliée à ${nom} (le lien reste)`);
+}
+
+// ---- Relecture n° 6 : une décision ajoutée par la base, sans en perdre ------------------------------------------------------------------
+const avisDe = async (id) => (await un("select type_avis from whatsapp_conversations where id = $1", [id])).type_avis;
+const ajouter = (id, d) => db.query("select whatsapp_ajouter_avis_type($1, $2::jsonb) r", [id, JSON.stringify(d)]);
+const tri = await ranger("+447700900711", "Price about 650 baht please");
+await ajouter(tri, { type: "partenaire", raison: "donne ses prix", m: "m1" });
+await ajouter(tri, { type: "partenaire", raison: "redit", m: "m1" });
+let av = await avisDe(tri);
+ok(av.decisions.length === 1 && av.decisions[0].raison === "redit" && av.decisions[0].le, "une décision par message : la nouvelle remplace celle du même message, heure posée par la base");
+await ajouter(tri, { type: "client", raison: "", m: "m2" });
+av = await avisDe(tri);
+ok(av.decisions.map((d) => d.m).join(",") === "m1,m2", "une décision d'un autre message s'ajoute, la plus récente en dernier");
+for (let i = 3; i <= 8; i++) await ajouter(tri, { type: "inconnu", raison: "x".repeat(200), m: `m${i}` });
+av = await avisDe(tri);
+ok(av.decisions.length === 5 && av.decisions[0].m === "m4" && av.decisions[4].m === "m8" && av.decisions[4].raison.length === 120, "les 5 dernières seulement, raison coupée à 120 caractères");
+let e2 = null;
+try { await ajouter(tri, { type: "chauffeur", m: "m9" }); } catch (e) { e2 = e.message; }
+ok(!!e2, "un type inconnu est refusé");
+const persoAvis = await ranger("+447700900722", "Coucou");
+// La clé de service ne change pas les réponses (migration 60) : posé ici comme Nani l'aurait fait.
+await db.exec("alter table whatsapp_conversations disable trigger whatsapp_proteger_classement");
+await db.query("update whatsapp_conversations set reponses = 'jamais' where id = $1", [persoAvis]);
+await db.exec("alter table whatsapp_conversations enable trigger whatsapp_proteger_classement");
+await ajouter(persoAvis, { type: "partenaire", m: "p1" });
+ok((await avisDe(persoAvis)) === null, "jamais pour un Contact personnel");
+let rAvis = await essaie(u.nani, "select whatsapp_ajouter_avis_type($1, $2::jsonb)", [tri, JSON.stringify({ type: "partenaire", m: "z" })]);
+ok(!rAvis.ok, "Nani n'appelle pas whatsapp_ajouter_avis_type (clé de service seulement)");
+const deux = await ranger("+447700900733", "Hello");
+await Promise.all([ajouter(deux, { type: "partenaire", m: "a" }), ajouter(deux, { type: "partenaire", m: "b" })]);
+ok((await avisDe(deux)).decisions.length === 2, "deux décisions envoyées ensemble : aucune ne se perd");
 
 // ---- Nani confirme, change ou retire ----------------------------------------------------------------------------------------------
 r = await essaie(u.nani, "update whatsapp_conversations set type_source = 'nani' where id = $1 returning type_contact, type_source", [bateau]);
@@ -150,6 +194,7 @@ ok((await photo()) === p1, "la migration 110 se rejoue sans effet (aucune ligne 
 await db.exec(lire("retour-110-whatsapp-type-contact.sql"));
 ok(!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name in ('type_source', 'type_avis', 'type_signaux')")), "retour : les trois colonnes sont parties");
 ok(!(await un("select 1 x from pg_proc where proname = 'whatsapp_type_source'")), "retour : le déclencheur est parti");
+ok(!(await un("select 1 x from pg_proc where proname = 'whatsapp_ajouter_avis_type'")), "retour : la fonction d'ajout des décisions est partie");
 ok((await conv2(bateau)).type_contact === "partenaire", "retour : les types restent");
 r = await essaie(u.nani, "update whatsapp_conversations set type_contact = 'chauffeur' where id = $1 returning type_contact", [neuve]);
 ok(r.ok && r.rows[0].type_contact === "chauffeur", "retour : « chauffeur » est de nouveau accepté (comme la 68)");

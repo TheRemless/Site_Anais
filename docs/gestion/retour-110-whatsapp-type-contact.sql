@@ -7,6 +7,7 @@
 --   select id, nom, type_contact from whatsapp_conversations where type_source = 'deduit';
 begin;
 
+drop function if exists whatsapp_ajouter_avis_type(uuid, jsonb);
 drop trigger if exists whatsapp_type_source on whatsapp_conversations;
 drop function if exists whatsapp_type_source();
 revoke update (type_source) on whatsapp_conversations from authenticated;

@@ -34,7 +34,7 @@ test("n° 1 : la réponse préparée prend le catalogue de l'entreprise de la de
   assert.equal(entrepriseReponse({ conv: { entite_id: "T", type_contact: "partenaire" }, ents, suggestion: "secret" }).id, "T", "un partenaire rangé : son entreprise");
   const ts = lire("supabase/functions/whatsapp/reponse.ts");
   assert.equal((ts.match(/entrepriseReponse\(\{/g) || []).length, 3, "préparation automatique, à la demande, et réglage de la préparation automatique");
-  assert.match(ts, /parametresTri\(messages, \{ aTrier: !conv\.entite_id \|\| clientCommun\(conv\) \}\)/, "le tri donne toujours l'entreprise de la demande d'un client");
+  assert.match(ts, /parametresTri\(messages, \{ aTrier: !conv\.entite_id \|\| clientCommun\(conv\)(?:, debut, signaux: conv\.type_signaux \|\| null)? \}\)/, "le tri donne toujours l'entreprise de la demande d'un client");
 });
 
 test("n° 2 : ZTP ne se mélange jamais : un prix en CHF n'est pas un prix de Secret ou de Taxi", () => {

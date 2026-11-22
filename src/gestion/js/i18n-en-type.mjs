@@ -14,7 +14,8 @@ export const EN_TYPE = {
   "vous lui parlez de vos clients": "you talk to them about your clients",
   "il parle de clients": "they talk about clients",
   "il confirme une prise en charge": "they confirm a pick-up",
-  "il dit qu'il est sur place": "they say they are on site",
+  "il dit qu'il est sur place ou « done »": "they say they are on site, or “done”",
+  "il parle en « pax » avec un prix": "they talk in “pax” with a price",
   "vous lui écrivez en thaï": "you write to them in Thai",
-  "il est question de commission": "a commission is mentioned",
+  "il est question de net ou de commission": "a net price or a commission is mentioned",
 };
