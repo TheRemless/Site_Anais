@@ -35,6 +35,8 @@ const nomLangue = (code) => (LANGUES.find(([c]) => c === code) || [code, code])[
 // `modes` : les entreprises où l'usage sert. Vers un partenaire, seule la commission de Taxi reste (Anaïs écrit elle-même aux prestataires).
 export const USAGES = [
   { cle: "confirmation", pour: "client", libelle: N_("Confirmation de la réservation"), modes: ["excursions", "taxi"] },
+  // Le message sous le voucher ou la Booking confirmation envoyés au client (22.11.2026).
+  { cle: "voucher", pour: "client", libelle: N_("Message avec le voucher"), modes: ["excursions", "taxi"] },
   { cle: "rappel", pour: "client", libelle: N_("Rappel de la veille"), modes: ["excursions", "taxi"] },
   { cle: "avis", pour: "client", libelle: N_("Demande d'avis"), modes: ["excursions", "taxi"] },
   { cle: "meteo", pour: "client", libelle: N_("Météo, report ou annulation"), modes: ["excursions", "taxi"] },
@@ -163,7 +165,7 @@ function formulaireMessage(m, apres) {
     h("div", { class: "grille-form" }, champ(tr("Titre"), titre), champ(tr("Usage"), cle, tr("Quand l'outil propose ce message. Le même usage dans plusieurs langues : le bon est proposé selon la langue.")), champ(tr("Langue"), langue)),
     h("label", { class: "case", for: "m-actif" }, actif, tr("Proposer ce message")),
     h("p", { class: "aide" }, tr("Décoché, ni ce message ni le modèle de départ du même usage ne sont proposés : l'usage est désactivé dans cette langue.")),
-    champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Envoi d'une facture : {bonjour} {numero} {total}")),
+    champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Message avec le voucher : {pickup} {jour} {paiement} {ENTREPRISE}. Envoi d'une facture : {bonjour} {numero} {total}")),
     h("div", { class: "actions" }, m.id ? h("button", { class: "danger", type: "button", onclick: async () => {
       // Supprimer le seul message d'un usage fait revenir le modèle de départ : on le dit, et on renvoie vers « Proposer ce message ».
       const defautRevient = defautsEntreprise().some((d) => d.cle === m.cle && d.langue === m.langue && !messagesTypes().some((x) => x.id !== m.id && x.cle === m.cle && x.langue === m.langue));

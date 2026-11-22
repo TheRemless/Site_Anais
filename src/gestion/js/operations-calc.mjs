@@ -946,11 +946,15 @@ export function messageVoucher({ pour = "client", prenom = "", montant = null, d
   return `Hello${prenom ? ` ${prenom}` : ""}, here is your booking confirmation for your program. We wish you an excellent day!`;
 }
 
-// Le modèle du message client joint au voucher : la « confirmation » en anglais de l'entreprise (ses messages, sinon son modèle par défaut).
-// Chaîne vide quand il n'y en a pas : messageVoucher prend alors son texte de secours.
+// Le modèle du message client joint au voucher : le message « voucher » en anglais de l'entreprise (22.11.2026, modèles de Jérémy), sinon
+// sa « confirmation » (ses messages, sinon son modèle par défaut). Chaîne vide quand il n'y en a pas : messageVoucher prend alors son texte
+// de secours.
 export function gabaritConfirmationVoucher(stockes, defauts) {
-  const choisi = gabaritsPropose(stockes, defauts, { pour: "client", langue: "en", cle: "confirmation" }).choisi;
-  return (choisi && choisi.corps) || "";
+  for (const cle of ["voucher", "confirmation"]) {
+    const choisi = gabaritsPropose(stockes, defauts, { pour: "client", langue: "en", cle }).choisi;
+    if (choisi && choisi.corps) return choisi.corps;
+  }
+  return "";
 }
 
 // Lien WhatsApp : la conversation du numéro, ou le choix du contact quand on n'a pas de numéro. Un lien ne peut pas joindre d'image.
