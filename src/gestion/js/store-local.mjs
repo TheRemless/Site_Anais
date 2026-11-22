@@ -924,7 +924,7 @@ export function creer() {
       const perms = permissionsDans(contexte(), entiteId);
       if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) return false;
       data.agent_apprentissages = data.agent_apprentissages || [];
-      for (const l of lignes) data.agent_apprentissages.push({ id: uid(), entite_id: entiteId, user_id: utilisateur.user_id, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres, cree_le: new Date().toISOString() });
+      for (const l of lignes) data.agent_apprentissages.push({ id: uid(), entite_id: entiteId, user_id: utilisateur.user_id, carte_id: carteId || null, genre: l.genre, interne: !!l.interne, contexte: l.contexte, avant: l.avant, apres: l.apres, cree_le: new Date().toISOString() });
       sauve();
       return true;
     },

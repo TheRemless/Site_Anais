@@ -15,6 +15,7 @@ import { envoyerVoucherImage } from "./voucher.js";
 import { fenetreOuverte, servicesDeProposition } from "../whatsapp/proposer.js";
 import { dossierPourControle, netsPourControle } from "../agent/outils.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
+import { apprendreEnFond } from "../agent/apprendre-whatsapp.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 function entetes(req: Request) {
@@ -142,6 +143,8 @@ Deno.serve(async (req) => {
   // Toutes les propositions ouvertes de la conversation sont soldées, comme pour une réponse depuis l'app.
   const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
   if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
+  // Le texte envoyé diffère de la proposition : l'écart devient un apprentissage de l'Assistant, en fond (agent/apprendre-whatsapp.js).
+  apprendreEnFond(admin, conv.id, messageId, { auteur: qui.user.id });
   return json({ ok: true, message_id: messageId, complet: complete });
 });
 

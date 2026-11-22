@@ -301,8 +301,13 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     return noeuds.li;
   }
 
+  // Le prix du service vient de la personne (prix convenu tapé, lignes prises à la main dans la base), pas d'une offre du catalogue.
+  const prixALaMain = (sv) => !!(sv.lignesCustom || sv.transfertLibre || sv.retourDepart);
+  const prixSaisiIci = (sv) => !sv.prixALaMainAuDepart && prixALaMain(sv);
   function nouveauService(base) {
     const sv = { id: ++compteur, coche: true, phrase: "", date: "", heure: "", adultes: d ? d.adultes : 0, enfants: d ? d.enfants : 0, offreId: null, lignesCustom: null, copie: false, noeuds: null, ...base };
+    // Un prix déjà à la main dès l'ouverture (transfert libre, retour au départ) : pas un changement fait ici (prixSaisiIci).
+    sv.prixALaMainAuDepart = prixALaMain(sv);
     services.push(sv);
     listeBloc.append(construireService(sv));
     // Prix déjà convenu (tapé par la personne dans la conversation de l'Assistant) : la ligne du transfert privé se fait tout de suite.
@@ -533,7 +538,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     try {
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
-      const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null }));
+      // prix_saisi : la personne a remplacé ici le prix de l'offre du catalogue par un prix à elle (onglet Assistant, agent-apprendre.mjs).
+      const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null, prix_saisi: prixSaisiIci(sv) }));
       const somme = b.lignes.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));

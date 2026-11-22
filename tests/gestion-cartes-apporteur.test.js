@@ -436,7 +436,9 @@ test("revue 298, point 2 : aucun nom d'apporteur dans les apprentissages", async
   assert.ok(lignes.length === 1);
   assert.doesNotMatch(JSON.stringify(lignes), /Jade|Lucie|Soleil/);
   const vue = source("src/gestion/js/views/agent.mjs");
-  assert.match(vue, /\.\.\.nomsApporteurAMasquer\(\{ partenaires: etat\.brut\.partenaires \|\| \[\], conversationWa: waLiee, cartes: \[c, \.\.\.fil\.cartes\] \}\)/);
+  assert.match(vue, /\.\.\.nomsApporteurAMasquer\(\{ partenaires: etat\.brut\.partenaires \|\| \[\], conversationWa: waLue, cartes \}\)/);
+  assert.match(vue, /const cartes = c \? \[c, \.\.\.fil\.cartes\] : fil\.cartes;/);
+  assert.match(vue, /correctionsDepuisCarte\(c, vu, \{ \.\.\.nomsAMasquer\(c, idNoms\), nets: idNoms \? netsDuDossier\(idNoms\) : new Set\(\) \}\)/);
 });
 
 test("revue 298, points 4 et 9 : pas de dossier_id pour un apporteur ; le type est relu avant de poser l'apporteur", async () => {

@@ -240,4 +240,6 @@ export const GENRES_APPRIS = {
   lieu: N_("Lieu de pickup"),
   date: N_("Date"),
   reponse: N_("Réponse au client"),
+  remarque: N_("Remarque"),
+  retour: N_("Réponse jugée mauvaise"),
 };

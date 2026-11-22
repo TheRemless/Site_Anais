@@ -1,6 +1,25 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // « Pas bien » sur une réponse de l'Assistant (migration 74)
+  "Pas bien": "Not good",
+  "Ce qui ne va pas, en quelques mots": "What is wrong, in a few words",
+  "Ce qui ne va pas dans cette réponse": "What is wrong with this reply",
+  "Noter": "Note it",
+  "Dites en quelques mots ce qui ne va pas.": "Say in a few words what is wrong.",
+  "200 caractères au plus.": "200 characters at most.",
+  "La raison ne peut pas parler de net, de commission ni de banque : l'assistant la relira.": "The reason cannot mention a net, a commission or a bank: the assistant will read it again.",
+  "Ce montant est :": "This amount is:",
+  "Ce montant est : {liste}": "This amount is: {liste}",
+  "Ces montants sont : {liste}": "These amounts are: {liste}",
+  "prix pour le client": "price for the client",
+  "prix d'achat (interne)": "purchase price (internal)",
+  "interne": "internal",
+  "Noté comme interne : visible dans le suivi, jamais relu par l'assistant.": "Noted as internal: visible in the tracking, never read by the assistant.",
+  "Jamais relue par l'assistant": "Never read by the assistant",
+  "Retour non noté : réessayez plus tard.": "Feedback not noted: try again later.",
+  "Noté : l'assistant s'en servira la prochaine fois.": "Noted: the assistant will use it next time.",
+  "Réponse jugée mauvaise": "Reply judged bad",
   // Faux blocage du 21.11.2026 : net d'un autre service du catalogue, avertissement et confirmation à l'envoi
   "Le montant {valeur} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {valeur} is also the net of another service in the catalogue. Check that it is really a selling price.",
   "Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {v} is also the net of another service in the catalogue. Check that it is really a selling price.",

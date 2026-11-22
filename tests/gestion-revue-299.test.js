@@ -122,7 +122,9 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   // La fonction « agent » : clé de service, entreprises de la conversation (les deux en espace unifié), seulement dans memo.internes.
   const ts = lire("supabase/functions/agent/index.ts");
   assert.equal((ts.match(/netsPourControle\(/g) || []).length, 1);
-  assert.match(ts, /const lusNets = await netsPourControle\(admin, idsEntites\);\n  memo\.nets = lusNets\.nets;/);
+  // Lus une fois (migration 74 : avant les apprentissages, qu'ils filtrent), puis seulement dans memo.nets.
+  assert.match(ts, /const lusNets = await netsPourControle\(admin, idsEntites\);\n  const lus = await lireApprentissages\(sb, \{ dbNets: admin,[^\n]*nets: lusNets, qui: ra\.responsable \|\| "" \}\);/);
+  assert.match(ts, /\n  memo\.nets = lusNets\.nets;/);
   assert.match(ts, /memo\.controleImpossible = lusNets\.erreur;/);
   assert.match(ts, /const relie = await dossierPourControle\(admin, conv!\.dossier_id, idsEntites\);/);
   assert.match(ts, /memo\.servicesEnCours = new Set\(\[\.\.\.relie\.services, \.\.\.\(relieWa\?\.services \?\? \[\]\)\]\);/);
