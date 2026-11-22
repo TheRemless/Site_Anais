@@ -309,11 +309,12 @@ export const MODELES = {
     deux: "Hello {prenom}, since you're staying a few days, here are two ideas for a day out.",
   },
   // Client de Taxi (décision de Jérémy, question 7 de la PR 310) : une question, sans pousser une sortie précise, puis deux ou trois exemples
-  // du catalogue de Secret (nom et prix de vente) et la page des sorties. Passé par humanizer, puis par la fiche de voix et le registre.
+  // du catalogue de Secret (nom et prix de vente) et la page des sorties. Texte donné par Jérémy le 22.11.2026 : le message part juste après
+  // le voucher, donc ni « Hello » ni prénom, et pas de signature.
   taxi: {
-    intro: "Hello {prenom}, are you planning any activities, day trips or boat tours during your stay? We organise those too. A few examples:",
-    lien: "More ideas here: {tours}",
-    fin: "If something tempts you, tell me which day and how many people, and I'll check availability 😊",
+    intro: "By the way, do you have any day trips or boat tours planned during your stay? We organise those too. A few ideas:",
+    lien: "All our tours: {tours}",
+    fin: "If one of them interests you, send me the day and the number of people and I'll check availability 😊",
   },
   familles: {
     iles: "Hotel transfer, lunch and snorkelling gear are included. The national park fee is paid in cash on the island.",
@@ -370,17 +371,17 @@ export function phraseDe(x) {
 // Le voucher (ou la Booking confirmation) d'une réservation noté envoyé au client (details.envois.client, comme etatEnvoisVouchers).
 export const voucherEnvoye = (r) => !!(r && r.details && r.details.envois && r.details.envois.client);
 export const PAGE_TOURS = `${SITE_SECRET}/tours/`;
-// Client de Taxi : la question, puis une ligne par exemple (« - 4 Islands: Join-in longtail, 1,000 THB per person »), la page des sorties.
-export function messageTaxi(choisis = [], { prenom = "", devise = "THB" } = {}) {
+// Client de Taxi : la question, une ligne par exemple (« - 4 Islands: Join-in longtail, 1,000 THB per person »), la page des sorties et la
+// fin, une ligne chacune, sans ligne vide (texte de Jérémy). Pas de prénom.
+export function messageTaxi(choisis = [], { devise = "THB" } = {}) {
   if (!choisis.length) return "";
   const m = MODELES.taxi;
-  const tete = m.intro.replace("Hello {prenom},", prenom ? `Hello ${prenom},` : "Hello,");
-  const exemples = choisis.map((x) => `- ${nomService(x.prestation, x.page)}: ${prixTexte(x, devise)}`).join("\n");
-  return [`${tete}\n${exemples}`, m.lien.replace("{tours}", PAGE_TOURS), m.fin].join("\n\n");
+  const exemples = choisis.map((x) => `- ${nomService(x.prestation, x.page)}: ${prixTexte(x, devise)}`);
+  return [m.intro, ...exemples, m.lien.replace("{tours}", PAGE_TOURS), m.fin].join("\n");
 }
 export function messageExcursions(choisis = [], { prenom = "", devise = "THB", taxi = false } = {}) {
   if (!choisis.length) return "";
-  if (taxi) return messageTaxi(choisis, { prenom, devise });
+  if (taxi) return messageTaxi(choisis, { devise });
   const cle = choisis.length > 1 ? "deux" : "un";
   const tete = MODELES.intro[cle].replace("Hello {prenom},", prenom ? `Hello ${prenom},` : "Hello,");
   const blocs = choisis.map((x) => [`*${nomService(x.prestation, x.page)}*`, prixTexte(x, devise), phraseDe(x), lienPage(x)].filter(Boolean).join("\n"));

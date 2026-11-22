@@ -190,7 +190,7 @@ test("message : anglais, prénom, service, prix, page du site ; famille devinée
   assert.doesNotMatch(texte, /Nani|Anaïs|Best|Regards|Cheers|net|commission/i);
 });
 
-test("question 7 : client de Taxi, une question, deux ou trois exemples avec leur prix, la page des sorties ; aucune signature", async () => {
+test("question 7 : client de Taxi, le texte de Jérémy mot pour mot, deux ou trois exemples avec leur prix ; ni prénom ni signature", async () => {
   const { possibilites, messageExcursions, choixParDefaut, MODELES } = await load();
   const liste = possibilites([presta("4 Islands by longtail", { prix_vente: 1000 }), presta("Thai cooking class", { famille: "activite", prix_vente: 1650 }), presta("Elephant sanctuary, half day", { famille: "activite", prix_vente: 1800 })]);
   const choisis = liste.filter((x) => choixParDefaut(liste, 3).includes(x.prestation.id));
@@ -199,15 +199,18 @@ test("question 7 : client de Taxi, une question, deux ou trois exemples avec leu
   assert.equal(
     texte,
     [
-      "Hello Ben, are you planning any activities, day trips or boat tours during your stay? We organise those too. A few examples:\n- 4 Islands by longtail: 1,000 THB per person\n- Elephant sanctuary, half day: 1,800 THB per person\n- Thai cooking class: 1,650 THB per person",
-      "More ideas here: https://secrettravelandtour.com/tours/",
-      "If something tempts you, tell me which day and how many people, and I'll check availability 😊",
-    ].join("\n\n")
+      "By the way, do you have any day trips or boat tours planned during your stay? We organise those too. A few ideas:",
+      "- 4 Islands by longtail: 1,000 THB per person",
+      "- Elephant sanctuary, half day: 1,800 THB per person",
+      "- Thai cooking class: 1,650 THB per person",
+      "All our tours: https://secrettravelandtour.com/tours/",
+      "If one of them interests you, send me the day and the number of people and I'll check availability 😊",
+    ].join("\n")
   );
-  assert.doesNotMatch(texte, /Nani|Anaïs|Best|Regards|Cheers|net|commission|Secret Travel/i);
-  assert.doesNotMatch(JSON.stringify(MODELES.taxi), /[—–]/);
-  // Sans prénom : « Hello, ».
-  assert.match(messageExcursions(choisis.slice(0, 2), { taxi: true }), /^Hello, are you planning/);
+  // Le message part juste après le voucher : ni « Hello » ni prénom, même quand il est connu.
+  assert.doesNotMatch(texte, /Hello|Ben|Nani|Anaïs|Best|Regards|Cheers|net|commission|Secret Travel/i);
+  assert.doesNotMatch(JSON.stringify(MODELES.taxi), /[—–]|\{prenom\}/);
+  assert.equal(messageExcursions(choisis.slice(0, 2), { taxi: true }).split("\n").length, 5);
 });
 
 test("question 7 : chez Taxi, le bouton n'apparaît qu'une fois le voucher du transfert envoyé au client ; Secret ne change pas", async () => {
@@ -243,6 +246,20 @@ test("question 3 : radeaux proposés, prix du radeau, de la personne en plus et 
   assert.match(messageExcursions(liste, { prenom: "Lea" }), new RegExp(MODELES.familles.radeau.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   // Un radeau sans page du site n'est pas proposé (lignes illisibles).
   assert.deepEqual(possibilites([presta("Private raft at sunrise, for 1 to 2 people", { unite: "grp" })]), []);
+});
+
+test("question 8 : radeau pour 3 personnes, 3 900 pour le radeau puis 1 800 par personne en plus, soit 5 700 (lecture du site)", async () => {
+  const { completerSupplement } = await import("../src/gestion/js/demande-calc.mjs");
+  const base = { id: "raft-base", partenaire_id: "p-raft", famille: "excursion", groupe: "Rafts", libelle: "Program C: Sunset dinner raft, for 1 to 2 people", unite: "grp", prix_vente: 3900, actif: true };
+  const plus = { id: "raft-plus", partenaire_id: "p-raft", famille: "excursion", groupe: "Rafts", libelle: "Program C: Sunset dinner raft, extra person", unite: "sup", prix_vente: 1800, actif: true };
+  const offre = (pax) => completerSupplement({ genre: "prestation", source: base, total: 3900 }, pax, [base, plus]);
+  assert.equal(offre({ adultes: 3, enfants: 0 }).total, 5700);
+  assert.deepEqual(offre({ adultes: 3, enfants: 0 }).supplement.qte, 1);
+  assert.equal(offre({ adultes: 2, enfants: 0 }).total, 3900);
+  assert.equal(offre({ adultes: 4, enfants: 0 }).total, 7500);
+  // Le message garde la lecture du site.
+  const { prixTexte } = await load();
+  assert.equal(prixTexte({ prestation: base, radeau: { extra: plus, enfant: null }, enfant: null }), "3,900 THB for 1 or 2 people, 1,800 THB for each extra person");
 });
 
 test("question 4 : le cours de cuisine dit ses jours et ses heures (registre)", async () => {
