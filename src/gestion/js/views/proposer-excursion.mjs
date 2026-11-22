@@ -11,7 +11,7 @@ import { exempleDe } from "../exemples.mjs";
 import { resteBloque } from "../agent-calc.mjs";
 import { marqueEntite, lienWhatsApp, fenetre, ERREURS_ENVOI, envoiIncertain, aConfirmerEnvoi } from "../whatsapp-calc.mjs";
 import { conversationDuVoucher, contactVoucher } from "../whatsapp-voucher-calc.mjs";
-import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
+import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
 import { adminsWhatsApp } from "./voucher-whatsapp.mjs";
 
 const MAX = 2;
@@ -25,18 +25,30 @@ export function contexteProposition(dossier) {
   const secret = secretAccessible();
   if (!marque || !secret) return null;
   const prestations = etat.brut.prestations || [];
+  const trajets = etat.brut.trajets || [];
   const reservations = (etat.brut.reservations || []).filter((r) => r.dossier_id === dossier.id && r.statut !== "annule");
   const prestationDe = (r) => (r.prestation_id ? prestations.find((p) => p.id === r.prestation_id) || null : null);
+  const trajetDe = (r) => (r.trajet_id ? trajets.find((t) => t.id === r.trajet_id) || null : null);
   const transferts = reservations.filter((r) => estTransfert(r, { prestation: prestationDe(r), taxi: marque === "taxi" }));
-  const s = sejour(transferts, { ile: exempleDe("lieu", organisationActiveId()), ajd: aujourdhui() });
+  const ile = exempleDe("lieu", organisationActiveId());
+  const ajd = aujourdhui();
+  // Le sens de chaque transfert (arrivée sur l'île, départ) : un départ seul n'ouvre plus un séjour qui commence ce jour-là.
+  const s = sejour(transferts, { ile, ajd, sens: (r) => sensTransfert(r, { prestation: prestationDe(r), trajet: trajetDe(r), ile }) });
   if (!s) return null;
-  const dejaP = reservations.map(prestationDe).filter((p) => p && p.entite_id === secret.id);
+  // Les sorties déjà réservées : celles du dossier et du dossier lié de l'autre entreprise (Secret et Taxi d'une même demande).
+  const lie = dossier.dossier_lie_id ? (etat.brut.reservations || []).filter((r) => r.dossier_id === dossier.dossier_lie_id && r.statut !== "annule") : [];
+  const avecLie = [...reservations, ...lie];
+  const sorties = avecLie.filter((r) => !estTransfert(r, { prestation: prestationDe(r), taxi: marqueEntite(entite(r.entite_id)) === "taxi" }));
+  const libres = joursLibres(s, { ajd, occupes: sorties.map((r) => r.date_service).filter(Boolean) });
+  if (!libres.length) return null;
+  const enfants = Math.max(0, ...avecLie.map((r) => Number((r.personnes || {}).enfants) || 0));
+  const dejaP = avecLie.map(prestationDe).filter((p) => p && p.entite_id === secret.id);
   const deja = { prestations: new Set(dejaP.map((p) => p.id)), familles: new Set(dejaP.filter((p) => p.famille !== "transfert").map(familleDe)) };
   const noms = nomsInterdits({ partenaires: etat.brut.partenaires, conversations: etat.brut.whatsapp_conversations });
-  const liste = possibilites(prestations.filter((p) => p.entite_id === secret.id), { noms, deja });
+  const liste = possibilites(prestations.filter((p) => p.entite_id === secret.id), { noms, deja, enfants, jours: libres });
   if (!liste.length) return null;
   const client = (etat.brut.clients || []).find((c) => c.id === dossier.client_id) || null;
-  return { dossier, client, liste, noms, sejour: s, taxi: marque === "taxi", devise: reglagesDe(secret.id).devise || "THB" };
+  return { dossier, client, liste, noms, sejour: s, libres, taxi: marque === "taxi", devise: reglagesDe(secret.id).devise || "THB" };
 }
 
 export function boutonProposerExcursion({ dossier, conversation = null, classe = "secondaire petit" } = {}) {

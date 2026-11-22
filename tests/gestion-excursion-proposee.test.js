@@ -59,12 +59,14 @@ test("possibilités : familles pas encore réservées, îles d'abord, un même n
 test("prix : de vente seulement, adulte et enfant du catalogue ; quad par conducteur", async () => {
   const { possibilites, prixTexte } = await load();
   const P = [presta("4 Islands by longtail, full day", { prix_vente: 1200 }), presta("4 Islands by longtail, child (4-11)", { unite: "ch", prix_vente: 900 })];
-  const [x] = possibilites(P);
+  const [x] = possibilites(P, { enfants: 1 });
   assert.equal(prixTexte(x), "1,200 THB per adult, 900 THB per child aged 4 to 11");
+  // Sans enfant dans le groupe, pas de prix enfant.
+  assert.equal(prixTexte(possibilites(P)[0]), "1,200 THB per person");
   // Le prix enfant du champ « Prix enfant » (details.enfant), comme le devis.
-  const [y] = possibilites([presta("Koh Phi Phi day trip", { prix_vente: 2000, details: { enfant: 1000 } })]);
+  const [y] = possibilites([presta("Koh Phi Phi day trip", { prix_vente: 2000, details: { enfant: 1000 } })], { enfants: 2 });
   assert.equal(prixTexte(y), "2,000 THB per adult, 1,000 THB per child");
-  const [z] = possibilites([presta("ATV 30 mins, driver", { prix_vente: 1500 }), presta("ATV 30 mins, driver child (6-12)", { unite: "ch", prix_vente: 1000 })]);
+  const [z] = possibilites([presta("ATV 30 mins, driver", { prix_vente: 1500 }), presta("ATV 30 mins, driver child (6-12)", { unite: "ch", prix_vente: 1000 })], { enfants: 1 });
   assert.equal(prixTexte(z), "1,500 THB per driver");
 });
 
@@ -79,6 +81,65 @@ test("séjour : un transfert qui nomme l'île, au moins deux nuits, pas fini", a
   assert.equal(sejour([t("2026-11-10"), t("2026-11-20", "Koh Lanta → Krabi")], o), null);
   assert.equal(sejour([t("2026-10-01")], o), null);
   assert.equal(sejour([], o), null);
+});
+
+test("sens du transfert : arrivée vers l'île, départ depuis l'île, ni l'un ni l'autre pour une journée ou un trajet sans l'île", async () => {
+  const { sensTransfert } = await load();
+  const ile = "Koh Lanta";
+  assert.equal(sensTransfert({ libelle: "Private minivan: Krabi Airport → Koh Lanta" }, { ile }), "arrivee");
+  assert.equal(sensTransfert({ libelle: "Koh Lanta → Phuket Airport" }, { ile }), "depart");
+  assert.equal(sensTransfert({ libelle: "Hat Yai to Koh Lanta" }, { ile }), "arrivee");
+  assert.equal(sensTransfert({ libelle: "x" }, { trajet: { de: "Koh Lanta", vers: "Koh Phi Phi" }, ile }), "depart");
+  assert.equal(sensTransfert({ libelle: "Krabi Airport → Ao Nang" }, { ile }), null);
+  assert.equal(sensTransfert({ libelle: "Private day trip from Koh Lanta to Krabi" }, { ile }), null);
+  assert.equal(sensTransfert({ libelle: "Krabi Airport", details: { type_trajet: "retour_depart" } }, { ile }), null);
+  // Course de zone (Taxi) : le lieu de prise en charge décide.
+  assert.equal(sensTransfert({ libelle: "Krabi Airport", lieu_pickup: "Krabi Airport, arrivals hall", details: { drop_off: "Hotel Sunset" } }, { ile }), "arrivee");
+  assert.equal(sensTransfert({ libelle: "Krabi Airport", lieu_pickup: "Hotel Sunset, Klong Dao", details: { drop_off: "Krabi Airport" } }, { ile }), "depart");
+});
+
+test("séjour par le sens : un départ seul ne fait pas une arrivée, seuils de la règle d'avant gardés", async () => {
+  const { sejour, sensTransfert } = await load();
+  const ile = "Koh Lanta";
+  const o = { ile, ajd: "2026-11-22", sens: (r) => sensTransfert(r, { ile }) };
+  const t = (date, libelle) => ({ date_service: date, libelle });
+  // Départ seul : le client est déjà sur l'île, le séjour finit ce jour-là (la règle d'avant en faisait une arrivée).
+  assert.deepEqual(sejour([t("2026-11-28", "Koh Lanta → Phuket Airport")], o), { arrivee: null, depart: "2026-11-28", nuits: null });
+  assert.deepEqual(sejour([t("2026-11-28", "Koh Lanta → Phuket Airport")], { ile, ajd: "2026-11-22" }), { arrivee: "2026-11-28", depart: null, nuits: null });
+  assert.deepEqual(sejour([t("2026-11-23", "Krabi Airport → Koh Lanta"), t("2026-11-28", "Koh Lanta → Phuket Airport")], o), { arrivee: "2026-11-23", depart: "2026-11-28", nuits: 5 });
+  // Une journée aller-retour au milieu ne coupe pas le séjour.
+  assert.deepEqual(sejour([t("2026-11-23", "Krabi Airport → Koh Lanta"), t("2026-11-25", "Private day trip from Koh Lanta to Krabi"), t("2026-11-28", "Koh Lanta → Phuket Airport")], o), { arrivee: "2026-11-23", depart: "2026-11-28", nuits: 5 });
+  // Deux nuits au moins, quatorze jours sans départ connu, rien pour un séjour fini.
+  assert.equal(sejour([t("2026-11-23", "Krabi Airport → Koh Lanta"), t("2026-11-24", "Koh Lanta → Krabi Town")], o), null);
+  assert.deepEqual(sejour([t("2026-11-09", "Krabi Airport → Koh Lanta")], o), { arrivee: "2026-11-09", depart: null, nuits: null });
+  assert.equal(sejour([t("2026-11-07", "Krabi Airport → Koh Lanta")], o), null);
+  assert.equal(sejour([t("2026-11-20", "Koh Lanta → Phuket Airport")], o), null);
+});
+
+test("jours libres : de demain à la veille du départ, sans les jours où une sortie est réservée", async () => {
+  const { joursLibres } = await load();
+  const ajd = "2026-11-22";
+  assert.deepEqual(joursLibres({ arrivee: "2026-11-21", depart: "2026-11-26" }, { ajd, occupes: ["2026-11-24"] }), ["2026-11-23", "2026-11-25"]);
+  assert.deepEqual(joursLibres({ arrivee: "2026-11-24", depart: "2026-11-27" }, { ajd }), ["2026-11-25", "2026-11-26"]);
+  assert.deepEqual(joursLibres({ arrivee: null, depart: "2026-11-24" }, { ajd }), ["2026-11-23"]);
+  assert.deepEqual(joursLibres({ arrivee: "2026-11-21", depart: "2026-11-24" }, { ajd, occupes: ["2026-11-23"] }), []);
+  assert.equal(joursLibres({ arrivee: "2026-11-21", depart: null }, { ajd }).at(-1), "2026-12-05");
+});
+
+test("enfants et saison : pas de plongée avec des enfants, Koh Rok d'octobre à avril seulement", async () => {
+  const { possibilites } = await load();
+  const P = [
+    presta("Koh Rok + Koh Haa day trip", { ordre: 1 }),
+    presta("Discover Basic Diver (from age 10, 2 dives)", { famille: "activite", ordre: 2 }),
+  ];
+  assert.deepEqual(possibilites(P).map((x) => x.famille), ["iles", "plongee"]);
+  assert.deepEqual(possibilites(P, { enfants: 1 }).map((x) => x.famille), ["iles"]);
+  assert.deepEqual(possibilites(P, { jours: ["2026-06-10", "2026-06-11"] }).map((x) => x.famille), ["plongee"]);
+  assert.deepEqual(possibilites(P, { jours: ["2026-04-29", "2026-05-01"] }).map((x) => x.famille), ["iles", "plongee"]);
+  // Par la page du site aussi (identifiant du catalogue relié à la page Koh Rok & Koh Haa).
+  const { PRODUITS_SITE } = await import("../src/gestion/js/site-produits.mjs");
+  const tarif = PRODUITS_SITE.find((p) => p.id === "koh-rok-koh-haa").options[0].tarifs[0];
+  assert.deepEqual(possibilites([presta(tarif.prestation, { libelle: tarif.libelle })], { jours: ["2026-07-01"] }), []);
 });
 
 test("transfert : trajet, prestation transfert, ou toute course de Taxi ; jamais un service annulé", async () => {

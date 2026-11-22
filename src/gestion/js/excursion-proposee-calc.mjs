@@ -88,19 +88,33 @@ const agesDe = (x) => {
 // Une ou deux propositions, de familles différentes, dans l'ordre FAMILLES_EXCURSION puis l'ordre du catalogue. `deja` : les prestations
 // et familles déjà réservées pour ce client (une famille déjà prise n'est pas reproposée). Rend toutes les possibilités triées : l'écran
 // coche les `max` premières de familles différentes, Nani change le choix.
-export function possibilites(prestations = [], { noms = [], deja = { prestations: new Set(), familles: new Set() } } = {}) {
+// `enfants` : le nombre d'enfants du groupe (0 : pas de prix enfant dans le message, et la plongée reste possible ; sinon pas de plongée,
+// les âges ne sont pas connus). `jours` : les jours libres du séjour (joursLibres) ; une sortie de saison (Koh Rok, d'octobre à avril,
+// registre du 28.10.2026) n'est proposée que si l'un d'eux tombe dans sa saison. Sans `jours`, la saison n'est pas vérifiée.
+export function possibilites(prestations = [], { noms = [], deja = { prestations: new Set(), familles: new Set() }, enfants = 0, jours = null } = {}) {
   const rang = (f) => FAMILLES_EXCURSION.indexOf(f);
   return (prestations || [])
     .filter((p) => proposable(p, { noms }) && !deja.prestations.has(p.id))
     // Quad : les lignes enfant (conducteur, passager) partagent le même nom avant la virgule, le prix enfant pourrait être le mauvais ;
     // le modèle dit déjà les âges.
     .map((p) => ({ prestation: p, famille: familleDe(p), page: pageDe(p) }))
-    .map((x) => ({ ...x, enfant: x.famille === "quad" ? null : ligneEnfant(x.prestation, prestations) }))
+    .filter((x) => !(enfants > 0 && x.famille === "plongee"))
+    .filter((x) => !jours || enSaison(x, jours))
+    .map((x) => ({ ...x, enfant: x.famille === "quad" || !(enfants > 0) ? null : ligneEnfant(x.prestation, prestations) }))
     .filter((x) => !deja.familles.has(x.famille))
     .sort((a, b) => rang(a.famille) - rang(b.famille) || (a.prestation.ordre || 0) - (b.prestation.ordre || 0) || Number(a.prestation.prix_vente) - Number(b.prestation.prix_vente))
     // Un même nom affiché (karting de deux tailles, cours en duo saisi deux fois) ne se propose qu'une fois : le premier du catalogue.
     .filter((x, i, tous) => tous.findIndex((y) => nomService(y.prestation, y.page) === nomService(x.prestation, x.page)) === i);
 }
+// Saisons des sorties qui ne partent pas toute l'année (mois de 1 à 12). Koh Rok et Koh Haa : d'octobre à avril (registre de Secret).
+export const SAISONS = [{ page: "koh-rok-koh-haa", libelle: /koh\s*rok/i, mois: [10, 11, 12, 1, 2, 3, 4] }];
+export function enSaison(x, jours = []) {
+  const p = x.prestation || {};
+  const t = `${p.libelle_en || ""} ${p.libelle || ""}`;
+  const s = SAISONS.find((z) => (x.page && x.page.id === z.page) || z.libelle.test(t));
+  return !s || (jours || []).some((j) => s.mois.includes(Number(String(j).slice(5, 7))));
+}
+
 export function choixParDefaut(liste = [], max = 2) {
   const vues = new Set();
   const choix = [];
@@ -116,26 +130,99 @@ export function choixParDefaut(liste = [], max = 2) {
 // ---- Séjour ----------------------------------------------------------------------------------------------------------------------------
 // Un transfert : un trajet du catalogue, une prestation de la famille « transfert », ou toute réservation d'une entreprise en mode taxi.
 export const estTransfert = (r, { prestation = null, taxi = false } = {}) => !!r && r.statut !== "annule" && (taxi || !!r.trajet_id || (prestation && prestation.famille === "transfert"));
-// Le séjour du client sur l'île d'après ses transferts : le premier (arrivée) et, s'il y en a un autre plus tard, le dernier (départ).
-// Au moins un transfert doit nommer l'île (`ile`, « Koh Lanta » pour l'organisation d'Anaïs : exempleDe("lieu")). Un départ à moins de
-// deux jours de l'arrivée n'est pas un séjour. Sans départ connu, le séjour reste ouvert (`nuits` null) : la proposition est permise.
-// `ajd` : un séjour déjà fini ne propose plus rien. Rend { arrivee, depart, nuits } ou null.
+// Le sens d'un transfert : « arrivee » (vers l'île), « depart » (depuis l'île) ou null (trajet sans l'île, journée, aller-retour).
+// Un trajet du catalogue ou un libellé « A → B » (ou « A to B ») donnent les deux bouts ; l'île est celle de l'organisation (`ile`).
+// Une course de zone (« Krabi Airport » chez Taxi : l'île et la zone) se lit par le lieu de prise en charge : à la zone, à un aéroport ou à
+// une jetée, c'est une arrivée ; ailleurs (l'hôtel), un départ ; sans lieu de prise en charge, le lieu de dépose décide.
+const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const POINT_EXTERIEUR = /\b(airport|aeroport|pier|jetee|station|bus|terminal)\b/;
+export function sensTransfert(r, { prestation = null, trajet = null, ile = "" } = {}) {
+  if (!r) return null;
+  const nom = sansAccents(ile).trim();
+  const surIle = (t) => !!nom && sansAccents(t).includes(nom);
+  const libelle = (prestation && (prestation.libelle_en || prestation.libelle)) || r.libelle || "";
+  const dt = r.details || {};
+  if (/\b(day trip|round trip)\b/i.test(`${libelle} ${r.libelle || ""}`) || dt.type_trajet === "retour_depart") return null;
+  let bouts = trajet ? [trajet.de || "", trajet.vers || ""] : libelle.replace(/^[^:→]*:\s*/, "").split(/\s*(?:→|->|\bto\b)\s*/i).map((x) => x.trim()).filter(Boolean);
+  if (bouts.length === 2) {
+    const [de, vers] = bouts;
+    if (surIle(vers) && !surIle(de)) return "arrivee";
+    if (surIle(de) && !surIle(vers)) return "depart";
+    return null;
+  }
+  const pickup = r.lieu_pickup || "";
+  const dropoff = dt.drop_off || "";
+  const zone = sansAccents(libelle).split(/[^a-z0-9]+/).filter((m) => m.length > 2 && !["airport", "and", "the", "town", "pier"].includes(m));
+  const exterieur = (t) => !!t && (POINT_EXTERIEUR.test(sansAccents(t)) || zone.some((m) => sansAccents(t).split(/[^a-z0-9]+/).includes(m)));
+  if (surIle(pickup)) return "depart";
+  if (exterieur(pickup)) return "arrivee";
+  if (pickup.trim()) return "depart";
+  if (exterieur(dropoff)) return "depart";
+  if (surIle(dropoff)) return "arrivee";
+  return null;
+}
+
+// Le séjour du client sur l'île d'après ses transferts. Au moins un transfert doit nommer l'île (`ile`, « Koh Lanta » pour l'organisation
+// d'Anaïs : exempleDe("lieu")). L'arrivée est le premier transfert vers l'île, le départ le premier transfert depuis l'île après elle ;
+// un départ sans arrivée connue (le client est déjà sur l'île) ouvre un séjour au début inconnu (`arrivee` null). `sens(r)` : le sens de
+// chaque transfert (sensTransfert) ; sans lui, le premier transfert est l'arrivée et le dernier le départ (règle d'avant, gardée pour les
+// appels qui n'ont ni prestation ni trajet). Un départ à moins de deux nuits de l'arrivée n'est pas un séjour. Sans départ connu, le
+// séjour reste ouvert (`nuits` null) : la proposition est permise jusqu'à 14 jours après l'arrivée. `ajd` : un séjour fini ne propose plus
+// rien. Rend { arrivee, depart, nuits } ou null.
 const jours = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+const plusJours = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const texteTransfert = (r) => [r.libelle, r.lieu_pickup, (r.details || {}).drop_off].filter(Boolean).join(" ");
-export function sejour(transferts = [], { ile = "", ajd = "" } = {}) {
+export const JOURS_SANS_DEPART = 14;
+export function sejour(transferts = [], { ile = "", ajd = "", sens = null } = {}) {
   const liste = (transferts || []).filter((r) => r && /^\d{4}-\d{2}-\d{2}$/.test(r.date_service || "")).sort((a, b) => a.date_service.localeCompare(b.date_service));
   if (!liste.length) return null;
   const nom = String(ile || "").trim().toLowerCase();
   if (nom && !liste.some((r) => texteTransfert(r).toLowerCase().includes(nom))) return null;
-  const arrivee = liste[0].date_service;
-  const dernier = liste[liste.length - 1].date_service;
-  const depart = dernier > arrivee ? dernier : null;
-  const nuits = depart ? jours(arrivee, depart) : null;
-  if (nuits !== null && nuits < 2) return null;
-  if (ajd && depart && depart <= ajd) return null;
-  // Sans départ connu, une arrivée de plus de deux semaines ne dit plus rien du séjour.
-  if (ajd && !depart && jours(arrivee, ajd) > 14) return null;
-  return { arrivee, depart, nuits };
+  const sejours = [];
+  if (sens) {
+    // Chaque arrivée et le premier départ après elle ; un départ sans arrivée avant lui.
+    let ouvert = null;
+    for (const r of liste) {
+      const s = sens(r);
+      if (s === "arrivee") {
+        if (ouvert) sejours.push(ouvert);
+        ouvert = { arrivee: r.date_service, depart: null };
+      } else if (s === "depart") {
+        if (ouvert) {
+          sejours.push({ ...ouvert, depart: r.date_service > ouvert.arrivee ? r.date_service : null, court: r.date_service <= ouvert.arrivee });
+          ouvert = null;
+        } else sejours.push({ arrivee: null, depart: r.date_service });
+      }
+    }
+    if (ouvert) sejours.push(ouvert);
+  } else {
+    const arrivee = liste[0].date_service;
+    const dernier = liste[liste.length - 1].date_service;
+    sejours.push({ arrivee, depart: dernier > arrivee ? dernier : null });
+  }
+  const valables = sejours
+    .filter((x) => !x.court)
+    .map((x) => ({ arrivee: x.arrivee, depart: x.depart, nuits: x.arrivee && x.depart ? jours(x.arrivee, x.depart) : null }))
+    .filter((x) => x.nuits === null || x.nuits >= 2)
+    .filter((x) => !(ajd && x.depart && x.depart <= ajd))
+    // Sans départ connu, une arrivée de plus de deux semaines ne dit plus rien du séjour.
+    .filter((x) => !(ajd && !x.depart && x.arrivee && jours(x.arrivee, ajd) > JOURS_SANS_DEPART));
+  // Le séjour en cours d'abord, sinon le prochain.
+  return valables.find((x) => !ajd || !x.arrivee || x.arrivee <= ajd) || valables[0] || null;
+}
+
+// Les jours libres du séjour : du lendemain de l'arrivée (au plus tôt demain) à la veille du départ, ou jusqu'à 14 jours après l'arrivée
+// quand le départ n'est pas connu. Un jour où une sortie est déjà réservée (`occupes`) n'est pas libre.
+export function joursLibres(s, { ajd, occupes = [] } = {}) {
+  if (!s || !ajd) return [];
+  const pris = new Set(occupes || []);
+  const demain = plusJours(ajd, 1);
+  const lendemain = s.arrivee ? plusJours(s.arrivee, 1) : demain;
+  const premier = lendemain > demain ? lendemain : demain;
+  const dernier = s.depart ? plusJours(s.depart, -1) : s.arrivee ? plusJours(s.arrivee, JOURS_SANS_DEPART) : plusJours(ajd, JOURS_SANS_DEPART);
+  const out = [];
+  for (let j = premier; j <= dernier && out.length < 90; j = plusJours(j, 1)) if (!pris.has(j)) out.push(j);
+  return out;
 }
 
 // ---- Message ---------------------------------------------------------------------------------------------------------------------------
