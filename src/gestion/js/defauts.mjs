@@ -479,6 +479,8 @@ export function donneesDemo(ajd, ajouterJours) {
   const stagiaire = { user_id: uid(), email: "stagiaire@demo.local", nom: "Stagiaire démo", super_admin: false, actif: true };
   const comptable = { user_id: uid(), email: "comptable@demo.local", nom: "Comptable démo", super_admin: false, actif: true };
   const voucheuse = { user_id: uid(), email: "vouchers@demo.local", nom: "Saisie taxi démo (vouchers et factures)", super_admin: false, actif: true };
+  // Partenaire chauffeur (migration 115) : aucun accès à une entreprise, seulement ses courses de Taxi en thaï et sa commission.
+  const chauffeurDemo = { user_id: uid(), email: "chauffeur@demo.local", nom: "Partenaire chauffeur démo (ses courses)", super_admin: false, actif: true };
   const roles = [];
   const roleDe = {};
   for (const e of [e1, e2, e3]) {
@@ -564,6 +566,13 @@ export function donneesDemo(ajd, ajouterJours) {
   const c9 = client(e3, "Monsieur", "Noah", "Schmid", "Lanta Demo Resort, Long Beach", "+41 79 000 00 09");
   const lc9 = course("Private Taxi: Koh Lanta → Ao Nang", 2700);
   ajoute(e3, c9, j(-4), "", "Private Taxi: Koh Lanta → Ao Nang", { accepte_le: j(-4), date_depart: j(-2) }, null, { contenu: contenu("", [{ ...lc9, date_service: j(-2) }], "detail", { langue: "en" }) });
+  // Deux courses à venir pour l'écran du partenaire chauffeur : aujourd'hui depuis l'aéroport avec un vol, et un aller-retour dans trois jours.
+  const c10 = client(e3, "Madame", "Mia", "Fischer", "Lanta Demo Villas, Kantiang", "+49 151 0000010");
+  const lc10 = course("Private Taxi: Krabi Airport → Koh Lanta", 2300);
+  ajoute(e3, c10, j(-2), "", "Private Taxi: Krabi Airport → Koh Lanta", { accepte_le: j(-2), date_depart: j(0) }, null, { contenu: contenu("", [{ ...lc10, date_service: j(0) }], "detail", { langue: "en" }) });
+  const c11 = client(e3, "Monsieur", "Liam", "Dupont", "Lanta Demo Lodge, Klong Khong", "+33 6 00 00 00 11");
+  const lc11 = course("Private Taxi: Old Town tour", 1500);
+  ajoute(e3, c11, j(-1), "", "Private Taxi: Old Town tour", { accepte_le: j(-1), date_depart: j(3) }, null, { contenu: contenu("", [{ ...lc11, date_service: j(3) }], "detail", { langue: "en" }) });
 
   // Entreprise 2 : quatre partenaires fictifs avec leurs tarifs, leurs nets et les trajets de deux compagnies de bateaux.
   const partenaires = [];
@@ -663,6 +672,8 @@ export function donneesDemo(ajd, ajouterJours) {
   courseTaxi(dossiersTaxi[0], lc7, j(-1), { heure_pickup: "11:00", lieu_pickup: "Krabi Airport, arrivals hall", personnes: { adultes: 4, enfants: 0, bebes: 0 }, details: { drop_off: "Hotel Sea, Koh Lanta", bagages: "oui" } });
   courseTaxi(dossiersTaxi[2], lc9, j(-2), { heure_pickup: "09:00", lieu_pickup: "Lanta Demo Resort, Long Beach", personnes: { adultes: 2, enfants: 0, bebes: 0 }, details: { drop_off: "Ao Nang", bagages: "2" } });
   courseTaxi(dossiersTaxi[1], lc8, j(1), { heure_pickup: "06:30", lieu_pickup: "Villa Demo, Klong Nin", personnes: { adultes: 2, enfants: 1, bebes: 1 }, statut: "confirme", details: { drop_off: "Phuket Airport", bagages: "3" } });
+  courseTaxi(dossiersTaxi[3], lc10, j(0), { heure_pickup: "14:30", lieu_pickup: "Krabi Airport", personnes: { adultes: 2, enfants: 1, bebes: 0 }, details: { drop_off: "Lanta Demo Villas, Kantiang", vol: "FD3217", bagages: "3" } });
+  courseTaxi(dossiersTaxi[4], lc11, j(3), { heure_pickup: "09:00", lieu_pickup: "Lanta Demo Lodge, Klong Khong", personnes: { adultes: 2, enfants: 0, bebes: 0 }, details: { type_trajet: "retour_depart", programme_trajet: "Old Town and viewpoint tour", duree_h: 4 } });
   reservation(dossiers[6], prestations[6], "Koh Lanta → Phuket Airport", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
 
   const tache = (e, titre, jours, assignee, dossier, extra = {}) => ({ id: uid(), created_at: j(-3), entite_id: e.id, dossier_id: dossier ? dossier.id : null, partenaire_id: null, titre, description: "", echeance: jours === null ? null : j(jours), assignee_id: assignee ? assignee.user_id : null, fait: false, fait_le: null, fait_par: null, cree_par: admin.user_id, ...extra });
@@ -676,7 +687,7 @@ export function donneesDemo(ajd, ajouterJours) {
     tache(e3, "Vérifier le planning de la semaine", 2, assistante, null),
   ];
   // Treize mois d'activité fictive pour les statistiques (demo-stats.mjs).
-  return enrichirDemoStats({ entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable, voucheuse], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] }, { ajd, ajouterJours, uid, contenu, nouvelleLigne });
+  return enrichirDemoStats({ entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable, voucheuse, chauffeurDemo], partenaires_acces: [{ user_id: chauffeurDemo.user_id, partenaire_id: chauffeurs.id, created_at: j(-1) }], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] }, { ajd, ajouterJours, uid, contenu, nouvelleLigne });
 }
 
 // Règles de réponse au client lues par l'agent (20.11.2026), une par ligne. Tant que l'entreprise ne les a jamais enregistrées, Secret et Taxi

@@ -395,6 +395,19 @@ function ecranDeLEntreprise(cle) {
   return !m || moduleActif(m.id);
 }
 
+// L'écran du partenaire chauffeur se dessine une fois par compte : la relecture automatique ne le redessine pas (il recharge ses courses lui-même).
+async function afficherPartenaire() {
+  const cle = `partenaire|${etat.session.id}`;
+  if (location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
+  const existante = racine.querySelector(".coque-partenaire");
+  if (existante && existante.dataset.cle === cle) return;
+  const { vueCoursesPartenaire } = await import("./views/courses-partenaire.mjs");
+  const noeud = vueCoursesPartenaire({ acces: etat.partenaire, demo: etat.store.mode === "demo" ? bandeauDemo() : null, deconnecter: etat.store.mode === "supabase" ? deconnecter : null });
+  noeud.dataset.cle = cle;
+  vider(racine).append(noeud);
+  document.title = `${noeud.dataset.titre} - ${etat.partenaire.entreprise}`;
+}
+
 async function afficherVoucherSeul() {
   // Chaque affichage repart de l'entreprise Taxi (logo VIP Taxi Lanta par défaut, 18.11.2026) : un voucher en cours sous le logo de Secret
   // marque l'écran occupé, la relecture automatique ne le redessine pas.
@@ -636,6 +649,8 @@ async function afficher() {
     document.title = tr("Mot de passe - Gestion");
     return;
   }
+  // Partenaire chauffeur (migration 115) : son écran en thaï, rien d'autre (ni menu, ni entreprise, ni réglages).
+  if (etat.partenaire && !entiteActive()) return afficherPartenaire();
   if (!entiteActive()) {
     vider(racine).append(
       h(
