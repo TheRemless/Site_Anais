@@ -15,6 +15,16 @@ export const ORGANISATION_ZWALD = "00000000-0000-0000-0000-00000000a000";
 export const ORIGINES_CARNET = ["https://zwaldtravelplanner.com", "https://www.zwaldtravelplanner.com"];
 export const MARQUES_CARNET = ["secret"];
 export const origineCarnet = (origine) => ORIGINES_CARNET.includes(origine);
+// Une page du carnet : son chemin commence par « /carnet/ ». Seule définition (la fonction, la notification) ; l'outil en garde une copie, CHEMIN_CARNET de
+// src/gestion/js/carnet-produits.mjs, que tests/gestion-carnet-produits.test.js tient égale.
+export const CHEMIN_CARNET = "/carnet/";
+export const estPageCarnet = (url) => {
+  try {
+    return new URL(String(url)).pathname.startsWith(CHEMIN_CARNET);
+  } catch {
+    return false;
+  }
+};
 // Les origines admises d'une organisation : les siennes (SITE_ORIGINES ou le site d'Anaïs), plus celles du carnet pour Zwald seulement.
 export const originesAdmises = (origines, organisation = ORGANISATION_ZWALD) => (organisation === ORGANISATION_ZWALD ? [...new Set([...origines, ...ORIGINES_CARNET])] : origines);
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
@@ -99,7 +109,9 @@ const champ = (nom, f) => {
 
 // Lit le corps reçu (texte JSON) et renvoie la ligne à écrire, ou lève une erreur avec `code` et `champ`.
 // `piege: true` : le champ piège (« website ») est rempli, c'est un robot ; l'appelant répond « ok » sans rien écrire.
-// `origine` : l'origine de la requête ; celle d'une page du carnet n'écrit que dans l'entreprise « secret » (MARQUES_CARNET).
+// `origines` : les adresses du site de l'organisation (SITE_ORIGINES ou le site d'Anaïs), pas celles du carnet. `origine` : l'origine de la requête.
+// Une requête d'une page du carnet de ZTP n'écrit que dans l'entreprise « secret » (MARQUES_CARNET) et doit dire une page « /carnet/… » de sa propre origine ;
+// sa page_url n'est jamais comparée aux adresses du site Secret, ni celle d'une requête du site Secret à celles du carnet.
 export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, origine = null }) {
   if (typeof corps !== "string" || !corps) throw erreur("vide");
   if (new TextEncoder().encode(corps).length > TAILLE_MAX) throw erreur("trop_gros");
@@ -129,7 +141,10 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, ori
   if (!/^[A-Z]{3}$/.test(devise)) throw Object.assign(erreur("format"), { champ: "currency" });
   // L'adresse de la page n'est gardée que si elle est sur le site (ou la machine de développement) : on n'enregistre pas un lien choisi par un tiers.
   const page = champ("page_url", () => texte(d.page_url, 300));
-  const pageUrl = page && pageDuSite(page, origines) ? page : null;
+  const carnet = origineCarnet(origine);
+  const pageUrl = page && pageDuSite(page, carnet ? [origine] : origines) ? page : null;
+  // Depuis le carnet, la page est obligatoire : une page « /carnet/… » de la requête elle-même, sinon refus (400 sur page_url).
+  if (carnet && !(pageUrl && estPageCarnet(pageUrl) && new URL(pageUrl).origin === origine)) throw Object.assign(erreur("page"), { champ: "page_url" });
   return {
     marque,
     ref,
@@ -182,7 +197,7 @@ export function notification(ligne, aujourdhui, entreprise = "") {
     morceaux.push(ecart === 0 ? "aujourd'hui" : ecart === 1 ? "demain" : `${JOURS[d.getUTCDay()]} ${d.getUTCDate()}${ecart < 0 || ecart > 30 ? ` ${mois}` : ""}`);
   }
   // Une demande d'une page du carnet de ZTP le dit en tête du texte (la notification va à l'équipe seulement).
-  if (/^https?:\/\/[^/?#\s]+\/carnet\//.test(ligne.page_url || "")) morceaux.unshift("Carnet ZTP");
+  if (estPageCarnet(ligne.page_url)) morceaux.unshift("Carnet ZTP");
   return { titre: entreprise ? `Nouvelle demande ${entreprise}` : "Nouvelle demande du site", corps: morceaux.join(", "), tag: `demande-site-${ligne.marque}` };
 }
 

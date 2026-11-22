@@ -1743,6 +1743,7 @@ button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1p
 .dsite-champs { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 6px 0 0; font-size: 0.92rem; }
 .dsite-champs .dsite-champ { display: contents; }
 .dsite-champs dt { color: var(--texte-2); }
+.dsite-champs .manque dd { color: var(--danger); }
 .dsite-champs dd { margin: 0; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .dsite-carnet-aide { margin: 8px 0 0; }
 .dsite-etat { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 10px 0 0; font-size: 0.9rem; }

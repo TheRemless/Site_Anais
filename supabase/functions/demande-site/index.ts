@@ -8,14 +8,15 @@
 // Secrets : DEMANDES_SEL (sel de l'empreinte d'IP), VAPID_* (déjà posés pour les rappels). Facultatifs : TURNSTILE_SECRET, TURNSTILE_OBLIGATOIRE=1.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { origineAdmise, lireOrigines, originesAdmises, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
+import { ORGANISATION_ZWALD, origineAdmise, lireOrigines, originesAdmises, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
 import { dateDans, fuseauValide } from "../rappels/calc.js";
 
 // Organisation propriétaire du site qui appelle cette fonction (Zwald par défaut). Une marque est le slug d'une de ses entreprises qui publient sur le site.
-const ORGANISATION = Deno.env.get("SITE_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
+const ORGANISATION = Deno.env.get("SITE_ORGANISATION") || ORGANISATION_ZWALD;
 // Adresses de ce site (CORS et page d'où vient la demande). Sans réglage : secrettravelandtour.com.
 // Plus, pour l'organisation Zwald seulement, les pages privées du carnet de ZTP (zwaldtravelplanner.com), marque « secret » seulement (calc.js).
-const ORIGINES = originesAdmises(lireOrigines(Deno.env.get("SITE_ORIGINES")), ORGANISATION);
+const ORIGINES_SITE = lireOrigines(Deno.env.get("SITE_ORIGINES"));
+const ORIGINES = originesAdmises(ORIGINES_SITE, ORGANISATION);
 const admise = (origine: string | null) => origineAdmise(origine, ORIGINES);
 
 // Fuseau de cette organisation (organisations.fuseau) : « aujourd'hui » d'une demande est celui du client, pas celui de Bangkok.
@@ -104,7 +105,7 @@ Deno.serve(async (req) => {
   const aujourdhui = dateDans(await fuseauDuSite());
   let ligne;
   try {
-    ligne = lireDemande(corps, { aujourdhui, origines: ORIGINES, origine });
+    ligne = lireDemande(corps, { aujourdhui, origines: ORIGINES_SITE, origine });
   } catch (e) {
     return repondre(e.code === "trop_gros" ? REPONSES.trop_gros : reponseInvalide(e), origine);
   }

@@ -10,7 +10,7 @@ import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { ouvrirDemande } from "./demande.mjs";
-import { clientsProches } from "../demande-calc.mjs";
+import { indexClientsParTelephone, clientParTelephone } from "../demande-calc.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
@@ -299,34 +299,32 @@ function revoirReponse(d) {
 // Fiche d'une demande venue d'une page du carnet : tout ce que le client a envoyé, une ligne par champ (date, personnes et âges, hôtel, nom, WhatsApp, total estimé).
 function champsDuCarnet(d) {
   const c = champsCarnet(d);
-  const ligne = (libelle, valeur) => (valeur ? h("div", { class: "dsite-champ" }, h("dt", null, libelle), h("dd", null, valeur)) : null);
+  const ligne = (libelle, valeur, manque = false) => (valeur ? h("div", { class: `dsite-champ${manque ? " manque" : ""}` }, h("dt", null, libelle), h("dd", null, valeur)) : null);
   const enfants = c.enfants ? `${c.enfants}${c.ages.length ? ` (${tr("âges : {ages}", { ages: c.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") })})` : ""}` : "";
+  const quand = [jourCourt(c.date), c.heure].filter(Boolean).join(" · ");
   return h(
     "dl",
     { class: "dsite-champs" },
     ligne(tr("Prestation"), c.prestation),
-    ligne(tr("Date"), [jourCourt(c.date), c.heure].filter(Boolean).join(" · ")),
+    // Une demande sans date ou sans nom le dit, comme les autres demandes du site.
+    ligne(tr("Date"), quand || tr("Date à préciser"), !quand),
     ligne(tr("Adultes"), c.adultes ? String(c.adultes) : ""),
     ligne(tr("Enfants"), enfants),
     ligne(tr("Hôtel"), c.hotel),
-    ligne(tr("Nom"), c.nom),
+    ligne(tr("Nom"), c.nom || tr("Nom non donné"), !c.nom),
     ligne(tr("WhatsApp"), c.whatsapp ? numeroAffiche(c.whatsapp) : ""),
     ligne(tr("Total estimé"), c.total !== null ? formatMontant(c.total, c.devise) : "")
   );
 }
 // Le client est-il déjà connu par son numéro WhatsApp ? Une fiche de ZTP (partagée avec Secret pour les administrateurs) est retrouvée comme une fiche d'ici ;
-// « Créer le dossier » la reprend sans créer de doublon (la fenêtre de création fait la même recherche).
-function ficheConnue(d) {
-  const numero = numeroWhatsApp(d);
-  if (!numero) return null;
-  const trouve = clientsProches({ telephone: numero, nom: "" }, clientsProposes()).find((x) => x.raison === "telephone");
-  return trouve ? trouve.client : null;
-}
+// « Créer le dossier » la reprend sans créer de doublon (la fenêtre de création fait la même recherche). `index` : les fiches indexées par numéro,
+// construites une fois par affichage de la liste (indexClientsParTelephone), pas une fois par carte.
+const ficheConnue = (d, index) => (numeroWhatsApp(d) ? clientParTelephone(index, numeroWhatsApp(d)) : null);
 
-function carte(d) {
+function carte(d, index) {
   const ecrit = peut("dossiers.ecrire");
   const carnet = estCarnet(d);
-  const connue = carnet && d.statut === "nouvelle" ? ficheConnue(d) : null;
+  const connue = carnet && d.statut === "nouvelle" ? ficheConnue(d, index) : null;
   const option = titreOption(d);
   const dossier = d.dossier_id ? etat.db.dossiers.find((x) => x.id === d.dossier_id) : null;
   const quand = [jourCourt(d.date_service), d.heure].filter(Boolean).join(" · ");
@@ -450,7 +448,7 @@ export async function vueDemandesSite() {
     onglet === "chiffres"
       ? blocChiffres(demandes)
       : liste.length
-        ? h("ul", { class: "dsite-liste" }, liste.map(carte))
+        ? h("ul", { class: "dsite-liste" }, liste.map(((index) => (d) => carte(d, index))(indexClientsParTelephone(clientsProposes()))))
         : vide(onglet === "a_traiter" ? tr("Aucune demande à traiter") : tr("Aucune demande"), onglet === "a_traiter" ? tr("Les demandes envoyées depuis le site arrivent ici, avec une notification sur le téléphone si la cloche est activée.") : tr("Les demandes traitées apparaîtront ici."))
   );
 }

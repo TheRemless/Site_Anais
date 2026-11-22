@@ -35,7 +35,7 @@ test("demandesDuDossier : les demandes qui ont créé le dossier, la plus récen
 
 test("carte des Demandes du site : le bouton est sur chaque carte, quel que soit son statut ou le droit d'écrire", () => {
   const vue = lire("js/views/demandes-site.mjs");
-  const carte = vue.slice(vue.indexOf("function carte(d)"), vue.indexOf("// ---- Chiffres"));
+  const carte = vue.slice(vue.indexOf("function carte(d"), vue.indexOf("// ---- Chiffres"));
   const i = carte.indexOf("boutonMessageClient(d)");
   assert.ok(i > 0, "bouton absent de la carte");
   // Hors des branches « à traiter et droit d'écrire » et « confirmée ou refusée ».

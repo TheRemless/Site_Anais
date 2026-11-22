@@ -98,6 +98,8 @@ Nani valide d'abord la demande avec le partenaire, en dehors de l'outil. La dema
 }
 ```
 
+- Contrôles propres à ces origines (la fonction les fait elle-même) : `page_url` est obligatoire, doit être une page `/carnet/…` de l'origine même de la requête (`zwaldtravelplanner.com` ou `www.`, pas l'autre ni le site Secret), sinon 400 sur `page_url` ; `brand` doit être `"secret"`, sinon 400 sur `brand`. À l'inverse, une requête du site Secret dont la `page_url` est une page du carnet est acceptée, mais cette adresse n'est pas gardée : la demande n'est pas étiquetée « Carnet ZTP ».
+- `ref` : `SAM-` suivi de 4 caractères (même forme que les autres, `[A-Z0-9-]{3,24}`). Aucun préfixe n'est à déclarer : Gestion ne lit pas la référence, il la montre en grand pour retrouver la conversation WhatsApp, et relie un message WhatsApp à une demande par le numéro de téléphone (migration 72), jamais par la référence. Il n'y a donc pas de dédoublonnage par `ref` : un second envoi crée une seconde demande, à classer.
 - `product_id` : l'identifiant d'une sortie de `src/gestion/js/carnet-produits.mjs` (`id`). `option` : l'identifiant de l'option cochée (`options[].id`), `option_label` son titre (`options[].titre`). Une sortie à une seule option envoie `standard`.
 - Gestion retrouve le tarif par `product_id` et l'option, puis par le nombre de personnes pour un bateau privé (tranche « 1 to 3 people »…). Un enfant de moins de 4 ans ne compte pas dans le groupe.
 - `message` suit le format du site Secret : première ligne `Booking request: <product> – <option_label>`, puis `Date:`, `Guests:` (avec les âges : `2 adults, 2 children (ages 5 and 9)`), `Pickup:` (l'hôtel), `Name:`, `Estimated total:`. La fonction ne garde pas les âges des enfants : ils se lisent dans ce message.

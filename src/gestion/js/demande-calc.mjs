@@ -804,6 +804,17 @@ const cleTelephone = (t) => {
   return n.length >= 8 ? n.slice(-9) : "";
 };
 const cleNom = (c) => sansAcc(`${c.prenom || ""} ${c.nom || ""}`).split(/\s+/).filter(Boolean).sort().join(" ");
+// Les clients indexés par numéro (une seule fois pour une liste de demandes) : la clé est celle de clientsProches (les 9 derniers chiffres). Un numéro partagé
+// par deux fiches garde la première.
+export function indexClientsParTelephone(clients) {
+  const index = new Map();
+  for (const c of clients) {
+    const cle = cleTelephone(c.telephone);
+    if (cle && !index.has(cle)) index.set(cle, c);
+  }
+  return index;
+}
+export const clientParTelephone = (index, telephone) => index.get(cleTelephone(telephone)) || null;
 export function clientsProches(d, clients) {
   const tel = cleTelephone(d.telephone);
   const nom = cleNom({ prenom: "", nom: d.nom || "" });
@@ -984,15 +995,21 @@ function optionDuCarnet(d) {
 // Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
 export function optionDuSite(d) {
   if (!d || !d.site || d.libre) return null;
-  // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : pas besoin de retrouver le nom écrit dans le message.
-  const carnet = optionDuCarnet(d);
-  if (carnet) return carnet;
+  // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : l'identifiant d'abord. Une sortie connue dont l'option n'est pas
+  // reconnue ne donne aucun tarif (on ne devine pas une autre sortie) ; un identifiant inconnu se cherche par le nom, dans les sorties du carnet seulement,
+  // jamais parmi celles du site Secret (deux sorties peuvent porter le même nom).
+  if (d.carnet && d.carnet.produit) return optionDuCarnet(d) || (PRODUITS_CARNET.some((p) => p.id === d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
+  if (!d.prestation) return null;
+  return optionParNom(d, [...PRODUITS_SITE, ...PRODUITS_CARNET]);
+}
+// Le produit et l'option d'un message qui les nomme (« Booking request: Produit – Option », « Rental request: Modèle »), parmi `catalogue`.
+function optionParNom(d, catalogue) {
   if (!d.prestation) return null;
   const location = d.type === "location";
   if (!location && d.type !== "tour") return null;
   const nom = cleTexte(d.prestation);
   // Les sorties du carnet se retrouvent aussi par leur nom, pour un message collé sans identifiant.
-  const produits = location ? PRODUITS_SITE.filter((p) => p.section === "rental") : [...PRODUITS_SITE, ...PRODUITS_CARNET].filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
+  const produits = location ? catalogue.filter((p) => p.section === "rental") : catalogue.filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
   const titre = location ? nom : cleTexte(d.option);
   for (const produit of produits) {
     if (!titre && produit.options.length === 1) return { produit, option: produit.options[0] };
@@ -1050,8 +1067,9 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   // Sortie du carnet : l'âge d'un enfant est jugé d'après la règle de chaque sortie (celle du partenaire, `enfant` dans carnet-produits.mjs), pas d'après
   // le seuil unique du site. Au-dessus du barème, l'enfant a déjà été compté adulte (ajusterAgesCarnet) ; en dessous, aucun tarif n'est publié :
   // l'offre le signale, Nani vérifie avec le partenaire.
+  // Les âges de moins de 3 ans sont des bébés (comptés à part par le message) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème l'est.
   const bareme = trouve.produit.enfant;
-  if (bareme && (d.ages || []).some((a) => a < bareme.min && !(bareme.gratuit_sous !== undefined && a < bareme.gratuit_sous))) {
+  if (bareme && (d.ages || []).some((a) => a >= 3 && a < bareme.min)) {
     for (const o of offres) (o.avertissement = o.avertissement || "age_enfant"), (o.bareme = bareme);
   }
   return offres.sort((a, b) => b.score - a.score);
