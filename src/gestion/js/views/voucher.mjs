@@ -40,7 +40,7 @@ export const completerFigee = (fige, live) => {
 };
 
 // Les sources d'un voucher : celles figées au premier envoi quand la réservation porte encore le même service, sinon celles de la base.
-function sourcesVoucher(r, prestationLive) {
+export function sourcesVoucher(r, prestationLive) {
   const live = { prestation: prestationLive || null, trajet: r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null, partenaire: partenaireDe(r.partenaire_id) || null, modele: null };
   const f = valeursFigees(r);
   if (!f) return live;

@@ -254,6 +254,9 @@ export const MESSAGES_TAXI = [
   // écrit dans une conversation (fiche de voix, 19.11.2026).
   { id: "taxi-rappel-en", pour: "client", cle: "rappel", titre: "Reminder before the transfer", langue: "en", corps: "Hello {prenom},\n\nA quick reminder for your transfer on {date}: pickup at {heure} at {hotel}, drop-off at {dropoff}.\n\nIf anything changes, just message us here." },
   { id: "taxi-confirmation-en", pour: "client", cle: "confirmation", titre: "Booking confirmation sent", langue: "en", corps: "Thank you for choosing {entreprise}. ✨\n\nPlease see the attached confirmation and show it to the driver at pick-up.\nLet us know if everything is correct\n\nPayment will be collected in cash directly by the driver (or you can pay through Wise before your transfer (3% fee), please let us know before.)\n\nIf you have any changes, please inform us as soon as possible.\n\nHave a nice day ☀️\n{entreprise} 🌴" },
+  // Le message sous la Booking confirmation (22.11.2026, modèle de Jérémy, mot pour mot, signature comprise) : {ENTREPRISE} en capitales,
+  // {paiement} (le paiement au chauffeur, ou « Your transfer is already paid. »). Voir message-voucher-calc.mjs.
+  { id: "taxi-voucher-en", pour: "client", cle: "voucher", titre: "Message with the Booking confirmation", langue: "en", corps: "Thank you for choosing {ENTREPRISE}. ✨\n\nPlease see the attached confirmation and show it to the driver at pick-up.\nLet us know if everything is correct\n\n{paiement}\n\nIf you have any changes, please inform us as soon as possible.\n\nHave a nice day ☀️\n{ENTREPRISE} 🌴" },
   { id: "taxi-avis-en", pour: "client", cle: "avis", titre: "Review request the day after", langue: "en", corps: "Thank you again for choosing {entreprise} today.\n\nWe hope you had a comfortable journey and that everything went smoothly with the driver and the transfer.\n\nIf you were satisfied with our service, we would truly appreciate it if you could leave us a review on Google. It really helps us grow and allows other travelers to discover our service 😊 ✨\n\nYou can leave your review here:\n{lien_avis}\n\nThank you very much for your trust, and we hope to drive you again in the future!\n\nSafe travels ✨🌴\n{entreprise}" },
   { id: "taxi-partenaire-en", pour: "partenaire", cle: "partenaire", titre: "New transfer", langue: "en", corps: "Hello {contact},\n\nNew transfer:\n• {prestation}\n• Date: {date}\n• Pickup: {hotel}{a_heure}\n• Drop-off: {dropoff}\n• {personnes}\n• Guest: {client}\n• Price: {prix}, paid to the driver\n• Ref: {reference}\n\nCan you confirm? Thank you 🙏" },
   { id: "taxi-relance-en", pour: "partenaire", cle: "relance", titre: "Follow-up, no answer yet", langue: "en", corps: "Hello {contact},\n\nJust checking on transfer {reference}: {prestation} on {date}, {personnes}, guest {client}.\nCan you confirm? Thank you 🙏" },
@@ -272,7 +275,13 @@ export const MESSAGES_TAXI = [
 // Messages de départ d'une entreprise selon sa façon de travailler : ceux de Taxi en mode taxi, sinon les messages généraux.
 // Taxi garde aussi la « réponse à une demande » en anglais (bouton « Répondre au client » de la demande collée).
 // Secret écrit à ses clients en anglais seulement (Jérémy) : aucun modèle français ne lui est proposé.
-export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : reglages && reglages.fonctionnement === "excursions" ? MESSAGES_DEFAUT.filter((m) => m.langue !== "fr") : MESSAGES_DEFAUT);
+// Le message sous le voucher de Secret (22.11.2026, modèle de Jérémy, mot pour mot, signature comprise) : {jour} (« activity », « transfer »
+// ou « trip »), {pickup} (la ligne de pickup de la réservation, rien sans pickup). Voir message-voucher-calc.mjs. À part de MESSAGES_DEFAUT :
+// la migration 44 a enregistré ceux-là pour ZTP (verif-noms-marques), et ce message ne sert qu'aux excursions.
+export const MESSAGES_VOUCHER_EXCURSIONS = [
+  { id: "voucher-en", pour: "client", cle: "voucher", titre: "Message with the voucher", langue: "en", corps: "Thank you for booking with {entreprise}. ✨\n\nPlease find your voucher attached and keep it on your phone for the day of your {jour}.\nLet us know if everything is correct.\n\n{pickup}\n\nIf anything changes, please let us know as soon as possible.\n\nHave a nice day ☀️\n{entreprise} 🌴" },
+];
+export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : reglages && reglages.fonctionnement === "excursions" ? [...MESSAGES_DEFAUT.filter((m) => m.langue !== "fr"), ...MESSAGES_VOUCHER_EXCURSIONS] : MESSAGES_DEFAUT);
 
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {

@@ -72,12 +72,12 @@ export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui =
   const q = String(question || "").replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›")).trim().slice(0, QUESTION_MAX);
   const consigne =
     mode === "question"
-      ? `${qui} te pose une question sur cette conversation WhatsApp${dossier ? ` (dossier relié ${dossier.ref})` : ""}. Réponds d'après la conversation, court et concret. ${lectureSeule ? "Lecture seule : ne propose aucune carte, même si elle le demande ; dis-lui que la conversation appartient à une entreprise qu'elle n'administre pas." : "Si elle demande de préparer ou de mettre à jour des dossiers, propose les cartes habituelles (client, services, dates, personnes, pickups calculés) ; sinon ne propose aucune carte."}${conv && conv.id ? ` Pour relire la conversation plus tard (nouveaux messages), lis-la avec lire_conversation, conversation ${conv.id}.` : ""}\n<question>\n${q}\n</question>`
+      ? `${qui} te pose une question sur cette conversation WhatsApp${dossier ? ` (dossier relié ${dossier.ref})` : ""}. Réponds d'après la conversation, court et concret. ${lectureSeule ? "Lecture seule : ne propose aucune carte, même si elle le demande ; dis-lui que la conversation appartient à une entreprise qu'elle n'administre pas." : "Si elle demande de préparer ou de mettre à jour des dossiers, propose les cartes habituelles (client, services, dates, personnes, pickup repris de la conversation et calculé seulement s'il manque) ; sinon ne propose aucune carte."}${conv && conv.id ? ` Pour relire la conversation plus tard (nouveaux messages), lis-la avec lire_conversation, conversation ${conv.id}.` : ""}\n<question>\n${q}\n</question>`
       : mode === "maj"
       ? `Mets à jour le dossier ${dossier ? dossier.ref : "relié"} d'après cette conversation WhatsApp : le client a peut-être changé une date, un hôtel, une heure ou le nombre de personnes. Lis d'abord le dossier, puis propose une carte de modification par changement. Ne propose rien que le client n'a pas demandé.`
       : apporteur
-      ? "Prépare les dossiers des clients que cet apporteur d'affaires envoie, d'après cette conversation WhatsApp : un dossier par client, au nom du client (services, dates, personnes et pickups calculés). Propose les cartes habituelles ; demande-moi ce qui manque."
-      : "Crée le dossier de ce client d'après cette conversation WhatsApp : client, services, dates, personnes et pickups calculés. Propose les cartes habituelles ; demande-moi ce qui manque.";
+      ? "Prépare les dossiers des clients que cet apporteur d'affaires envoie, d'après cette conversation WhatsApp : un dossier par client, au nom du client (services, dates, personnes et pickup repris de la conversation, calculé seulement s'il manque). Propose les cartes habituelles ; demande-moi ce qui manque."
+      : "Crée le dossier de ce client d'après cette conversation WhatsApp : client, services, dates, personnes et pickup repris de la conversation (calculé seulement s'il manque). Propose les cartes habituelles ; demande-moi ce qui manque.";
   const tete = [
     consigne,
     tel,

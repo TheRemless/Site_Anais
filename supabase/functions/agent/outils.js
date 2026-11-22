@@ -24,6 +24,7 @@
 //     réservations de l'entreprise active (dossiers.lire, jamais « vouchers.seul ») ; ZTP n'a pas de voucher. Ni net, ni commission, ni prix,
 //     ni nom de prestataire ; l'écran fait les cartes et l'image, rien ne part sans le clic de la personne.
 import { partenaireProbable, prixDeVentePermis } from "../whatsapp/type-contact.js";
+import { REFUS_RECALCUL, bloquerRecalcul } from "./itineraire.js";
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
@@ -257,7 +258,7 @@ export const OUTILS = [
   {
     name: "horaires_trajet",
     description:
-      "Les départs du catalogue entre deux lieux un jour donné (bateaux, ferries, minivans partagés) : heures, durée, prix de vente par adulte et par enfant. « recommande » marque les départs à proposer d'abord. Si rien n'est trouvé, l'outil rend les lieux connus pour corriger l'orthographe.",
+      "Les départs du catalogue entre deux lieux un jour donné (bateaux, ferries, minivans partagés) : heures, durée, prix de vente par adulte et par enfant. « recommande » marque les départs à proposer d'abord. Si rien n'est trouvé, l'outil rend les lieux connus pour corriger l'orthographe. Pour un trajet en bateau, en ferry ou en minivan partagé demandé, ou sur demande de la personne (ligne « Calcul d'itinéraire » du contexte) ; jamais pour recalculer une heure de pickup donnée.",
     input_schema: obj({ de: S("Lieu de départ (île, ville, embarcadère)."), vers: S("Lieu d'arrivée."), date: S("AAAA-MM-JJ, ou \"\" si inconnue."), adultes: I("0 si inconnu."), enfants: I("0 si inconnu.") }),
   },
   {
@@ -269,19 +270,19 @@ export const OUTILS = [
   {
     name: "temps_de_route",
     description:
-      "Durée en voiture entre deux lieux : d'abord OpenStreetMap (openrouteservice), sinon la table de temps de référence de l'entreprise, avec le ferry et la marge conseillée. Dit d'où vient la durée et si elle est à vérifier. Pour une course avec horaires, utilise planifier_course.",
+      "Durée en voiture entre deux lieux : d'abord OpenStreetMap (openrouteservice), sinon la table de temps de référence de l'entreprise, avec le ferry et la marge conseillée. Dit d'où vient la durée et si elle est à vérifier. Pour une course avec horaires, utilise planifier_course. Seulement si la personne demande une durée ou un horaire, ou si une heure de prise en charge manque pour créer la course (ligne « Calcul d'itinéraire » du contexte).",
     input_schema: obj({ de: S("Nom de lieu précis, avec l'île ou la ville (« Jai Tiki Retreat, Koh Lanta »)."), vers: S("Idem.") }),
   },
   {
     name: "estimer_temps_web",
     description:
-      "Quand temps_de_route ou planifier_course n'ont aucune durée (même après avoir situé l'hôtel) : cherche une durée de trajet en voiture sur le web, avec sa source. Utilise-le directement, sans demander la permission. Le résultat est une estimation, à présenter comme telle avec sa source.",
+      "Quand temps_de_route ou planifier_course n'ont aucune durée (même après avoir situé l'hôtel) : cherche une durée de trajet en voiture sur le web, avec sa source. Utilise-le directement quand le calcul est permis (ligne « Calcul d'itinéraire » du contexte), sans demander la permission. Le résultat est une estimation, à présenter comme telle avec sa source.",
     input_schema: obj({ de: S("Lieu de départ."), vers: S("Lieu d'arrivée.") }),
   },
   {
     name: "planifier_course",
     description:
-      "Calcule les heures d'une course privée en voiture : pickup à rebours depuis un rendez-vous (route, ferry en trois morceaux, marge de sécurité), heures d'arrivée à chaque point, et si un vol est tenable. Toujours utiliser cet outil pour donner une heure de pickup : ne calcule jamais une heure toi-même.",
+      "Calcule les heures d'une course privée en voiture : pickup à rebours depuis un rendez-vous (route, ferry en trois morceaux, marge de sécurité), heures d'arrivée à chaque point, et si un vol est tenable. Seulement si la personne le demande, ou si l'heure de prise en charge manque pour créer la course (ligne « Calcul d'itinéraire » du contexte) : une heure de pickup donnée par le client ou par la personne ne se recalcule jamais. Quand une heure doit être calculée, c'est avec cet outil, jamais de tête.",
     input_schema: obj({
       date: S("Date de la course, AAAA-MM-JJ."),
       points: {
@@ -1960,6 +1961,9 @@ export async function executer(nom, entree, ctx, memo) {
   const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx), apporteur: !!ctx.apporteur });
   if (!propre) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec des valeurs au bon format (textes, nombres entiers positifs, valeurs des listes fermées)." }, erreur: true };
   entree = propre;
+  // Itinéraire sur demande (itineraire.js) : le seul refus, planifier_course qui recalculerait un pickup déjà donné pour ce service pendant
+  // la création d'une carte, sans aucun mot de la personne dans ses derniers messages. Tout le reste passe : la consigne suffit.
+  if (ctx && ctx.itineraire && bloquerRecalcul(nom, entree, ctx.itineraire)) return { contenu: REFUS_RECALCUL, erreur: true };
   const ajouter = (r) => {
     for (const p of r.prix || []) memo.prix.add(Number(p));
     for (const h of r.heures || []) memo.heures.add(h);

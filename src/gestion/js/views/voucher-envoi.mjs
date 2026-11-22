@@ -12,9 +12,10 @@ import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
-import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
+import { renderVoucher, imprimerVoucher, vouchersDuDossier, sourcesVoucher } from "./voucher.mjs";
 import { ajusterBooking } from "./voucher-taxi.mjs";
-import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
+import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher, statutPaiementVoucher } from "../operations-calc.mjs";
+import { variablesVoucher, sansLignesVides } from "../message-voucher-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -58,20 +59,27 @@ export async function imageDuRendu(noeud) {
 
 let adresseApercu = null;
 
-// Le message de confirmation au client, en anglais, de l'entreprise ouverte (« taxi-confirmation-en » pour Taxi), rempli comme les autres
-// messages types. Sert à copier, au lien WhatsApp et au message sous l'image envoyée dans la conversation (voucher-whatsapp.mjs).
+// Le message au client sous le voucher ou la Booking confirmation, en anglais, de l'entreprise ouverte : son message « voucher » (modèles de
+// Jérémy du 22.11.2026, message-voucher-calc.mjs), sinon sa « confirmation ». Rempli d'après le dossier seulement. Sert à copier, au lien
+// WhatsApp, au message sous l'image envoyée dans la conversation (voucher-whatsapp.mjs) et aux cartes « Voucher » de l'Assistant.
 export function messageClientVoucher(x) {
   const r = x.reservation;
   const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
   const partenaire = partenaireDe(r.partenaire_id);
-  const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
-  return messageVoucher({
+  const res = resumeDossier(dossier.id) || {};
+  const devise = res.devise || reglages().devise || "THB";
+  const nomEntreprise = (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "";
+  // Le pickup vient de la réservation seulement, comme le voucher l'imprime (pickupInclus) : jamais l'hôtel de la fiche client.
+  const trajet = !!sourcesVoucher(r, x.prestation || null).trajet;
+  const paiement = statutPaiementVoucher({ ...res, surPlace: !!r.paye_sur_place });
+  const message = messageVoucher({
     pour: "client",
     prenom: client.prenom || "",
     gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
-    vars: variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "", telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }),
+    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ reservation: r, type: x.type, trajet, paiement, solde: res.reste, devise, entreprise: nomEntreprise }) },
   });
+  return sansLignesVides(message);
 }
 
 // `avantNavigation` (espace unifié, migration 63) : appelé à la fermeture de la fenêtre, avant toute navigation (retour dans l'entreprise de

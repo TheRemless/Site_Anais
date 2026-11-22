@@ -116,8 +116,11 @@ test("variables d'un message depuis une réservation", async () => {
   // Le message groupé des commissions de Taxi ajoute {courses} (taxi-calc.mjs varsCommissions).
   // L'envoi d'un devis ou d'une facture a ses variables (numéro du document) : celles de varsEnvoi (documents-calc.mjs, lot C1).
   const { varsEnvoi } = await import("../src/gestion/js/documents-calc.mjs");
-  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }), ...varsCommissions([v]), ...varsEnvoi({ en: true }) };
-  for (const m of [...MESSAGES_DEFAUT, ...MESSAGES_TAXI]) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
+  // Le message avec le voucher ajoute {pickup}, {jour}, {paiement} et {ENTREPRISE} (message-voucher-calc.mjs, 22.11.2026).
+  const { variablesVoucher } = await import("../src/gestion/js/message-voucher-calc.mjs");
+  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }), ...varsCommissions([v]), ...varsEnvoi({ en: true }), ...variablesVoucher({}) };
+  const { MESSAGES_VOUCHER_EXCURSIONS } = await import("../src/gestion/js/defauts.mjs");
+  for (const m of [...MESSAGES_DEFAUT, ...MESSAGES_TAXI, ...MESSAGES_VOUCHER_EXCURSIONS]) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
   // Taxi : la personne du partenaire, la dépose et le prix de la course.
   const t = variablesMessage({ reservation: { libelle: "Private minivan: Koh Lanta → Krabi Airport", montant_vente: 2700, details: { drop_off: "Krabi Airport" } }, partenaire: { nom: "VIP Taxi Lanta", contact: { personne: "Mr. Brown" } }, entreprise: { nom: "VIP Taxi Lanta", devise: "THB" }, langue: "th" });
   assert.equal(t.contact, "Mr. Brown");

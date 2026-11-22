@@ -12,19 +12,23 @@ test("nom du fichier du voucher : « Booking confirmation » en taxi, « Voucher
   assert.equal(nomFichierVoucher("EX-2026-0003-1", "Anna Keller"), "Voucher EX-2026-0003-1 - Anna.png", "sans option : comme avant");
 });
 
-test("message joint au voucher : le modèle « confirmation » en anglais de l'entreprise, le texte écrit en dur seulement en secours", () => {
+test("message joint au voucher : le modèle « voucher » puis « confirmation » en anglais de l'entreprise, le texte écrit en dur seulement en secours", () => {
   const taxi = messagesDefautPour({ fonctionnement: "taxi" });
   const gabaritTaxi = gabaritConfirmationVoucher([], taxi);
-  assert.match(gabaritTaxi, /Thank you for choosing \{entreprise\}/, "Taxi : taxi-confirmation-en (la marque vient du nom de l'entreprise, migration 44)");
+  // 22.11.2026 : le modèle « voucher » de Jérémy (taxi-voucher-en), la marque en capitales depuis le nom de l'entreprise.
+  assert.match(gabaritTaxi, /^Thank you for choosing \{ENTREPRISE\}\. ✨/, "Taxi : taxi-voucher-en");
   assert.equal(messageVoucher({ pour: "client", prenom: "Tom", gabarit: gabaritTaxi }), gabaritTaxi.trim());
 
-  // Un modèle propre à l'entreprise passe avant le modèle par défaut, et ses variables sont remplies.
-  const propre = [{ id: "x", pour: "client", cle: "confirmation", langue: "en", titre: "Mine", corps: "Hi {prenom}, see you on {date} with {entreprise}." }];
+  // Un modèle « voucher » propre à l'entreprise passe avant le modèle par défaut, et ses variables sont remplies. Une « confirmation » propre
+  // ne sert que sans aucun modèle « voucher » (ni enregistré ni par défaut).
+  const propre = [{ id: "x", pour: "client", cle: "voucher", langue: "en", titre: "Mine", corps: "Hi {prenom}, see you on {date} with {entreprise}." }];
   const gabarit = gabaritConfirmationVoucher(propre, MESSAGES_DEFAUT);
+  assert.equal(gabaritConfirmationVoucher([{ ...propre[0], cle: "confirmation" }], []), propre[0].corps, "sans modèle « voucher » : la confirmation");
   const vars = variablesMessage({ reservation: { date_service: "2026-12-10" }, client: { prenom: "Anna", nom: "Keller" }, entreprise: { nom: "Secret Travel & Tour" }, langue: "en" });
   assert.equal(messageVoucher({ pour: "client", prenom: "Anna", gabarit, vars }), "Hi Anna, see you on 10 December 2026 with Secret Travel & Tour.");
 
-  // Secret sans modèle en base : son modèle par défaut confirmation-en, jamais le français.
+  // Secret sans modèle en base : son modèle par défaut voucher-en (celui de Jérémy), jamais le français. ZTP garde sa confirmation.
+  assert.match(gabaritConfirmationVoucher([], messagesDefautPour({ fonctionnement: "excursions" })), /^Thank you for booking with \{entreprise\}\. ✨/);
   assert.match(gabaritConfirmationVoucher([], MESSAGES_DEFAUT), /^Hello \{prenom\}/);
   // Aucun modèle : le texte de secours.
   assert.equal(messageVoucher({ pour: "client", prenom: "Anna", gabarit: gabaritConfirmationVoucher([], []) }), "Hello Anna, here is your booking confirmation for your program. We wish you an excellent day!");

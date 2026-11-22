@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { estTaxi, lignesSurPlace, dateBookingTexte, dateBooking, heureBooking, passagersBooking, prixBooking, champsBooking, commissionsADemander, commissionsParChauffeur, ligneCommission, varsCommissions, JOURS_COMMISSION, valeursCommission, PIED_BOOKING, lignesEnPlus } from "../src/gestion/js/taxi-calc.mjs";
-import { MESSAGES_TAXI, MESSAGES_DEFAUT, messagesDefautPour, completerReglages } from "../src/gestion/js/defauts.mjs";
+import { MESSAGES_TAXI, MESSAGES_DEFAUT, MESSAGES_VOUCHER_EXCURSIONS, messagesDefautPour, completerReglages } from "../src/gestion/js/defauts.mjs";
 
 test("mode taxi : réglé par l'entreprise, toutes les lignes payées au chauffeur", () => {
   assert.equal(estTaxi({ fonctionnement: "taxi" }), true);
@@ -110,7 +110,8 @@ test("messages de Taxi : les deux textes de Jérémy mot pour mot, messages à M
   assert.equal(new Set(MESSAGES_TAXI.map((m) => m.id)).size, MESSAGES_TAXI.length);
   assert.deepEqual(messagesDefautPour({ fonctionnement: "taxi" }).map((m) => m.id), [...MESSAGES_TAXI.map((m) => m.id), "reponse-en"], "plus la réponse à une demande");
   // Secret écrit à ses clients en anglais seulement : aucun modèle français par défaut. ZTP garde les modèles généraux.
-  assert.deepEqual(messagesDefautPour({ fonctionnement: "excursions" }), MESSAGES_DEFAUT.filter((m) => m.langue !== "fr"));
+  // Plus le message sous le voucher (22.11.2026, MESSAGES_VOUCHER_EXCURSIONS), propre aux excursions.
+  assert.deepEqual(messagesDefautPour({ fonctionnement: "excursions" }), [...MESSAGES_DEFAUT.filter((m) => m.langue !== "fr"), ...MESSAGES_VOUCHER_EXCURSIONS]);
   assert.ok(!messagesDefautPour({ fonctionnement: "excursions" }).some((m) => m.langue === "fr"));
   assert.equal(messagesDefautPour({ fonctionnement: "sur_mesure" }), MESSAGES_DEFAUT);
 });
