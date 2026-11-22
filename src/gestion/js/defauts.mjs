@@ -213,9 +213,6 @@ export function mentionTva(conditions, en) {
 export const MESSAGES_DEFAUT = [
   { id: "confirmation-fr", pour: "client", cle: "confirmation", titre: "Confirmation au client", langue: "fr", corps: "Bonjour {prenom},\n\nVotre réservation est confirmée :\n• {prestation}\n• Date : {date}\n• {personnes}\n• Prise en charge : {hotel}{a_heure}\n\nSi quelque chose change, écrivez-nous ici. Merci d'avoir réservé avec {entreprise}, à très bientôt !\n{telephone}" },
   { id: "confirmation-en", pour: "client", cle: "confirmation", titre: "Confirmation to the client", langue: "en", corps: "Hello {prenom},\n\nYour booking is confirmed:\n• {prestation}\n• Date: {date}\n• {personnes}\n• Pickup: {hotel}{a_heure}\n\nIf anything changes, just message us here. Thank you for booking with {entreprise}, see you soon!\n{telephone}" },
-  // Le message sous le voucher (22.11.2026, modèle de Jérémy pour Secret, mot pour mot, signature comprise) : {jour} (« activity » ou
-  // « transfer »), {pickup} (une ligne par pickup du dossier, rien sans pickup). Voir message-voucher-calc.mjs.
-  { id: "voucher-en", pour: "client", cle: "voucher", titre: "Message with the voucher", langue: "en", corps: "Thank you for booking with {entreprise}. ✨\n\nPlease find your voucher attached and keep it on your phone for the day of your {jour}.\nLet us know if everything is correct.\n\n{pickup}\n\nIf anything changes, please let us know as soon as possible.\n\nHave a nice day ☀️\n{entreprise} 🌴" },
   { id: "rappel-fr", pour: "client", cle: "rappel", titre: "Rappel de la veille", langue: "fr", corps: "Bonjour {prenom},\n\nPetit rappel pour demain : {prestation}.\nPrise en charge à {heure} à {hotel}. Merci d'être prêt quelques minutes avant, avec votre voucher sur votre téléphone.\nPensez à l'eau, à la crème solaire et à des espèces pour les éventuels frais de parc national.\n\nBonne journée,\n{entreprise}" },
   { id: "rappel-en", pour: "client", cle: "rappel", titre: "Reminder for tomorrow", langue: "en", corps: "Hello {prenom},\n\nA quick reminder for tomorrow: {prestation}.\nPickup at {heure} from {hotel}. Please be ready a few minutes early, with your voucher on your phone.\nBring water, sunscreen and some cash for any national park fees.\n\nHave a great day,\n{entreprise}" },
   { id: "avis-fr", pour: "client", cle: "avis", titre: "Demande d'avis après le voyage", langue: "fr", corps: "Bonjour {prenom},\n\nNous espérons que {prestation} vous a plu ! Si vous avez deux minutes, un avis Google nous aiderait beaucoup :\n{lien_avis}\nMerci d'avance.\n\nÀ bientôt,\n{entreprise}" },
@@ -278,7 +275,13 @@ export const MESSAGES_TAXI = [
 // Messages de départ d'une entreprise selon sa façon de travailler : ceux de Taxi en mode taxi, sinon les messages généraux.
 // Taxi garde aussi la « réponse à une demande » en anglais (bouton « Répondre au client » de la demande collée).
 // Secret écrit à ses clients en anglais seulement (Jérémy) : aucun modèle français ne lui est proposé.
-export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : reglages && reglages.fonctionnement === "excursions" ? MESSAGES_DEFAUT.filter((m) => m.langue !== "fr") : MESSAGES_DEFAUT);
+// Le message sous le voucher de Secret (22.11.2026, modèle de Jérémy, mot pour mot, signature comprise) : {jour} (« activity », « transfer »
+// ou « trip »), {pickup} (la ligne de pickup de la réservation, rien sans pickup). Voir message-voucher-calc.mjs. À part de MESSAGES_DEFAUT :
+// la migration 44 a enregistré ceux-là pour ZTP (verif-noms-marques), et ce message ne sert qu'aux excursions.
+export const MESSAGES_VOUCHER_EXCURSIONS = [
+  { id: "voucher-en", pour: "client", cle: "voucher", titre: "Message with the voucher", langue: "en", corps: "Thank you for booking with {entreprise}. ✨\n\nPlease find your voucher attached and keep it on your phone for the day of your {jour}.\nLet us know if everything is correct.\n\n{pickup}\n\nIf anything changes, please let us know as soon as possible.\n\nHave a nice day ☀️\n{entreprise} 🌴" },
+];
+export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : reglages && reglages.fonctionnement === "excursions" ? [...MESSAGES_DEFAUT.filter((m) => m.langue !== "fr"), ...MESSAGES_VOUCHER_EXCURSIONS] : MESSAGES_DEFAUT);
 
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {

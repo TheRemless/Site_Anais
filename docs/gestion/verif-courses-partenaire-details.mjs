@@ -173,7 +173,10 @@ rows = await brown();
 for (const k of ["remarques_paiement", "caution", "conditions", "bateau", "programme", "parc_texte", "permis", "equipement", "depart", "arrivee"]) ok(!sqlListe.includes(k), `point 4 : ${k} n'est pas dans la liste blanche`);
 
 // ---- Aucun net, aucune note interne ----------------------------------------------------------------------------------------------------
-const tout = JSON.stringify(rows);
+// Les identifiants (uuid aléatoires) sont retirés avant de chercher les marqueurs : « 1234 » peut y apparaître par hasard (échec de la CI du
+// 22.11.2026, run 45017557958, non reproductible en 51 passages). Un net, une note ou une ligne n'est jamais un uuid : rien n'est assoupli.
+const UUID_ALEATOIRE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
+const tout = JSON.stringify(rows).replace(UUID_ALEATOIRE, "<id>");
 for (const k of Object.keys(INTERNES)) ok(rows.every((x) => !(k in (x.details || {}))), `clé interne absente : ${k}`);
 for (const s of ["1234", "9999", "SECRET-", "L-test", "AUTRE-REF", "Autre chauffeur test", "VIP Taxi test", "[object Object]"]) ok(!tout.includes(s), `rien ne sort de « ${s} » (nets, notes, lignes, autre prestataire)`);
 ok(!Object.keys(c).some((k) => /net|note|marge/.test(k)), "aucune colonne de net, de marge ou de note");

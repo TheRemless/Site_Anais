@@ -27,8 +27,9 @@ test("message joint au voucher : le modèle « voucher » puis « confirmation �
   const vars = variablesMessage({ reservation: { date_service: "2026-12-10" }, client: { prenom: "Anna", nom: "Keller" }, entreprise: { nom: "Secret Travel & Tour" }, langue: "en" });
   assert.equal(messageVoucher({ pour: "client", prenom: "Anna", gabarit, vars }), "Hi Anna, see you on 10 December 2026 with Secret Travel & Tour.");
 
-  // Secret sans modèle en base : son modèle par défaut voucher-en (celui de Jérémy), jamais le français.
-  assert.match(gabaritConfirmationVoucher([], MESSAGES_DEFAUT), /^Thank you for booking with \{entreprise\}\. ✨/);
+  // Secret sans modèle en base : son modèle par défaut voucher-en (celui de Jérémy), jamais le français. ZTP garde sa confirmation.
+  assert.match(gabaritConfirmationVoucher([], messagesDefautPour({ fonctionnement: "excursions" })), /^Thank you for booking with \{entreprise\}\. ✨/);
+  assert.match(gabaritConfirmationVoucher([], MESSAGES_DEFAUT), /^Hello \{prenom\}/);
   // Aucun modèle : le texte de secours.
   assert.equal(messageVoucher({ pour: "client", prenom: "Anna", gabarit: gabaritConfirmationVoucher([], []) }), "Hello Anna, here is your booking confirmation for your program. We wish you an excellent day!");
 });

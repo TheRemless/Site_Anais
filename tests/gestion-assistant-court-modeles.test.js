@@ -12,7 +12,7 @@ import { consignes, contexteDuJour } from "../supabase/functions/agent/prompt.js
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
 import { variablesVoucher, sansLignesVides, pickupDuVoucher, phrasePaiement, PAIEMENT_CHAUFFEUR, DEJA_PAYE } from "../src/gestion/js/message-voucher-calc.mjs";
 import { messageSousVoucher } from "../src/gestion/js/views/messages.mjs";
-import { MESSAGES_DEFAUT, MESSAGES_TAXI, messagesDefautPour } from "../src/gestion/js/defauts.mjs";
+import { MESSAGES_DEFAUT, MESSAGES_TAXI, MESSAGES_VOUCHER_EXCURSIONS, messagesDefautPour } from "../src/gestion/js/defauts.mjs";
 import { gabaritConfirmationVoucher, remplirGabarit } from "../src/gestion/js/operations-calc.mjs";
 
 const lire = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -184,7 +184,10 @@ test("Secret : le modèle de Jérémy mot pour mot ; le pickup de la réservatio
   assert.match(rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "excursion", reservation: { lieu_pickup: "Saladan Pier" } }), /\nYour pickup will be at Saladan Pier\.\n/);
   // {jour} : « trip » pour un billet ou un bateau de transport, « transfer » pour un transfert, « activity » sinon.
   for (const [type, jour] of [["billet", "trip"], ["bateau", "trip"], ["transfert", "transfer"], ["excursion", "activity"], ["activite", "activity"], ["location", "activity"]]) assert.equal(variablesVoucher({ type }).jour, jour, type);
-  const m = MESSAGES_DEFAUT.find((x) => x.id === "voucher-en");
+  // Rangé avec les modèles des excursions, à part de MESSAGES_DEFAUT (la migration 44 a enregistré ceux-là pour ZTP, verif-noms-marques).
+  const m = MESSAGES_VOUCHER_EXCURSIONS.find((x) => x.id === "voucher-en");
+  assert.ok(!MESSAGES_DEFAUT.some((x) => x.cle === "voucher"), "ZTP et les voyages sur mesure ne reçoivent pas ce modèle");
+  assert.ok(messagesDefautPour(SECRET).some((x) => x.id === "voucher-en"));
   assert.deepEqual([m.pour, m.cle, m.langue], ["client", "voucher", "en"]);
 });
 
@@ -214,8 +217,8 @@ test("écran Messages : l'usage « Message avec le voucher » et la note « Util
   // Le message choisi, comme gabaritConfirmationVoucher : un « voucher » enregistré, sinon le modèle de départ, sinon la confirmation.
   const conf = { id: "c1", pour: "client", cle: "confirmation", langue: "en", titre: "Confirmation", corps: "Hello {prenom}" };
   const vouch = { id: "v1", pour: "client", cle: "voucher", langue: "en", titre: "Mine", corps: "Thanks" };
-  assert.equal(messageSousVoucher([conf, vouch], MESSAGES_DEFAUT).id, "v1");
-  const defaut = messageSousVoucher([conf], MESSAGES_DEFAUT);
+  assert.equal(messageSousVoucher([conf, vouch], messagesDefautPour(SECRET)).id, "v1");
+  const defaut = messageSousVoucher([conf], messagesDefautPour(SECRET));
   assert.deepEqual([defaut.defaut, defaut.titre], [true, "Message with the voucher"]);
   assert.equal(messageSousVoucher([conf], []).id, "c1");
   const en = lire("src/gestion/js/i18n-en.mjs");
