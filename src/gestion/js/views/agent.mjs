@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte } from "../agent-calc.mjs";
+import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte, chauffeurCarte } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
@@ -15,6 +15,7 @@ import { propositionVersDemande } from "../assistant-calc.mjs";
 import { lireMessage } from "../demande-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
+import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
 import { phraseInterne } from "../agent-apprendre-texte.mjs";
@@ -122,6 +123,7 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 315 : calculé par l'écran, jamais par la fonction.
   sieges_a_verifier: N_("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant »."),
   sieges_a_choisir: N_("Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant »."),
+  lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
   remarque_voucher_interne: N_("La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
   vol_illisible: N_("Un numéro de vol proposé n'a pas la forme d'un numéro de vol : il a été laissé vide."),
@@ -1227,6 +1229,8 @@ export async function vueAgent(idOuvert = "") {
     return { ok: true, dossier: ici, dossiers: crees };
   }
 
+  // Le chauffeur d'une course ajoutée par carte (22.11.2026) : appelé une fois dans l'entreprise du dossier (dansEntreprise, dansFenetre).
+  const chauffeurDeLaCarte = (c) => chauffeurCarte((c.donnees || {}).service, { taxi: modeTaxi(), defaut: modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null, prestations: etat.db.prestations, trajets: etat.db.trajets });
   // L'entreprise visée par une carte « service » (le dossier) ou « modification » (le service), quand elle n'est pas l'entreprise active.
   function entiteVisee(c) {
     const d = c.donnees || {};
@@ -1276,7 +1280,7 @@ export async function vueAgent(idOuvert = "") {
       else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
-      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(c, reservationDepuisCarte(c.donnees), tr("Service ajouté au dossier.")));
+      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(c, reservationDepuisCarte(c.donnees, { partenaireId: chauffeurDeLaCarte(c) }), tr("Service ajouté au dossier.")));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
@@ -1390,7 +1394,7 @@ export async function vueAgent(idOuvert = "") {
   function ouvrirReservation(c) {
     return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {
       // « Annuler » rend null : la carte reste à valider. La fermeture ramène dans l'entreprise de la conversation.
-      const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(c.donnees), async (res) => {
+      const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(c.donnees, { partenaireId: chauffeurDeLaCarte(c) }), async (res) => {
         ferme();
         if (!res) return;
         toast(tr("Service ajouté au dossier."));

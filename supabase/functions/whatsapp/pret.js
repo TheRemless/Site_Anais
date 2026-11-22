@@ -266,9 +266,21 @@ export function carteDe(messages = [], jusque = null) {
   return carte;
 }
 
+// La réservation faite pour ce signal (dossier Taxi 2026-0013, 22.11.2026) : le service créé (par carte de l'Assistant ou à la main) dans un
+// dossier de Secret ou de Taxi du client, depuis le prix donné. La confirmation et le voucher envoyés ENSUITE par Nani ne refont pas « prêt » :
+// seule une nouvelle demande, avec un nouveau prix donné après ce service, le refait. `reservations` : [{ created_at, statut }], celles des
+// dossiers du client (fiche reliée, dossier relié), jamais ZTP (pret.ts les lit). Rend l'heure du dernier service créé depuis `depuis`, ou null.
+export function reserveDepuis(reservations = [], depuis) {
+  const d = Date.parse(depuis || "");
+  if (Number.isNaN(d)) return null;
+  const faits = (reservations || []).filter((r) => r && r.statut !== "annule" && !r.dossier_annule && Date.parse(r.created_at || "") >= d).map((r) => r.created_at);
+  return faits.sort().at(-1) || null;
+}
+
 // La décision gardée sur la conversation (colonne pret_reserver) : courte, sans texte de message.
-//   { pret: true, le, depuis, message_id, source, motif, carte, calcule_le } ou { pret: false, motif, calcule_le }.
-export function etatPret(conv, messages = [], maintenant = new Date().toISOString()) {
+//   { pret: true, le, depuis, message_id, source, motif, carte, calcule_le } ou { pret: false, motif, calcule_le } ; motif « reserve » : le
+//   service de cette réservation est créé (reserve_le).
+export function etatPret(conv, messages = [], maintenant = new Date().toISOString(), { reservations = [] } = {}) {
   if (!conversationPossible(conv)) return { pret: false, motif: "exclue", calcule_le: maintenant };
   const v = vivants(messages).slice(-MESSAGES_LUS);
   let signal = null;
@@ -281,10 +293,13 @@ export function etatPret(conv, messages = [], maintenant = new Date().toISOStrin
   // `depuis` : le prix donné par Nani avant le signal. Un dossier du client créé depuis ce moment est celui de cette réservation (Nani crée
   // souvent le dossier avant d'envoyer la confirmation : deux minutes avant, dans la conversation réelle C36).
   const prix = v.slice(0, signal.index).filter((m) => m.sens === "sortant" && contientPrix(texteDe(m))).at(-1);
+  const depuis = prix ? prix.envoye_le : signal.message.envoye_le;
+  const reserve = reserveDepuis(reservations, depuis);
+  if (reserve) return { pret: false, motif: "reserve", reserve_le: reserve, calcule_le: maintenant };
   return {
     pret: true,
     le: signal.message.envoye_le,
-    depuis: prix ? prix.envoye_le : signal.message.envoye_le,
+    depuis,
     message_id: signal.message.id || null,
     source: signal.source,
     motif: signal.motif,

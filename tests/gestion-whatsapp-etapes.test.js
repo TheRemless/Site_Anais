@@ -181,7 +181,7 @@ test("faits : des dates et des entreprises seulement, jamais un texte ; dans la 
 const lire = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 test("branchements : fonction, écran, stores, CI ; aucun appel à l'IA ; index.ts et calc.js inchangés", () => {
   const ts = lire("supabase/functions/whatsapp/pret.ts");
-  assert.match(ts, /faitsAvancee\(conv, messages\)/);
+  assert.match(ts, /faitsAvancee\(conv, messages, undefined, \{ reservations \}\)/);
   assert.match(ts, /pretChange\(conv\.avancee, faits\)/);
   assert.doesNotMatch(lire("supabase/functions/whatsapp/etapes.js"), /anthropic|messages\.create|fetch\(/i);
   const vue = lire("src/gestion/js/views/whatsapp.mjs");

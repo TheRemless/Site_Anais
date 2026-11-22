@@ -183,7 +183,10 @@ export function etapesConversation(c, { dossiers = [], clients = [], reservation
     // Un prix donné après la création du dossier : une nouvelle demande (client qui revient : arrivée, puis transfert retour), les messages
     // reprennent. La confirmation de ce dossier n'est pas un prix : elle ne le fait pas.
     const m = (f && f.par && f.par[cle]) || {};
-    const prixApres = d && (t(m.prix_le) || 0) > (t(d.created_at) || 0);
+    // Un service ajouté au dossier ensuite (carte de l'Assistant, dossier Taxi 2026-0013) répond à ce prix : seul un prix plus récent que le
+    // dernier service est une nouvelle demande.
+    const dernierService = maxi(t(d && d.created_at), ...resas.filter((r) => r && r.statut !== "annule").map((r) => t(r.created_at)));
+    const prixApres = d && (t(m.prix_le) || 0) > (dernierService || 0);
     // Une question sans prix, posée pendant qu'un dossier de l'autre entreprise est en cours (« le transfert du retour est-il inclus ? »,
     // cas C18) : un suivi de ce dossier, pas une nouvelle demande ici.
     const suiviAutre = parMessages && parMessages.etape === "nouvelle" && !d && duClient.some((x) => x && !x.annule && ["secret", "taxi"].includes(marqueDe(x.entite_id)) && marqueDe(x.entite_id) !== cle && (t(x.created_at) || 0) <= parMessages.depuis);

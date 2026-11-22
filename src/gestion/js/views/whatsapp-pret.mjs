@@ -10,7 +10,7 @@ import { FILTRE_PRET, pretAReserver, pretRetire, conversationsPretes, dossierARe
 
 // Seuls les dossiers de Secret et de Taxi comptent (marqueDe) : ZTP ne se mélange jamais.
 const marqueDe = (id) => marqueEntite(((etat.brut && etat.brut.entites) || []).find((e) => e.id === id) || null);
-const contexte = () => ({ dossiers: (etat.brut && etat.brut.dossiers) || [], clients: (etat.brut && etat.brut.clients) || [], marqueDe });
+const contexte = () => ({ dossiers: (etat.brut && etat.brut.dossiers) || [], clients: (etat.brut && etat.brut.clients) || [], reservations: (etat.brut && etat.brut.reservations) || [], marqueDe });
 // Le filtre n'est proposé qu'avec la migration 85 (la colonne est relue par store-supabase.mjs).
 export const filtrePretDisponible = () => !!(etat.brut && etat.brut.whatsapp_pret_disponible);
 export { FILTRE_PRET };

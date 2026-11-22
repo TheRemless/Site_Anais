@@ -92,7 +92,8 @@ const TROIS_MIN = 3 * 60 * 1000;
 const t = (iso) => Date.parse(iso || "") || 0;
 
 // Les faits gardés sur la conversation (colonne avancee).
-export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOString()) {
+// `reservations` : comme etatPret, les services des dossiers du client (un service créé depuis le prix retire « prêt »).
+export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOString(), { reservations = [] } = {}) {
   if (!conv || conv.reponses === "jamais") return { v: VERSION_FAITS, jamais: true, calcule_le: maintenant };
   const v = vivants(messages).slice(-MESSAGES_LUS);
   const entrants = v.filter((m) => m.sens === "entrant");
@@ -132,7 +133,7 @@ export function faitsAvancee(conv, messages = [], maintenant = new Date().toISOS
       dernierEchange = cle;
     }
   });
-  const p = etatPret(conv, v, maintenant);
+  const p = etatPret(conv, v, maintenant, { reservations });
   let pret = null;
   if (p.pret) {
     const i = v.findIndex((m) => m.envoye_le === p.depuis && m.sens === "sortant");

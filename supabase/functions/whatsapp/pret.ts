@@ -15,8 +15,31 @@ import { signauxPartenaire, typeADeduire } from "./type-contact.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 export const RATTRAPAGE_MAX = 20;
-const COLONNES = "id, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";
+const COLONNES = "id, organisation_id, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";
 const COLONNES_TYPE = "type_source, type_avis, type_signaux";
+
+// Les services des dossiers du client, chez Secret et Taxi seulement (ZTP jamais) : le dossier relié et ceux de la fiche reliée, non annulés.
+// Un service créé depuis le prix donné retire « prêt à réserver » (dossier Taxi 2026-0013, 22.11.2026 : réservation créée par une carte de
+// l'Assistant à 13:51, confirmation et voucher envoyés à 13:55, la conversation restait « prête » parce que le dossier relié datait du 16.11).
+// Une lecture en échec rend [] : la décision reste celle des messages, comme avant.
+// deno-lint-ignore no-explicit-any
+export async function reservationsDuClient(db: SupabaseClient, conv: any) {
+  try {
+    if (!conv || (!conv.dossier_id && !conv.client_id) || !conv.organisation_id) return [];
+    const { data: ents, error: errE } = await db.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+    if (errE || !ents || !ents.length) return [];
+    const ids = ents.map((e: { id: string }) => e.id);
+    const filtres = [conv.dossier_id ? `id.eq.${conv.dossier_id}` : "", conv.client_id ? `client_id.eq.${conv.client_id}` : ""].filter(Boolean).join(",");
+    const { data: dossiers, error: errD } = await db.from("dossiers").select("id").in("entite_id", ids).eq("annule", false).or(filtres).limit(50);
+    if (errD || !dossiers || !dossiers.length) return [];
+    const { data: resas, error: errR } = await db.from("reservations").select("created_at, statut").in("dossier_id", dossiers.map((d: { id: string }) => d.id)).in("entite_id", ids).order("created_at", { ascending: false }).limit(50);
+    if (errR) return [];
+    return resas || [];
+  } catch (err) {
+    console.error("whatsapp : services du client illisibles", String((err as Error)?.message || err).slice(0, 200));
+    return [];
+  }
+}
 
 export async function pretApresMessage(db: SupabaseClient, conversationId: string) {
   try {
@@ -43,11 +66,12 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
     const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, supprime_le, statut_envoi").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
     if (errM) return console.error("whatsapp : prêt à réserver, messages illisibles", errM.message);
     const messages = [...(msgs || [])].reverse();
+    const reservations = await reservationsDuClient(db, conv);
     const patch: Record<string, unknown> = {};
-    const decision = etatPret(conv, messages);
+    const decision = etatPret(conv, messages, undefined, { reservations });
     if (pretChange(conv.pret_reserver, decision)) patch.pret_reserver = decision;
     if (avecAvancee) {
-      const faits = faitsAvancee(conv, messages);
+      const faits = faitsAvancee(conv, messages, undefined, { reservations });
       if (pretChange(conv.avancee, faits)) patch.avancee = faits;
     }
     let signaux = null;
