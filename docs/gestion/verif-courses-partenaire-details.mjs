@@ -70,7 +70,9 @@ const P = { vip: await partenaire(ent.taxi, "VIP Taxi test"), autre: await parte
 await db.query("insert into partenaires_acces (user_id, partenaire_id) values ($1, $2)", [u.brown, P.vip]);
 const prestation = (await un("insert into prestations (entite_id, partenaire_id, famille, groupe, libelle, prix_vente, unite) values ($1, $2, 'transfert', 'Private Taxi', 'Krabi Airport', 2300, 'veh') returning id", [ent.taxi, P.vip])).id;
 let nref = 0;
-const INTERNES = { lignes_ids: ["L-test"], envois: [{ le: "x" }], voucher_fige: 3, prix_origine: 9999, commission_demandee_le: "2026-11-01", copie_de: "abc", note: "SECRET-NOTE-RES", personnes_du_dossier: true, avis_demande_le: "2026-11-02" };
+const INTERNES = { lignes_ids: ["L-test"], envois: [{ le: "x" }], voucher_fige: 3, prix_origine: 9999, commission_demandee_le: "2026-11-01", copie_de: "abc", note: "SECRET-NOTE-RES", personnes_du_dossier: true, avis_demande_le: "2026-11-02",
+  // Champs que n'imprime aucun document de Taxi (revue de sécurité, point 4) : ils ne sortent jamais, même remplis.
+  remarques_paiement: "SECRET-NOTE-PAIEMENT-VOUCHER", caution: "SECRET-CAUTION", conditions: "SECRET-CONDITIONS", bateau: "SECRET-BATEAU", programme: "SECRET-PROGRAMME", parc_texte: "SECRET-PARC" };
 async function course({ n = 1, partenaireId = P.vip, details = {}, surPlace = true, prix = 2300, clientDe = ent.taxi, adresse = "Lanta Test Resort, Room 12\nLong Beach", refPartenaire = "", ligne = null, paye = null, prestationId = null }) {
   const c = (await un("insert into clients (entite_id, prenom, nom, telephone, adresse, notes) values ($1, 'Test', $2, '+44 7700 900111', $3, 'SECRET-NOTE-CLIENT') returning id", [clientDe, "Client" + ++nref, adresse])).id;
   const d = (await un("insert into dossiers (entite_id, ref, client_id, notes) values ($1, $2, $3, 'SECRET-NOTE-DOSSIER') returning id", [ent.taxi, "TX-TEST-" + nref, c])).id;
@@ -81,9 +83,11 @@ async function course({ n = 1, partenaireId = P.vip, details = {}, surPlace = tr
   if (paye) await db.query("insert into paiements (entite_id, dossier_id, date, montant, note) values ($1, $2, $3, $4, 'SECRET-NOTE-PAIEMENT')", [ent.taxi, d, await jour(0), paye]);
   return r;
 }
-const TOUT = { drop_off: "Lanta Test Villas", vol: "FD0000 14:05", bagages: "3", sieges: 1, type_transfert: "minivan", remarques: "Call on arrival", remarques_paiement: "Cash THB", hotel: "Lanta Test Resort", chambre: "12", embarquement: "Arrivals hall, gate 3", pickup_zone: "Long Beach", retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport" };
+const TOUT = { drop_off: "Lanta Test Villas", vol: "FD0000 14:05", bagages: "3", sieges: 1, type_transfert: "minivan", remarques: "Call on arrival", hotel: "Lanta Test Resort", chambre: "12", embarquement: "Arrivals hall, gate 3", retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport" };
+// La zone telle que pickup-calc.mjs la garde (point 2) : un objet { zone, grille, depart } ; seul le nom sort.
+const ZONE = { zone: "Long Beach", grille: "SECRET-GRILLE-AUTRE-PRESTATAIRE", depart: "Saladan" };
 const R = {
-  complete: await course({ details: TOUT, refPartenaire: "BR-77", ligne: { id: "L-1", par: "veh", qte: 2, unite: 2300 }, prestationId: prestation }),
+  complete: await course({ details: { ...TOUT, pickup_zone: ZONE }, refPartenaire: "BR-77", ligne: { id: "L-1", par: "veh", qte: 2, unite: 2300 }, prestationId: prestation }),
   prepayee: await course({ n: 2, surPlace: false, ligne: { id: "L-2", par: "veh", qte: 1, unite: 2300 }, paye: 2300 }),
   acompte: await course({ n: 3, surPlace: false, ligne: { id: "L-3", par: "veh", qte: 1, unite: 2300 }, paye: 500 }),
   sansPartenaire: await course({ n: 4, partenaireId: null, refPartenaire: "AUTRE-REF" }),
@@ -118,16 +122,60 @@ ok(Number(c.vehicules) === 2, "le nombre de véhicules vient de la quantité de 
 ok(Number(de(R.sansPartenaire).vehicules) === 1, "sans ligne : un véhicule");
 ok(c.adresse_client === "Lanta Test Resort, Room 12", "l'hôtel du client (première ligne de l'adresse) pour une fiche de Taxi");
 ok(de(R.partagee).adresse_client === "", "jamais l'adresse postale d'une fiche partagée d'une autre entreprise");
+ok(c.details.pickup_zone === "Long Beach", "point 2 : la zone de prise en charge sort par son seul nom " + JSON.stringify(c.details.pickup_zone));
 ok(c.paiement === "sur_place" && Number(c.a_encaisser) === 2300, "payé au chauffeur : il encaisse le prix");
 ok(de(R.prepayee).paiement === "paye" && Number(de(R.prepayee).a_encaisser) === 0, "déjà payé : rien à encaisser " + JSON.stringify([de(R.prepayee).paiement, de(R.prepayee).a_encaisser]));
-ok(de(R.acompte).paiement === "acompte" && Number(de(R.acompte).a_encaisser) === 1800, "acompte : il encaisse le reste " + JSON.stringify([de(R.acompte).paiement, de(R.acompte).a_encaisser]));
+ok(de(R.acompte).paiement === "acompte" && Number(de(R.acompte).a_encaisser) === 1800, "acompte sur une seule course : il encaisse le reste exact " + JSON.stringify([de(R.acompte).paiement, de(R.acompte).a_encaisser]));
 ok(de(R.sansPartenaire).reference_partenaire === "", "jamais la référence d'un autre prestataire sur une course sans sa fiche");
 ok(de(R.retourDepart).retour === true && de(R.retourDepart).details.programme_trajet === "Old Town tour" && Number(de(R.retourDepart).details.duree_h) === 4, "retour au point de départ : programme et durée");
+
+// ---- Point 1 : acompte sur aller et retour (1500 + 1500, acompte 1000) ----------------------------------------------------------------
+{
+  const cl = (await un("insert into clients (entite_id, prenom, nom, telephone) values ($1, 'Aller', 'Retour', '+44 7700 900222') returning id", [ent.taxi])).id;
+  const dos = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'TX-AR-1', $2) returning id", [ent.taxi, cl])).id;
+  const res = async (n, ligne) => (await un("insert into reservations (entite_id, dossier_id, partenaire_id, ligne_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, paye_sur_place) values ($1, $2, $3, $4, 'Private minivan', $5, '09:00', 'Hotel', '{\"adultes\": 2}', 'confirme', 1500, false) returning id", [ent.taxi, dos, P.vip, ligne, await jour(n)])).id;
+  const aller = await res(7, "AR-1");
+  const retourR = await res(9, "AR-2");
+  await db.query("insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, 'facture', $3, $4::jsonb)", [ent.taxi, dos, await jour(0), JSON.stringify({ lignes: [{ id: "AR-1", kind: "ligne", par: "veh", qte: 1, unite: 1500 }, { id: "AR-2", kind: "ligne", par: "veh", qte: 1, unite: 1500 }] })]);
+  await db.query("insert into paiements (entite_id, dossier_id, date, montant) values ($1, $2, $3, 1000)", [ent.taxi, dos, await jour(0)]);
+  const lignesAR = (await brown()).filter((x) => x.id === aller || x.id === retourR);
+  ok(lignesAR.length === 2 && lignesAR.every((x) => x.paiement === "acompte_partage" && x.a_encaisser === null), "point 1 : acompte réparti sur aller et retour, aucun montant deviné (pas 2 × 1500) " + JSON.stringify(lignesAR.map((x) => [x.paiement, x.a_encaisser])));
+  // Le retour annulé : il ne reste qu'une course réglée d'avance, le reste dû redevient exact (1500 - 1000).
+  await db.query("update reservations set statut = 'annule' where id = $1", [retourR]);
+  await db.query("update documents set contenu = $2::jsonb where dossier_id = $1", [dos, JSON.stringify({ lignes: [{ id: "AR-1", kind: "ligne", par: "veh", qte: 1, unite: 1500 }] })]);
+  const seule = (await brown()).find((x) => x.id === aller);
+  ok(seule && seule.paiement === "acompte" && Number(seule.a_encaisser) === 500, "point 1 : une seule course non réglée, le reste dû exact " + JSON.stringify(seule && [seule.paiement, seule.a_encaisser]));
+}
+
+// ---- Point 3 : un devis et une facture portent la même ligne au véhicule (qte 2) : 2 véhicules, jamais 4 --------------------------------
+{
+  const cl = (await un("insert into clients (entite_id, prenom, nom) values ($1, 'Deux', 'Documents') returning id", [ent.taxi])).id;
+  const dos = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'TX-DOC-1', $2) returning id", [ent.taxi, cl])).id;
+  const res = (await un("insert into reservations (entite_id, dossier_id, partenaire_id, ligne_id, libelle, date_service, personnes, statut, montant_vente, paye_sur_place) values ($1, $2, $3, 'VV-1', 'Private minivan', $4, '{}', 'confirme', 4600, true) returning id", [ent.taxi, dos, P.vip, await jour(8)])).id;
+  const doc = (type, qte) => db.query("insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, $3, $4, $5::jsonb)", [ent.taxi, dos, type, "2026-01-01", JSON.stringify({ lignes: [{ id: "VV-1", kind: "ligne", par: "veh", qte, unite: 2300 }] })]);
+  await doc("devis", 3);
+  ok(Number((await brown()).find((x) => x.id === res).vehicules) === 3, "point 3 : devis seul, sa quantité");
+  await doc("facture", 2);
+  ok(Number((await brown()).find((x) => x.id === res).vehicules) === 2, "point 3 : devis et facture, la facture seule (2, jamais 5) " + (await brown()).find((x) => x.id === res).vehicules);
+}
+
+// ---- Point 2 : une zone gardée en texte sort telle quelle, une valeur d'un autre type ne sort pas -----------------------------------------
+{
+  await db.query("update reservations set details = details || $2::jsonb where id = $1", [R.sansPartenaire, JSON.stringify({ pickup_zone: "Klong Dao" })]);
+  await db.query("update reservations set details = details || $2::jsonb where id = $1", [R.partagee, JSON.stringify({ pickup_zone: { grille: "SECRET-GRILLE" } })]);
+  rows = await brown();
+  ok(de(R.sansPartenaire).details.pickup_zone === "Klong Dao", "point 2 : une zone en texte sort telle quelle");
+  ok(!("pickup_zone" in de(R.partagee).details), "point 2 : un objet sans nom de zone ne sort pas");
+}
+rows = await brown();
+
+// ---- Point 4 : liste blanche réduite --------------------------------------------------------------------------------------------------------
+for (const k of ["remarques_paiement", "caution", "conditions", "bateau", "programme", "parc_texte", "permis", "equipement", "depart", "arrivee"]) ok(!sqlListe.includes(k), `point 4 : ${k} n'est pas dans la liste blanche`);
 
 // ---- Aucun net, aucune note interne ----------------------------------------------------------------------------------------------------
 const tout = JSON.stringify(rows);
 for (const k of Object.keys(INTERNES)) ok(rows.every((x) => !(k in (x.details || {}))), `clé interne absente : ${k}`);
-for (const s of ["1234", "9999", "SECRET-NOTE", "L-test", "AUTRE-REF", "Autre chauffeur test", "VIP Taxi test"]) ok(!tout.includes(s), `rien ne sort de « ${s} » (nets, notes, lignes, autre prestataire)`);
+for (const s of ["1234", "9999", "SECRET-", "L-test", "AUTRE-REF", "Autre chauffeur test", "VIP Taxi test", "[object Object]"]) ok(!tout.includes(s), `rien ne sort de « ${s} » (nets, notes, lignes, autre prestataire)`);
 ok(!Object.keys(c).some((k) => /net|note|marge/.test(k)), "aucune colonne de net, de marge ou de note");
 
 // ---- Se rejoue, retour en arrière ----------------------------------------------------------------------------------------------------------

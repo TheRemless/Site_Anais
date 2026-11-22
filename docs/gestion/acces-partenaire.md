@@ -18,7 +18,11 @@ La commission saisie devient la « commission prévue » de la course, marquée 
 
 ## Détail de chaque course (migration 116)
 
-Chaque course montre tout ce qu'imprime la Booking confirmation de Taxi et le voucher de Mook, sauf l'interne. En gros : lieu de prise en charge (et chambre), destination ou aller-retour avec programme et durée, vol ou bateau, personnes (adultes, enfants, bébés, sièges enfant), bagages, véhicule et nombre de véhicules, paiement (ce que le chauffeur encaisse en espèces, ou déjà payé), prix. En dessous, toujours visibles : hôtel et chambre, point de rendez-vous, zone, retour (date, heure, lieu), horaires de bateau, remarques, remarques de paiement, libellé de la course, référence de la réservation et sa propre référence.
+Chaque course montre tout ce qu'imprime la Booking confirmation de Taxi et le voucher de Mook, sauf l'interne. En gros : lieu de prise en charge (et chambre), destination ou aller-retour avec programme et durée, vol ou bateau, personnes (adultes, enfants, bébés, sièges enfant), bagages, véhicule et nombre de véhicules (lu sur la dernière facture, sinon le dernier devis), paiement, prix. En dessous, toujours visibles : hôtel et chambre, point de rendez-vous, zone (son nom seul, jamais la grille de tarifs), retour (date, heure, lieu), remarques, libellé de la course, référence de la réservation et sa propre référence.
+
+Paiement : payé sur place, le chauffeur encaisse le prix de la course ; tout payé, rien ; un acompte sur la seule course réglée d'avance du dossier, le reste dû exact. Un acompte réparti sur plusieurs courses (aller et retour) n'affiche aucun montant : « ลูกค้าจ่ายมัดจำแล้ว ถามยอดที่ต้องเก็บกับ Nani » (acompte versé, demander le montant à Nani).
+
+Ne sortent pas non plus les champs qu'aucun document de Taxi n'imprime (remarques de paiement, caution, conditions, champs d'excursion, de billet ou de location).
 
 Les champs de `details` qui sortent sont une liste blanche (`partenaire_champs_details()` en base, `CHAMPS_COURSE` dans le code, comparées par `verif-courses-partenaire-details.mjs`). Ne sortent jamais : nets, marges, notes internes (réservation, dossier, client, Mook), traces d'envoi, prix d'origine, nom ou référence d'un autre prestataire.
 

@@ -224,7 +224,7 @@ test("l'écran du partenaire ne lit aucune table : seulement les fonctions de la
 });
 
 // ---- Migration 116 : tout ce qu'imprime la Booking confirmation, sauf l'interne ----------------------------------------------------------
-import { lignesCourse, CHAMPS_COURSE, CHAMPS_INTERNES, CHAMPS_MOOK_INTERNES, vehiculeTh, bagagesTh, paiementTh, hebergementTh } from "../src/gestion/js/courses-partenaire-calc.mjs";
+import { lignesCourse, CHAMPS_COURSE, CHAMPS_INTERNES, CHAMPS_HORS_TAXI, CHAMPS_MOOK_INTERNES, nomZone, vehiculeTh, bagagesTh, paiementTh, hebergementTh } from "../src/gestion/js/courses-partenaire-calc.mjs";
 import { champsBooking } from "../src/gestion/js/taxi-calc.mjs";
 import { textesVoucher } from "../src/gestion/js/textes-voucher.mjs";
 import { CHAMPS_VOUCHER } from "../src/gestion/js/operations-calc.mjs";
@@ -233,18 +233,20 @@ import { CHAMPS as CHAMPS_MOOK } from "../src/gestion/js/voucher-rapide-calc.mjs
 // Une course où tout est rempli. L'en-tête de la carte montre l'heure et le client, le titre du jour montre la date.
 const EN_TETE = ["client", "date", "heure"];
 const DETAILS_PLEINS = {
-  type_trajet: "", drop_off: "Lanta Test Villas", programme_trajet: "", duree_h: 3, vol: "FD0000 14:05", bagages: "3", sieges: 1, type_transfert: "minivan", remarques: "Call on arrival", remarques_paiement: "Cash",
-  hotel: "Lanta Test Resort", chambre: "12", type_tour: "prive", bateau: "Speedboat", parc: "inclus", parc_texte: "Park fee", programme: "Snorkeling", heure_service: "09:00",
-  retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport", permis: "Required", equipement: "Helmet", caution: "1000", conditions: "Fuel",
-  de: "Koh Lanta", vers: "Koh Phi Phi", depart: "08:00", arrivee: "09:30", embarquement: "Saladan Pier, gate 3", checkin: "07:30", pickup_zone: "Long Beach",
+  type_trajet: "", drop_off: "Lanta Test Villas", programme_trajet: "", duree_h: 3, vol: "FD0000 14:05", bagages: "3", sieges: 1, type_transfert: "minivan", remarques: "Call on arrival",
+  hotel: "Lanta Test Resort", chambre: "12", retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport", embarquement: "Saladan Pier, gate 3",
+  // La zone telle que pickup-calc.mjs la garde : seul son nom doit sortir.
+  pickup_zone: { zone: "Long Beach", grille: "Grille secrète de Test", depart: "Saladan" },
 };
 const coursePleine = (extra = {}) => ({ id: "x", date_service: AJD, heure: "14:30", pickup: "Krabi Airport", dropoff: "Lanta Test Villas", retour: false, programme: "", adultes: 2, enfants: 1, bebes: 1, client: "Test Client", telephone: "+44 7700 900111", vol: "FD0000 14:05", prix: 2300, ref: "TX-1", reference_partenaire: "BR-7", libelle: "Private minivan: Krabi Airport → Koh Lanta", service: "Private Taxi", vehicules: 2, adresse_client: "", paiement: "sur_place", a_encaisser: 2300, details: { ...DETAILS_PLEINS }, ...extra });
 const clesAffichees = (c) => { const l = lignesCourse(c); return new Set([...EN_TETE, ...l.essentiel.map((x) => x.cle), ...l.details.map((x) => x.cle)]); };
 
 test("116 : chaque champ des vouchers (cinq modèles) est lu par le partenaire, ou listé comme interne", () => {
   const tous = new Set(Object.values(CHAMPS_VOUCHER).flat());
-  for (const k of tous) assert.ok(CHAMPS_COURSE.includes(k) || CHAMPS_INTERNES.includes(k), `champ du voucher oublié : ${k}`);
-  for (const k of CHAMPS_INTERNES) assert.ok(!CHAMPS_COURSE.includes(k), `interne et montré à la fois : ${k}`);
+  for (const k of tous) assert.ok(CHAMPS_COURSE.includes(k) || CHAMPS_INTERNES.includes(k) || CHAMPS_HORS_TAXI.includes(k), `champ du voucher oublié : ${k}`);
+  for (const k of [...CHAMPS_INTERNES, ...CHAMPS_HORS_TAXI]) assert.ok(!CHAMPS_COURSE.includes(k), `interne et montré à la fois : ${k}`);
+  // Revue de sécurité : aucun document de Taxi n'imprime ces champs, une note interne pourrait passer par là.
+  for (const k of ["remarques_paiement", "caution", "conditions"]) assert.ok(!CHAMPS_COURSE.includes(k), k);
 });
 
 // Où chaque champ de la liste blanche s'affiche sur la carte.
@@ -258,6 +260,11 @@ test("116 : chaque champ lu s'affiche sur la carte quand il est rempli", () => {
   const l = lignesCourse(coursePleine());
   const texte = JSON.stringify(l);
   for (const v of ["Saladan Pier, gate 3", "Long Beach", "Call on arrival", "10:00", "Krabi Airport", "FD0000 14:05", "TX-1", "BR-7", "Lanta Test Resort · ห้อง 12"]) assert.ok(texte.includes(v), v);
+  assert.ok(!texte.includes("[object Object]") && !texte.includes("Grille secrète"), "la zone n'affiche que son nom, jamais la grille");
+  assert.equal(nomZone({ zone: "Long Beach", grille: "G", depart: "X" }), "Long Beach");
+  assert.equal(nomZone("Klong Dao"), "Klong Dao");
+  assert.equal(nomZone({ grille: "G" }), "");
+  assert.equal(nomZone(12), "");
 });
 
 // La Booking confirmation de Taxi (champsBooking) : chacune de ses lignes a son équivalent sur la carte du partenaire.
@@ -305,6 +312,9 @@ test("116 : véhicule, bagages, paiement et hôtel en thaï", () => {
   assert.equal(paiementTh({ paiement: "paye", a_encaisser: 0 }), "ลูกค้าจ่ายแล้ว ไม่ต้องเก็บเงิน");
   assert.equal(paiementTh({ paiement: "acompte", a_encaisser: 1800 }), "ลูกค้าจ่ายแล้วบางส่วน คนขับเก็บ 1,800 บาท");
   assert.match(paiementTh({ paiement: "en_attente" }), /Nani/);
+  // Revue de sécurité : un acompte réparti sur plusieurs courses n'affiche aucun montant deviné.
+  assert.equal(paiementTh({ paiement: "acompte_partage", a_encaisser: null, prix: 1500 }), "ลูกค้าจ่ายมัดจำแล้ว ถามยอดที่ต้องเก็บกับ Nani");
+  assert.doesNotMatch(paiementTh({ paiement: "acompte_partage", prix: 1500 }), /1,500/);
   assert.deepEqual(hebergementTh({ adresse_client: "Lanta Resort, Room 12", details: {} }), { hotel: "Lanta Resort", chambre: "12" });
   assert.deepEqual(hebergementTh({ adresse_client: "Lanta Resort", details: { hotel: "Autre Hotel", chambre: "5" } }), { hotel: "Autre Hotel", chambre: "5" });
   for (const v of Object.values(TH)) assert.match(v, /[฀-๿]|\{montant\}/);
@@ -321,4 +331,46 @@ test("116 démo : seuls les champs de la liste blanche sortent, avec référence
   for (const k of ["lignes_ids", "envois", "prix_origine", "note"]) assert.ok(!(k in c.details), k);
   assert.ok(!JSON.stringify(c).includes("SECRET"));
   assert.ok(c.ref && c.paiement === "sur_place" && Number(c.vehicules) >= 1);
+});
+
+test("116 démo : acompte sur aller et retour, aucun montant deviné ; une seule course, le reste exact", () => {
+  const d = demo();
+  const u = chauffeurDe(d);
+  const r = d.reservations.find((x) => x.id === coursesLocales(d, u, AJD).find((c) => c.date_service >= AJD).id);
+  r.paye_sur_place = false;
+  r.montant_vente = 1500;
+  d.paiements.push({ id: "p-test", entite_id: r.entite_id, dossier_id: r.dossier_id, date: AJD, montant: 1000 });
+  let c = coursesLocales(d, u, AJD).find((x) => x.id === r.id);
+  assert.equal(c.paiement, "acompte");
+  assert.equal(c.a_encaisser, 500, "une seule course réglée d'avance : le reste dû");
+  d.reservations.push({ ...r, id: "retour-test", date_service: jourSuivant(AJD, 5), ligne_id: "", details: {} });
+  c = coursesLocales(d, u, AJD).find((x) => x.id === r.id);
+  const retour = coursesLocales(d, u, AJD).find((x) => x.id === "retour-test");
+  for (const x of [c, retour]) {
+    assert.equal(x.paiement, "acompte_partage");
+    assert.equal(x.a_encaisser, null);
+    assert.doesNotMatch(paiementTh(x), /1,500|500/);
+  }
+});
+
+test("116 démo : le nombre de véhicules vient du seul dernier document (facture, sinon devis)", () => {
+  const d = demo();
+  const u = chauffeurDe(d);
+  const r = d.reservations.find((x) => x.id === coursesLocales(d, u, AJD).find((c) => c.date_service >= AJD).id);
+  r.ligne_id = "L-veh";
+  d.documents = d.documents.filter((x) => x.dossier_id !== r.dossier_id);
+  d.documents.push({ id: "dv", dossier_id: r.dossier_id, entite_id: r.entite_id, type: "devis", date_emission: AJD, created_at: AJD, contenu: { lignes: [{ id: "L-veh", par: "veh", qte: 3 }] } });
+  assert.equal(coursesLocales(d, u, AJD).find((x) => x.id === r.id).vehicules, 3, "devis seul : sa quantité");
+  d.documents.push({ id: "fa", dossier_id: r.dossier_id, entite_id: r.entite_id, type: "facture", date_emission: AJD, created_at: AJD, contenu: { lignes: [{ id: "L-veh", par: "veh", qte: 2 }] } });
+  assert.equal(coursesLocales(d, u, AJD).find((x) => x.id === r.id).vehicules, 2, "devis et facture : la facture seule, jamais 5");
+});
+
+test("116 démo : la zone de prise en charge ne sort que par son nom", () => {
+  const d = demo();
+  const u = chauffeurDe(d);
+  const r = d.reservations.find((x) => x.id === coursesLocales(d, u, AJD)[0].id);
+  r.details = { ...(r.details || {}), pickup_zone: { zone: "Long Beach", grille: "Grille secrète", depart: "Saladan" }, remarques_paiement: "SECRET", caution: "SECRET", conditions: "SECRET" };
+  const c = coursesLocales(d, u, AJD).find((x) => x.id === r.id);
+  assert.equal(c.details.pickup_zone, "Long Beach");
+  assert.ok(!JSON.stringify(c).includes("Grille secrète") && !JSON.stringify(c).includes("SECRET"));
 });

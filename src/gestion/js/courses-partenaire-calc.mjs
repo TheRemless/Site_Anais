@@ -58,6 +58,7 @@ export const TH = {
   p_sur_place: "คนขับเก็บเงินสด {montant}", // Le chauffeur encaisse {montant} en espèces
   p_paye: "ลูกค้าจ่ายแล้ว ไม่ต้องเก็บเงิน", // Le client a déjà payé, rien à encaisser
   p_acompte: "ลูกค้าจ่ายแล้วบางส่วน คนขับเก็บ {montant}", // Le client a payé une partie, le chauffeur encaisse {montant}
+  p_acompte_partage: "ลูกค้าจ่ายมัดจำแล้ว ถามยอดที่ต้องเก็บกับ Nani", // Acompte versé, demander à Nani le montant à encaisser
   p_en_attente: "ยังไม่ได้จ่าย ถาม Nani ก่อน", // Pas encore payé, demander à Nani
   hotel: "โรงแรม", // Hôtel
   chambre: "ห้อง", // Chambre
@@ -72,38 +73,26 @@ export const TH = {
   retour_date: "วันกลับ", // Date du retour
   retour_heure: "เวลากลับ", // Heure du retour
   retour_lieu: "จุดรับขากลับ", // Lieu de prise en charge du retour
-  bateau: "เรือ", // Bateau
-  de: "จาก", // De
-  vers: "ไป", // Vers
-  depart: "เวลาออก", // Heure de départ
-  arrivee: "เวลาถึง", // Heure d'arrivée
-  checkin: "เช็คอิน", // Check-in
-  programme_activite: "โปรแกรม", // Programme
-  heure_service: "เวลา", // Heure
-  type_tour: "แบบทัวร์", // Type de tour
-  parc: "ค่าอุทยาน", // Frais de parc
-  permis: "ใบขับขี่", // Permis
-  equipement: "อุปกรณ์", // Équipement
-  caution: "เงินมัดจำ", // Caution
-  conditions: "เงื่อนไข", // Conditions
   remarques: "หมายเหตุ", // Remarques (celles de la Booking confirmation)
-  remarques_paiement: "หมายเหตุการจ่ายเงิน", // Remarques sur le paiement
   service: "บริการ", // Service (libellé de la course)
   ref: "เลขที่จอง", // Référence de la réservation
   ref_partenaire: "เลขอ้างอิงของคุณ", // Votre référence
 };
 
 // ---- Détail de la course (migration 116) ------------------------------------------------------------------------------------------------
-// Les champs du voucher que le partenaire lit : tous ceux de CHAMPS_VOUCHER (operations-calc.mjs, cinq modèles) plus la zone de prise en
-// charge. Identique à partenaire_champs_details() de la migration 116 (verif-courses-partenaire-details.mjs compare les deux).
+// Les champs de `details` que le partenaire lit (revue de sécurité, 22.11.2026) : ceux qu'imprime la Booking confirmation de Taxi ou que saisit
+// le voucher de Mook, plus la liste minimale de Jérémy pour le chauffeur (véhicule, hôtel et chambre, retour, point de rendez-vous, zone).
+// Identique à partenaire_champs_details() de la migration 116 (verif-courses-partenaire-details.mjs compare les deux).
 export const CHAMPS_COURSE = [
-  "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement",
-  "hotel", "chambre", "type_tour", "bateau", "parc", "parc_texte", "programme", "heure_service",
-  "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions",
-  "de", "vers", "depart", "arrivee", "embarquement", "checkin", "pickup_zone",
+  "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques",
+  "hotel", "chambre", "retour_date", "retour_heure", "retour_lieu", "embarquement", "pickup_zone",
 ];
+// Champs des autres vouchers (excursion, billet, location) ou à risque : aucun document de Taxi ne les imprime, ils ne sortent jamais.
+export const CHAMPS_HORS_TAXI = ["remarques_paiement", "caution", "conditions", "type_tour", "bateau", "parc", "parc_texte", "programme", "heure_service", "permis", "equipement", "de", "vers", "depart", "arrivee", "checkin"];
 // Ce qui reste interne et ne sort jamais (en plus des nets et des notes, qui ne sont pas dans `details`) : traces de l'outil.
 export const CHAMPS_INTERNES = ["lignes_ids", "envois", "voucher_fige", "prix_origine", "commission_demandee_le", "copie_de", "note", "personnes_du_dossier", "avis_demande_le", "pickup_annonce", "modele_voucher", "taxi_independant", "annule_avec_dossier", "jours", "enfant"];
+// La zone de prise en charge est gardée comme { zone, grille, depart } (pickup-calc.mjs) : seul le nom de la zone sort, jamais la grille.
+export const nomZone = (v) => (v && typeof v === "object" ? (typeof v.zone === "string" ? v.zone : "") : typeof v === "string" ? v : "");
 // Le formulaire de Mook (voucher-rapide-calc.mjs, CHAMPS) : la note interne ne sort pas.
 export const CHAMPS_MOOK_INTERNES = ["notes"];
 
@@ -134,6 +123,7 @@ export function bagagesTh(b) {
 export function paiementTh(c = {}, devise = "THB") {
   const m = montantTh(c.a_encaisser ?? c.prix, devise);
   if (c.paiement === "paye") return TH.p_paye;
+  if (c.paiement === "acompte_partage" || (c.paiement === "acompte" && (c.a_encaisser === null || c.a_encaisser === undefined))) return TH.p_acompte_partage;
   if (c.paiement === "acompte") return TH.p_acompte.replace("{montant}", m);
   if (c.paiement === "en_attente") return TH.p_en_attente;
   return TH.p_sur_place.replace("{montant}", m);
@@ -147,8 +137,6 @@ export function hebergementTh(c = {}) {
   return { hotel: lu.hotel, chambre: String(dt.chambre || "").trim() || lu.chambre };
 }
 
-const TYPES_TOUR = { prive: "ส่วนตัว", partage: "จอยน์" }; // Privé, partagé (joint)
-const PARC = { inclus: "รวมแล้ว", non: "ไม่รวม" }; // Inclus, non inclus
 const heureOu = (t) => String(t ?? "").trim();
 
 // Les lignes d'une course : l'essentiel (en gros) puis le reste, dans l'ordre de la Booking confirmation. Chaque ligne : { cle, libelle, valeur }.
@@ -173,27 +161,12 @@ export function lignesCourse(c = {}, devise = "THB") {
   const details = [
     l("hotel", TH.hotel, [hotel, chambre ? `${TH.chambre} ${chambre}` : ""].filter(Boolean).join(" · ")),
     l("rendez_vous", TH.rendez_vous, dt.embarquement),
-    l("zone", TH.zone, dt.pickup_zone),
+    l("zone", TH.zone, nomZone(dt.pickup_zone)),
     l("retour_date", TH.retour_date, dt.retour_date ? dateTh(dt.retour_date) : ""),
     l("retour_heure", TH.retour_heure, heureOu(dt.retour_heure)),
     l("retour_lieu", TH.retour_lieu, dt.retour_lieu),
     c.retour ? null : l("duree", TH.duree, duree),
-    l("bateau", TH.bateau, dt.bateau),
-    l("de", TH.de, dt.de),
-    l("vers", TH.vers, dt.vers),
-    l("depart", TH.depart, heureOu(dt.depart)),
-    l("arrivee", TH.arrivee, heureOu(dt.arrivee)),
-    l("checkin", TH.checkin, dt.checkin),
-    l("programme_activite", TH.programme_activite, dt.programme),
-    l("heure_service", TH.heure_service, heureOu(dt.heure_service)),
-    l("type_tour", TH.type_tour, TYPES_TOUR[dt.type_tour] || dt.type_tour),
-    l("parc", TH.parc, [PARC[dt.parc] || "", dt.parc_texte].filter(Boolean).join(" · ")),
-    l("permis", TH.permis, dt.permis),
-    l("equipement", TH.equipement, dt.equipement),
-    l("caution", TH.caution, dt.caution),
-    l("conditions", TH.conditions, dt.conditions),
     l("remarques", TH.remarques, dt.remarques),
-    l("remarques_paiement", TH.remarques_paiement, dt.remarques_paiement),
     l("service", TH.service, c.libelle),
     l("ref", TH.ref, c.ref),
     l("ref_partenaire", TH.ref_partenaire, c.reference_partenaire),
@@ -345,17 +318,26 @@ function detailLocal(data, r, d, c, acces) {
   const dt = r.details || {};
   const p = (data.prestations || []).find((x) => x.id === r.prestation_id) || null;
   const idsLignes = new Set([r.ligne_id, ...(dt.lignes_ids || [])].filter(Boolean));
-  const lignes = (data.documents || []).filter((x) => x.dossier_id === d.id).flatMap((x) => ((x.contenu || {}).lignes || []).filter((l) => idsLignes.has(l.id) && (l.par || (p && p.unite) || "") === "veh"));
+  // Le document qui fait foi : la dernière facture, sinon le dernier devis (comme recalculer_dossier, migration 19).
+  const docs = (data.documents || []).filter((x) => x.dossier_id === d.id && (x.type === "facture" || x.type === "devis"));
+  const rang = (x) => `${x.type === "facture" ? 1 : 0}|${x.date_emission || ""}|${x.created_at || ""}`;
+  const doc = docs.sort((a, b) => rang(b).localeCompare(rang(a)))[0] || null;
+  const lignes = (((doc && doc.contenu) || {}).lignes || []).filter((l) => idsLignes.has(l.id) && (l.par || (p && p.unite) || "") === "veh");
   const vehicules = lignes.length ? lignes.reduce((s, l) => s + (l.qte === null || l.qte === undefined || l.qte === "" ? 1 : Number(l.qte)), 0) : 1;
   const recu = (data.paiements || []).filter((x) => x.dossier_id === d.id).reduce((s, x) => s + Number(x.montant || 0), 0);
   const prix = r.montant_vente ?? null;
-  const paiement = r.paye_sur_place ? "sur_place" : prix > 0 && recu >= prix ? "paye" : recu > 0 ? "acompte" : "en_attente";
+  // Comme la base : le total du dossier (ses courses actives), la part payée sur place, et les courses réglées d'avance entre qui l'acompte se partage.
+  const actives = (data.reservations || []).filter((y) => y.dossier_id === d.id && y.statut !== "annule");
+  const total = actives.reduce((s, y) => s + Number(y.montant_vente || 0), 0);
+  const surPlace = actives.filter((y) => y.paye_sur_place).reduce((s, y) => s + Number(y.montant_vente || 0), 0);
+  const avance = actives.filter((y) => !y.paye_sur_place).length;
+  const paiement = r.paye_sur_place ? "sur_place" : total > 0 && recu >= total ? "paye" : recu > 0 && avance > 1 ? "acompte_partage" : recu > 0 ? "acompte" : "en_attente";
   return {
     ref: d.ref || "", reference_partenaire: r.partenaire_id === acces.partenaire.id ? r.reference_partenaire || "" : "",
     libelle: r.libelle || "", service: (p && p.groupe) || "", vehicules,
     adresse_client: c.entite_id === r.entite_id ? String(c.adresse || "").split("\n")[0] : "",
-    details: Object.fromEntries(Object.entries(dt).filter(([k]) => CHAMPS_COURSE.includes(k))),
-    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, Math.min(prix ?? 0, (prix ?? 0) - recu)) : prix,
+    details: Object.fromEntries(Object.entries(dt).filter(([k]) => CHAMPS_COURSE.includes(k)).map(([k, v]) => [k, k === "pickup_zone" ? nomZone(v) || null : v]).filter(([, v]) => v !== null && v !== undefined)),
+    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, total - surPlace - recu) : null,
   };
 }
 
