@@ -196,7 +196,7 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
   const i403 = f.indexOf('if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);');
   assert.ok(i403 > 0, "contact personnel : 403");
   assert.ok(i403 < f.indexOf('sb.from("whatsapp_messages").select("sens, texte, medias'), "refusé avant de lire un seul message");
-  assert.match(f, /select\("id, telephone, nom, entite_id, dossier_id, reponses"\)/);
+  assert.match(f, /select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses"\)/);
   assert.match(f, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: waId \}\)/);
   assert.match(f, /if \(!waEcrit && waMode !== "question"\) return json\(\{ erreur: "whatsapp_lecture_seule" \}, 403\);/, "créer et mettre à jour refusés");
   assert.match(f, /\.\.\.\(waId && waEcrit \? \{ whatsapp_conversation_id: waId \} : \{\}\)/, "en lecture seule, aucune liaison");

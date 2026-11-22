@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte } from "../agent-calc.mjs";
+import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
@@ -113,7 +113,13 @@ function texteAvertissement(a) {
   if (code === "montant_non_source") return tr("Montant sans source dans la conversation : {v}. À vérifier.", { v: valeur });
   if (code === "heure_non_source") return tr("Heure sans source dans la conversation : {v}. À vérifier.", { v: valeur });
   if (code === "mot_interne") return tr("Mot interne dans la réponse : « {v} ». À retirer.", { v: valeur });
+  // Sans le droit de voir les nets, la valeur est une empreinte : elle ne s'affiche pas (revue de la PR 306).
+  if (code === "montant_interne" && valeur.startsWith("#")) return tr("Un montant interne (net, marge ou commission) est dans la réponse. À retirer.");
   if (code === "montant_interne") return tr("Montant interne (net, marge ou commission) dans la réponse : {v}. À retirer.", { v: valeur });
+  // 21.11.2026 : le net d'un autre service du catalogue ne bloque pas la copie (coïncidence fréquente sur un chiffre rond).
+  if (code === "montant_egal_net") return valeur ? tr("Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.", { v: valeur }) : tr("Un montant de la réponse est égal à un net interne. Vérifiez que c'est bien un prix de vente.");
+  if (code === "montant_illisible") return tr("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.");
+  if (code === "controle_impossible") return tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.");
   if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }
@@ -864,7 +870,7 @@ export async function vueAgent(idOuvert = "") {
             const reste = resteBloque(zone.value, bloquants);
             bouton.disabled = reste.length > 0;
             alerte.hidden = !reste.length;
-            alerte.textContent = reste.length ? tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") }) : "";
+            alerte.textContent = !reste.length ? "" : reste.includes(CONTROLE_IMPOSSIBLE) ? tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.map((x) => (x === MONTANT_MASQUE ? tr("un montant égal à un net interne") : x)).join(", ") });
           };
           zone.addEventListener("input", maj);
           maj();

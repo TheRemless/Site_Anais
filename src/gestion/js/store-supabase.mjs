@@ -43,6 +43,8 @@ function verifie({ data, error }) {
 }
 
 // Le résumé tenu par la base est fusionné dans le dossier : ses colonnes sont COLONNES_RESUME (sauvegarde.mjs), que la sauvegarde retire avant d'écrire le fichier.
+// Les montants à confirmer d'un refus « montant_a_confirmer » de whatsapp-envoi (nombres seulement).
+const montantsLus = (lu) => (lu && Array.isArray(lu.a_confirmer) ? lu.a_confirmer.map(Number).filter((x) => Number.isFinite(x) && x > 0) : []);
 const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0 } : dossier);
 
 // Le catalogue (partenaires, tarifs, trajets et leurs nets) pèse l'essentiel de la lecture et ne change presque jamais : à la synchronisation de chaque minute on ne le relit
@@ -442,13 +444,14 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const lu = await rep.json().catch(() => null);
       if (rep.ok && lu && lu.ok) return lu;
       // Sans code lisible (passerelle, coupure), le résultat est inconnu : l'écran demande de vérifier dans WhatsApp.
-      // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte.
-      return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
+      // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte. « a_confirmer »
+      // (montant_a_confirmer) : les montants égaux au net d'un autre service, que la personne confirme avant de renvoyer.
+      return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [], a_confirmer: montantsLus(lu), masque: !!(lu && lu.masque), portee: lu && lu.portee === "autre_service" ? "autre_service" : "catalogue" };
     },
     // Voucher en image dans la conversation du client (fonction « whatsapp-envoi » en multipart, migration 73). L'image part avec la demande :
     // la fonction la dépose elle-même dans le bucket privé après tous les contrôles (aucune écriture de stockage depuis le navigateur).
     // Rend { ok, message_id } ou { erreur, a_retirer }. Délai dépassé ou coupure : résultat inconnu, l'écran dit de vérifier dans WhatsApp.
-    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, essai_id, legende = "", numero_confirme = "", fichier }) {
+    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, essai_id, legende = "", numero_confirme = "", montants_confirmes = [], fichier }) {
       const { data: s } = await sb.auth.getSession();
       const jeton = s && s.session && s.session.access_token;
       if (!jeton) return { erreur: "non_connecte" };
@@ -458,6 +461,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       corps.append("essai_id", essai_id);
       corps.append("legende", legende);
       if (numero_confirme) corps.append("numero_confirme", numero_confirme);
+      if (montants_confirmes.length) corps.append("montants_confirmes", montants_confirmes.join(","));
       corps.append("fichier", fichier, fichier.name || "voucher.png");
       let rep;
       try {
@@ -467,7 +471,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const lu = await rep.json().catch(() => null);
       if (rep.ok && lu && lu.ok) return lu;
-      return { erreur: (lu && lu.erreur) || "inconnu", a_verifier: !!(lu && lu.a_verifier), a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
+      return { erreur: (lu && lu.erreur) || "inconnu", a_verifier: !!(lu && lu.a_verifier), a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [], a_confirmer: montantsLus(lu), masque: !!(lu && lu.masque), portee: lu && lu.portee === "autre_service" ? "autre_service" : "catalogue" };
     },
     // « Préparer une réponse » (fonction whatsapp-preparer, migration 60) : 202 { ok } puis la proposition « en_cours » arrive par Realtime.
     async whatsappPreparer(conversationId) {

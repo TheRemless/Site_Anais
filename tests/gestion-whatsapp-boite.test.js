@@ -312,8 +312,8 @@ test("envoi : erreurs du serveur, résultat inconnu sans « réessayez », conte
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /if \(envoiIncertain\(code\)\) \{\s+envoisIncertains\.add\(p\.id\);[\s\S]{0,200}return rafraichir\(\);\s+\}\s+bouton\.disabled = false;/, "après un résultat inconnu, Envoyer ne se rallume pas et le fil montre le message à vérifier");
   assert.match(vue, /boutonEnvoyer\.disabled = !ok\.ok \|\| reste\.length > 0 \|\| incertain;/);
-  assert.match(vue, /const brut = \(\(r && r\.a_retirer\) \|\| \[\]\)\.filter\(\(x\) => x !== LECTURE_IMPOSSIBLE\);/, "a_retirer gardé (sans la lecture impossible)");
-  assert.match(vue, /aRetirer\.set\(p\.id, \[\.\.\.b\.montants\.map\(String\), \.\.\.b\.noms/, "… et affiché sous le texte, valeurs sans leur code");
+  assert.match(vue, /const brut = \(\(r && r\.a_retirer\) \|\| \[\]\)\.filter\(\(x\) => x !== LECTURE_IMPOSSIBLE && x !== CONTROLE_IMPOSSIBLE\);/, "a_retirer gardé (sans la lecture impossible)");
+  assert.match(vue, /aRetirer\.set\(p\.id, \{ \.\.\.b, noms: \[\.\.\.b\.noms/, "… et affiché sous le texte, valeurs sans leur code");
   assert.match(source("store-supabase.mjs"), /a_retirer: lu && Array\.isArray\(lu\.a_retirer\)/);
   assert.match(source("store-supabase.mjs"), /erreur: \(lu && lu\.erreur\) \|\| "inconnu"/, "une réponse illisible est un résultat inconnu");
 });

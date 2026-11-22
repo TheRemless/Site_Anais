@@ -11,8 +11,8 @@
 //   3. la conversation est celle du client du dossier (contactVoucher : jamais un prestataire ni un contact personnel) ; si son numéro
 //      diffère de celui de la fiche client, la personne l'a confirmé (numero_confirme) ;
 //   4. fenêtre de 24 h vue par la base (fenetreOuverte, comme le texte) ;
-//   5. légende contrôlée comme un texte (contenuInterne : nets, commissions, noms de partenaires et de contacts typés), dans l'entreprise
-//      de la conversation, ou dans Secret et Taxi à la fois quand elle est à trier ;
+//   5. légende contrôlée comme un texte (contenuInterne : nets du dossier, commissions, noms de partenaires et de contacts typés), dans
+//      l'entreprise de la conversation, ou dans Secret et Taxi à la fois quand elle est à trier ; le net d'un autre service est à confirmer ;
 //   6. coexistence du numéro de l'entreprise lue chez Telnyx (cache de 3 minutes) : seul « active » envoie ;
 //   7. fenêtre de 24 h relue chez Telnyx (conversation_window, fin dans le futur) : en cas de doute, rien ne part ;
 //   8. verrou en base, d'un seul tenant (whatsapp_ranger_voucher, migration 73) : un envoi précédent au résultat inconnu bloque sans limite
@@ -25,7 +25,7 @@
 import { fenetreOuverte } from "../whatsapp/proposer.js";
 import {
   lireReponseTelnyx, contactVoucher, numeroDifferent, corpsTelnyxImage, lienAvecVersion, lireCoexistence, lireFenetreTelnyx, adresseCoexistence,
-  adresseFenetre, cheminSortant, cheminSortantValide, mediaVoucher, cleVerrouVoucher, BUCKET_SORTANT, URL_SIGNEE_S, COEXISTENCE_CACHE_MS,
+  adresseFenetre, cheminSortant, cheminSortantValide, mediaVoucher, cleVerrouVoucher, refusEnvoi, BUCKET_SORTANT, URL_SIGNEE_S, COEXISTENCE_CACHE_MS,
 } from "./calc.js";
 
 const UNIFIEES = ["secret", "taxi"];
@@ -57,8 +57,8 @@ async function fenetreTelnyx(ctx, numero, client) {
 }
 
 // ctx : { sb (session), admin (clé de service), fetch, cle (TELNYX_API_KEY ou ""), webhook, organisation (WHATSAPP_ORGANISATION),
-//         contenuInterne(admin, conv, texte), uuid(), maintenant(), journal(...) }
-// demande : { conversation_id, reservation_id, essai_id, legende, numero_confirme, octets (Uint8Array), mime, nom }
+//         contenuInterne(admin, conv, texte) → { a_retirer, a_confirmer }, uuid(), maintenant(), journal(...) }
+// demande : { conversation_id, reservation_id, essai_id, legende, numero_confirme, montants_confirmes, octets (Uint8Array), mime, nom }
 // Rend { status, corps }. Une exception avant le rangement est rendue « base » par index.ts ; après, elle est prise ici.
 export async function envoyerVoucherImage(ctx, demande) {
   const rep = (status, corps) => ({ status, corps });
@@ -109,9 +109,11 @@ export async function envoyerVoucherImage(ctx, demande) {
 
   // 5. La légende passe le même contrôle que le texte. contenuInterne lit l'entreprise de la conversation (celle de la réservation, étape 2)
   //    ou, conversation à trier (entite_id vide), Secret et Taxi ensemble.
+  //    Le dossier contrôlé est celui de la réservation (étape 3 : la conversation est reliée à ce dossier ou à aucun). Un montant égal au net
+  //    d'un autre service du catalogue : 409 « montant_a_confirmer », l'écran renvoie la même liste (refusEnvoi).
   if (demande.legende) {
-    const bloque = await ctx.contenuInterne(admin, conv, demande.legende);
-    if (bloque.length) return rep(422, { erreur: "contenu_interne", a_retirer: bloque });
+    const refus = refusEnvoi(await ctx.contenuInterne(admin, { ...conv, dossier_id: conv.dossier_id || d.data.id }, demande.legende, { sb }), demande.montants_confirmes || []);
+    if (refus) return rep(refus.status, refus.corps);
   }
 
   // 6 et 7. Configuration, coexistence et fenêtre chez Telnyx.

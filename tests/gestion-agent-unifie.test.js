@@ -3,6 +3,7 @@
 // suivent les droits dans l'entreprise de cette ligne. ZTP ne change pas. Données fictives, aucun appel réseau.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { bloqueMontant } from "./aides-nets.mjs";
 import { readFileSync } from "node:fs";
 import { OUTILS, OUTILS_UNIFIES, executer, memoDepuis, normaliserEntree, outilsDuContexte, outilsPour, refDe, controlerReponse } from "../supabase/functions/agent/outils.js";
 import { modeUnifie as modeUnifieBrut, modeUnifieSansDroits as sansDroitsBrut, permissionsOutils, estUnifie, unifieAllume } from "../supabase/functions/agent/unifie.js";
@@ -184,7 +185,7 @@ test("nets d'une ligne masqués sans le droit dans SON entreprise", async () => 
   const memo = memoNeuf({ entreprises: [TAXI.nom] });
   await executer("chercher_catalogue", { recherche: "", famille: "tout" }, ctx, memo);
   const rep = await executer("proposer_reponse", { titre: "R", langue: "en", message: "Hello,\n\nThe tour is 1,500 THB with Blue Ocean Speedboat, our cost 1100.\n\nVIP Taxi Lanta" }, ctx, memo);
-  assert.ok(rep.carte.avertissements.includes("montant_interne:1100"));
+  assert.ok(bloqueMontant(rep.carte.avertissements, 1100));
   assert.ok(rep.carte.avertissements.includes("nom_prestataire:Blue Ocean Speedboat"));
   // La signature de l'autre entreprise est retirée aussi.
   assert.ok(rep.carte.avertissements.includes("signature_retiree"));
@@ -342,10 +343,10 @@ test("revue 6 : la boîte WhatsApp ne charge aucun net pour les outils, seulemen
   const colonnes = ctxSrc.slice(0, ctxSrc.indexOf("};"));
   assert.doesNotMatch(colonnes, /prestations_nets:|trajets_nets:|partenaires_prives:/);
   // Revue de sécurité de la PR 299 : la lecture des nets pour le contrôle est commune à la boîte et à l'Assistant (agent/outils.js).
-  assert.match(wa, /memo\.internes = await netsPourControle\(db, ids\);/);
+  assert.match(wa, /const lusNets = await netsPourControle\(db, ids\);\n    memo\.nets = lusNets\.nets;/);
   const outilsSrc = readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8");
   assert.match(outilsSrc, /export async function netsPourControle\(db, ids = \[\]\)/);
-  assert.match(outilsSrc, /toutes\("prestations_nets", "net, net_enfant"\), toutes\("trajets_nets", "net_adulte, net_enfant"\)/);
+  assert.match(outilsSrc, /toutes\("prestations_nets", "prestation_id, net, net_enfant"\), toutes\("trajets_nets", "trajet_id, net_adulte, net_enfant"\)/);
   // Pourquoi : avec des nets chargés, le drapeau « recommande » viendrait d'eux même sans droit ; sans eux, aucun drapeau.
   const deux = [donnees.prestations[0], { ...donnees.prestations[0], id: "a9000000-0000-4000-8000-000000000009", prix_vente: 1500 }];
   const nets = [{ prestation_id: deux[0].id, net: 1100 }, { prestation_id: deux[1].id, net: 900 }];

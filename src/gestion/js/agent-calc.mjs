@@ -281,19 +281,88 @@ export function listeAmeliorations(lignes = []) {
 // égal à un net, une marge ou une commission, et chaque nom de partenaire (avertissements « montant_interne:1200,300 » et
 // « nom_prestataire:Lazy Day », outils.js, controlerReponse). L'écran bloque la copie tant que le texte corrigé contient encore l'un d'eux.
 
-// Montants d'un texte, dates, heures et téléphones exclus : même règle que outils.js (montantsDuTexte).
+// Chiffres de toute écriture (thaïs, pleine largeur, arabes…) ramenés en ASCII : un chiffre décimal Unicode (\p{Nd}) appartient à une
+// suite de dix (0 à 9) ; sa valeur est sa place dans cette suite (revue de sécurité de la PR 306).
+const CHIFFRE = /\p{Nd}/u;
+export function chiffresAscii(t) {
+  return String(t || "").replace(/\p{Nd}/gu, (c) => {
+    const cp = c.codePointAt(0);
+    if (cp >= 48 && cp <= 57) return c;
+    let debut = cp;
+    while (debut > 0 && cp - debut < 60 && CHIFFRE.test(String.fromCodePoint(debut - 1))) debut--;
+    return String((cp - debut) % 10);
+  });
+}
+// « 1.2k », « 1,2k », « 5k » : × 1000.
+const enMilliers = (t) => t.replace(/(\d+)(?:[.,](\d{1,2}))?\s?k\b/gi, (_, e, d) => String(Math.round(Number(`${e}.${d || 0}`) * 1000)));
+// Séparateurs de milliers entre des groupes de trois chiffres : toute espace (\p{Zs}, dont U+2009 et U+2007), U+200B, virgule, apostrophe
+// droite ou typographique, « · », « _ », « ˙ », virgule pleine largeur ou point suivi d'exactement trois chiffres.
+export const SEPARATEUR_MILLIERS = /(?:[\p{Zs}​,'’·_˙，]|[.．](?=\d{3}(?!\d)))/u;
+const SEP = "(?:[\\p{Zs}\\u200B,'’·_˙，]|[.．](?=\\d{3}(?!\\d)))";
+const SEP_G = /[\p{Zs}​,'’·_˙，.．]/gu;
+// Deux groupes de chiffres séparés par un signe inconnu (« 1•200 ») : le montant est illisible, il se lit 0 (le contrôle se ferme).
+const SIGNE_INCONNU = /(?<!\d)\d{1,3}[^\p{L}\p{N}\p{Zs}\s​,.'’·_˙，．:/\-+()%×*=~#&@$€฿!?;"«»[\]{}<>|\\^`]\d{3}(?!\d)/gu;
+const MONTANT = new RegExp(`(?:฿|THB|CHF|EUR|€)?\\s*(\\d{1,3}(?:${SEP}\\d{3})+|\\d{3,})(?:\\s*(?:฿|THB|CHF|EUR|€|baht))?`, "giu");
+// Montants d'un texte (« 1,200 », « 1 200 THB », « ฿900 », « ๑,๒๐๐ », « 1.2k ») ; dates, heures et téléphones exclus. Un nombre fait de
+// zéros n'est pas un montant ; un montant illisible se lit 0. Même code dans outils.js et agent-calc.mjs (un test les compare).
 export function montantsDuTexte(t) {
-  const propre = String(t || "")
+  const out = [];
+  const propre = enMilliers(chiffresAscii(t))
     .replace(/\+?\d[\d\s]{7,}\d/g, " ")
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
     .replace(/\b(jan|feb|fev|fév|mar|apr|avr|may|mai|jun|juin|jul|juil|aug|aou|aoû|sep|oct|nov|dec|déc)[\p{L}.]*\s+20[2-3]\d\b/giu, " ")
     .replace(/\b\d{1,2}[/.]\d{1,2}[/.]20[2-3]\d\b/g, " ")
     .replace(/\b\d{1,2}[:h.]\d{2}\b/g, " ")
-    .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ");
-  const out = [];
-  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:[ ,']\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,']/g, "")));
+    .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ")
+    .replace(SIGNE_INCONNU, () => (out.push(0), " "));
+  for (const m of propre.matchAll(MONTANT)) {
+    const n = Number(m[1].replace(SEP_G, ""));
+    if (n > 0) out.push(n);
+  }
   return out;
 }
+
+// SHA-256 synchrone (empreinte d'un montant interne sans le droit de voir les nets, revue de la PR 306) : même code dans outils.js et
+// agent-calc.mjs. Rend l'hexadécimal.
+const K256 = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+export function sha256(texte) {
+  const o = Array.from(new TextEncoder().encode(String(texte)));
+  const l = o.length * 8;
+  o.push(0x80);
+  while (o.length % 64 !== 56) o.push(0);
+  for (let i = 7; i >= 0; i--) o.push(i >= 4 ? 0 : (l >>> (i * 8)) & 0xff);
+  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const r = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let i = 0; i < o.length; i += 64) {
+    const w = [];
+    for (let j = 0; j < 16; j++) w[j] = (o[i + 4 * j] << 24) | (o[i + 4 * j + 1] << 16) | (o[i + 4 * j + 2] << 8) | o[i + 4 * j + 3];
+    for (let j = 16; j < 64; j++) w[j] = (w[j - 16] + (r(w[j - 15], 7) ^ r(w[j - 15], 18) ^ (w[j - 15] >>> 3)) + w[j - 7] + (r(w[j - 2], 17) ^ r(w[j - 2], 19) ^ (w[j - 2] >>> 10))) | 0;
+    let [a, b, c, d, e, f, g, k] = h;
+    for (let j = 0; j < 64; j++) {
+      const t1 = (k + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + K256[j] + w[j]) | 0;
+      const t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      k = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    h[0] = (h[0] + a) | 0;
+    h[1] = (h[1] + b) | 0;
+    h[2] = (h[2] + c) | 0;
+    h[3] = (h[3] + d) | 0;
+    h[4] = (h[4] + e) | 0;
+    h[5] = (h[5] + f) | 0;
+    h[6] = (h[6] + g) | 0;
+    h[7] = (h[7] + k) | 0;
+  }
+  return h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+}
+// L'empreinte d'un montant : sha-256 du sel et du montant, 16 caractères.
+export const empreinteMontant = (sel, montant) => sha256(`${sel}:${Number(montant)}`).slice(0, 16);
 const plat = (s) =>
   String(s || "")
     .normalize("NFD")
@@ -301,22 +370,34 @@ const plat = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-// Ce qui bloque une réponse : { montants: [nombres], noms: [textes] }, lu dans les avertissements de la carte.
+// Ce qui bloque une réponse : { montants: [nombres], noms: [textes], ferme }, lu dans les avertissements de la carte. Revue de sécurité de
+// la PR 306 : « montant_illisible:0 » (un montant lu à 0) bloque tant qu'il reste ; « controle_impossible » (nets illisibles) bloque
+// toujours, la réponse est à refaire.
+// Sans le droit de voir les nets, « montant_interne:#sel:empreinte,… » : l'écran calcule l'empreinte des montants du texte (même sel) et
+// bloque sans afficher le chiffre (MONTANT_MASQUE à la place).
+export const CONTROLE_IMPOSSIBLE = "controle_impossible";
+export const MONTANT_MASQUE = "montant_masque";
 export function bloquantsReponse(avertissements = []) {
   const montants = new Set();
   const noms = [];
+  const empreintes = [];
+  let ferme = false;
   for (const a of avertissements || []) {
     const [code, valeur = ""] = String(a).split(/:(.*)/s);
-    if (code === "montant_interne") for (const x of valeur.split(",")) if (x.trim() && Number.isFinite(Number(x))) montants.add(Number(x));
+    const masque = code === "montant_interne" && /^#([0-9a-f]{8,32}):([0-9a-f,]+)$/.exec(valeur);
+    if (masque) empreintes.push({ sel: masque[1], liste: new Set(masque[2].split(",").filter(Boolean)) });
+    else if (code === "montant_interne" || code === "montant_illisible") for (const x of valeur.split(",")) if (x.trim() && Number.isFinite(Number(x))) montants.add(Number(x));
     if (code === "nom_prestataire" && valeur.trim()) noms.push(valeur.trim());
+    if (code === CONTROLE_IMPOSSIBLE) ferme = true;
   }
-  return { montants: [...montants], noms };
+  return { montants: [...montants], noms, ...(ferme ? { ferme } : {}), ...(empreintes.length ? { empreintes } : {}) };
 }
-// Ce qui reste dans le texte (montants et noms encore présents) ; vide : la copie est permise.
-export function resteBloque(texte, { montants = [], noms = [] } = {}) {
+// Ce qui reste dans le texte (montants et noms encore présents) ; vide : la copie est permise. Contrôle fermé : CONTROLE_IMPOSSIBLE.
+export function resteBloque(texte, { montants = [], noms = [], ferme = false, empreintes = [] } = {}) {
   const vus = new Set(montantsDuTexte(texte));
   const p = ` ${plat(texte)} `;
-  return [...montants.filter((n) => vus.has(n)).map(String), ...noms.filter((n) => plat(n).length >= 3 && p.includes(` ${plat(n)} `))];
+  const masques = [...vus].some((n) => empreintes.some((e) => e.liste.has(empreinteMontant(e.sel, n)))) ? [MONTANT_MASQUE] : [];
+  return [...(ferme ? [CONTROLE_IMPOSSIBLE] : []), ...montants.filter((n) => vus.has(n)).map(String), ...masques, ...noms.filter((n) => plat(n).length >= 3 && p.includes(` ${plat(n)} `))];
 }
 
 // ---- Lot 2 des audits du 20.11.2026 (Assistant) ---------------------------------------------------------------------------------------
