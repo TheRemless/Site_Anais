@@ -13,7 +13,7 @@ import { chercherCatalogue, clientConfirme, clientProbable, clientPourPrixDeNani
 import { MOTIFS_A_PREPARER } from "../supabase/functions/whatsapp/proposer.js";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
 import { faitsAvancee } from "../supabase/functions/whatsapp/etapes.js";
-import { signauxPartenaire, avisApres } from "../supabase/functions/whatsapp/type-contact.js";
+import { signauxPartenaire, avisApres, partenaireProbable, prixDeVentePermis, traiterEnPartenaire } from "../supabase/functions/whatsapp/type-contact.js";
 import { MOTIFS_TRI_NON_CLIENT } from "../src/gestion/js/whatsapp-etapes-calc.mjs";
 import { HISTORIQUE_PLEIN, dernierPrixAccepte, discussionPleine, resumeReport } from "../supabase/functions/agent/discussion-pleine.js";
 import { MAX_CONVERSATION_B64, MAX_FICHIERS_CONVERSATION } from "../supabase/functions/agent/fichiers.js";
@@ -434,8 +434,12 @@ test("de bout en bout : le contact « bateau » de la #319, mal trié en demande
   const conv = { ...base, tri, avancee: faitsAvancee({ ...base, tri }, messages, "2026-11-22T00:00:00Z"), type_signaux: signauxPartenaire(messages, { conv: base, maintenant: "2026-11-22T00:00:00Z" }) };
   assert.equal(conv.type_signaux.nets, true, "repères nets");
   assert.ok(conv.avancee.par.taxi && conv.avancee.par.taxi.demande_le, "le contact a aussi « demandé » quelque chose : sans la #319, il serait client probable");
+  // Relecture de la #319 : partenaire seulement probable (repères), donc prudence sur le prix, sans traitement complet de partenaire.
+  assert.deepEqual([partenaireProbable(conv), prixDeVentePermis(conv), traiterEnPartenaire(conv)], [true, false, false]);
   assert.equal(clientProbable(conv, ["taxi"]), false);
   assert.equal(clientPourPrixDeNani(conv, ["taxi"]), false);
+  // Ses montants ne deviennent pas internes pour autant (seul un type posé fait de la conversation celle d'un partenaire, PR 299).
+  assert.doesNotMatch(lire("supabase/functions/agent/outils.js") + lire("supabase/functions/agent/index.ts"), /traiterEnPartenaire|conversationInterne: [^,]*partenaireProbable/);
   assert.equal(clientConfirme({ ...conv, dossier_id: "d1" }), false, "même relié à un dossier, pas un client confirmé");
   // Le chemin de la fonction agent : memoDepuis puis proposer_dossier, avec le prix écrit par Nani.
   const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv, messages }) }], { conversationClient: clientPourPrixDeNani(conv, ["taxi"]), clientProbable: !clientConfirme(conv) && clientProbable(conv, ["taxi"]), conversationLiee: conv.id });
