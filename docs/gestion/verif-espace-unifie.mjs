@@ -188,7 +188,8 @@ r = await essaie(u.adminDeux, `select fusionner_clients('${cT}', '${cS}')`);
 ok(r.ok, "l'administrateur des deux entreprises fusionne" + (r.ok ? "" : ` (${r.err})`));
 const g = await un("select notes, telephone from clients where id = $1", [cT]);
 ok(g && /allergie/.test(g.notes) && /Autre téléphone : \+41 79 111 11 11/.test(g.notes), "les notes et l'autre téléphone de la fiche absorbée sont gardés");
-ok((await un("select client_id from whatsapp_conversations where id = $1", [rg.conversation_id])).client_id === null, "la conversation Secret perd seulement le client d'une autre entreprise");
+// Migration 85 : un client appartient à Secret et à Taxi ; sa conversation garde la fiche fusionnée de Taxi (avant : retirée).
+ok((await un("select client_id from whatsapp_conversations where id = $1", [rg.conversation_id])).client_id === cT, "la conversation d'un client garde la fiche fusionnée de l'autre entreprise (client commun, migration 85)");
 
 const org2 = (await un("insert into organisations (nom) values ('Autre agence') returning id")).id;
 const s2 = (await un("insert into entites (slug, nom, organisation_id) values ('secret', 'Autre Secret', $1) returning id", [org2])).id;

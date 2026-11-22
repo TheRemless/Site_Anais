@@ -4578,3 +4578,7 @@ export const EN = {
   "Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant.": "Partner records could not be read to check the text. Nothing was sent, try again in a moment.",
   "Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur.": "File created without a referrer: the WhatsApp contact is no longer marked as a referrer.",
 };
+
+// Prêt à réserver (migration 85) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_PRET } from "./i18n-en-pret.mjs";
+for (const [k, v] of Object.entries(EN_PRET)) if (!(k in EN)) EN[k] = v;

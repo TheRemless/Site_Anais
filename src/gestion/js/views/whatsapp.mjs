@@ -32,6 +32,9 @@ import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from 
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
 import { estNonTransmis, repereManque, conversationManque, TEXTE_NON_TRANSMIS, LIBELLE_MANQUE, LIBELLE_NOUVEAU_NUMERO, ancienneConversation } from "../whatsapp-calc.mjs";
+// Filtre « Prêt à réserver » (migration 85), à part dans whatsapp-pret.mjs.
+import { clientCommun } from "../whatsapp-pret-calc.mjs";
+import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -99,7 +102,8 @@ function ligneConversation(c, prop, ouverte) {
       ),
       // Repère discret (migration 100) : effacé au prochain message du client.
       conversationManque(c) ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_MANQUE)) : null,
-      c.meme_client_que ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_NOUVEAU_NUMERO)) : null
+      c.meme_client_que ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_NOUVEAU_NUMERO)) : null,
+      filtre === FILTRE_PRET.valeur ? resumeLignePret(c) : null
     )
   );
 }
@@ -463,16 +467,17 @@ function blocFaits(c, prop) {
 // « Créer le dossier » ou « Mettre à jour le dossier » : l'Assistant de l'entreprise de la conversation s'ouvre et lit l'échange lui-même
 // (texte, photos, PDF). Proposé seulement là où l'Assistant est allumé et permis (comme son onglet).
 const assistantDans = (id) => !!id && agentActif(reglagesDe(id)) && ["partenaires.lire", "dossiers.ecrire"].every((d) => permissionsDe(id).includes(d));
-function choisirEntreprise(c, prop) {
+// `suggeree` : l'entreprise présélectionnée (bouton principal), toujours modifiable. Pour un client, la question est toujours posée.
+function choisirEntreprise(c, prop, suggeree = null) {
   const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
-  const proposee = entrepriseProposee(prop, choix);
+  const proposee = suggeree || entrepriseProposee(prop, choix);
   return new Promise((resoudre) => {
     let fermer;
     // Résolue avant de fermer : la fermeture rend « null » (fenêtre fermée sans choix), sans effet après un choix.
     const prendre = (e) => (resoudre(e), fermer());
     fermer = modal(
       tr("Dans quelle entreprise ?"),
-      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("La conversation est à trier. Elle sera rangée dans l'entreprise du dossier une fois le dossier validé.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
+      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, clientCommun(c) ? tr("Ce client est commun à Secret et à Taxi : le dossier appartient à l'entreprise choisie, la conversation reste aux deux.") : tr("La conversation est à trier. Elle sera rangée dans l'entreprise du dossier une fois le dossier validé.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
       { protege: false, ferme: () => resoudre(null) }
     );
   });
@@ -528,11 +533,22 @@ async function choisirPieces(c) {
 
 async function versAssistant(c, prop) {
   let entiteId = c.entite_id;
-  if (!entiteId) {
+  // Un client appartient à Secret et à Taxi : « Créer le dossier » demande toujours l'entreprise, la suggestion du tri présélectionnée et
+  // modifiable (une excursion ne se crée plus chez Taxi en silence). Une conversation rangée dans l'autre entreprise redevient commune.
+  const commun = clientCommun(c);
+  if (!entiteId || commun) {
     const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
-    const entreprise = entreprisePourAssistant({ conv: c, prop, choix, activeId: etat.entiteId }) || (await choisirEntreprise(c, prop));
+    const suggeree = entreprisePourAssistant({ conv: commun ? { ...c, entite_id: null } : c, prop, choix, activeId: etat.entiteId });
+    const entreprise = commun ? await choisirEntreprise(c, prop, suggeree) : suggeree || (await choisirEntreprise(c, prop));
     if (!entreprise) return;
     entiteId = entreprise.id;
+    if (commun && c.entite_id && c.entite_id !== entiteId) {
+      try {
+        await modifier("whatsapp_conversations", c.id, { entite_id: null });
+      } catch (err) {
+        return toast(err.message, true);
+      }
+    }
   }
   // Les pièces d'abord : fermer la feuille annule tout.
   const pieces = await choisirPieces(c);
@@ -597,14 +613,20 @@ async function envoyerVoucherDuDossier(dossierId) {
   if (!x.reservation) return toast(tr("Ce dossier n'a pas encore de service à mettre sur un voucher."), true);
   envoyerVoucher(x);
 }
+// « Prêt à réserver » (migration 85) : le même « Créer le dossier » que la fiche des faits, ou null.
+// Pour un client, l'entreprise est demandée à chaque fois (versAssistant) : il suffit qu'un des deux Assistants soit permis.
+const creerPret = (c, prop) =>
+  !lectureSeule && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
 // `dossier` : celui de la fiche des faits (relié, ou trouvé par le client). « Mettre à jour » demande un dossier relié (l'Assistant ne lit que
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
   if (lectureSeule) return null;
   const demander = boutonDemander(c, prop);
-  const ici = !c.entite_id || c.entite_id === etat.entiteId;
+  // Un client est commun à Secret et à Taxi : « Créer le dossier » reste proposé où que la conversation soit rangée (l'entreprise est demandée).
+  const commun = clientCommun(c);
+  const ici = commun || !c.entite_id || c.entite_id === etat.entiteId;
   const relie = c.entite_id === etat.entiteId ? dossierDe(c) : null;
-  const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
+  const assistant = commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id);
   const voucherDe = dossier && dossier.entite_id === etat.entiteId ? dossier : null;
   const boutons = [
     assistant && ici ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), relie ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,
@@ -1045,7 +1067,8 @@ async function fil(c, prop) {
       !erreur && !messages.length ? h("p", { class: "aide" }, tr("Aucun message gardé pour cette conversation.")) : null,
       jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
       lignesTaches(c),
-      cartePaiement(c)
+      cartePaiement(c),
+      cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
     doute ? carteVerifier(c, doute) : null,
     carteProposition(c, prop, messages)
@@ -1122,7 +1145,7 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
-  const filtrer = (liste, f) => filtrerConversations(liste, f, marqueDe);
+  const filtrer = (liste, f) => (f === FILTRE_PRET.valeur ? filtrerPretes(liste) : filtrerConversations(liste, f, marqueDe));
   if (filtre === null) filtre = filtreDeDepart(conversations);
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
   if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
@@ -1132,7 +1155,8 @@ export async function vueWhatsApp() {
   // « À faire » (PR B) : tout ce qui attend, trié par urgence, sans IA. Placé après « Toutes ».
   const aFaireBoite = aFaireDeLaBoite(entitesWhatsApp());
   nombres.a_faire = aFaireBoite.nombre;
-  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...FILTRES.slice(1)];
+  if (filtrePretDisponible()) nombres[FILTRE_PRET.valeur] = nombrePretes(conversations);
+  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...(filtrePretDisponible() ? [FILTRE_PRET] : []), ...FILTRES.slice(1)];
 
   const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: filtres.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
@@ -1153,6 +1177,8 @@ export async function vueWhatsApp() {
       ? listeAFaire(aFaireBoite, { entites: entitesWhatsApp(), idOuvert })
       : liste.length
       ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
+      : filtre === FILTRE_PRET.valeur
+      ? videPret()
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
   racine.append(colonneListe);

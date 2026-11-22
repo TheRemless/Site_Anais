@@ -2526,3 +2526,13 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-joindre.desactive { opacity: 0.45; cursor: not-allowed; }
 .agent-wa-longueur:empty { display: none; }
 .agent-joints-erreur.info { color: var(--texte-2); }
+
+/* WhatsApp, filtre « Prêt à réserver » (migration 85) : la ligne sous l'aperçu et la carte pré-remplie dans la conversation. */
+.wa-conv-pret { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 0.85rem; color: var(--teal-700); }
+.wa-conv-pret svg { flex: none; }
+.wa-conv-pret span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wa-pret-carte { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 0.92rem; line-height: 1.4; }
+.wa-pret-carte dt { color: var(--texte-2); }
+.wa-pret-carte dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.wa-suivi-pret .principal.petit svg { margin-right: 6px; vertical-align: -3px; }
+.wa-suivi .wa-pret-dossier { margin-top: 8px; font-size: 0.9rem; color: var(--texte-2); }

@@ -17,6 +17,7 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
 import { apprendreDeNani } from "../agent/apprendre-whatsapp.js";
+import { pretApresMessage, rattraperPret } from "./pret.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
 import { interpreterWaba, rattrapageAttend, sembleManquer, citationDatable, repereAutorise, REPERE } from "./manquants.js";
@@ -158,6 +159,8 @@ async function traiterEnAttente(db: SupabaseClient, idCourant: string | null) {
   // Vouchers envoyés depuis Gestion : leur fichier temporaire ne reste jamais plus d'une heure (à chaque passage, la reprise passe toutes les
   // 5 minutes). Une panne du stockage n'arrête pas le reste du traitement.
   await purgerSortants(db).catch((err) => console.error("purge des vouchers envoyés :", String((err as Error)?.message || err).slice(0, 200)));
+  // Reprise seulement : les conversations jamais passées par « Prêt à réserver » (celles d'avant la migration 85), 20 par passage.
+  if (!idCourant) await rattraperPret(db, ORGANISATION).catch((err) => console.error("rattrapage prêt à réserver :", String((err as Error)?.message || err).slice(0, 200)));
   const r = await reglages(db);
   if (!r.purge_le || Date.now() - new Date(r.purge_le).getTime() > 3600_000) {
     reglagesLus = null;
@@ -273,6 +276,8 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
     if (!cible || !cible.length) throw new CibleAbsente("original_introuvable");
     // Supprimé par le client : ses médias aussi.
     if (a.action === "supprimer") for (const m of cible || []) await effacerMedias(db, m.id, m.medias || []);
+    // Un message modifié ou supprimé peut défaire ou créer le signal « Prêt à réserver » (migration 85).
+    enFond(pretApresMessage(db, conv.id));
     return;
   }
   // Rattrapage (webhook du compte WhatsApp) : déjà reçu par message.received, rien à faire ; sinon, après 2 minutes, rangé comme un message.
@@ -314,6 +319,8 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
   if (data?.nouveau && data.message_id) {
     // Suivi (migration 62) : signal de paiement, promesse de Nani, résumé. Hors de ce traitement, comme la réponse préparée.
     enFond(suiviApresMessage(db, data.conversation_id, data.message_id));
+    // Prêt à réserver (migration 85) : sans IA, refait à chaque message, de Nani comme du client.
+    enFond(pretApresMessage(db, data.conversation_id));
     // Un message du client : la réponse se prépare et l'équipe est prévenue, hors de ce traitement (il ne retarde pas les autres événements).
     if (a.message.sens === "entrant") enFond(apresMessageClient(db, data.conversation_id, data.message_id));
     // Nani a répondu depuis l'app : la proposition en attente est traitée (plus de doublon possible).
