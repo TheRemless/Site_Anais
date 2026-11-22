@@ -126,6 +126,28 @@ test("jours libres : de demain à la veille du départ, sans les jours où une s
   assert.equal(joursLibres({ arrivee: "2026-11-21", depart: null }, { ajd }).at(-1), "2026-12-05");
 });
 
+test("dossier lié : lu chez Secret ou Taxi, dossier lié ZTP ignoré", async () => {
+  const { reservationsDuDossierLie } = await load();
+  const marques = { "e-secret": "secret", "e-taxi": "taxi", "e-ztp": null };
+  const marqueDe = (id) => marques[id] || null;
+  const taxi = { id: "d-taxi", entite_id: "e-taxi", dossier_lie_id: "d-lie" };
+  const reservations = [
+    { id: "r1", dossier_id: "d-lie", date_service: "2026-11-24", statut: "confirme" },
+    { id: "r2", dossier_id: "d-lie", date_service: "2026-11-25", statut: "annule" },
+    { id: "r3", dossier_id: "d-autre", date_service: "2026-11-26", statut: "confirme" },
+  ];
+  const lu = (entite_id, extra = {}) => reservationsDuDossierLie(taxi, { dossiers: [{ id: "d-lie", entite_id, ...extra }], reservations, marqueDe }).map((r) => r.id);
+  assert.deepEqual(lu("e-secret"), ["r1"]);
+  assert.deepEqual(lu("e-taxi"), ["r1"]);
+  // Dossier lié ZTP ignoré : chaque entreprise garde ses éléments, seuls Secret et Taxi partagent leurs clients.
+  assert.deepEqual(lu("e-ztp"), []);
+  assert.deepEqual(lu("e-inconnue"), []);
+  assert.deepEqual(lu("e-secret", { annule: true }), []);
+  assert.deepEqual(reservationsDuDossierLie({ id: "d-seul", entite_id: "e-taxi" }, { dossiers: [], reservations, marqueDe }), []);
+  // L'écran passe bien par cette règle.
+  assert.match(lire("views/proposer-excursion.mjs"), /const lie = reservationsDuDossierLie\(dossier, \{/);
+});
+
 test("enfants et saison : pas de plongée avec des enfants, Koh Rok d'octobre à avril seulement", async () => {
   const { possibilites } = await load();
   const P = [

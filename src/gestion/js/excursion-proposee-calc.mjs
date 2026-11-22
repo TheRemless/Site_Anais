@@ -211,6 +211,16 @@ export function sejour(transferts = [], { ile = "", ajd = "", sens = null } = {}
   return valables.find((x) => !ajd || !x.arrivee || x.arrivee <= ajd) || valables[0] || null;
 }
 
+// Les services du dossier lié de l'autre entreprise (même demande), pour les sorties déjà réservées et leurs jours. Lu seulement si ce
+// dossier est lui aussi chez Secret ou chez Taxi : ces deux-là partagent leurs clients, ZTP garde les siens et son dossier n'est jamais lu.
+// `marqueDe(entiteId)` : « secret », « taxi » ou null (marqueEntite de whatsapp-calc.mjs).
+export function reservationsDuDossierLie(dossier, { dossiers = [], reservations = [], marqueDe = () => null } = {}) {
+  if (!dossier || !dossier.dossier_lie_id) return [];
+  const lie = (dossiers || []).find((d) => d.id === dossier.dossier_lie_id);
+  if (!lie || lie.annule || !["secret", "taxi"].includes(marqueDe(lie.entite_id))) return [];
+  return (reservations || []).filter((r) => r.dossier_id === lie.id && r.statut !== "annule");
+}
+
 // Les jours libres du séjour : du lendemain de l'arrivée (au plus tôt demain) à la veille du départ, ou jusqu'à 14 jours après l'arrivée
 // quand le départ n'est pas connu. Un jour où une sortie est déjà réservée (`occupes`) n'est pas libre.
 export function joursLibres(s, { ajd, occupes = [] } = {}) {

@@ -11,7 +11,7 @@ import { exempleDe } from "../exemples.mjs";
 import { resteBloque } from "../agent-calc.mjs";
 import { marqueEntite, lienWhatsApp, fenetre, ERREURS_ENVOI, envoiIncertain, aConfirmerEnvoi } from "../whatsapp-calc.mjs";
 import { conversationDuVoucher, contactVoucher } from "../whatsapp-voucher-calc.mjs";
-import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
+import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, reservationsDuDossierLie, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
 import { adminsWhatsApp } from "./voucher-whatsapp.mjs";
 
 const MAX = 2;
@@ -35,8 +35,8 @@ export function contexteProposition(dossier) {
   // Le sens de chaque transfert (arrivée sur l'île, départ) : un départ seul n'ouvre plus un séjour qui commence ce jour-là.
   const s = sejour(transferts, { ile, ajd, sens: (r) => sensTransfert(r, { prestation: prestationDe(r), trajet: trajetDe(r), ile }) });
   if (!s) return null;
-  // Les sorties déjà réservées : celles du dossier et du dossier lié de l'autre entreprise (Secret et Taxi d'une même demande).
-  const lie = dossier.dossier_lie_id ? (etat.brut.reservations || []).filter((r) => r.dossier_id === dossier.dossier_lie_id && r.statut !== "annule") : [];
+  // Les sorties déjà réservées : celles du dossier et du dossier lié de l'autre entreprise (Secret et Taxi d'une même demande, jamais ZTP).
+  const lie = reservationsDuDossierLie(dossier, { dossiers: etat.brut.dossiers || [], reservations: etat.brut.reservations || [], marqueDe: (id) => marqueEntite(entite(id)) });
   const avecLie = [...reservations, ...lie];
   const sorties = avecLie.filter((r) => !estTransfert(r, { prestation: prestationDe(r), taxi: marqueEntite(entite(r.entite_id)) === "taxi" }));
   const libres = joursLibres(s, { ajd, occupes: sorties.map((r) => r.date_service).filter(Boolean) });
