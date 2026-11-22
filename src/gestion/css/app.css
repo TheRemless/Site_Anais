@@ -1942,6 +1942,14 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-bulle p:last-child { margin-bottom: 0; }
 .agent-bulle.de-personne { align-self: flex-end; max-width: 85%; padding: 10px 14px; background: var(--teal-100); border-radius: 16px 16px 4px 16px; overflow-wrap: anywhere; }
 .agent-bulle.de-agent { align-self: flex-start; max-width: 68ch; line-height: 1.55; overflow-wrap: anywhere; }
+/* « Pas bien » sous une réponse de l'Assistant (migration 74) : discret, cible de 44 px au toucher. */
+.agent-avis { margin-top: 2px; }
+.agent-avis-bouton { min-height: 44px; padding: 0; color: var(--texte-2); font-size: 0.86rem; }
+.agent-avis-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.agent-avis-raison { flex: 1 1 220px; min-width: 0; min-height: 44px; }
+.agent-avis-form .erreur { flex-basis: 100%; margin: 0; color: var(--danger); font-size: 0.86rem; }
+.agent-avis-form .erreur:empty { display: none; }
+.agent-avis-note { margin: 4px 0 0; }
 .agent-etape { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--texte-2); font-size: 0.92rem; }
 .agent-point { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); animation: agent-pouls 1.2s ease-in-out infinite; }
 @keyframes agent-pouls { 50% { opacity: 0.25; } }

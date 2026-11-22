@@ -12,13 +12,14 @@
 // (ctx.permissions et permissionsPar vides). Les dossiers lus restent ceux reliés à la conversation.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, DUREE_MAX_MS, MODELE_DEFAUT, apprentissagesUnifies, ligneJournal, signe } from "../agent/prompt.js";
+import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
 import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef } from "../agent/outils.js";
 import { CONTACTS_INTERNES } from "../agent/whatsapp-lecture.js";
 import { tourner } from "../agent/boucle.js";
+import { lireApprentissages } from "../agent/apprentissages.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
 import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
-import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
+import { debutMois, estCreditEpuise, plafondRetenu } from "../assistant/budget.js";
 import { dateBangkok, reglagesAssistant } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
@@ -271,12 +272,10 @@ async function preparer(
     if (types.erreur) console.error("whatsapp : noms des contacts typés illisibles");
     const prestataires = [...new Set([...nomsABloquer((await ctx.charger("partenaires")) as { id: string; nom: string }[], exemptes), ...types.noms])];
     // Espace unifié : 60 corrections de l'entreprise active ; de l'autre, seulement les réponses au client (20), marquées de leur entreprise.
-    const [lus, lusAutre] = await Promise.all([
-      db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(unifie ? APPRIS_LUS_ACTIVE : 80),
-      unifie && autre ? db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", autre.id).eq("genre", "reponse").order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
-    ]);
-    const lignesAppris = unifie && autre ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.nom, nomAutre: autre.nom }) : lus.data || [];
-    if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
+    // Lues et filtrées dans agent/apprentissages.js : une ligne dont un montant est égal à un net de l'entreprise est écartée, et seules les
+    // lignes utiles à une réponse au client restent (ni remarque de service, ni « Pas bien » sur une réponse à l'équipe).
+    const lus = await lireApprentissages(db, { active: ent, autre: unifie && autre ? autre : null, pourClient: true });
+    const lignesAppris = lus.lignes;
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
     // Chez Secret et Taxi, les exemples perdent leur signature (« VIP Taxi Lanta 🌴 » d'un message type) : l'agent ne la recopie pas.
     const signatures = signe(reglages) ? null : [ent.nom, ...(unifie && autre ? [autre.nom] : [])];
@@ -285,7 +284,7 @@ async function preparer(
       return "";
     });
     const unifieConsignes = unifie && autre ? { entreprises: [{ nom: ent.nom, slug: ent.slug, reglages }, { nom: autre.nom, slug: autre.slug, reglages: reglagesAutre }] } : null;
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? conv.type_contact || null : null });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.erreur ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? conv.type_contact || null : null });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });

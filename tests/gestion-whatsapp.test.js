@@ -383,7 +383,8 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   assert.match(p.texte, /proposer_reponse une seule fois/);
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
-  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.eq\("entite_id", ent\.id\)/);
+  // Lues et filtrées des montants égaux à un net dans agent/apprentissages.js (migration 74), dans l'entreprise de la conversation.
+  assert.match(reponse, /const lus = await lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true \}\);/);
 });
 
 // ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------

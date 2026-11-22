@@ -4,56 +4,15 @@
 // Ce qui ne part jamais : un net, une commission, une marge commerciale, une coordonnée bancaire (la correction entière est écartée), ni le nom, le
 // téléphone ou l'e-mail d'un client (masqués avant l'écriture). « Marge » seule reste permise : c'est d'abord la marge de sécurité d'un
 // pickup, ce que l'agent doit justement apprendre. Logique pure, testée (tests/gestion-agent-apprendre.test.js).
-import { partModifiee } from "./assistant-suivi-calc.mjs";
+// La partie texte (masquage, mots internes, phrases changées, « Pas bien ») est dans agent-apprendre-texte.mjs, copie identique de
+// supabase/functions/agent/apprendre.js : la fonction « whatsapp » apprend de la même façon des réponses que Nani écrit autrement.
+import { MOT_INTERNE, anonymiser, correctionReponse, ligneApprise as ligne, memeTexte, propre } from "./agent-apprendre-texte.mjs";
 
-export const MOT_INTERNE = /\b(?:nets?|commissions?|marges? commerciales?|prix d'achat|co[uû]t d'achat|cost price|net price|iban|swift|bic|compte bancaire|bank account|routing)\b/i;
+export { MOT_INTERNE, anonymiser };
 
-const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
-const propre = (t) => String(t ?? "").replace(/\s+/g, " ").trim();
-const echapper = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-// Masque ce qui désigne un client : ses noms (ceux de la carte ou du dossier), un e-mail, un numéro de téléphone (7 chiffres ou plus), un lien,
-// et le prénom après « Bonjour » ou « Hello ». Le reste du texte (lieux, heures, tournures) est ce qui sert d'exemple.
-export function anonymiser(texte, noms = []) {
-  let t = String(texte ?? "");
-  t = t.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "{e-mail}");
-  t = t.replace(/https?:\/\/\S+/g, "{lien}");
-  // Un numéro de 7 chiffres ou plus, sauf une date (20.11.2026, 2026-11-20).
-  t = t.replace(/\+?\d[\d ().-]{5,}\d/g, (m) => (m.replace(/\D/g, "").length >= 7 && !/^\d{1,4}[./-]\d{1,2}[./-]\d{2,4}$/.test(m) ? "{téléphone}" : m));
-  const mots = [...new Set(noms.flatMap((n) => String(n || "").split(/\s+/)).map((m) => m.replace(/[^\p{L}'-]/gu, "")).filter((m) => m.length >= 2))].sort((a, b) => b.length - a.length);
-  for (const m of mots) t = t.replace(new RegExp(`(^|[^\\p{L}])${echapper(m)}(?=$|[^\\p{L}])`, "giu"), "$1{client}");
-  t = t.replace(/\b(Bonjour|Bonsoir|Hello|Hi|Dear|Cher|Chère)\s+(?!\{)([\p{Lu}][\p{L}'-]+)/gu, "$1 {prénom}");
-  return t;
-}
-
-const memeTexte = (a, b) => sansAccents(propre(a)).toLowerCase() === sansAccents(propre(b)).toLowerCase();
+const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const limiterRemarque = (t) => (t.length > 300 ? `${t.slice(0, 299)}…` : t);
 const nombre = (x) => (x === null || x === undefined || x === "" || Number.isNaN(Number(x)) ? null : Number(x));
-
-// Les lignes d'un texte présentes d'un côté seulement : la réponse corrigée se garde par ses phrases changées, pas en entier.
-function lignesChangees(avant, apres) {
-  const decouper = (t) =>
-    String(t || "")
-      .split(/\n+|(?<=[.!?])\s+/)
-      .map(propre)
-      .filter(Boolean);
-  const a = decouper(avant);
-  const b = decouper(apres);
-  const enlevees = a.filter((l) => !b.some((x) => memeTexte(x, l)));
-  const ajoutees = b.filter((l) => !a.some((x) => memeTexte(x, l)));
-  return { avant: enlevees.join(" / "), apres: ajoutees.join(" / ") };
-}
-
-const limiter = (t, n) => {
-  const x = propre(t);
-  return x.length > n ? `${x.slice(0, n - 1)}…` : x;
-};
-
-function ligne(genre, contexte, avant, apres, noms) {
-  const l = { genre, contexte: limiter(anonymiser(contexte, noms), 300), avant: limiter(anonymiser(avant, noms), 1500), apres: limiter(anonymiser(apres, noms), 1500) };
-  if (MOT_INTERNE.test(`${l.contexte} ${l.avant} ${l.apres}`)) return null;
-  if (memeTexte(l.avant, l.apres)) return null;
-  return l;
-}
 
 // Le contexte d'un service : son libellé et, s'il y en a, son trajet ou son lieu de pickup.
 const contexteService = (s) => [propre(s.libelle || s.texte), s.de && s.vers ? `${propre(s.de)} → ${propre(s.vers)}` : "", s.lieu_pickup ? `pickup ${propre(s.lieu_pickup)}` : ""].filter(Boolean).join(", ");
@@ -62,7 +21,9 @@ const contexteService = (s) => [propre(s.libelle || s.texte), s.de && s.vers ? `
 // `creation` : vrai pour un dossier créé par l'écran de création, qui écrit lui-même le libellé (titre du catalogue, trajet), le lieu de
 // pickup (hôtel du client) et le prix d'une offre du catalogue (recalculé) : un écart n'y serait pas une correction de la personne. Seuls
 // l'heure, la date et le prix d'un service hors catalogue (tapé par elle) comptent alors.
-function ecartsService(s, r, noms, { creation = false } = {}) {
+// `prixSaisi` (22.11.2026) : dans « Vérifier avant », la personne a remplacé le prix de l'offre par un prix à elle (prix convenu tapé,
+// lignes prises à la main) : l'écran le dit (demande.mjs, prix_saisi) et l'écart compte. Un simple recalcul du catalogue ne compte pas.
+function ecartsService(s, r, noms, { creation = false, prixSaisi = false } = {}) {
   if (!s || !r) return [];
   const ctx = contexteService(s);
   const out = [];
@@ -71,7 +32,7 @@ function ecartsService(s, r, noms, { creation = false } = {}) {
   if (!creation && libelle && propre(r.libelle) && !memeTexte(libelle, r.libelle)) out.push(ligne("libelle", s.de && s.vers ? `${propre(s.de)} → ${propre(s.vers)}` : "", libelle, r.libelle, noms));
   const pv = nombre(s.prix);
   const pr = nombre(r.montant_vente);
-  if (pv !== null && pr !== null && pv !== pr && !(creation && s.offre)) out.push(ligne("prix", ctx, String(pv), String(pr), noms));
+  if (pv !== null && pr !== null && pv !== pr && !(creation && s.offre && !prixSaisi)) out.push(ligne("prix", ctx, String(pv), String(pr), noms));
   if (!creation && s.lieu_pickup && r.lieu_pickup && !memeTexte(s.lieu_pickup, r.lieu_pickup)) out.push(ligne("lieu", propre(s.libelle || s.texte), s.lieu_pickup, r.lieu_pickup, noms));
   if (s.date && r.date_service && s.date !== r.date_service) out.push(ligne("date", ctx, s.date, r.date_service, noms));
   return out.filter(Boolean);
@@ -108,24 +69,36 @@ export function correctionsDepuisCarte(carte, enregistre, { noms = [] } = {}) {
     const services = d.services || [];
     const reservations = Array.isArray(enregistre.reservations) ? enregistre.reservations : [];
     const paires = apparier(services, reservations);
-    return services.flatMap((s, i) => ecartsService(s, paires[i], masques, { creation: true }));
+    // Ce que l'écran de création a fait de chaque service (« Vérifier avant » seulement : rien d'un geste), apparié comme les réservations.
+    const ecran = Array.isArray(enregistre.ecran) ? apparier(services, enregistre.ecran.map((f) => ({ ...f, libelle: f.titre || "", date_service: f.date || "" }))) : [];
+    return services.flatMap((s, i) => ecartsService(s, paires[i], masques, { creation: true, prixSaisi: !!(ecran[i] && ecran[i].prix_saisi === true) }));
   }
   if (carte.genre === "reservation") return ecartsService(d.service || {}, enregistre.reservation, masques);
   if (carte.genre === "modification") {
     const r = enregistre.reservation;
     if (!r) return [];
+    // Une remarque (migration 74) : elle s'ajoute aux notes du service. Seule compte la ligne ajoutée qui reprend la remarque proposée (au
+    // moins un mot de quatre lettres en commun, la plus proche) : les autres notes du service, réécrites dans le formulaire, ne partent
+    // jamais (revue de sécurité : notes internes, chambre, santé). Sans les notes d'avant (`notesAvant`), rien.
+    if (d.champ === "remarque") {
+      if (typeof enregistre.notesAvant !== "string") return [];
+      const avant = enregistre.notesAvant.split(/\n+/).map(propre).filter(Boolean);
+      const ajoutees = String(r.notes || "").split(/\n+/).map(propre).filter((x) => x && !avant.some((a) => memeTexte(a, x)));
+      const mots = (t) => new Set(sansAccents(t).toLowerCase().split(/[^a-z0-9]+/).filter((m) => m.length >= 4));
+      const cible = mots(d.valeur);
+      const score = (x) => [...mots(x)].filter((m) => cible.has(m)).length;
+      const gardee = ajoutees.filter((x) => score(x) > 0).sort((a, b) => score(b) - score(a))[0];
+      if (!gardee) return [];
+      const l = ligne("remarque", d.libelle || "", d.valeur, limiterRemarque(gardee), masques);
+      return l ? [l] : [];
+    }
     const champ = { heure_pickup: ["pickup", (x) => String(x.heure_pickup || "").slice(0, 5)], lieu_pickup: ["lieu", (x) => x.lieu_pickup], date: ["date", (x) => x.date_service] }[d.champ];
     if (!champ) return [];
     const l = ligne(champ[0], d.libelle || "", d.valeur, champ[1](r) || "", masques);
     return l ? [l] : [];
   }
   if (carte.genre === "reponse") {
-    const avant = d.message || "";
-    const apres = enregistre.message || "";
-    if (!propre(apres) || partModifiee(avant, apres) === 0) return [];
-    const ch = lignesChangees(avant, apres);
-    if (!ch.avant && !ch.apres) return [];
-    const l = ligne("reponse", d.langue === "en" ? "réponse en anglais" : "réponse en français", ch.avant, ch.apres, masques);
+    const l = correctionReponse(d.message || "", enregistre.message || "", { noms: masques, contexte: d.langue === "en" ? "réponse en anglais" : "réponse en français" });
     return l ? [l] : [];
   }
   return [];

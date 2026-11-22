@@ -36,7 +36,8 @@
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "vouchers" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
+import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
+import { lireApprentissages } from "./apprentissages.js";
 import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
@@ -884,14 +885,13 @@ Deno.serve(async (req) => {
   })();
   // En mode unifié : 60 de l'entreprise active ; de l'autre, seulement les réponses au client (20), chaque ligne marquée de son entreprise.
   const autreEnt = unifie ? unifie.entites.find((e) => e.id !== entiteId) || null : null;
-  const [lus, lusAutre] = await Promise.all([
-    sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", entiteId).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(unifie ? APPRIS_LUS_ACTIVE : 80),
-    autreEnt ? sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", autreEnt.id).eq("genre", "reponse").lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
-  ]);
-  if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
-  const lignesAppris = autreEnt ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.data?.nom || "", nomAutre: autreEnt.nom }) : lus.data || [];
+  // Les nets du catalogue (lus plus bas aussi pour le contrôle de la réponse) écartent d'abord toute correction dont un montant leur est
+  // égal (agent/apprentissages.js, lireApprentissages) : les lignes se lisent avec la session (RLS), les nets avec la clé de service.
+  const lusNets = await netsPourControle(admin, idsEntites);
+  const lus = await lireApprentissages(sb, { dbNets: admin, active: { id: entiteId, nom: ent.data?.nom || "" }, autre: autreEnt, jusqua: conv!.cree_le || new Date().toISOString(), nets: lusNets });
+  const lignesAppris = lus.lignes;
   // Chez Secret et Taxi, les réponses corrigées perdent leur signature avant de servir d'exemple (prompt.js, blocApprentissages).
-  const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte, signatures: signe(reglages) ? null : [ent.data?.nom || "", ...(unifie ? unifie.entites.map((e) => e.nom) : [])].filter(Boolean) });
+  const appris = lus.erreur ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte, signatures: signe(reglages) ? null : [ent.data?.nom || "", ...(unifie ? unifie.entites.map((e) => e.nom) : [])].filter(Boolean) });
   // Le contrôle de la réponse au client (revue de sécurité de la PR 299). Une conversation jointe ou liée de partenaire, de chauffeur ou
   // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne. Celle
   // d'un client : les montants écrits par Nani y sont des prix de vente (conversationClient, 21.11.2026), jamais ceux du client.
@@ -918,7 +918,6 @@ Deno.serve(async (req) => {
   // conversation, ou du dossier relié) bloquent (montant_interne) ; ceux des autres services avertissent (montant_egal_net, faux blocage du
   // 21.11.2026). Ils ne vont que dans memo.nets : ni dans les consignes, ni dans les messages, ni dans un résultat d'outil, ni dans le flux
   // vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
-  const lusNets = await netsPourControle(admin, idsEntites);
   memo.nets = lusNets.nets;
   // Nets illisibles : la réponse au client ne se copie pas (controle_impossible, outils.js).
   memo.controleImpossible = lusNets.erreur;

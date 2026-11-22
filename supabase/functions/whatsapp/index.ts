@@ -13,6 +13,7 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
+import { apprendreDeNani } from "../agent/apprendre-whatsapp.js";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
 import { BUCKET_SORTANT, cheminsSortants, sansFichierSortant, statutLibereFichier, sortantsAPurger } from "../whatsapp-envoi/calc.js";
@@ -254,6 +255,8 @@ async function appliquer(db: SupabaseClient, a: any) {
       const { error: e } = await db.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "app" }).eq("conversation_id", data.conversation_id).in("statut", ["a_faire", "en_cours", "envoi"]);
       // Table absente (migration 59 pas encore passée) : rien à marquer.
       if (e && e.code !== "42P01") throw new Error(e.message);
+      // Sa réponse écrite autrement que la proposition : l'écart devient un apprentissage de l'Assistant (agent/apprendre-whatsapp.js).
+      enFond(apprendreDeNani(db, data.conversation_id, data.message_id));
     }
   }
   if (!a.message.medias.length || !data?.message_id) return;
