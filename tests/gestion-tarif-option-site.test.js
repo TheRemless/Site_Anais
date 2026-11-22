@@ -17,17 +17,23 @@ const KAYAK = "p-lanta-kayaking";
 const t = (id, partenaire_id, groupe, libelle, unite, prix_vente, extra = {}) => ({ id, partenaire_id, famille: "excursion", groupe, libelle, libelle_en: libelle, unite, prix_vente, actif: true, sur_place: false, details: {}, ...extra });
 const JOIN = "Shared speedboat excursions (join trip)";
 const LAZY = "Lazy Day sunset trips (small group)";
+const SUNSET = "Sunset island trips";
 const PRESTATIONS = [
   t("971339f0-28fc-5ce8-a9a8-4483b4c38b49", RATTANA, JOIN, "One Day Trip Koh Phi Phi + Bamboo Island", "pp", 2000),
   t("264bc47b-67a7-5261-ad0f-275187939068", RATTANA, JOIN, "One Day Trip Koh Phi Phi + Bamboo Island, child (4-11)", "ch", 1000),
-  t("c0a0922b-e30c-44bc-b029-a131f65e36ba", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Phi Phi + Bamboo Island", "pp", 3900),
-  t("5f4e4bfa-7bd3-4fef-9b82-c76d419ec1d6", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Phi Phi + Bamboo Island, child (4-11)", "ch", 2900),
+  // Sorties au coucher du soleil du flyer du 22.11.2026 ; les tarifs Lazy Day et l'ancienne affiche Rok Haa à 2 500 restent en base, inactifs.
+  t("133fe67c-74c4-4b4b-a8a9-a1e7aa927d1e", RATTANA, SUNSET, "Phi Phi Bamboo Island + Sunset", "pp", 2900),
+  t("ef164c6d-7244-4f59-8c3e-59d8563e18d0", RATTANA, SUNSET, "Phi Phi Bamboo Island + Sunset, child (4-11)", "ch", 1900),
+  t("c0a0922b-e30c-44bc-b029-a131f65e36ba", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Phi Phi + Bamboo Island", "pp", 3900, { actif: false }),
+  t("5f4e4bfa-7bd3-4fef-9b82-c76d419ec1d6", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Phi Phi + Bamboo Island, child (4-11)", "ch", 2900, { actif: false }),
   t("e54ec997-a2bf-5bb1-ac02-9531e46d1e25", RATTANA, JOIN, "One Day Trip Koh Rok + Koh Ha", "pp", 2000),
   t("a3f959f0-e598-5c91-a841-9136130fc652", RATTANA, JOIN, "One Day Trip Koh Rok + Koh Ha, child (4-11)", "ch", 1000),
-  t("2cad3d50-b06d-5859-acb6-c532055059f4", RATTANA, JOIN, "One Day Trip Koh Rok + Koh Ha Sunset", "pp", 2500),
-  t("75b3030a-afa1-530b-a670-75adfe1d149f", RATTANA, JOIN, "One Day Trip Koh Rok + Koh Ha Sunset, child (4-11)", "ch", 1800),
-  t("2558da12-6885-45f5-8d1a-3737389b1183", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Rok + Koh Haa", "pp", 3900),
-  t("44294cf2-7e04-4b1b-8c3c-273c9f917187", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Rok + Koh Haa, child (4-11)", "ch", 2900),
+  t("494841cb-8693-46c4-8dcc-1a7ba51a4b1e", RATTANA, SUNSET, "Rok Haa Island + Sunset", "pp", 2900),
+  t("5a90e9ef-a6c4-4dd3-9ca4-59a68df5716a", RATTANA, SUNSET, "Rok Haa Island + Sunset, child (4-11)", "ch", 1900),
+  t("2cad3d50-b06d-5859-acb6-c532055059f4", RATTANA, JOIN, "One Day Trip Koh Rok + Koh Ha Sunset", "pp", 2500, { actif: false }),
+  t("75b3030a-afa1-530b-a670-75adfe1d149f", RATTANA, JOIN, "One Day Trip Koh Rok + Koh Ha Sunset, child (4-11)", "ch", 1800, { actif: false }),
+  t("2558da12-6885-45f5-8d1a-3737389b1183", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Rok + Koh Haa", "pp", 3900, { actif: false }),
+  t("44294cf2-7e04-4b1b-8c3c-273c9f917187", RATTANA, LAZY, "Lazy Day Sunset Trip Koh Rok + Koh Haa, child (4-11)", "ch", 2900, { actif: false }),
   t("9523ba29-29a0-5869-a6b7-a3ede00eea18", RATTANA, "Private speedboat charter rate grid (1 to 75 pax)", "Koh Rok or 4 Islands or Koh Phi Phi", "grp", 20000),
   t("a3e3ba75-0b57-5acb-ae24-f37507f277ea", RATTANA, JOIN, "One Day Trip 4 Islands (Koh Chueak, Mook Emerald Cave, Kradan, Ngai)", "pp", 2000),
   t("d0e6ae78-4dc6-5119-acaf-9cafe2504d7b", RATTANA, JOIN, "One Day Trip 4 Islands (Koh Chueak, Mook Emerald Cave, Kradan, Ngai), child (4-11)", "ch", 1000),
@@ -63,10 +69,9 @@ const premiere = (texte, contexte = CONTEXTE) => {
 // La correspondance attendue (entreprise Secret, partenaire Rattana), avec le tarif enfant de chaque option.
 const ATTENDU = [
   ["Koh Phi Phi – Day trip", "One Day Trip Koh Phi Phi + Bamboo Island", 2000, "264bc47b-67a7-5261-ad0f-275187939068", "5,000 THB"],
-  ["Koh Phi Phi – Full-day sunset trip", "Lazy Day Sunset Trip Koh Phi Phi + Bamboo Island", 3900, "5f4e4bfa-7bd3-4fef-9b82-c76d419ec1d6", "10,700 THB"],
+  ["Koh Phi Phi – Sunset trip", "Phi Phi Bamboo Island + Sunset", 2900, "ef164c6d-7244-4f59-8c3e-59d8563e18d0", "7,700 THB"],
   ["Koh Rok & Koh Haa – Day trip", "One Day Trip Koh Rok + Koh Ha", 2000, "a3f959f0-e598-5c91-a841-9136130fc652", "5,000 THB"],
-  ["Koh Rok & Koh Haa – Sunset trip", "One Day Trip Koh Rok + Koh Ha Sunset", 2500, "75b3030a-afa1-530b-a670-75adfe1d149f", "6,800 THB"],
-  ["Koh Rok & Koh Haa – Full-day sunset trip", "Lazy Day Sunset Trip Koh Rok + Koh Haa", 3900, "44294cf2-7e04-4b1b-8c3c-273c9f917187", "10,700 THB"],
+  ["Koh Rok & Koh Haa – Sunset trip", "Rok Haa Island + Sunset", 2900, "5a90e9ef-a6c4-4dd3-9ca4-59a68df5716a", "7,700 THB"],
 ];
 
 for (const [titre, libelle, prix, enfant, total] of ATTENDU) {
@@ -139,16 +144,18 @@ test("location : le véhicule cité donne son tarif ; sans véhicule, rien n'est
 });
 
 test("liste de sorties du site : la sortie lue garde le tarif de son option", () => {
-  const texte = "Trip list: 2 trips\nGuests: 2 adults, 1 child (age 7)\nPickup: Lanta Sand Resort\nName: Anna Keller\n\nWed 25 Nov 2026\nKoh Rok & Koh Haa – Sunset trip\nEstimated total: 6,800 THB\n\nFri 27 Nov 2026\nKoh Phi Phi – Full-day sunset trip\nEstimated total: 10,700 THB\n\nEstimated total, all trips: 17,500 THB";
+  const texte = "Trip list: 2 trips\nGuests: 2 adults, 1 child (age 7)\nPickup: Lanta Sand Resort\nName: Anna Keller\n\nWed 25 Nov 2026\nKoh Rok & Koh Haa – Sunset trip\nEstimated total: 7,700 THB\n\nFri 27 Nov 2026\nKoh Phi Phi – Sunset trip\nEstimated total: 7,700 THB\n\nEstimated total, all trips: 15,400 THB";
   const { offre } = premiere(texte);
-  assert.equal(offre.id, "2cad3d50-b06d-5859-acb6-c532055059f4");
-  assert.equal(offre.total, 6800);
+  assert.equal(offre.id, "494841cb-8693-46c4-8dcc-1a7ba51a4b1e");
+  assert.equal(offre.total, 7700);
 });
 
 test("message envoyé avant le changement de nom des options (PR 50 du site) : l'ancien titre donne le même tarif", () => {
   assert.equal(premiere(message("Koh Rok & Koh Haa – Join-in speedboat", FAMILLE, "5,000 THB")).offre.id, "e54ec997-a2bf-5bb1-ac02-9531e46d1e25");
-  assert.equal(premiere(message("Koh Rok & Koh Haa – Later trip, back at sunset", FAMILLE, "6,800 THB")).offre.id, "2cad3d50-b06d-5859-acb6-c532055059f4");
-  assert.equal(premiere(message("Koh Phi Phi – Small group, back at sunset", FAMILLE, "10,700 THB")).offre.id, "c0a0922b-e30c-44bc-b029-a131f65e36ba");
+  // L'option « Sunset trip » de Koh Rok garde ses anciens titres : un vieux message donne le tarif actuel (flyer du 22.11.2026).
+  assert.equal(premiere(message("Koh Rok & Koh Haa – Later trip, back at sunset", FAMILLE, "6,800 THB")).offre.id, "494841cb-8693-46c4-8dcc-1a7ba51a4b1e");
+  // L'option Lazy Day (« Small group, back at sunset », puis « Full-day sunset trip ») est retirée du site le 22.11.2026 : plus d'ancien titre.
+  assert.ok(!PRODUITS_SITE.some((p) => p.options.some((o) => (o.anciens || []).includes("Small group, back at sunset"))));
 });
 
 test("le tarif de l'option passe devant, les autres tarifs du produit restent proposés derrière", () => {
@@ -206,7 +213,7 @@ test("site-produits.mjs : chaque ligne de prix reliée porte un identifiant de t
   }
   assert.ok(n >= 100, `${n} lignes reliées seulement`);
   const rok = PRODUITS_SITE.find((p) => p.id === "koh-rok-koh-haa");
-  assert.deepEqual(rok.options.map((o) => o.titre), ["Day trip", "Sunset trip", "Full-day sunset trip", "Private longtail", "Private speedboat"]);
+  assert.deepEqual(rok.options.map((o) => o.titre), ["Day trip", "Sunset trip", "Private longtail", "Private speedboat"]);
 });
 
 // ---- Options sans prix sur le site (« Price on WhatsApp », PR 51 et 52 du site) ------------------------------------------
