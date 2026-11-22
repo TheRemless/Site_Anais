@@ -50,7 +50,9 @@ export function avecVehicules(offre, n, pax = null) {
   const v = Number(n);
   if (!offre || offre.genre !== "prestation" || !offre.source || !["veh", "boat"].includes(offre.source.unite) || !Number.isInteger(v) || v < 2) return offre;
   const total = offre.prixCarte !== undefined || offre.total === null || offre.total === undefined ? offre.total : Math.round(Number(offre.total) * v * 100) / 100;
-  return { ...offre, vehicules: v, vehiculesPax: pax, total };
+  // Le prix du catalogue affiché à côté d'un prix de la carte (« Vérifier avant ») compte aussi les véhicules (relecture de la PR 309).
+  const totalCatalogue = offre.prixCarte !== undefined && offre.totalCatalogue !== null && offre.totalCatalogue !== undefined ? Math.round(Number(offre.totalCatalogue) * v * 100) / 100 : offre.totalCatalogue;
+  return { ...offre, vehicules: v, vehiculesPax: pax, total, ...(totalCatalogue !== undefined ? { totalCatalogue } : {}) };
 }
 // L'offre au prix de la conversation : total = le prix de la carte, totalCatalogue = le prix du catalogue (affiché s'il diffère).
 // `pax` : les personnes de la carte ; `origine` : « saisi » ou « client_non_corrige » (posée sur la réservation, details.prix_origine).

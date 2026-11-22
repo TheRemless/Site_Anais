@@ -1,8 +1,9 @@
 // Bouton « Calculer le devis » de la carte « Nouveau dossier » de l'Assistant (22.11.2026), la même carte que Nani l'ouvre depuis l'onglet
-// Assistant ou depuis une conversation WhatsApp. Le calcul est fait ici, dans le navigateur, par devis-calc.mjs : aucun appel IA, rien
-// d'écrit en base, rien d'envoyé. Nani relit la réponse anglaise et la copie ; la copie est bloquée tant qu'un net ou un nom de partenaire
-// reste dans le texte (resteBloque, agent-calc.mjs).
-import { etat, reglages, nomPartenaire } from "../etat.mjs";
+// Assistant ou depuis une conversation WhatsApp. Secret et Taxi seulement (pas ZTP). Le calcul est fait ici, dans le navigateur, par
+// devis-calc.mjs : aucun appel IA, rien d'écrit en base, rien d'envoyé. Nani relit la réponse anglaise et la copie ; la copie est bloquée
+// tant qu'un net ou un nom de partenaire reste dans le texte (resteBloque, agent-calc.mjs), qu'une part du prix n'est pas chiffrée ou qu'un
+// prix accepté descend sous le net.
+import { etat, reglages, nomPartenaire, modeTaxi, modeExcursions } from "../etat.mjs";
 import { h, toast } from "../ui.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { formatMontant } from "../calc.mjs";
@@ -10,10 +11,11 @@ import { resteBloque } from "../agent-calc.mjs";
 import { devisPossible, calculerDevis, reponseDevis, netsDuDevis, resumeDevis, appliquerDevis, remarquesDuDevis, VEHICULES_MAX, PLACES_SUGGEREES, genreVehicule } from "../devis-calc.mjs";
 
 // Le dernier devis complet calculé sur chaque carte (id de la carte -> resumeDevis), gardé pour l'onglet (sessionStorage) : « Créer le
-// dossier » et « Vérifier avant » le reprennent (donneesAvecDevis, appelé par donneesCarte dans agent.mjs). Rien n'est écrit en base.
-// Le nombre de véhicules choisi d'un geste sur la carte (id -> { index du service: nombre }) est gardé de la même façon.
+// dossier » et « Vérifier avant » le reprennent (donneesAvecDevis, appelé par donneesCarte dans agent.mjs) tant que l'échange n'a pas de
+// nouveau message (marque), et que la date et les personnes du service n'ont pas changé. Rien n'est écrit en base.
+// Les choix faits d'un geste sur la carte (id -> { v: { index: véhicules }, c: { index: prix d'une part manquante } }) sont gardés de même.
 const CLE_DEVIS = "gestion-devis-cartes";
-const CLE_CHOIX = "gestion-devis-vehicules";
+const CLE_CHOIX = "gestion-devis-choix";
 const memoire = { [CLE_DEVIS]: new Map(), [CLE_CHOIX]: new Map() };
 function lire(cle, id) {
   if (memoire[cle].has(id)) return memoire[cle].get(id);
@@ -36,7 +38,8 @@ function noter(cle, id, valeur) {
     // Stockage refusé : la valeur reste en mémoire pour cette page.
   }
 }
-export const donneesAvecDevis = (id, donnees) => appliquerDevis(donnees, id ? lire(CLE_DEVIS, id) : null);
+const choixDe = (id) => lire(CLE_CHOIX, id) || { v: {}, c: {} };
+export const donneesAvecDevis = (id, donnees, { marque = "" } = {}) => appliquerDevis(donnees, id ? lire(CLE_DEVIS, id) : null, { marque });
 
 // Pourquoi un service n'a pas été calculé, dit à Nani (écran interne).
 const MOTIFS = {
@@ -48,26 +51,30 @@ const MOTIFS = {
   sur_place: N_("Ce service se paie sur place : aucun prix à annoncer."),
 };
 const ORIGINES = { catalogue: N_("catalogue"), saisi: N_("donné par vous"), client_non_corrige: N_("prix du client, non corrigé par Nani") };
+// Ce que le catalogue ne chiffre pas : la question posée à Nani, le prix saisi étant par unité (enfant ou personne en plus).
+const A_COMPLETER = {
+  sans_tarif_enfant: N_("Le trajet n'a pas de prix enfant : les {n} enfants ne sont pas comptés."),
+  enfant_non_compte: N_("Le tarif n'a pas de prix enfant : les {n} enfants ne sont pas comptés."),
+  supplement_a_definir: N_("Le prix de la personne en plus n'est pas au catalogue : {n} personnes ne sont pas comptées."),
+};
+const UNITE_COMPLEMENT = { sans_tarif_enfant: N_("Prix par enfant"), enfant_non_compte: N_("Prix par enfant"), supplement_a_definir: N_("Prix par personne en plus") };
 
 // D'où vient le nombre de véhicules, dit discrètement sous le service.
 function origineVehicules(l) {
   if (l.vehiculesOrigine === "choix") return tr("choisi par vous");
-  if (l.vehiculesOrigine === "conversation") return tr("écrit dans la conversation");
-  if (l.vehiculesOrigine === "suggestion") {
-    const genre = genreVehicule(l.tarif);
-    return l.bagages ? tr("suggestion : {n} personnes au plus par minivan, selon les bagages", { n: PLACES_SUGGEREES.minivan }) : tr("suggestion : {n} personnes au plus par {vehicule}", { n: PLACES_SUGGEREES[genre] || "", vehicule: genre === "taxi" ? tr("taxi ou voiture") : genre });
-  }
-  return tr("1 par défaut");
+  if (l.vehiculesOrigine === "conversation") return tr("écrit par Nani dans la conversation");
+  if (l.vehiculesOrigine === "suggestion") return l.bagages ? tr("suggestion : {n} personnes au plus par minivan, selon les bagages", { n: PLACES_SUGGEREES.minivan }) : tr("suggestion : {n} personnes au plus par voiture", { n: PLACES_SUGGEREES[genreVehicule(l.tarif)] || "" });
+  return tr("1 par défaut : à vous de choisir");
 }
 
-// `donnees` : celles de la carte (entreprises corrigées comprises). Rien si les trois éléments ne sont pas connus. `textes()` : les textes
-// de Nani dans le fil (textesDeNani), lus au clic.
-export function blocDevis(donnees, { id = null, textes = () => [], client = (donnees && donnees.client) || {} } = {}) {
-  if (!devisPossible(donnees)) return null;
+// La carte du dossier, Secret ou Taxi. `donnees` : celles de la carte (entreprises corrigées comprises). Rien si les trois éléments ne sont
+// pas connus. `textes()` : les textes de Nani dans l'échange en cours (textesDeNani), lus au clic. `marque()` : la marque de l'échange.
+export function blocDevis(donnees, { id = null, textes = () => [], marque = () => "", client = (donnees && donnees.client) || {} } = {}) {
+  if (!(modeTaxi() || modeExcursions()) || !devisPossible(donnees)) return null;
   const resultat = h("div", { class: "devis-resultat", "aria-live": "polite" });
   const bouton = h("button", { type: "button", class: "secondaire petit" }, tr("Calculer le devis"));
   const refaire = () => {
-    resultat.replaceChildren(...dessiner(donnees, client, refaire, id, textes()));
+    resultat.replaceChildren(...dessiner(donnees, client, refaire, id, textes(), marque()));
     bouton.textContent = tr("Recalculer le devis");
   };
   bouton.addEventListener("click", refaire);
@@ -78,7 +85,8 @@ export function blocDevis(donnees, { id = null, textes = () => [], client = (don
 function reglageVehicules(l, id, refaire) {
   const changer = (n) => {
     if (n < 1 || n > VEHICULES_MAX) return;
-    noter(CLE_CHOIX, id, { ...(lire(CLE_CHOIX, id) || {}), [l.index]: n });
+    const c = choixDe(id);
+    noter(CLE_CHOIX, id, { ...c, v: { ...(c.v || {}), [l.index]: n } });
     refaire();
   };
   return h(
@@ -92,12 +100,29 @@ function reglageVehicules(l, id, refaire) {
   );
 }
 
-function dessiner(donnees, client, refaire, id, textes) {
+// Une part sans prix (enfants, personne en plus) : alerte, prix par unité à saisir ou « Gratuit ». La copie reste fermée jusque-là.
+function blocACompleter(l, id, refaire, devise) {
+  const champ = h("input", { type: "number", min: "0", step: "any", inputmode: "decimal", class: "devis-complement", "aria-label": tr(UNITE_COMPLEMENT[l.aCompleter.motif]), placeholder: tr("{unite} ({devise})", { unite: tr(UNITE_COMPLEMENT[l.aCompleter.motif]), devise }) });
+  const poser = (v) => {
+    const c = choixDe(id);
+    noter(CLE_CHOIX, id, { ...c, c: { ...(c.c || {}), [l.index]: v } });
+    refaire();
+  };
+  return h(
+    "div",
+    { class: "erreur-form devis-a-completer", role: "alert" },
+    h("p", null, h("strong", null, l.libelle), " : ", tr(A_COMPLETER[l.aCompleter.motif], { n: l.aCompleter.qte })),
+    h("span", null, champ, " ", h("button", { type: "button", class: "secondaire petit", onclick: () => champ.value.trim() !== "" && Number(champ.value) >= 0 && poser(Number(champ.value)) }, tr("Ajouter au prix")), " ", h("button", { type: "button", class: "secondaire petit", onclick: () => poser(0) }, tr("Gratuit")))
+  );
+}
+
+function dessiner(donnees, client, refaire, id, textes, marque) {
   const devise = reglages().devise || "THB";
   const contexte = { prestations: etat.db.prestations || [], trajets: etat.db.trajets || [], partenaires: etat.db.partenaires || [], nomPartenaire };
-  const devis = calculerDevis(donnees, contexte, { activeId: etat.entiteId, textes, choix: lire(CLE_CHOIX, id) || {} });
-  // Complet : le dossier reprendra ce devis. Incomplet : plus aucun devis gardé pour cette carte.
-  noter(CLE_DEVIS, id, resumeDevis(devis));
+  const choix = choixDe(id);
+  const devis = calculerDevis(donnees, contexte, { activeId: etat.entiteId, textes, choix: choix.v || {}, complements: choix.c || {}, nets: { prestations_nets: etat.db.prestations_nets || [] }, taxi: modeTaxi() });
+  // Complet et non bloqué : le dossier reprendra ce devis, tant que l'échange n'a pas de nouveau message. Sinon, plus aucun devis gardé.
+  noter(CLE_DEVIS, id, resumeDevis(devis, { marque }));
   // Les partenaires de toutes les entreprises chargées (espace unifié Secret et Taxi), pas seulement de l'entreprise active.
   const noms = ((etat.brut && etat.brut.partenaires) || etat.db.partenaires || []).map((p) => p.nom).filter(Boolean);
   const tousNets = [...(etat.db.prestations_nets || []).flatMap((n) => [n.net, n.net_enfant]), ...(etat.db.trajets_nets || []).flatMap((n) => [n.net_adulte, n.net_enfant])].filter((v) => v !== null && v !== undefined && Number(v) > 0).map(Number);
@@ -118,29 +143,25 @@ function dessiner(donnees, client, refaire, id, textes) {
               null,
               h("strong", null, l.libelle),
               l.vehicules ? h("span", { class: "devis-ligne-vehicules" }, reglageVehicules(l, id, refaire), h("small", null, ` ${origineVehicules(l)}`)) : null,
-              h("small", null, [l.vehicules > 1 && l.unitaire !== null ? `${l.vehicules} × ${formatMontant(l.unitaire, devise)}` : "", tr(ORIGINES[l.origine] || ORIGINES.catalogue)].filter(Boolean).join(", "))
+              // Un prix accepté vaut pour tout le service : le nombre de véhicules ne le change pas (il compte pour le dossier et le plancher net).
+              l.prixAccepte && l.vehicules ? h("small", { class: "devis-prix-accepte" }, tr("Le prix accepté vaut pour tout le service, quel que soit le nombre de véhicules.")) : null,
+              h("small", null, [l.vehicules > 1 && l.unitaire !== null ? `${l.vehicules} × ${formatMontant(l.unitaire, devise)}` : "", l.complement ? (l.complement.prix > 0 ? tr("{n} × {prix} ajoutés", { n: l.complement.qte, prix: formatMontant(l.complement.prix, devise) }) : tr("{n} offerts", { n: l.complement.qte })) : "", tr(ORIGINES[l.origine] || ORIGINES.catalogue)].filter(Boolean).join(", "))
             ),
             h("span", { class: "agent-prix" }, formatMontant(l.total, devise))
           )
         )
       )
     );
-  for (const m of devis.manquants)
-    out.push(
-      h(
-        "p",
-        { class: "erreur-form", role: "alert" },
-        h("strong", null, m.libelle || tr("Service")),
-        " : ",
-        tr(MOTIFS[m.motif] || MOTIFS.incomplet)
-      )
-    );
+  for (const l of devis.lignes) if (l.aCompleter) out.push(blocACompleter(l, id, refaire, devise));
+  for (const l of devis.lignes) if (l.sousNet) out.push(h("p", { class: "erreur-form devis-sous-net", role: "alert" }, h("strong", null, l.libelle), " : ", tr("Le prix accepté ne couvre pas le net de tous les véhicules : revoyez le prix ou le nombre de véhicules avant d'envoyer.")));
+  for (const m of devis.manquants) out.push(h("p", { class: "erreur-form", role: "alert" }, h("strong", null, m.libelle || tr("Service")), " : ", tr(MOTIFS[m.motif] || MOTIFS.incomplet)));
   out.push(...remarques);
   if (!devis.complet) {
     out.push(h("p", { class: "aide" }, tr("Pas de réponse préparée tant qu'un service n'a pas de prix.")));
     return out;
   }
   if (devis.lignes.length > 1) out.push(h("p", null, h("strong", null, tr("Total : {total}", { total: formatMontant(devis.total, devise) }))));
+  // Réponse toujours en anglais : Secret et Taxi n'écrivent au client qu'en anglais.
   const zone = h("textarea", { class: "agent-reponse", rows: 10, lang: "en", "aria-label": tr("Réponse au client") });
   zone.value = reponseDevis(devis, { client, devise });
   const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
@@ -148,13 +169,13 @@ function dessiner(donnees, client, refaire, id, textes) {
   const bloquants = { montants: netsDuDevis(devis, etat.db), noms };
   const maj = () => {
     const reste = resteBloque(zone.value, bloquants);
-    copier.disabled = reste.length > 0;
-    alerte.hidden = !reste.length;
-    alerte.textContent = reste.length ? tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") }) : "";
+    copier.disabled = devis.bloque || reste.length > 0;
+    alerte.hidden = !devis.bloque && !reste.length;
+    alerte.textContent = devis.bloque ? tr("Complétez le prix ci-dessus avant de copier la réponse.") : reste.length ? tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") }) : "";
   };
   zone.addEventListener("input", maj);
   copier.addEventListener("click", async () => {
-    if (resteBloque(zone.value, bloquants).length) return maj();
+    if (devis.bloque || resteBloque(zone.value, bloquants).length) return maj();
     try {
       await navigator.clipboard.writeText(zone.value);
       toast(tr("Réponse copiée : collez-la dans WhatsApp."));

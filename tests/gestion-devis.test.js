@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { devisPossible, calculerDevis, reponseDevis, netsDuDevis, motVehicule, remarquesDuDevis, vehiculesEcrits, textesDeNani, nombreVehicules, genreVehicule } from "../src/gestion/js/devis-calc.mjs";
+import { devisPossible, calculerDevis, reponseDevis, netsDuDevis, motVehicule, remarquesDuDevis, vehiculesEcrits, textesDeNani, nombreVehicules, genreVehicule, bornesEchange, resumeDevis, appliquerDevis } from "../src/gestion/js/devis-calc.mjs";
 import { resteBloque } from "../src/gestion/js/agent-calc.mjs";
 
 const ici = path.dirname(fileURLToPath(import.meta.url));
@@ -61,8 +61,8 @@ test("véhicules suggérés : 11 personnes font 2 minivans (8 au plus, selon les
   const huit = calculerDevis(carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 6, enfants: 2 })]), contexte);
   assert.equal(huit.lignes[0].vehicules, 1);
   assert.match(reponseDevis(huit), /Price: THB 2,500$/m);
-  // Taxi ou voiture : 4 au plus. Bateau : pas de suggestion, 1 par défaut.
-  assert.deepEqual(nombreVehicules({ groupe: "Private Taxi", unite: "veh" }, 9), { n: 3, origine: "suggestion", bagages: false });
+  // Voiture : 4 au plus. « Taxi » est ambigu (un taxi de Taxi est un minivan) : 1 par défaut. Bateau : 1 par défaut.
+  assert.deepEqual(nombreVehicules({ groupe: "Private Taxi", unite: "veh" }, 9), { n: 1, origine: "defaut", bagages: false });
   assert.deepEqual(nombreVehicules({ libelle: "Voiture privée", unite: "veh" }, 4), { n: 1, origine: "suggestion", bagages: false });
   const bateau = calculerDevis(carte([service({ offre: { genre: "prestation", id: "bateau" }, adultes: 8 })]), contexte);
   assert.deepEqual([bateau.lignes[0].vehicules, bateau.lignes[0].vehiculesOrigine, bateau.total], [1, "defaut", 6500]);
@@ -76,10 +76,10 @@ test("véhicules suggérés : 11 personnes font 2 minivans (8 au plus, selon les
 });
 
 test("véhicules écrits par Nani : repris avant la suggestion ; le choix fait sur la carte passe avant tout", () => {
-  assert.deepEqual(vehiculesEcrits(["We will send 2 minivans", "two taxis for you", "Deux voitures"]), { minivan: 2, taxi: 2 });
+  assert.deepEqual(vehiculesEcrits(["We will send 2 minivans", "two taxis for you", "Deux voitures"]), { minivan: 2, taxi: 2, voiture: 2, route: 2 });
   assert.deepEqual(vehiculesEcrits(["3 vehicles"]), { tous: 3 });
   assert.deepEqual(vehiculesEcrits(["1 car seat for the baby", "we are 11 people", "50 vans"]), {}, "siège, personnes, nombre absurde : rien");
-  assert.deepEqual(vehiculesEcrits(["2 minivans", "finally 3 minivans"]), { minivan: 3 }, "le plus récent gagne");
+  assert.deepEqual(vehiculesEcrits(["2 minivans", "finally 3 minivans"]), { minivan: 3, route: 3 }, "le plus récent gagne");
   const d = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11 })]);
   const ecrit = calculerDevis(d, contexte, { textes: ["OK, it will be 3 minivans because of the surfboards"] });
   assert.deepEqual([ecrit.lignes[0].vehicules, ecrit.lignes[0].vehiculesOrigine, ecrit.total], [3, "conversation", 7500]);
@@ -95,8 +95,9 @@ test("véhicules écrits par Nani : repris avant la suggestion ; le choix fait s
     { role: "user", contenu: [{ type: "text", text: "<conversation>\n[Client 22.11.2026 09:00] We need 4 vans\n[Nani 22.11.2026 09:05] For 11 people we take 2 minivans\n</conversation>" }] },
     { role: "assistant", contenu: [{ type: "text", text: "5 minivans" }] },
   ];
-  assert.deepEqual(textesDeNani(messages), ["Prépare le devis", "For 11 people we take 2 minivans"]);
-  assert.deepEqual(vehiculesEcrits(textesDeNani(messages)), { minivan: 2 });
+  // Un message sans échange joint n'est pas lu (il peut être une demande collée) ; le texte tapé avant le bloc l'est.
+  assert.deepEqual(textesDeNani(messages), ["For 11 people we take 2 minivans"]);
+  assert.deepEqual(vehiculesEcrits(textesDeNani(messages)), { minivan: 2, route: 2 });
   assert.equal(genreVehicule({ groupe: "Private longtail" }), "bateau");
 });
 
@@ -167,7 +168,7 @@ test("trajet absent du catalogue : pas de calcul, message clair, aucune réponse
 test("contrôle de la copie : un net ou un nom de partenaire tapé dans la réponse la bloque", () => {
   const devis = calculerDevis(carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11 })]), contexte);
   const montants = netsDuDevis(devis, nets);
-  assert.deepEqual(montants.sort((a, b) => a - b), [2250, 4500]);
+  assert.deepEqual(montants.sort((a, b) => a - b), [2250, 4500, 24750]);
   const texte = reponseDevis(devis, { client: { nom: "Anna" } });
   const bloquants = { montants, noms: partenaires.map((p) => p.nom) };
   assert.deepEqual(resteBloque(texte, bloquants), []);
@@ -180,9 +181,9 @@ test("contrôle de la copie : un net ou un nom de partenaire tapé dans la répo
 test("écran : le bouton est sur la carte « Nouveau dossier » en attente, le calcul ne part qu'au clic et sans IA", () => {
   const agent = lire("views/agent.mjs");
   assert.match(agent, /import \{ blocDevis, donneesAvecDevis \} from "\.\/devis-carte\.mjs";/);
-  assert.match(agent, /if \(c\.statut === "proposee"\) corps\.push\(blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages\) \}\)\);/);
+  assert.match(agent, /if \(c\.statut === "proposee"\) corps\.push\(blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil \}\)\);/);
   const vue = lire("views/devis-carte.mjs");
-  assert.match(vue, /if \(!devisPossible\(donnees\)\) return null;/);
+  assert.match(vue, /if \(!\(modeTaxi\(\) \|\| modeExcursions\(\)\) \|\| !devisPossible\(donnees\)\) return null;/);
   assert.match(vue, /bouton\.addEventListener\("click"/);
   const calc = lire("devis-calc.mjs");
   for (const s of [vue, calc]) assert.doesNotMatch(s, /fetch\(|functions\/|anthropic|invoke\(/i);
@@ -193,7 +194,9 @@ test("catalogue Taxi : le libellé « destination » prend le groupe et le traje
   const ctx = { ...contexte, prestations: [taxi] };
   const devis = calculerDevis(carte([service({ offre: { genre: "prestation", id: "kbv" }, de: "Lanta Sand", vers: "Krabi Airport", adultes: 8 }), service({ offre: { genre: "prestation", id: "kbv" }, adultes: 2 })]), ctx);
   assert.deepEqual(devis.lignes.map((l) => l.libelle), ["Private Taxi: Lanta Sand → Krabi Airport", "Private Taxi: Krabi Airport"]);
-  assert.match(reponseDevis(devis), /Price: 2 taxis × THB 2,300 = THB 4,600/);
+  // « Private Taxi » : 1 par défaut, jamais deux taxis suggérés (relecture de la PR 309).
+  assert.deepEqual(devis.lignes.map((l) => [l.vehicules, l.vehiculesOrigine]), [[1, "defaut"], [1, "defaut"]]);
+  assert.match(reponseDevis(devis), /Price: THB 2,300\n/);
 });
 
 test("revue : bébés comptés dans la suggestion, date impossible refusée, prix accepté sans ligne du catalogue", () => {
@@ -260,11 +263,11 @@ test("dossier = devis : 11 personnes et 2 minivans au devis donnent 2 véhicules
 
 test("dossier = devis : la carte, la validation et la fiche de création reprennent le devis", () => {
   const agent = lire("views/agent.mjs");
-  assert.match(agent, /const donneesCarte = \(c\) => donneesAvecDevis\(c\.id,/);
+  assert.match(agent, /const donneesCarte = \(c\) => donneesAvecDevis\(c\.id, .*\{ marque: marqueFil\(\) \}\);/);
   assert.match(agent, /preparation\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\)/);
-  assert.match(agent, /blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages\) \}\)/);
+  assert.match(agent, /blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil \}\)/);
   assert.match(lire("views/demande.mjs"), /qte: offre\.vehicules \|\| \(offre\.enfant/);
-  assert.match(lire("views/devis-carte.mjs"), /noter\(CLE_DEVIS, id, resumeDevis\(devis\)\)/);
+  assert.match(lire("views/devis-carte.mjs"), /noter\(CLE_DEVIS, id, resumeDevis\(devis, \{ marque \}\)\)/);
 });
 
 test("remarque du tarif : montrée à Nani, jamais dans la réponse ; masquée si elle cite un partenaire, un net ou un coût", () => {
@@ -278,4 +281,104 @@ test("remarque du tarif : montrée à Nani, jamais dans la réponse ; masquée s
   const vue = lire("views/devis-carte.mjs");
   assert.match(vue, /tr\("Remarque du tarif à vérifier dans le catalogue"\)/);
   assert.match(vue, /tr\("Remarque du tarif à vérifier : \{remarque\}", \{ remarque: r\.texte \}\)/);
+});
+
+// ---- Relecture de la PR 309 (8a66ed9) : un test par constat ----------------------------------------------------------------------
+const taxiGroupe = { id: "kbv", partenaire_id: "pa1", famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Airport", libelle_en: "", prix_vente: 2300, unite: "veh", details: {}, actif: true };
+
+test("constat 1 : « Private Taxi » n'est jamais pris pour un taxi de 4 places ; chez Taxi, aucune suggestion", () => {
+  const ctx = { ...contexte, prestations: [taxiGroupe, ...prestations] };
+  const six = calculerDevis(carte([service({ offre: { genre: "prestation", id: "kbv" }, de: "Lanta Sand", vers: "Krabi Airport", adultes: 6 })]), ctx);
+  assert.deepEqual([six.lignes[0].vehicules, six.lignes[0].vehiculesOrigine, six.total], [1, "defaut", 2300]);
+  assert.doesNotMatch(reponseDevis(six), /2 taxis/);
+  // Un libellé sans ambiguïté donne une suggestion chez Secret, jamais chez Taxi.
+  const d = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11 })]);
+  assert.equal(calculerDevis(d, contexte).lignes[0].vehicules, 2);
+  assert.deepEqual([calculerDevis(d, contexte, { taxi: true }).lignes[0].vehicules, calculerDevis(d, contexte, { taxi: true }).lignes[0].vehiculesOrigine], [1, "defaut"]);
+  assert.deepEqual(nombreVehicules({ libelle: "Private car", unite: "veh" }, 6), { n: 2, origine: "suggestion", bagages: false });
+  assert.equal(genreVehicule({ groupe: "Private Taxi", libelle: "Minivan to Krabi" }), "minivan", "le libellé passe avant le groupe");
+  // Nani écrit le nombre : il compte, même chez Taxi, pour un tarif « Private Taxi ».
+  assert.equal(calculerDevis(carte([service({ offre: { genre: "prestation", id: "kbv" }, adultes: 11 })]), ctx, { taxi: true, textes: ["We will send 2 minivans"] }).lignes[0].vehicules, 2);
+});
+
+test("constat 2 : enfants sans prix ou personne en plus sans prix : alerte, copie bloquée jusqu'au prix saisi ou « gratuit »", () => {
+  const ferry = { ...trajets[0], id: "ferry-sans-enfant", prix_enfant: null };
+  const ctx = { ...contexte, trajets: [...trajets, ferry] };
+  const d = carte([service({ offre: { genre: "trajet", id: "ferry-sans-enfant" }, adultes: 2, enfants: 2 })]);
+  const bloque = calculerDevis(d, ctx);
+  assert.deepEqual([bloque.bloque, bloque.lignes[0].aCompleter, bloque.total], [true, { motif: "sans_tarif_enfant", qte: 2 }, 3800]);
+  assert.equal(resumeDevis(bloque), null, "un devis bloqué n'est pas repris par le dossier");
+  const avecPrix = calculerDevis(d, ctx, { complements: { 0: 900 } });
+  assert.deepEqual([avecPrix.bloque, avecPrix.total, avecPrix.lignes[0].complement], [false, 5600, { motif: "sans_tarif_enfant", qte: 2, prix: 900 }]);
+  const gratuit = calculerDevis(d, ctx, { complements: { 0: 0 } });
+  assert.deepEqual([gratuit.bloque, gratuit.total], [false, 3800]);
+  // Le dossier reprend le total complété (origine « saisi » : la part chiffrée par Nani).
+  assert.deepEqual(resumeDevis(avecPrix).lignes.map((l) => [l.total, l.origine]), [[5600, "saisi"]]);
+  // Tarif par adulte sans prix enfant, supplément sans prix : même blocage.
+  const ad = { ...prestations.find((p) => p.id === "join"), id: "ad", unite: "ad" };
+  assert.equal(calculerDevis(carte([service({ offre: { genre: "prestation", id: "ad" }, adultes: 2, enfants: 1 })]), { ...contexte, prestations: [ad] }).lignes[0].aCompleter.motif, "enfant_non_compte");
+  const base = { id: "grp", partenaire_id: "pa1", famille: "excursion", groupe: "Fishing", libelle: "Programme B : Fishing, Base 1-2 pers", prix_vente: 3000, unite: "grp", details: {}, actif: true };
+  const sup = { id: "sup", partenaire_id: "pa1", famille: "excursion", groupe: "Fishing", libelle: "Programme B : Fishing, personne supplémentaire", prix_vente: null, unite: "sup", details: {}, actif: true };
+  const s4 = calculerDevis(carte([service({ offre: { genre: "prestation", id: "grp" }, adultes: 4 })]), { ...contexte, prestations: [base, sup] });
+  assert.deepEqual(s4.lignes[0].aCompleter, { motif: "supplement_a_definir", qte: 2 });
+  const vue = lire("views/devis-carte.mjs");
+  assert.match(vue, /copier\.disabled = devis\.bloque \|\| reste\.length > 0;/);
+  assert.match(vue, /onclick: \(\) => poser\(0\) \}, tr\("Gratuit"\)/);
+});
+
+test("constat 3 : un prix accepté sous le net des véhicules est signalé et bloqué ; le catalogue de « Vérifier avant » compte les véhicules", async () => {
+  const { propositionDepuisCarte } = await import("../src/gestion/js/agent-calc.mjs");
+  const { propositionVersDemande } = await import("../src/gestion/js/assistant-calc.mjs");
+  const { appliquerDevis } = await import("../src/gestion/js/devis-calc.mjs");
+  const d = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11, prix: 4000, origine_prix: "saisi" })]);
+  const sous = calculerDevis(d, contexte, { nets });
+  assert.deepEqual([sous.lignes[0].vehicules, sous.lignes[0].sousNet, sous.bloque], [2, true, true], "4 000 pour 2 minivans à 2 250 de net");
+  assert.equal(calculerDevis(carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11, prix: 4800, origine_prix: "saisi" })]), contexte, { nets }).bloque, false);
+  assert.equal(calculerDevis(d, contexte, { nets, choix: { 0: 1 } }).bloque, false, "un seul minivan : 4 000 couvre le net");
+  assert.match(lire("views/devis-carte.mjs"), /Le prix accepté vaut pour tout le service, quel que soit le nombre de véhicules\./);
+  // « Vérifier avant » : prix de la carte 4 800 pour 2 minivans, catalogue affiché 2 × 2 500.
+  const ok = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11, prix: 4800, origine_prix: "saisi" })]);
+  const devis = calculerDevis(ok, contexte, { nets });
+  const o = propositionVersDemande(propositionDepuisCarte(appliquerDevis(ok, resumeDevis(devis))), contexte).services[0].offres[0];
+  assert.deepEqual([o.total, o.vehicules, o.totalCatalogue], [4800, 2, 5000]);
+});
+
+test("constats 4 et 5 : seules les lignes de Nani de l'échange en cours comptent ; « room 3 taxi » n'est pas un nombre de véhicules", () => {
+  const msg = (t, cree_le) => ({ role: "user", contenu: [{ type: "text", text: t }], cree_le });
+  const fil = [
+    msg("<conversation>\n[Nani 20.11.2026 09:00] OK, 4 minivans for you\n</conversation>", "2026-11-20T09:00:00Z"),
+    msg("Hi, we are 11 people, we need 3 vans to the airport", "2026-11-22T09:00:00Z"),
+    msg("Fais le dossier, 2 minivans\n<conversation>\n[Client 22.11.2026 09:10] Room 3 taxi please, 5 vans\n[Nani 22.11.2026 09:12] We will come with two minivans\n</conversation>", "2026-11-22T09:15:00Z"),
+  ];
+  const cartes = [{ id: "ancienne", genre: "dossier", cree_le: "2026-11-20T09:05:00Z" }, { id: "devis", genre: "dossier", cree_le: "2026-11-22T09:20:00Z" }];
+  const bornes = bornesEchange(cartes[1], cartes);
+  assert.deepEqual(bornes, { depuis: "2026-11-20T09:05:00Z", jusqua: "2026-11-22T09:20:00Z" });
+  const textes = textesDeNani(fil, bornes);
+  assert.deepEqual(textes, ["Fais le dossier, 2 minivans", "We will come with two minivans"], "ni la demande collée, ni le client, ni l'ancien dossier");
+  assert.deepEqual(vehiculesEcrits(textes), { minivan: 2, route: 2 });
+  for (const t of ["Room 3 taxi", "villa 2 van", "chambre 4 voiture", "flight 2 cars", "gate 3 taxi", "#2 van"]) assert.deepEqual(vehiculesEcrits([t]), {}, t);
+});
+
+test("constat 6 : un devis gardé s'oublie dès qu'un message arrive, que la date ou les personnes changent ; « devis » au lieu de « catalogue »", () => {
+  const d = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11, origine_prix: "a_fixer" })]);
+  const resume = resumeDevis(calculerDevis(d, contexte), { marque: "5:2026-11-22T09:20:00Z" });
+  assert.equal(appliquerDevis(d, resume, { marque: "5:2026-11-22T09:20:00Z" }).services[0].vehicules, 2);
+  assert.equal(appliquerDevis(d, resume, { marque: "6:2026-11-22T09:30:00Z" }).services[0].vehicules, undefined, "nouveau message");
+  assert.equal(appliquerDevis({ ...d, services: [{ ...d.services[0], date: "2026-12-04" }] }, resume, { marque: "5:2026-11-22T09:20:00Z" }).services[0].vehicules, undefined, "autre date");
+  assert.equal(appliquerDevis({ ...d, services: [{ ...d.services[0], adultes: 9 }] }, resume, { marque: "5:2026-11-22T09:20:00Z" }).services[0].vehicules, undefined, "autres personnes");
+  // Repris, le service dit « devis calculé », plus « catalogue » pour un prix qui était à fixer.
+  assert.equal(appliquerDevis(d, resume, { marque: "5:2026-11-22T09:20:00Z" }).services[0].origine_prix, "devis");
+  assert.match(lire("views/agent.mjs"), /s\.origine_prix === "devis" \? tr\("devis calculé"\)/);
+  assert.match(lire("views/agent.mjs"), /const donneesCarte = \(c\) => donneesAvecDevis\(c\.id, .*\{ marque: marqueFil\(\) \}\);/);
+});
+
+test("constats 7 et 8 : Secret et Taxi seulement, réponse en anglais ; nets adulte et enfant additionnés", () => {
+  assert.match(lire("views/devis-carte.mjs"), /if \(!\(modeTaxi\(\) \|\| modeExcursions\(\)\) \|\| !devisPossible\(donnees\)\) return null;/);
+  // Même pour un client noté « fr » : Secret et Taxi n'écrivent au client qu'en anglais (règle ferme).
+  const d = carte([service({ offre: { genre: "prestation", id: "join" }, adultes: 2 })], { client: { nom: "Anna", langue: "fr" } });
+  assert.match(reponseDevis(calculerDevis(d, contexte), { client: d.client }), /^Hello Anna,/);
+  const ferry = calculerDevis(carte([service({ offre: { genre: "trajet", id: "ferry" }, adultes: 2, enfants: 1 })]), contexte);
+  assert.ok(netsDuDevis(ferry, nets).includes(2 * 1500 + 1100), "somme des nets adulte et enfant");
+  const join = calculerDevis(carte([service({ offre: { genre: "prestation", id: "join" }, adultes: 2, enfants: 1 })]), contexte);
+  assert.ok(netsDuDevis(join, { prestations_nets: [{ prestation_id: "join", net: 800, net_enfant: 500 }] }).includes(2 * 800 + 500));
 });
