@@ -73,7 +73,9 @@ Flight: FD3217`;
   assert.equal(v.prix, "2700");
   assert.equal(v.vol, "FD3217");
   assert.deepEqual(r.ignorees, [], "l’en-tête « Booking confirmed » est sauté");
-  assert.deepEqual(erreursConfirmation(v), {});
+  // Un enfant sans siège dit (22.11.2026) : à préciser avant de créer, puis tout est bon.
+  assert.deepEqual(erreursConfirmation(v), { sieges: "e_sieges_choix" });
+  assert.deepEqual(erreursConfirmation({ ...v, sans_siege: "oui" }), {});
 });
 
 test("variante : Secret Travel & Tour, round trip sur sa propre ligne, remarque sur deux lignes", () => {
@@ -145,13 +147,16 @@ test("heures : 4:30pm, 4.30 pm, 4pm, 12pm, 12am, 16:30, 16h30, 9 am ; rien de de
 });
 
 test("passagers et bagages", () => {
-  assert.deepEqual(lirePassagers("5 people no luggage"), { adultes: "5", enfants: "", bagages: "", sieges: "" });
-  assert.deepEqual(lirePassagers("2 adults + 1 kid + luggage"), { adultes: "2", enfants: "1", bagages: "Yes", sieges: "" });
-  assert.deepEqual(lirePassagers("4 pax, 3 bags"), { adultes: "4", enfants: "", bagages: "3", sieges: "" });
-  assert.deepEqual(lirePassagers("2 adults, 2 children (1 child seat)"), { adultes: "2", enfants: "2", bagages: "", sieges: "1" });
-  assert.deepEqual(lirePassagers("two adults and one baby"), { adultes: "2", enfants: "1", bagages: "", sieges: "" });
-  assert.deepEqual(lirePassagers("6 people including 2 kids, 4 suitcases"), { adultes: "4", enfants: "2", bagages: "4", sieges: "" });
-  assert.deepEqual(lirePassagers("3"), { adultes: "3", enfants: "", bagages: "", sieges: "" });
+  assert.deepEqual(lirePassagers("5 people no luggage"), { adultes: "5", enfants: "", bagages: "", sieges: "", sieges_bebe: "", sans_siege: "" });
+  assert.deepEqual(lirePassagers("2 adults + 1 kid + luggage"), { adultes: "2", enfants: "1", bagages: "Yes", sieges: "", sieges_bebe: "", sans_siege: "" });
+  assert.deepEqual(lirePassagers("4 pax, 3 bags"), { adultes: "4", enfants: "", bagages: "3", sieges: "", sieges_bebe: "", sans_siege: "" });
+  assert.deepEqual(lirePassagers("2 adults, 2 children (1 child seat)"), { adultes: "2", enfants: "2", bagages: "", sieges: "1", sieges_bebe: "", sans_siege: "" });
+  assert.deepEqual(lirePassagers("two adults and one baby"), { adultes: "2", enfants: "1", bagages: "", sieges: "", sieges_bebe: "", sans_siege: "" });
+  assert.deepEqual(lirePassagers("6 people including 2 kids, 4 suitcases"), { adultes: "4", enfants: "2", bagages: "4", sieges: "", sieges_bebe: "", sans_siege: "" });
+  assert.deepEqual(lirePassagers("3"), { adultes: "3", enfants: "", bagages: "", sieges: "", sieges_bebe: "", sans_siege: "" });
+  // Sièges par type (22.11.2026).
+  assert.deepEqual(lirePassagers("2 adults, 1 child, 1 baby, 1 baby seat, 1 car seat"), { adultes: "2", enfants: "2", bagages: "", sieges: "1", sieges_bebe: "1", sans_siege: "" });
+  assert.deepEqual(lirePassagers("2 adults, 1 child, no child seat"), { adultes: "2", enfants: "1", bagages: "", sieges: "", sieges_bebe: "", sans_siege: "oui" });
 });
 
 test("aller-retour et marque", () => {

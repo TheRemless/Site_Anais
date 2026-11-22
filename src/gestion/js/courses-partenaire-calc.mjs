@@ -5,6 +5,7 @@
 
 import { RETOUR_DEPART } from "./trajet-calc.mjs";
 import { separerChambreLigne } from "./operations-calc.mjs";
+import { siegesLus } from "./sieges-calc.mjs";
 
 // La personne à qui la commission est due, nommée comme les Thaïs l'appellent (voir la mémoire « Anaïs = Nani en Thaïlande »).
 export const DESTINATAIRE = "Nani";
@@ -66,6 +67,8 @@ export const TH = {
   cnt_bagages: "ใบ", // (unité : bagages)
   oui: "มี", // Oui (il y en a)
   sieges: "คาร์ซีทเด็ก", // Sièges enfant
+  sieges_bebe: "คาร์ซีทเด็กเล็ก", // Sièges bébé (22.11.2026)
+  sans_siege: "ไม่ต้องใช้คาร์ซีท", // Aucun siège enfant ou bébé (22.11.2026)
   rendez_vous: "จุดนัดพบ", // Point de rendez-vous
   zone: "โซนรับ", // Zone de prise en charge
   duree: "ใช้เวลา", // Durée
@@ -84,7 +87,7 @@ export const TH = {
 // le voucher de Mook, plus la liste minimale de Jérémy pour le chauffeur (véhicule, hôtel et chambre, retour, point de rendez-vous, zone).
 // Identique à partenaire_champs_details() de la migration 116 (verif-courses-partenaire-details.mjs compare les deux).
 export const CHAMPS_COURSE = [
-  "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques",
+  "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "sieges_bebe", "sans_siege", "type_transfert", "remarques",
   "hotel", "chambre", "retour_date", "retour_heure", "retour_lieu", "embarquement", "pickup_zone",
 ];
 // Champs des autres vouchers (excursion, billet, location) ou à risque : aucun document de Taxi ne les imprime, ils ne sortent jamais.
@@ -119,6 +122,13 @@ export function bagagesTh(b) {
   return /^(oui|yes|y|x|true)$/i.test(t) ? TH.oui : t;
 }
 
+// Les sièges par type (sieges-calc.mjs) : « คาร์ซีทเด็ก 1 · คาร์ซีทเด็กเล็ก 1 », ou « ไม่ต้องใช้คาร์ซีท » quand il n'en faut aucun.
+export function siegesTh(dt = {}) {
+  const s = siegesLus(dt);
+  const liste = [s.enfant ? `${TH.sieges} ${s.enfant}` : "", s.bebe ? `${TH.sieges_bebe} ${s.bebe}` : ""].filter(Boolean).join(" · ");
+  return liste || (s.aucun ? TH.sans_siege : "");
+}
+
 // Le paiement, pour le chauffeur : ce qu'il encaisse en espèces, ou rien.
 export function paiementTh(c = {}, devise = "THB") {
   const m = montantTh(c.a_encaisser ?? c.prix, devise);
@@ -145,7 +155,7 @@ export function lignesCourse(c = {}, devise = "THB") {
   const dt = c.details || {};
   const l = (cle, libelle, valeur) => ({ cle, libelle, valeur: valeur === null || valeur === undefined ? "" : String(valeur).trim() });
   const { hotel, chambre } = hebergementTh(c);
-  const pers = [personnesTh(c), Number(dt.sieges) > 0 ? `${TH.sieges} ${Number(dt.sieges)}` : ""].filter(Boolean).join(" · ");
+  const pers = [personnesTh(c), siegesTh(dt)].filter(Boolean).join(" · ");
   const duree = Number(dt.duree_h) > 0 ? `${Number(dt.duree_h)} ${TH.heures}` : String(dt.duree_h || "").trim();
   const essentiel = [
     l("pickup", TH.pickup, [c.pickup, chambre && !hotel ? `${TH.chambre} ${chambre}` : ""].filter(Boolean).join(" · ")),

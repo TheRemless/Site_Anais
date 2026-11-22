@@ -7,7 +7,8 @@ import { permissionsDans } from "../src/gestion/js/droits.mjs";
 import { reservationsDepuisDocument } from "../src/gestion/js/operations-calc.mjs";
 import { champsBooking, contenuCourse } from "../src/gestion/js/taxi-calc.mjs";
 
-const bon = { nom: "Emma Wilson", date: "2026-11-14", pickup: "Pimalai Resort", heure: "14:30", dropoff: "Krabi Airport", adultes: "2", enfants: "1", bagages: "3", prix: "2,700" };
+// Un enfant : le choix des sièges est fait (« aucun siège », 22.11.2026), sinon la saisie n'est pas complète.
+const bon = { nom: "Emma Wilson", date: "2026-11-14", pickup: "Pimalai Resort", heure: "14:30", dropoff: "Krabi Airport", adultes: "2", enfants: "1", bagages: "3", sans_siege: "oui", prix: "2,700" };
 
 test("chaque texte de l'écran existe en thaï, chaque erreur a son texte", () => {
   for (const [cle, texte] of Object.entries(TH)) assert.ok(String(texte).trim(), `texte vide : ${cle}`);
@@ -20,7 +21,7 @@ test("saisie complète : aucune erreur ; champs vides : une erreur sous chacun, 
   assert.deepEqual(erreursVoucher(bon), {});
   const e = erreursVoucher(valeursVides());
   assert.deepEqual(Object.keys(e).sort(), ["date", "dropoff", "heure", "nom", "pickup", "prix"].sort());
-  assert.deepEqual(CHAMPS, ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "prix", "remarques", "notes"]);
+  assert.deepEqual(CHAMPS, ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "sieges_bebe", "sans_siege", "prix", "remarques", "notes"]);
 });
 
 test("le voucher est en anglais : un mot thaï dans un champ imprimé est refusé", () => {
@@ -38,6 +39,11 @@ test("passagers : au moins un adulte, des nombres entiers ; enfants et bagages f
   assert.equal(erreursVoucher({ ...bon, enfants: "1.5" }).enfants, "e_nombre");
   assert.deepEqual(erreursVoucher({ ...bon, enfants: "", bagages: "" }), {});
   assert.deepEqual(erreursVoucher({ ...bon, bagages: "2 big + 1 surfboard" }), {}, "les bagages restent un texte court en anglais");
+  // Un enfant (22.11.2026) : child seat, baby seat ou « ไม่ต้องใช้คาร์ซีท » (aucun siège), jamais rien de dit.
+  assert.equal(erreursVoucher({ ...bon, sans_siege: "" }).sieges, "e_sieges_choix");
+  assert.deepEqual(erreursVoucher({ ...bon, sans_siege: "", sieges_bebe: "1" }), {});
+  assert.equal(erreursVoucher({ ...bon, sans_siege: "", sieges: "1", sieges_bebe: "1" }).sieges, "e_sieges", "deux sièges pour un enfant");
+  assert.deepEqual(erreursVoucher({ ...bon, enfants: "", sans_siege: "" }), {}, "sans enfant, rien à choisir");
 });
 
 test("prix : tapé comme on veut, lu comme un nombre positif", () => {
@@ -68,7 +74,7 @@ test("ce qui est créé : une course libre payée au chauffeur, prix pour le vé
   assert.equal(res.reservation.paye_sur_place, true);
   assert.equal(res.reservation.date_service, "2026-11-14");
   assert.deepEqual(res.reservation.personnes, { adultes: 0, enfants: 0, bebes: 0 });
-  assert.deepEqual(reservationVoucher(x), { statut: "confirme", heure: "14:30", lieu: "Pimalai Resort", dropoff: "Krabi Airport", vol: "", bagages: "3", sieges: 0, personnes: { adultes: 2, enfants: 1 } });
+  assert.deepEqual(reservationVoucher(x), { statut: "confirme", heure: "14:30", lieu: "Pimalai Resort", dropoff: "Krabi Airport", vol: "", bagages: "3", sieges: 0, personnes: { adultes: 2, enfants: 1 }, details: { sans_siege: true } });
 });
 
 test("aperçu : la Booking confirmation lit les champs saisis tels quels", () => {
@@ -86,7 +92,7 @@ test("aperçu : la Booking confirmation lit les champs saisis tels quels", () =>
 });
 
 test("correction : seuls les champs changés partent, et le prix interne suit", () => {
-  const r = { id: "R", ligne_id: "L1", libelle: "Pimalai Resort → Krabi Airport", date_service: "2026-11-14", heure_pickup: "14:30", lieu_pickup: "Pimalai Resort", montant_vente: 2700, personnes: { adultes: 2, enfants: 1, bebes: 0 }, details: { drop_off: "Krabi Airport", bagages: "3" } };
+  const r = { id: "R", ligne_id: "L1", libelle: "Pimalai Resort → Krabi Airport", date_service: "2026-11-14", heure_pickup: "14:30", lieu_pickup: "Pimalai Resort", montant_vente: 2700, personnes: { adultes: 2, enfants: 1, bebes: 0 }, details: { drop_off: "Krabi Airport", bagages: "3", sans_siege: true } };
   assert.equal(correctionReservation(r, donneesVoucher(bon)), null, "rien de changé, rien à écrire");
   const suite = correctionReservation(r, donneesVoucher({ ...bon, heure: "15:00", prix: "3000", bagages: "" }));
   assert.equal(suite.heure_pickup, "15:00");

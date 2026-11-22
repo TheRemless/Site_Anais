@@ -3112,7 +3112,6 @@ export const EN = {
   "« Envoyer » prépare le PDF « {nomDoc} {ref} » et ouvre WhatsApp ou l'e-mail du client avec le message. Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P imprimer. Le formulaire et l'aperçu défilent séparément.": "“Send” prepares the PDF “{nomDoc} {ref}” and opens the client's WhatsApp or e-mail with the message. Shortcuts: Ctrl+Z undo, Ctrl+Shift+Z redo, Ctrl+S save, Ctrl+P print. The form and the preview scroll separately.",
   // Création complète d'un dossier, service par service, et course Taxi hors catalogue (13.11.2026)
   "Sièges enfant ou bébé": "Child or baby seats",
-  "Nombre de sièges. Vide si aucun.": "Number of seats. Leave empty if none.",
   "Ce qui s'imprime sur la Booking confirmation. Modifiable ensuite dans la réservation.": "What prints on the Booking confirmation. Can be changed later in the booking.",
   "Ce qui s'imprime sur le voucher. Modifiable ensuite dans la réservation.": "What prints on the voucher. Can be changed later in the booking.",
   "Remplissez ce champ.": "Fill in this field.",
@@ -3132,7 +3131,6 @@ export const EN = {
   "Aéroport, quai, plage…": "Airport, pier, beach…",
   "Aucune course pour l'instant. Ajoutez une course du catalogue, ou une course hors catalogue avec son pickup et son drop-off.": "No rides yet. Add a ride from the catalogue, or a custom ride with its pickup and drop-off.",
   "Course du catalogue": "Catalogue ride",
-  "Vide si aucun.": "Leave empty if none.",
   "Prix de la course ({devise})": "Ride price ({devise})",
   "Payé en espèces au chauffeur.": "Paid in cash to the driver.",
   "Ajouter la course": "Add the ride",
@@ -4648,3 +4646,7 @@ for (const [k, v] of Object.entries(EN_PARTENAIRE)) if (!(k in EN)) EN[k] = v;
 // Demandes venues d'une page du carnet de ZTP : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_CARNET } from "./i18n-en-carnet.mjs";
 for (const [k, v] of Object.entries(EN_CARNET)) if (!(k in EN)) EN[k] = v;
+
+// Sièges par type, bagages et remarques des cartes de l'Assistant (22.11.2026) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_VOUCHER } from "./i18n-en-voucher.mjs";
+for (const [k, v] of Object.entries(EN_VOUCHER)) if (!(k in EN)) EN[k] = v;

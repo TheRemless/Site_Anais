@@ -233,7 +233,7 @@ import { CHAMPS as CHAMPS_MOOK } from "../src/gestion/js/voucher-rapide-calc.mjs
 // Une course où tout est rempli. L'en-tête de la carte montre l'heure et le client, le titre du jour montre la date.
 const EN_TETE = ["client", "date", "heure"];
 const DETAILS_PLEINS = {
-  type_trajet: "", drop_off: "Lanta Test Villas", programme_trajet: "", duree_h: 3, vol: "FD0000 14:05", bagages: "3", sieges: 1, type_transfert: "minivan", remarques: "Call on arrival",
+  type_trajet: "", drop_off: "Lanta Test Villas", programme_trajet: "", duree_h: 3, vol: "FD0000 14:05", bagages: "3", sieges: 1, sieges_bebe: 1, type_transfert: "minivan", remarques: "Call on arrival",
   hotel: "Lanta Test Resort", chambre: "12", retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport", embarquement: "Saladan Pier, gate 3",
   // La zone telle que pickup-calc.mjs la garde : seul son nom doit sortir.
   pickup_zone: { zone: "Long Beach", grille: "Grille secrète de Test", depart: "Saladan" },
@@ -250,7 +250,7 @@ test("116 : chaque champ des vouchers (cinq modèles) est lu par le partenaire, 
 });
 
 // Où chaque champ de la liste blanche s'affiche sur la carte.
-const OU = { type_trajet: "dropoff", drop_off: "dropoff", programme_trajet: "dropoff", duree_h: "duree", vol: "vol", bagages: "bagages", sieges: "personnes", type_transfert: "vehicule", remarques: "remarques", remarques_paiement: "remarques_paiement", hotel: "hotel", chambre: "hotel", type_tour: "type_tour", bateau: "bateau", parc: "parc", parc_texte: "parc", programme: "programme_activite", heure_service: "heure_service", retour_date: "retour_date", retour_heure: "retour_heure", retour_lieu: "retour_lieu", permis: "permis", equipement: "equipement", caution: "caution", conditions: "conditions", de: "de", vers: "vers", depart: "depart", arrivee: "arrivee", embarquement: "rendez_vous", checkin: "checkin", pickup_zone: "zone" };
+const OU = { type_trajet: "dropoff", drop_off: "dropoff", programme_trajet: "dropoff", duree_h: "duree", vol: "vol", bagages: "bagages", sieges: "personnes", sieges_bebe: "personnes", sans_siege: "personnes", type_transfert: "vehicule", remarques: "remarques", remarques_paiement: "remarques_paiement", hotel: "hotel", chambre: "hotel", type_tour: "type_tour", bateau: "bateau", parc: "parc", parc_texte: "parc", programme: "programme_activite", heure_service: "heure_service", retour_date: "retour_date", retour_heure: "retour_heure", retour_lieu: "retour_lieu", permis: "permis", equipement: "equipement", caution: "caution", conditions: "conditions", de: "de", vers: "vers", depart: "depart", arrivee: "arrivee", embarquement: "rendez_vous", checkin: "checkin", pickup_zone: "zone" };
 test("116 : chaque champ lu s'affiche sur la carte quand il est rempli", () => {
   const vus = clesAffichees(coursePleine());
   for (const k of CHAMPS_COURSE) {
@@ -259,7 +259,7 @@ test("116 : chaque champ lu s'affiche sur la carte quand il est rempli", () => {
   }
   const l = lignesCourse(coursePleine());
   const texte = JSON.stringify(l);
-  for (const v of ["Saladan Pier, gate 3", "Long Beach", "Call on arrival", "10:00", "Krabi Airport", "FD0000 14:05", "TX-1", "BR-7", "Lanta Test Resort · ห้อง 12"]) assert.ok(texte.includes(v), v);
+  for (const v of ["Saladan Pier, gate 3", "Long Beach", "Call on arrival", "10:00", "Krabi Airport", "FD0000 14:05", "TX-1", "BR-7", "Lanta Test Resort · ห้อง 12", "คาร์ซีทเด็ก 1 · คาร์ซีทเด็กเล็ก 1"]) assert.ok(texte.includes(v), v);
   assert.ok(!texte.includes("[object Object]") && !texte.includes("Grille secrète"), "la zone n'affiche que son nom, jamais la grille");
   assert.equal(nomZone({ zone: "Long Beach", grille: "G", depart: "X" }), "Long Beach");
   assert.equal(nomZone("Klong Dao"), "Klong Dao");
@@ -285,7 +285,7 @@ test("116 : aucun champ de la Booking confirmation ne manque (aller simple et re
 });
 
 // Le formulaire de Mook : chaque champ a son équivalent, sauf la note interne.
-const MOOK = { nom: "client", telephone: "telephone", date: "date", pickup: "pickup", heure: "heure", trajet: "dropoff", dropoff: "dropoff", programme: "dropoff", duree: "duree", vol: "vol", adultes: "personnes", enfants: "personnes", bagages: "bagages", sieges: "personnes", prix: "paiement", remarques: "remarques" };
+const MOOK = { nom: "client", telephone: "telephone", date: "date", pickup: "pickup", heure: "heure", trajet: "dropoff", dropoff: "dropoff", programme: "dropoff", duree: "duree", vol: "vol", adultes: "personnes", enfants: "personnes", bagages: "bagages", sieges: "personnes", sieges_bebe: "personnes", sans_siege: "personnes", prix: "paiement", remarques: "remarques" };
 test("116 : aucun champ du voucher de Mook ne manque, sauf sa note interne", () => {
   const c = coursePleine({ retour: true, programme: "Tour", details: { ...DETAILS_PLEINS, type_trajet: "retour_depart" } });
   const vus = new Set([...clesAffichees(c), "telephone"]);

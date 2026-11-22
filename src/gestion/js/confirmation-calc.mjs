@@ -123,9 +123,17 @@ export function lirePassagers(texte) {
     }
     return vu ? n : null;
   };
-  const sieges = somme(new RegExp(`\\b${N}\\s*(?:child|car|baby|booster)\\s*seats?\\b`, "g"));
+  // Par type (22.11.2026) : « child / car / booster seat » pour un enfant, « baby / infant seat » pour un bébé ; « no child seat » : aucun.
+  // « 1 infant car seat » est un siège bébé ; « 1 booster » un siège enfant (relecture de la PR 327).
+  const SIEGE_BEBE = `\\b${N}\\s*(?:baby|infant)\\s*(?:car\\s*)?seats?\\b`;
+  const SIEGE_ENFANT = `\\b${N}\\s*(?:(?:child|kids?|toddler)\\s*(?:car\\s*)?seats?|car\\s*seats?|booster(?:\\s*seats?)?)\\b`;
+  const sieges = somme(new RegExp(SIEGE_ENFANT, "g"));
+  const siegesBebe = somme(new RegExp(SIEGE_BEBE, "g"));
+  // « no child seat », « without car seat », « child seat not needed », « no seat needed ».
+  const AUCUN = /\b(?:no|without)\s+(?:child|car|baby|booster|infant)?\s*(?:car\s*)?seats?(?:\s+needed)?\b|\b(?:child|car|baby|booster|infant)\s*(?:car\s*)?seats?:?\s+(?:not\s+(?:needed|required)|no|none)\b/g;
+  const sansSiege = new RegExp(AUCUN.source).test(t);
   // Les sièges retirés, pour que « 1 child seat » ne compte pas un enfant de plus.
-  const sansSieges = t.replace(new RegExp(`\\b${N}\\s*(?:child|car|baby|booster)\\s*seats?\\b`, "g"), " ");
+  const sansSieges = t.replace(new RegExp(SIEGE_BEBE, "g"), " ").replace(new RegExp(SIEGE_ENFANT, "g"), " ").replace(AUCUN, " ");
   const compte = (re) => {
     let n = 0;
     let vu = false;
@@ -152,7 +160,7 @@ export function lirePassagers(texte) {
     // Des bagages sans nombre (« + luggage », « with luggage ») : « Yes », comme la ligne LUGGAGE l'imprime (19.11.2026).
     else if (/\b(luggages?|bags?|baggages?|suitcases?)\b/.test(sansSieges)) bagages = "Yes";
   }
-  return { adultes: adultes === null ? "" : String(adultes), enfants: enfants ? String(enfants) : "", bagages, sieges: sieges ? String(sieges) : "" };
+  return { adultes: adultes === null ? "" : String(adultes), enfants: enfants ? String(enfants) : "", bagages, sieges: sieges ? String(sieges) : "", sieges_bebe: siegesBebe ? String(siegesBebe) : "", sans_siege: sansSiege && !sieges && !siegesBebe ? "oui" : "" };
 }
 
 // « Rock bar restaurant (and round trip) », « Old Town, round trip », « round trip » : le retour au point de départ (PR 202), avec ce qui reste
@@ -261,10 +269,18 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
       valeurs.enfants = p.enfants;
       if (p.bagages || !lus.has("bagages")) valeurs.bagages = p.bagages;
       if (p.sieges) valeurs.sieges = p.sieges;
+      if (p.sieges_bebe) valeurs.sieges_bebe = p.sieges_bebe;
+      if (p.sans_siege) valeurs.sans_siege = p.sans_siege;
     } else if (champ === "bagages") {
       const p = lirePassagers(/\d/.test(v) && !/(luggage|bag|suitcase|piece)/i.test(v) ? `${v} luggage` : v);
       valeurs.bagages = p.bagages || (/^(yes|y|oui)$/i.test(v) ? "Yes" : "");
-    } else if (champ === "sieges") valeurs.sieges = (/\d+/.exec(v) || [""])[0];
+    } else if (champ === "sieges") {
+      // « Child seat: 1 baby seat », « Car seats: no » : lu par type ; un nombre seul reste des sièges enfant, comme avant.
+      const p = lirePassagers(/^\s*\d+\s*$/.test(v) ? `${v} child seat` : /^\s*(?:no|none|0)\s*$/i.test(v) ? "no seat" : v);
+      valeurs.sieges = p.sieges || (p.sieges_bebe || p.sans_siege ? "" : (/\d+/.exec(v) || [""])[0]);
+      if (p.sieges_bebe) valeurs.sieges_bebe = p.sieges_bebe;
+      if (p.sans_siege) valeurs.sans_siege = p.sans_siege;
+    }
     // Plusieurs remarques (« Remark: … », « Other: … ») s'ajoutent, dans l'ordre du texte.
     else if (champ === "remarques") valeurs.remarques = ajouterRemarque(valeurs.remarques, v);
     else if (champ === "prix") {

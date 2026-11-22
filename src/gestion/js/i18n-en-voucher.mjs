@@ -1,0 +1,25 @@
+// Traductions anglaises des sièges par type, des bagages et des deux remarques des cartes de l'Assistant (22.11.2026), à part comme
+// i18n-en-type.mjs. Fusionnées dans EN à la fin de i18n-en.mjs, sans jamais remplacer une traduction déjà là.
+export const EN_VOUCHER = {
+  "Sièges bébé": "Baby seats",
+  "Aucun siège enfant ni bébé": "No child or baby seat",
+  "Remarque sur le voucher": "Remark on the voucher",
+  "Note interne": "Internal note",
+  "Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant ».": "A child or a baby is travelling: child seat, baby seat or no seat? Ask the client, or choose with “Check first”.",
+  "La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne.": "The remark meant for the voucher mentioned a net price, a commission or a partner: it stays as an internal note.",
+  "{n} siège bébé": "{n} baby seat",
+  "{n} sièges bébé": "{n} baby seats",
+  "aucun siège": "no seat",
+  "sièges à choisir": "seats to choose",
+  "{n} bagage": "{n} piece of luggage",
+  "{n} bagages": "{n} pieces of luggage",
+  "Sur le voucher": "On the voucher",
+  "rien": "nothing",
+  "Interne": "Internal",
+  "Un enfant ou un bébé voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège ».": "A child or a baby is travelling: enter the child seats, the baby seats, or tick “No seat”.",
+  "Child seats": "Child seats",
+  "Baby seats": "Baby seats",
+  "Aucun siège": "No seat",
+  "Avec un enfant ou un bébé : le nombre de child seats et de baby seats, ou « Aucun siège ». Imprimé sur le voucher.": "With a child or a baby: the number of child seats and baby seats, or “No seat”. Printed on the voucher.",
+  "Enfant ou bébé : choisissez child seat, baby seat ou aucun siège.": "Child or baby: choose child seat, baby seat or no seat.",
+};

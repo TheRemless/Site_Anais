@@ -1234,16 +1234,21 @@ export function reponsePrix(d, offre, { devise = "THB", partenaire = null, desti
   return lignes.join("\n");
 }
 
+// Les sièges d'une demande (formulaire du site ou message collé) : le nombre donné, sinon 1 pour « Child seat needed » ou « Baby seat
+// needed » (relecture de la PR 327). Posés sur le voucher du service par la fiche de création.
+export const siegesDemande = (d = {}) => ({ sieges: Number(d.sieges) || (d.siegeEnfant ? 1 : 0), sieges_bebe: Number(d.siegesBebe) || (d.siegeBebe ? 1 : 0) });
+
 // Notes internes d'un dossier créé depuis une demande : ce que le client a demandé et qui n'a pas de champ à lui.
-export function notesDemande(d) {
+// `surLeVoucher` (Secret et Taxi, 22.11.2026) : les sièges et les bagages vont sur le voucher du service, plus dans les notes.
+export function notesDemande(d, { surLeVoucher = false } = {}) {
   return [
     d.heure ? `Pickup time: ${d.heure}` : "",
     d.vol ? `Flight or ferry: ${d.vol}` : "",
-    d.siegeEnfant ? "Child seat needed" : "",
-    d.siegeBebe ? "Baby seat needed" : "",
+    d.siegeEnfant && !surLeVoucher ? "Child seat needed" : "",
+    d.siegeBebe && !surLeVoucher ? "Baby seat needed" : "",
     d.bebes ? `Babies (0-2): ${d.bebes}` : "",
     (d.agesDeclares || d.ages) && (d.agesDeclares || d.ages).length ? `Child ages: ${(d.agesDeclares || d.ages).map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
-    d.bagages ? `Bags: ${d.bagages}` : "",
+    d.bagages && !surLeVoucher ? `Bags: ${d.bagages}` : "",
     d.extras ? `Extras: ${d.extras}` : "",
     d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",
     d.jusqua ? `Rental until: ${d.jusqua}` : "",

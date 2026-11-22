@@ -83,7 +83,7 @@ async function course({ n = 1, partenaireId = P.vip, details = {}, surPlace = tr
   if (paye) await db.query("insert into paiements (entite_id, dossier_id, date, montant, note) values ($1, $2, $3, $4, 'SECRET-NOTE-PAIEMENT')", [ent.taxi, d, await jour(0), paye]);
   return r;
 }
-const TOUT = { drop_off: "Lanta Test Villas", vol: "FD0000 14:05", bagages: "3", sieges: 1, type_transfert: "minivan", remarques: "Call on arrival", hotel: "Lanta Test Resort", chambre: "12", embarquement: "Arrivals hall, gate 3", retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport" };
+const TOUT = { drop_off: "Lanta Test Villas", vol: "FD0000 14:05", bagages: "3", sieges: 1, sieges_bebe: 1, type_transfert: "minivan", remarques: "Call on arrival", hotel: "Lanta Test Resort", chambre: "12", embarquement: "Arrivals hall, gate 3", retour_date: "2026-12-01", retour_heure: "10:00", retour_lieu: "Krabi Airport" };
 // La zone telle que pickup-calc.mjs la garde (point 2) : un objet { zone, grille, depart } ; seul le nom sort.
 const ZONE = { zone: "Long Beach", grille: "SECRET-GRILLE-AUTRE-PRESTATAIRE", depart: "Saladan" };
 const R = {
@@ -179,8 +179,17 @@ for (const s of ["1234", "9999", "SECRET-", "L-test", "AUTRE-REF", "Autre chauff
 ok(!Object.keys(c).some((k) => /net|note|marge/.test(k)), "aucune colonne de net, de marge ou de note");
 
 // ---- Se rejoue, retour en arrière ----------------------------------------------------------------------------------------------------------
+// Migration 118 (sièges par type) : rejouer la 116 rend l'ancienne liste, la 118 se relance ensuite (comme elle le dit).
+ok(rows.some((x) => (x.details || {}).sieges_bebe === 1), "118 : les sièges bébé sortent pour le chauffeur");
 await db.exec(lire(MIG));
-ok(JSON.stringify(await brown()) === JSON.stringify(rows), "la migration 116 se rejoue sans effet");
+ok(rows.length && (await brown()).every((x) => !("sieges_bebe" in (x.details || {}))), "116 rejouée seule : l'ancienne liste, sans les sièges bébé");
+await db.exec(lire("migration-118-sieges-par-type.sql"));
+ok(JSON.stringify(await brown()) === JSON.stringify(rows), "la migration 116 puis la 118 se rejouent sans effet");
+await db.exec(lire("migration-118-sieges-par-type.sql"));
+ok(JSON.stringify(await brown()) === JSON.stringify(rows), "la migration 118 se rejoue sans effet");
+await db.exec(lire("retour-118-sieges-par-type.sql"));
+ok((await brown()).every((x) => !("sieges_bebe" in (x.details || {}))) && !(await exec("authenticated", "partenaire_champs_details()")), "retour 118 : la liste de la 116 revient, toujours interne");
+await db.exec(lire("migration-118-sieges-par-type.sql"));
 await db.exec(lire("retour-116-courses-partenaire-details.sql"));
 rows = await brown();
 ok(rows.length > 0 && !("details" in rows[0]) && "modifiable" in rows[0], "retour : la fonction de la migration 115 revient");

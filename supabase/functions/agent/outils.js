@@ -222,10 +222,16 @@ const SERVICE = obj({
   vers: S("Lieu d'arrivée d'un transfert, ou \"\"."),
   adultes: I("0 si inconnu."),
   enfants: I("0 si inconnu."),
-  sieges: I("Sièges enfant ou bébé demandés pour ce service (« child seat », « baby seat », « car seat », « booster »), 0 si rien n'est dit, 10 au plus. Ne les mets pas aussi dans « remarque »."),
+  // Les sièges par type et le « aucun siège » (Jérémy, 22.11.2026) : dès qu'il y a un enfant ou un bébé, le choix est fait avant la carte.
+  sieges: I("Sièges ENFANT demandés pour ce service (« child seat », « booster », « car seat » pour un enfant), 0 si rien n'est dit. Avec « sieges_bebe », 10 au plus."),
+  sieges_bebe: I("Sièges BÉBÉ demandés pour ce service (« baby seat », siège coque, « infant seat »), 0 si rien n'est dit."),
+  sans_siege: B("true seulement si le client (ou la personne) a dit qu'il ne faut AUCUN siège enfant ni bébé, sinon false. Jamais true par défaut."),
+  bagages: I("Nombre de bagages écrit dans la conversation (« 2 valises », « 3 bags »), 0 si rien n'est dit. Imprimé sur le voucher, jamais dans une remarque."),
   prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes."),
   vol: S("Numéro du vol d'un transfert qui part d'un aéroport ou y va (« FD3217 »), seulement s'il est écrit dans la conversation, le WhatsApp lu ou une pièce jointe, sinon \"\". Jamais l'heure du vol, jamais un numéro deviné."),
-  remarque: S("Ce qu'il faut savoir pour réserver (bagages, attente, heure du vol), ou \"\". Le numéro du vol va dans « vol »."),
+  // Deux remarques (Jérémy, 22.11.2026) : le voucher sert au client ET au chauffeur ; la note interne ne sort jamais.
+  remarque_voucher: S("EN ANGLAIS, ce que le client et le chauffeur doivent lire sur le voucher (« Ferry included. Cash payment to the driver. Expected arrival 13:26 (latest 13:36). », point de rendez-vous, attente), ou \"\". Jamais un net, une commission, une marge ni un nom de partenaire. Ni les bagages, ni les sièges, ni le numéro de vol : ils ont leur champ."),
+  note_interne: S("Seulement ce qui reste interne à l'équipe (net, partenaire, commission, rappel pour Nani), ou \"\". Jamais imprimé."),
 });
 // Espace unifié Secret et Taxi : le service dit son entreprise quand il est hors catalogue (celle de la ligne compte sinon).
 const SERVICE_UNIFIE = obj({
@@ -328,11 +334,11 @@ export const OUTILS = [
   },
   {
     name: "proposer_modification",
-    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, ses sièges enfant ou bébé (champ « sieges », un nombre), son numéro de vol (champ « vol », écrit dans la conversation), une remarque, ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
+    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, ses sièges enfant (champ « sieges », un nombre), ses sièges bébé (champ « sieges_bebe », un nombre), « aucun siège » (champ « sans_siege », valeur « oui »), ses bagages (champ « bagages », un nombre), son numéro de vol (champ « vol », écrit dans la conversation), une remarque imprimée sur le voucher, en anglais (champ « remarque_voucher »), une note interne (champ « note_interne »), ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
     input_schema: obj({
       titre: S("Titre court de la carte."),
       reservation: S("Référence R-… rendue par lire_dossier."),
-      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "sieges", "vol", "remarque", "annulation"] },
+      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "sieges", "sieges_bebe", "sans_siege", "bagages", "vol", "remarque_voucher", "note_interne", "annulation"] },
       valeur: S("La nouvelle valeur (AAAA-MM-JJ, HH:MM, texte ou nombre)."),
       raison: S("Pourquoi, en une phrase, pour la personne."),
     }),
@@ -910,8 +916,21 @@ function chiffresService(r, n) {
 
 // Au plus 10 sièges enfant ou bébé par service (même borne que l'écran, creation-voucher-calc.mjs).
 export const SIEGES_MAX = 10;
-// Les sièges enfant ou bébé d'une réservation : la colonne lue par la fonction (sieges:details->>sieges), sinon details.sieges.
-const siegesDe = (r) => entier(Number(r.sieges ?? (r.details || {}).sieges) || 0, 10);
+// Les sièges d'une réservation par type (22.11.2026) : les colonnes lues par la fonction (sieges:details->>sieges, sieges_bebe, sans_siege),
+// sinon `details`. `sieges` : les sièges enfant (l'ancienne clé) ; `sieges_bebe` : les sièges bébé ; `sans_siege` : aucun siège.
+export function siegesReservation(r = {}) {
+  const dt = r.details || {};
+  const lu = (k) => (r[k] !== undefined && r[k] !== null ? r[k] : dt[k]);
+  const sieges = entier(Number(lu("sieges")) || 0, 10);
+  const sieges_bebe = entier(Number(lu("sieges_bebe")) || 0, 10);
+  const sans = lu("sans_siege");
+  return { sieges, sieges_bebe, sans_siege: !sieges && !sieges_bebe && (sans === true || sans === "true") };
+}
+// Ce que lire_dossier dit des sièges : seulement ce qui est posé (rien pour un service sans enfant ni choix).
+const siegesLus = (r) => {
+  const s = siegesReservation(r);
+  return { ...(s.sieges ? { sieges: s.sieges } : {}), ...(s.sieges_bebe ? { sieges_bebe: s.sieges_bebe } : {}), ...(s.sans_siege ? { sans_siege: true } : {}) };
+};
 export async function lireDossier(e, ctx) {
   const [dossiers, clients, reservations, netsLus] = ctx.dossierPour ? await ctx.dossierPour(e.dossier) : await Promise.all([ctx.charger("dossiers"), ctx.charger("clients"), ctx.charger("reservations"), voitNetsQuelquePart(ctx) ? ctx.charger("reservations_nets") : []]);
   const choix = choisirLigne(candidatsDossier(e.dossier, dossiers), ctx);
@@ -938,7 +957,7 @@ export async function lireDossier(e, ctx) {
     const offre = r.prestation_id ? { ref: refDe("P", r.prestation_id) } : r.trajet_id ? { ref: refDe("T", r.trajet_id) } : {};
     // Un prix repris du client sans correction de Nani (details.prix_origine, posé à la création) : jamais une levée d'un montant interne.
     if (r.prix_origine === "client_non_corrige") offre.prix_client_non_corrige = true;
-    return { reservation: refDe("R", r.id), ...offre, libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), ...(numeroVol(r.vol) ? { vol: numeroVol(r.vol) } : {}), adultes: entier(p.adultes), enfants: entier(p.enfants), ...(siegesDe(r) ? { sieges: siegesDe(r) } : {}), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
+    return { reservation: refDe("R", r.id), ...offre, libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), ...(numeroVol(r.vol) ? { vol: numeroVol(r.vol) } : {}), adultes: entier(p.adultes), enfants: entier(p.enfants), ...siegesLus(r), ...(texte(r.bagages ?? (r.details || {}).bagages ?? "", 20) ? { bagages: texte(r.bagages ?? (r.details || {}).bagages, 20) } : {}), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
   });
   // Les totaux du dossier, services annulés exclus.
   const actifs = services.filter((s) => s.statut !== "annule");
@@ -1325,7 +1344,8 @@ export function montantsDeNani(blocs = []) {
 // qui parle de « net », « nett », « cost », « coût », « commission », « marge », « margin », « prix d'achat », « agent rate », « contract
 // rate », « B2B », « tarif agence » ou « prix agence » est interne : « Rattana net 1,000/pax », « Rattana tour 1,000 THB (net rate) »
 // (revue de sécurité de la PR 306).
-const MOT_COUT = /(?<![a-z0-9])(?:nets?|nett|costs?|couts?|commissions?|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat)(?![a-z0-9])/;
+// Le mot s'arrête devant un chiffre (relecture de la PR 327) : « net1200 », « NET900THB », « marge300 » sont des nets collés à leur mot.
+const MOT_COUT = /(?<![a-z])(?:nets?|nett|netto|costs?|couts?|commissions?|comm|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat|เน็ต)(?![a-z])/;
 export function montantsPresDuNet(t) {
   const out = new Set();
   for (const phrase of String(t || "").split(/\n+|(?<=[.!?;])\s+/)) if (MOT_COUT.test(sansAccents(phrase))) for (const n of montantsDuTexte(phrase)) if (n > 0) out.add(n);
@@ -1495,17 +1515,86 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     vers: texte(s.vers, 120),
     adultes,
     enfants,
-    // Les sièges enfant ou bébé (22.11.2026) : posés sur la réservation (details.sieges), imprimés sur le voucher et la Booking confirmation.
-    sieges: Number.isInteger(s.sieges) && s.sieges > 0 ? s.sieges : 0,
+    // Les sièges par type (22.11.2026, sieges-calc.mjs) : enfant (details.sieges), bébé (details.sieges_bebe), ou « aucun siège »
+    // (details.sans_siege), imprimés sur le voucher, la Booking confirmation et l'écran du chauffeur. « Aucun » ne vaut qu'en l'absence de siège.
+    ...siegesDuService(s),
+    // Un transfert (catalogue ou hors catalogue) : avec un enfant ou un bébé, le choix des sièges est fait avant de valider la carte. Même
+    // règle que l'écran (champsCreation) : toute course chez Taxi, un transfert chez Secret, jamais ailleurs (ZTP n'imprime pas de sièges).
+    ...(siegesRequisDuService({ p, t, fonctionnement: fonctionnementDuService(ctx, entreprise) }) ? { sieges_requis: true } : {}),
+    // Les bagages : un nombre, dans details.bagages, que le voucher imprime déjà.
+    bagages: entier(s.bagages, 99),
     prix,
     origine_prix: origine,
     ...(catalogueAffiche !== null ? { prix_catalogue: catalogueAffiche } : {}),
     // Le numéro de vol, seulement pour un transfert (une excursion ou un billet de bateau n'en imprime pas) et seulement s'il a une source.
     vol: p && p.famille !== "transfert" ? "" : t ? "" : volSource(s.vol, ctx, memo, avert),
-    remarque: texte(s.remarque, 300),
+    // La remarque du voucher (details.remarques, vue par le client et le chauffeur) et la note interne (notes, jamais imprimée).
+    ...remarquesDuService(s, memo, avert),
     ...entreprise,
     avertissements: avert,
   };
+}
+
+// Un transfert (sieges_requis) avec au moins un enfant ou un bébé, ni siège ni « aucun siège » (Jérémy, 22.11.2026). Les enfants du service,
+// sinon ceux du dossier quand le service ne donne personne ; les bébés du dossier. Même règle que l'écran (agent-calc.mjs, siegesAChoisir).
+export function siegesAChoisirServices(services = [], { enfants = 0, bebes = 0 } = {}) {
+  return services.some((s) => s && s.sieges_requis && !(s.sieges || s.sieges_bebe || s.sans_siege) && (Number(s.enfants) || (Number(s.adultes) ? 0 : Number(enfants) || 0)) + (Number(bebes) || 0) > 0);
+}
+// Le fonctionnement de l'entreprise du service : en espace unifié, celle choisie pour le service (« taxi », « secret ») ; sinon celui des
+// réglages de la conversation (« taxi », « excursions » pour Secret, « sur_mesure » pour ZTP). "" quand l'entreprise reste à choisir.
+export function fonctionnementDuService(ctx = {}, entreprise = {}) {
+  if (estUnifie(ctx)) return entreprise.entreprise === "taxi" ? "taxi" : entreprise.entreprise === "secret" ? "excursions" : "";
+  return (ctx.reglages && typeof ctx.reglages.fonctionnement === "string" && ctx.reglages.fonctionnement) || "sur_mesure";
+}
+// Les sièges se demandent là où l'écran les montre (relecture de la PR 327) : toute course de Taxi (hors billet de bateau d'un trajet), un
+// transfert chez Secret (prestation « transfert » ou hors catalogue). Entreprise encore à choisir : un transfert, comme Secret.
+export function siegesRequisDuService({ p = null, t = null, fonctionnement = "" } = {}) {
+  if (t) return false;
+  if (fonctionnement === "taxi") return true;
+  if (fonctionnement === "excursions" || fonctionnement === "") return !p || p.famille === "transfert";
+  return false;
+}
+// Les sièges d'un service de carte : { sieges, sieges_bebe, sans_siege }. Un nombre illisible compte 0 ; « aucun » seulement sans siège.
+export function siegesDuService(s = {}) {
+  const n = (x) => (Number.isInteger(x) && x > 0 ? x : 0);
+  const sieges = n(s.sieges);
+  const sieges_bebe = n(s.sieges_bebe);
+  return { sieges, sieges_bebe, sans_siege: !sieges && !sieges_bebe && s.sans_siege === true };
+}
+
+// Une remarque destinée au voucher qui cite un net, une commission, une marge, un montant interne ou un partenaire n'y va jamais : elle
+// passe dans la note interne, avec un avertissement (Jérémy, 22.11.2026 : « seul ce qui est vraiment interne reste en note interne »).
+// Nets illisibles (controleImpossible) : une remarque qui porte un montant reste interne, faute de pouvoir la contrôler.
+export function remarqueInterne(t, memo = {}) {
+  const m = String(t || "");
+  if (!m.trim()) return false;
+  const montants = montantsDuTexte(m);
+  const internes = memo.internes instanceof Set ? memo.internes : new Set();
+  const nets = netsDuControle(memo);
+  // Un mot qui ne peut être qu'interne, ou un montant près d'un mot de coût. « Ferry cost included » seul reste sur le voucher (relecture).
+  if (MOT_INTERNE.test(sansAccents(m)) || montantsPresDuNet(m).size) return true;
+  if (montants.some((x) => internes.has(x) || nets.bloquants.has(x) || nets.autres.has(x))) return true;
+  if (memo.controleImpossible === true && montants.length) return true;
+  return partenairesCites(m, memo.prestataires || []).length > 0 || partenairesCitesParMot(m, memo.prestataires || []).length > 0;
+}
+// Un mot qui ne peut être qu'interne, même collé à un chiffre (« net1200 », « commission300 », « comm 300 », « Netto 900 », « เน็ต 900 »).
+const MOT_INTERNE = /(?<![a-z])(?:nets?|nett|netto|commissions?|comm|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat|เน็ต)(?![a-z])/;
+// Les mots d'un nom de partenaire qui ne le désignent pas seuls : titres, formes de société, métiers et lieux courants.
+const MOTS_COMMUNS_NOM = new Set(["mr", "mrs", "ms", "miss", "mister", "khun", "co", "ltd", "limited", "company", "group", "the", "and", "of", "by", "tour", "tours", "travel", "trip", "trips", "taxi", "taxis", "van", "vans", "minivan", "car", "cars", "rent", "rental", "boat", "boats", "speedboat", "ferry", "transfer", "transfers", "service", "services", "private", "express", "shop", "pier", "airport", "hotel", "resort", "island", "islands", "beach", "koh", "lanta", "krabi", "phuket", "thailand", "dive", "diving"]);
+// Un nom de partenaire cité par l'un de ses mots distinctifs, en mot entier, casse et accents ignorés : « Brown's van » cite « Mr Brown ».
+export function partenairesCitesParMot(t, noms = []) {
+  const plat = ` ${sansAccents(t).replace(/[^a-z0-9\u0e00-\u0e7f]+/g, " ")} `;
+  return noms.filter((n) => sansAccents(n).replace(/[^a-z0-9\u0e00-\u0e7f]+/g, " ").split(" ").some((w) => w.length >= 3 && !MOTS_COMMUNS_NOM.has(w) && !/^\d+$/.test(w) && plat.includes(` ${w} `)));
+}
+// Rend { remarque_voucher, note_interne } ; une ancienne carte (« remarque » seule) reste une note interne, comme avant.
+export function remarquesDuService(s = {}, memo = {}, avert = []) {
+  const voucher = texte(s.remarque_voucher, 300);
+  const interne = [texte(s.note_interne, 300), texte(s.remarque, 300)].filter(Boolean);
+  if (voucher && remarqueInterne(voucher, memo)) {
+    avert.push("remarque_voucher_interne");
+    return { remarque_voucher: "", note_interne: [...interne, voucher].join(" ").slice(0, 400) };
+  }
+  return { remarque_voucher: voucher, note_interne: interne.join(" ").slice(0, 400) };
 }
 
 // ---- Numéro de vol (21.11.2026) ----------------------------------------------------------------------------------------------
@@ -1722,7 +1811,8 @@ export function partenairesCites(t, noms = []) {
 
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
 // Avec le prix du client non corrigé par Nani et le prix refusé parce qu'égal à un net (22.11.2026) : la carte les montre, rien n'est bloqué.
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net"];
+// Et une remarque de voucher passée en note interne parce qu'elle citait un net ou un partenaire (22.11.2026).
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net", "remarque_voucher_interne"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
@@ -1735,7 +1825,7 @@ export async function proposer(nom, e, ctx, memo) {
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { course: { texte: t.slice(0, 4000) } } };
   }
   // Plus de 10 sièges enfant ou bébé : refusé avec un motif, jamais ramené à 10 en silence (relecture de la PR 315).
-  if (["proposer_dossier", "proposer_reservation"].includes(nom) && [...(e.services || []), ...(e.service ? [e.service] : [])].some((x) => x && Number(x.sieges) > SIEGES_MAX)) return { erreur: "sieges_trop_nombreux" };
+  if (["proposer_dossier", "proposer_reservation"].includes(nom) && [...(e.services || []), ...(e.service ? [e.service] : [])].some((x) => x && (Number(x.sieges) || 0) + (Number(x.sieges_bebe) || 0) > SIEGES_MAX)) return { erreur: "sieges_trop_nombreux" };
   if (nom === "proposer_dossier") {
     const services = [];
     for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes, null, memo));
@@ -1748,6 +1838,8 @@ export async function proposer(nom, e, ctx, memo) {
     const entitesCarte = estUnifie(ctx) ? services.map((x) => x.entite_id) : ctx.apporteur && ctx.apporteur.entites && ctx.apporteur.entites[0] ? [ctx.apporteur.entites[0].id] : [];
     const app = apporteurDeCarte(e.apporteur, ctx.apporteur || null, { entitesCarte });
     if (app.avertissement) avert.push(app.avertissement);
+    // Un enfant ou un bébé sur un transfert sans choix des sièges : la carte ne se valide pas, la question est à poser au client.
+    if (siegesAChoisirServices(services, { enfants: entier(e.enfants), bebes: entier(e.bebes, 10) })) avert.push("sieges_a_choisir");
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
@@ -1761,6 +1853,7 @@ export async function proposer(nom, e, ctx, memo) {
     const ent = entrepriseDe(ctx, d.entite_id);
     const service = await serviceDepuis(e.service, ctx, tapes, ent ? ent.id : null, memo);
     const avert = avertissementsEntreprise([service]);
+    if (siegesAChoisirServices([service])) avert.push("sieges_a_choisir");
     return { genre: "reservation", titre: texte(e.titre, 120), donnees: { dossier_id: d.id, dossier_ref: texte(d.ref, 30), ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), service }, ...(avert.length ? { avertissements: avert } : {}) };
   }
   if (nom === "proposer_modification") {
@@ -1770,10 +1863,15 @@ export async function proposer(nom, e, ctx, memo) {
     const avertVol = [];
     const v = e.champ === "vol" ? volSource(e.valeur, ctx, memo, avertVol) : texte(e.valeur, 300);
     if (e.champ === "vol" && !v) return { erreur: avertVol[0] || "valeur_invalide" };
-    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), sieges: /^\d{1,2}$/.test(v) && Number(v) <= SIEGES_MAX, vol: !!v, remarque: !!v, annulation: v === "annule" }[e.champ];
+    // Les sièges enfant et bébé ensemble : 10 au plus pour le service (relecture de la PR 315).
+    const siegesR = siegesReservation(r);
+    const autreSieges = e.champ === "sieges" ? siegesR.sieges_bebe : e.champ === "sieges_bebe" ? siegesR.sieges : 0;
+    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), sieges: /^\d{1,2}$/.test(v) && Number(v) + autreSieges <= SIEGES_MAX, sieges_bebe: /^\d{1,2}$/.test(v) && Number(v) + autreSieges <= SIEGES_MAX, sans_siege: v === "oui", bagages: /^\d{1,2}$/.test(v), vol: !!v, remarque_voucher: !!v, note_interne: !!v, annulation: v === "annule" }[e.champ];
     if (!ok) return { erreur: "valeur_invalide" };
+    // Une remarque pour le voucher qui cite un net, une commission ou un partenaire : refusée, elle va dans « note_interne » (22.11.2026).
+    if (e.champ === "remarque_voucher" && remarqueInterne(v, memo)) return { erreur: "remarque_interne_utiliser_note_interne" };
     if (e.champ === "annulation" && r.statut === "annule") return { erreur: "deja_annule" };
-    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), sieges: String(siegesDe(r)), vol: texte(r.vol || (r.details && r.details.vol) || "", 20), remarque: "", annulation: r.statut || "" }[e.champ];
+    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), sieges: String(siegesR.sieges), sieges_bebe: String(siegesR.sieges_bebe), sans_siege: siegesR.sans_siege ? "oui" : "", bagages: texte(r.bagages ?? (r.details || {}).bagages ?? "", 20), vol: texte(r.vol || (r.details && r.details.vol) || "", 20), remarque_voucher: texte(r.remarques_voucher ?? (r.details || {}).remarques ?? "", 300), note_interne: "", annulation: r.statut || "" }[e.champ];
     const ent = entrepriseDe(ctx, r.entite_id);
     return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), libelle: texte(r.libelle, 160), champ: e.champ, avant, valeur: v, raison: texte(e.raison, 240) }, ...(avertVol.length ? { avertissements: avertVol } : {}) };
   }

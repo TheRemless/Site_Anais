@@ -14,7 +14,7 @@ import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
 import { tr } from "../i18n.mjs";
 import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
-import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet, trajetIncomplet } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet, trajetIncomplet, siegesIncomplets, avecSiegesRequis } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { ouvrirCourseLibre } from "./course-libre.mjs";
 
@@ -176,11 +176,14 @@ export function nouveauDossierExcursions() {
     if (!ref.value.trim()) return (erreur.textContent = taxi ? tr("Indiquez le numéro de réservation.") : tr("Indiquez le numéro de facture."));
     if (refExiste(ref.value)) return (erreur.textContent = tr("Ce numéro existe déjà. Modifiez-le.")), ref.focus();
     // Retour au point de départ sans programme (ou durée illisible) : le service se déplie et le champ prend le focus.
-    const incomplet = trajetIncomplet(parServiceCreation(services(), saisies));
+    // Sièges (relecture de la PR 327) : 10 au plus, et avec un enfant ou un bébé sur un transfert, child seat, baby seat ou aucun siège.
+    const parService = avecSiegesRequis(services(), parServiceCreation(services(), saisies), { taxi });
+    const incomplet = trajetIncomplet(parService) || siegesIncomplets(parService);
     if (incomplet) {
       erreur.textContent = tr(ERREURS_TRAJET[incomplet.code]);
-      const cle = incomplet.ligneIds.find((id) => document.getElementById(`s-${id}-${incomplet.champ === "duree_h" ? "duree-h" : "programme-trajet"}`)) || incomplet.ligneIds[0];
-      const champ_ = document.getElementById(`s-${cle}-${incomplet.champ === "duree_h" ? "duree-h" : "programme-trajet"}`);
+      const suffixe = incomplet.champ === "duree_h" ? "duree-h" : incomplet.champ === "sieges" ? "sieges" : "programme-trajet";
+      const cle = incomplet.ligneIds.find((id) => document.getElementById(`s-${id}-${suffixe}`)) || incomplet.ligneIds[0];
+      const champ_ = document.getElementById(`s-${cle}-${suffixe}`);
       if (champ_) {
         const bloc = champ_.closest("details");
         if (bloc) bloc.open = true;

@@ -67,8 +67,10 @@ export function vueVoucherRapide() {
     const liste = h("datalist", { id: "vr-lieux" }, lieux.map((l) => h("option", { value: l })));
     const champ = (cle, libelle, input, aide = null, classe = "") => {
       input.id = `vr-${cle}`;
-      input.value = valeurs[cle] ?? "";
-      input.defaultValue = cible ? input.value : "";
+      // Une case (« ไม่ต้องใช้คาร์ซีท », aucun siège) : cochée pour « oui ».
+      if (input.type === "checkbox") (input.checked = valeurs[cle] === "oui"), (input.defaultChecked = cible ? input.checked : false);
+      else input.value = valeurs[cle] ?? "";
+      if (input.type !== "checkbox") input.defaultValue = cible ? input.value : "";
       if (cle === "adultes" && !cible) input.defaultValue = input.value;
       const err = h("p", { class: "vr-erreur", id: `vr-${cle}-erreur`, role: "alert", hidden: true });
       const aideNoeud = aide ? h("p", { class: "vr-aide", id: `vr-${cle}-aide` }, aide) : null;
@@ -145,7 +147,8 @@ export function vueVoucherRapide() {
       champ("duree", TH.duree, h("input", { type: "text", inputmode: "decimal", autocomplete: "off", enterkeyhint: "next" }), TH.duree_aide, "vr-court vr-si-retour"),
       champ("vol", TH.vol, texte({ autocapitalize: "characters" }), TH.vol_aide),
       h("div", { class: "vr-trio" }, champ("adultes", TH.adultes, nombre()), champ("enfants", TH.enfants, nombre()), champ("bagages", TH.bagages, texte({ inputmode: "text", autocapitalize: "off" }), TH.bagages_aide)),
-      champ("sieges", TH.sieges, nombre(), TH.sieges_aide, "vr-court"),
+      // Sièges par type (22.11.2026) : child seats, baby seats, ou aucun siège quand un enfant voyage sans.
+      h("div", { class: "vr-trio" }, champ("sieges", TH.sieges, nombre(), TH.sieges_aide, "vr-court"), champ("sieges_bebe", TH.sieges_bebe, nombre(), TH.sieges_bebe_aide, "vr-court"), champ("sans_siege", TH.sans_siege, h("input", { type: "checkbox" }), null, "vr-court vr-case")),
       champ("prix", TH.prix, h("input", { type: "text", inputmode: "decimal", autocomplete: "off", enterkeyhint: "next" }), TH.prix_aide, "vr-prix"),
       // Remarque imprimée (en anglais, refusée en thaï) et note interne du dossier (jamais imprimée, thaï accepté), comme « Coller une confirmation ».
       champ("remarques", TH.remarques, h("textarea", { rows: 2, autocomplete: "off", autocapitalize: "sentences", spellcheck: "false" }), TH.remarques_aide),
@@ -160,8 +163,8 @@ export function vueVoucherRapide() {
     );
 
     function verifier() {
-      const v = { ...Object.fromEntries(CHAMPS.map((c) => [c, champs[c].value])), client_id: clientId, entite_id: etat.entiteId };
-      const e = erreursVoucher(v);
+      const v = { ...Object.fromEntries(CHAMPS.map((c) => [c, champs[c].type === "checkbox" ? (champs[c].checked ? "oui" : "") : champs[c].value])), client_id: clientId, entite_id: etat.entiteId };
+      const e = erreursVoucher(v, { avant: cible ? cible.reservation : null });
       for (const c of CHAMPS) {
         erreurs[c].hidden = !e[c];
         erreurs[c].textContent = e[c] ? TH[e[c]] : "";

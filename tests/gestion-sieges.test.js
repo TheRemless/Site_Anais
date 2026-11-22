@@ -38,7 +38,10 @@ test("Assistant : le schéma des services a les sièges ; proposer_dossier et pr
   const schema = OUTILS.find((o) => o.name === "proposer_dossier").input_schema.properties.services.items;
   assert.ok(schema.properties.sieges, "proposer_dossier");
   assert.ok(schema.required.includes("sieges"));
-  assert.match(schema.properties.sieges.description, /child seat.*baby seat.*car seat/);
+  // Par type depuis le 22.11.2026 : « sieges » pour les child seats, « sieges_bebe » pour les baby seats, « sans_siege » pour aucun.
+  assert.match(schema.properties.sieges.description, /child seat.*car seat/);
+  assert.match(schema.properties.sieges_bebe.description, /baby seat/);
+  assert.equal(schema.properties.sans_siege.type, "boolean");
   assert.ok(OUTILS.find((o) => o.name === "proposer_reservation").input_schema.properties.service.properties.sieges);
   assert.equal(normaliserEntree("proposer_dossier", { titre: "x", services: [service({ sieges: 2 })] }).services[0].sieges, 2);
   const carte = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 2, bebes: 0, services: [service({ sieges: 2 }), service({ sieges: 0 })], apporteur: "" }, ctx(), memo());
@@ -78,7 +81,8 @@ test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusq
   assert.deepEqual(services.map((s) => s.sieges), [2, undefined]);
   // Fiche de création (views/demande.mjs) : le service garde ses sièges dans sa saisie, posée sur la réservation (creation-excursions.mjs).
   const demande = lire("src/gestion/js/views/demande.mjs");
-  assert.match(demande, /sieges: modeExcursions\(\) \? Number\(sv\.sieges\) \|\| \(site \? Number\(d\.sieges\) \|\| 0 : 0\) : 0/, "plus seulement pour une demande du site");
+  // Les sièges de la carte passent avant ceux de la demande (formulaire du site ou message collé, siegesDemande), jamais chez ZTP.
+  assert.match(demande, /sieges: modeExcursions\(\) \? Number\(sv\.sieges\) \|\| \(carteSieges \? 0 : sd\.sieges\) : 0/, "plus seulement pour une demande du site");
   assert.match(demande, /vol: t\.vol \|\| "", sieges: Number\(t\.sieges\) \|\| 0,/, "le service de l'Assistant porte ses sièges");
   assert.match(demande, /sieges: v\.sieges, details/, "la réservation reçoit la saisie");
   assert.match(lire("src/gestion/js/views/creation-excursions.mjs"), /\.\.\.\(sieges \? \{ sieges: Number\(sieges\) \} : \{\}\)/);
@@ -111,9 +115,10 @@ test("impression : voucher de transfert, Booking confirmation (Taxi et Secret), 
   const champs = champsBooking({ nom: "Test", date: "2026-12-03", pickup: "Hotel Test", heure: "09:00", dropoff: "Krabi Airport", personnes: { adultes: 2, enfants: 2 }, sieges: 2 });
   assert.ok(champs.some((c) => /2 child seats/.test(c.valeur)), "Booking confirmation");
   // Les trois rendus lisent details.sieges de la réservation.
-  assert.match(lire("src/gestion/js/views/voucher.mjs"), /siegesVoucher\(dt\.sieges\)/);
-  assert.match(lire("src/gestion/js/views/voucher-taxi.mjs"), /sieges: dt\.sieges/);
-  assert.match(lire("src/gestion/js/views/voucher-secret.mjs"), /sieges: dt\.sieges/);
+  // Les trois rendus lisent les sièges par type de la réservation (details.sieges, sieges_bebe, sans_siege).
+  assert.match(lire("src/gestion/js/views/voucher.mjs"), /siegesVoucher\(dt\)/);
+  assert.match(lire("src/gestion/js/views/voucher-taxi.mjs"), /sieges: siegesLus\(dt\)/);
+  assert.match(lire("src/gestion/js/views/voucher-secret.mjs"), /sieges: siegesLus\(dt\)/);
 });
 
 test("relecture 2 : un service du catalogue (offre non nulle) garde ses sièges jusqu'à la fiche de création", () => {
@@ -139,7 +144,7 @@ test("relecture 3 et 7 : le champ sièges suit l'impression (transfert chez Secr
   assert.match(vue, /const avecVoucher = modeExcursions\(\) && !modeTaxi\(\);/);
   assert.match(lire("src/gestion/js/views/demande.mjs"), /sieges: modeExcursions\(\) \? Number\(sv\.sieges\)/);
   // Fiche de création : des sièges saisis restent visibles même si le modèle n'en imprime pas.
-  assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /Number\(s\.sieges\) > 0 && !base\.includes\("sieges"\) \? \["sieges"\] : \[\]/);
+  assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /siegesTotal\(siegesLus\(\{ \.\.\.\(s\.details \|\| \{\}\), sieges: s\.sieges \}\)\) > 0 && !base\.includes\("sieges"\) \? \["sieges"\] : \[\]/);
 });
 
 test("relecture 4 : plus de sièges que d'enfants et de bébés, à vérifier (carte bloquée d'un geste, fiche à confirmer) ; au-delà de 10, refusé", async () => {
@@ -163,14 +168,15 @@ test("relecture 4 : plus de sièges que d'enfants et de bébés, à vérifier (c
   assert.match(vue, /else if \(s > petits && siegesConfirmes !== cle\)/, "la fiche demande une confirmation, pas un refus");
   const demande = lire("src/gestion/js/views/demande.mjs");
   assert.match(demande, /trajetIncomplet\(parService\) \|\| siegesIncomplets\(parService\)/);
-  assert.match(demande, /if \(siegesEnTrop\(\{ sieges: saisie\.sieges, enfants: sv\.enfants, bebes: saisie\.bebes \}\)\) alertes\.push/);
+  assert.match(demande, /if \(siegesEnTrop\(\{ sieges: siegesTotal\(siegesLus\(\{ \.\.\.\(saisie\.details \|\| \{\}\), sieges: saisie\.sieges \}\)\), enfants: sv\.enfants, bebes: saisie\.bebes \}\)\) alertes\.push/);
   // Côté écran, plus de plafond silencieux.
   assert.equal(siegesCarte({ sieges: 12 }), 12);
 });
 
 test("relecture 5 et 6 : la duplication garde les sièges ; une modification se fusionne depuis la ligne d'origine", () => {
   const vue = lire("src/gestion/js/views/reservations.mjs");
-  assert.match(vue, /\.\.\.\(r\.details && Number\(r\.details\.sieges\) > 0 \? \{ sieges: Number\(r\.details\.sieges\) \} : \{\}\), \.\.\.\(copie\.ids/);
+  // Les sièges par type (enfant, bébé, « aucun ») suivent la copie.
+  assert.match(vue, /\.\.\.detailsAvecSieges\(\{\}, siegesLus\(r\.details \|\| \{\}\)\), \.\.\.\(copie\.ids/);
   assert.match(vue, /export function formulaireReservation\(r, apres, \{ base = r \} = \{\}\)/);
   assert.match(vue, /modifierProtege\("reservations", r\.id, valeurs, \{ base, arbitrer/);
   const agent = lire("src/gestion/js/views/agent.mjs");

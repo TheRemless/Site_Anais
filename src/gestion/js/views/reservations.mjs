@@ -1,13 +1,14 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
 import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, avecNetsGroupes, chargerDossier, reglages, entiteActive, modeExcursions, modeTaxi } from "../etat.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
-import { champsVoucher, champsCourts, champsLongs } from "./champs-voucher.mjs";
+import { champsVoucher, champsCourts, champsLongs, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-calc.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
+import { siegesLus, siegesTotal, siegesChoisis, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
@@ -260,7 +261,7 @@ export async function dupliquerService(r, apres) {
         // Un retour au point de départ dupliqué reste un retour au point de départ, avec son programme et sa durée.
         // L'origine d'un prix repris du client sans correction de Nani suit la copie (revue de la PR 307) : le contrôle ne lève jamais un net avec.
         // Les sièges enfant ou bébé suivent la copie (relecture de la PR 315).
-        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...(r.details && Number(r.details.sieges) > 0 ? { sieges: Number(r.details.sieges) } : {}), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
+        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...detailsAvecSieges({}, siegesLus(r.details || {})), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
       });
       try {
         await modifier("documents", doc.id, { contenu: copie.contenu, updated_at: new Date().toISOString() });
@@ -334,6 +335,9 @@ const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
 
 // `base` : la ligne telle qu'elle est en base, quand `r` arrive déjà modifiée (carte « Modification » de l'Assistant) : la fusion d'une
 // modification concurrente part d'elle, sinon le changement proposé passerait pour l'état d'origine et serait effacé en silence.
+// Le choix des sièges est exigé pour un nouveau service, quand le nombre d'enfants et de bébés change, ou quand un choix déjà posé est effacé.
+const petitsDe = (r) => (Number(((r && r.personnes) || {}).enfants) || 0) + (Number(((r && r.personnes) || {}).bebes) || 0);
+export const siegesExiges = (base, petits) => !(base && base.id) || petits !== petitsDe(base) || siegesChoisis(siegesLus((base && base.details) || {}));
 export function formulaireReservation(r, apres, { base = r } = {}) {
   const nets = voitNets() && peut("dossiers.ecrire");
   const n = r.id && nets ? netReservation(r) : null;
@@ -515,7 +519,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   };
   date.addEventListener("change", cv.majJours);
   const CHAMPS = cv.CHAMPS;
-  const siegesSaisis = () => Number(cv.valeurs().sieges) || 0;
+  // Les sièges saisis, enfant et bébé ensemble (sieges-calc.mjs), et le choix complet (un siège ou « Aucun siège »).
+  const siegesSaisisTypes = () => siegesLus(cv.valeurs());
+  const siegesSaisis = () => siegesTotal(siegesSaisisTypes());
   // Une location : la prise et le retour se lisent côte à côte, juste sous la date de départ.
   const RETOUR = ["retour_date", "retour_heure", "retour_lieu"];
   // Le bloc voucher n'existe qu'en excursions (Secret) ; Taxi n'a que ce qui s'imprime sur sa Booking confirmation (dépose, vol, bagages et sièges,
@@ -615,6 +621,10 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
           const petits = (nb(enfants.value) || 0) + (nb(bebes.value) || 0);
           const cle = `${s}:${petits}`;
           if (s > SIEGES_MAX) erreurChamp(champSieges, tr("{n} sièges enfant ou bébé au plus.", { n: SIEGES_MAX }));
+          // Un enfant ou un bébé (Jérémy, 22.11.2026) : child seats, baby seats ou « Aucun siège ». Exigé pour un nouveau service, quand les
+          // enfants ou les bébés changent, ou quand un choix déjà fait est effacé ; une réservation d'avant sans choix s'enregistre encore
+          // telle quelle (une carte « Modification » de l'heure ne bloque pas sur une question qu'on ne lui pose pas, relecture de la PR).
+          else if (siegesAChoisir({ enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0, sieges: siegesSaisisTypes() }) && siegesExiges(base, petits)) erreurChamp(champSieges, tr(ERREURS_TRAJET.e_sieges_choix));
           else if (s > petits && siegesConfirmes !== cle) {
             siegesConfirmes = cle;
             erreurChamp(champSieges, tr("Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer."));

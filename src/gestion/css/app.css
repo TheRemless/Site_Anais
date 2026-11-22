@@ -1559,6 +1559,8 @@ details > summary { padding-block: 11px; margin: 0; }
 .vr-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .vr-trio .vr-champ input { text-align: center; padding: 0 6px; }
 .vr-court input { max-width: 8rem; text-align: center; }
+/* « ไม่ต้องใช้คาร์ซีท » (aucun siège, 22.11.2026) : une case de 44 px à côté des deux nombres de sièges. */
+.vr-case input[type="checkbox"] { width: 28px; height: 28px; min-height: 44px; margin: 0; }
 .vr-prix input { font-variant-numeric: tabular-nums; font-weight: 600; }
 
 .vr-barre { position: sticky; bottom: 0; z-index: 10; display: flex; gap: 10px; margin: 8px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
@@ -2624,3 +2626,13 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .cp-plus .cp-ligne dt { font-size: 15px; }
 .cp-v-paiement { font-weight: 700; color: var(--teal-700); }
 .cp-v-vehicule, .cp-v-bagages { font-weight: 600; }
+
+/* Sièges par type (22.11.2026) : child seats, baby seats, « Aucun siège » sur une ligne, repliés sur mobile. */
+.sieges-types { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; }
+.sieges-type { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 500; }
+.sieges-type input { width: 5.5em; }
+.sieges-aucun { min-height: 44px; }
+
+/* Les deux remarques d'un service sur une carte de l'Assistant : « Sur le voucher » et « Interne » (22.11.2026). */
+.agent-remarques { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 2px 12px; margin-top: 4px; font-size: 0.85rem; }
+.agent-remarques p { margin: 0; }

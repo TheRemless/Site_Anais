@@ -5,6 +5,7 @@
 import { RETOUR_DEPART, lireDuree, dureeInvalide, libelleRetourDepart } from "./trajet-calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { prestataires } from "./apporteurs-calc.mjs";
+import { siegesLus, siegesChoisis } from "./sieges-calc.mjs";
 
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
@@ -58,8 +59,11 @@ export const TH = {
   enfants: "เด็ก", // Enfants
   bagages: "กระเป๋า", // Bagages
   bagages_aide: "ตัวเลข เช่น 3", // Un nombre, par exemple 3
-  sieges: "คาร์ซีทเด็ก", // Sièges enfant ou bébé
-  sieges_aide: "จำนวนคาร์ซีทเด็กหรือเด็กเล็ก ถ้าไม่ต้องการ เว้นว่าง", // Nombre de sièges enfant ou bébé. Laisser vide si aucun
+  sieges: "คาร์ซีทเด็ก", // Sièges enfant (child seats)
+  sieges_aide: "จำนวนคาร์ซีทเด็ก", // Nombre de sièges enfant
+  sieges_bebe: "คาร์ซีทเด็กเล็ก", // Sièges bébé (baby seats)
+  sieges_bebe_aide: "จำนวนคาร์ซีทสำหรับเด็กเล็ก", // Nombre de sièges bébé
+  sans_siege: "ไม่ต้องใช้คาร์ซีท", // Aucun siège enfant ni bébé enfant ou bébé. Laisser vide si aucun
   prix: "ราคารวม (บาท)", // Prix total (bahts)
   prix_aide: "ลูกค้าจ่ายเงินสดให้คนขับ", // Le client paie en espèces au chauffeur
   anglais_aide: "พิมพ์เป็นภาษาอังกฤษ", // Écrire en anglais
@@ -98,6 +102,7 @@ export const TH = {
   e_nombre: "กรุณากรอกเป็นตัวเลข", // Écrire un nombre
   e_prix: "กรุณากรอกราคาเป็นตัวเลข", // Écrire le prix en chiffres
   e_sieges: "คาร์ซีทมากกว่าจำนวนเด็ก", // Plus de sièges que d'enfants
+  e_sieges_choix: "มีเด็ก: ใส่จำนวนคาร์ซีทเด็กหรือคาร์ซีทเด็กเล็ก หรือเลือก ไม่ต้องใช้คาร์ซีท", // Un enfant : nombre de sièges enfant ou bébé, ou « aucun siège »
   e_tel: "เบอร์ไม่ถูกต้อง", // Numéro incorrect
   e_duree: "กรุณากรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 3", // Écrire le nombre d'heures en chiffres, par exemple 3
   // Remarque et note interne (19.11.2026), à relire par Mook comme les autres textes thaïs.
@@ -130,11 +135,11 @@ const entier = (v) => {
 // Le WhatsApp du client et le client déjà connu choisi d'un tap (13.11.2026) : plus de nouveau client à chaque course.
 // `trajet` : vide pour un aller simple, « retour_depart » pour un retour au point de départ (programme et durée à la place du drop-off).
 // `remarques` : imprimée sur la Booking confirmation (« REMARKS »), en anglais ; `notes` : la note interne du dossier, jamais imprimée (19.11.2026).
-export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", trajet: "", dropoff: "", programme: "", duree: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "", remarques: "", notes: "" });
+export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", trajet: "", dropoff: "", programme: "", duree: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", sieges_bebe: "", sans_siege: "", prix: "", remarques: "", notes: "" });
 export const estRetour = (v) => (v && v.trajet) === RETOUR_DEPART;
 
 // Dans l'ordre de l'écran : la première erreur reçoit le focus.
-export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "prix", "remarques", "notes"];
+export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "sieges_bebe", "sans_siege", "prix", "remarques", "notes"];
 
 // WhatsApp facultatif : vide, ou un numéro d'au moins 8 chiffres, sans lettres (« +66 81 234 5678 », « 0812345678 »).
 export const telephoneValide = (t) => {
@@ -143,7 +148,9 @@ export const telephoneValide = (t) => {
 };
 
 // Contrôle avant l'aperçu : { champ: code d'erreur } (codes de TH, « e_… »). Vide = tout est bon.
-export function erreursVoucher(v) {
+// `avant` : la réservation d'une course déjà créée que l'on corrige (null pour une nouvelle course). Le choix des sièges n'y est exigé que si
+// les enfants changent ou si un choix déjà posé est effacé, comme siegesExiges de la fiche de réservation (relecture de la PR 327).
+export function erreursVoucher(v, { avant = null } = {}) {
   const e = {};
   // Retour au point de départ : pas de drop-off, mais un programme obligatoire (en anglais, il s'imprime) et une durée lisible si elle est donnée.
   for (const c of ["nom", "pickup", estRetour(v) ? "programme" : "dropoff"]) {
@@ -161,13 +168,24 @@ export function erreursVoucher(v) {
   if (contientThai(v.bagages)) e.bagages = "e_thai";
   if (contientThai(v.vol)) e.vol = "e_thai";
   if (contientThai(v.remarques)) e.remarques = "e_thai";
+  // Sièges par type (22.11.2026) : child seats et baby seats ensemble ; avec un enfant, un siège ou « ไม่ต้องใช้คาร์ซีท » (aucun siège).
   const s = entier(v.sieges);
+  const sb = entier(v.sieges_bebe);
   if (Number.isNaN(s)) e.sieges = "e_nombre";
-  else if (s > 0 && !Number.isNaN(enf) && s > enf) e.sieges = "e_sieges";
+  else if (Number.isNaN(sb)) e.sieges_bebe = "e_nombre";
+  else if (s + sb > 0 && !Number.isNaN(enf) && s + sb > enf) e.sieges = "e_sieges";
+  else if (!Number.isNaN(enf) && enf > 0 && s + sb === 0 && v.sans_siege !== "oui" && siegesExigesCourse(avant, enf)) e.sieges = "e_sieges_choix";
   if (prixSaisi(v.prix) === null) e.prix = "e_prix";
   if (!telephoneValide(v.telephone)) e.telephone = "e_tel";
   if (estRetour(v) && dureeInvalide(v.duree)) e.duree = "e_duree";
   return e;
+}
+
+// Une nouvelle course exige le choix des sièges ; une course corrigée, seulement si ses enfants changent ou si un choix posé est effacé.
+export function siegesExigesCourse(avant, enfants) {
+  if (!avant) return true;
+  const p = avant.personnes || {};
+  return (Number(enfants) || 0) !== (Number(p.enfants) || 0) + (Number(p.bebes) || 0) || siegesChoisis(siegesLus(avant.details || {}));
 }
 
 // Le libellé d'une course : son trajet, tel que le voucher, la facture et la fiche le disent.
@@ -195,6 +213,9 @@ export function donneesVoucher(v) {
     bagages: String(v.bagages || "").trim(),
     vol: String(v.vol || "").trim().replace(/\s+/g, " "),
     sieges: entier(v.sieges) || 0,
+    sieges_bebe: entier(v.sieges_bebe) || 0,
+    // « Aucun siège » : seulement sans siège (sieges-calc.mjs).
+    sans_siege: v.sans_siege === "oui" && !(entier(v.sieges) > 0) && !(entier(v.sieges_bebe) > 0),
     prix: prixSaisi(v.prix),
     // Les espaces en trop se replient, les retours à la ligne restent : une remarque sur deux lignes écrite dans la réservation n'est pas
     // réécrite quand Mook corrige autre chose.
@@ -239,13 +260,16 @@ const INDEPENDANT = { taxi_independant: true, type_transfert: "taxi", modele_vou
 const avecRemarques = (x) => (x.remarques ? { remarques: x.remarques } : {});
 export const reservationVoucher = (x, { independant = false } = {}) => {
   const details = { ...(x.type_trajet ? detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) : {}), ...(independant ? INDEPENDANT : {}), ...avecRemarques(x) };
-  return { statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants }, ...(Object.keys(details).length ? { details } : {}) };
+  // Les sièges bébé et « aucun siège » (22.11.2026) vont dans `details`, les sièges enfant restent passés à part comme avant.
+  const sieges = { ...(x.sieges_bebe ? { sieges_bebe: x.sieges_bebe } : {}), ...(x.sans_siege ? { sans_siege: true } : {}) };
+  const tout = { ...details, ...sieges };
+  return { statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants }, ...(Object.keys(tout).length ? { details: tout } : {}) };
 };
 
 // Les champs facultatifs de la course dans `details` : posés s'ils sont remplis, retirés s'ils sont vidés.
 // Un retour au point de départ garde son type, son programme et sa durée, et n'a pas de drop-off.
 function detailsFacultatifs(details, x) {
-  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges], ["type_trajet", x.type_trajet], ["programme_trajet", x.programme_trajet], ["duree_h", x.duree_h], ["remarques", x.remarques]]) {
+  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges], ["sieges_bebe", x.sieges_bebe], ["sans_siege", x.sans_siege], ["type_trajet", x.type_trajet], ["programme_trajet", x.programme_trajet], ["duree_h", x.duree_h], ["remarques", x.remarques]]) {
     if (val) details[cle] = val;
     else delete details[cle];
   }
@@ -283,6 +307,8 @@ export function valeursDepuis(r, client = {}, dossier = {}) {
     enfants: p.enfants ? String(p.enfants) : "",
     bagages: (r.details && r.details.bagages) || "",
     sieges: r.details && Number(r.details.sieges) > 0 ? String(r.details.sieges) : "",
+    sieges_bebe: r.details && Number(r.details.sieges_bebe) > 0 ? String(r.details.sieges_bebe) : "",
+    sans_siege: siegesLus(r.details || {}).aucun ? "oui" : "",
     prix: r.montant_vente === null || r.montant_vente === undefined ? "" : String(r.montant_vente),
     remarques: (r.details && r.details.remarques) || "",
     notes: (dossier && dossier.notes) || "",
