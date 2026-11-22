@@ -11,7 +11,7 @@ POST https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/demande-site
 ```
 
 - Pas de clé, pas de jeton : la fonction est publique (`verify_jwt = false`) et se protège elle-même.
-- Origines admises : `https://secrettravelandtour.com`, `https://www.secrettravelandtour.com`, `http://localhost:<port>` et `http://127.0.0.1:<port>` pour les essais. Tout autre site reçoit 403.
+- Origines admises : `https://secrettravelandtour.com`, `https://www.secrettravelandtour.com`, `https://zwaldtravelplanner.com` et `https://www.zwaldtravelplanner.com` (pages privées du carnet, voir « Pages du carnet de ZTP »), `http://localhost:<port>` et `http://127.0.0.1:<port>` pour les essais. Tout autre site reçoit 403. Les deux adresses de ZTP sont écrites dans le code de la fonction (`ORIGINES_CARNET`, `calc.js`) et ne comptent que pour l'organisation Zwald : elles ne passent pas par `SITE_ORIGINES`.
 - Autre client du logiciel : le secret `SITE_ORGANISATION` donne son organisation et `SITE_ORIGINES` ses adresses (https, séparées par des virgules). Sans `SITE_ORIGINES`, ce sont celles de secrettravelandtour.com.
 - En-tête `Content-Type: text/plain;charset=UTF-8` (le corps reste du JSON). C'est voulu : une requête « simple » n'a pas de requête de contrôle CORS, ce qui rend l'envoi `keepalive` fiable sur iPhone. `application/json` est aussi accepté.
 - 4 096 octets au plus.
@@ -46,7 +46,7 @@ Ce que la feuille sait déjà, plus le numéro WhatsApp du visiteur (depuis le 1
 
 | Champ | Obligatoire | Format | D'où il vient dans `booking.js` |
 |---|---|---|---|
-| `brand` | oui | slug d'une entreprise de l'organisation qui publie sur le site (`"secret"` ou `"taxi"` chez Zwald), sinon 400 `invalid` sur `brand` | `"taxi"` pour les pages VIP Taxi Lanta (`/taxi/…`), `"secret"` partout ailleurs, minivan partagé de `/transfers/` compris |
+| `brand` | oui | slug d'une entreprise de l'organisation qui publie sur le site (`"secret"` ou `"taxi"` chez Zwald), sinon 400 `invalid` sur `brand`. Depuis une page du carnet de ZTP : `"secret"` seulement (`"taxi"` y reçoit aussi 400 sur `brand`) | `"taxi"` pour les pages VIP Taxi Lanta (`/taxi/…`), `"secret"` partout ailleurs, minivan partagé de `/transfers/` compris |
 | `product_id` | oui | `[a-z0-9-]`, 60 caractères au plus | `config.productId` |
 | `product` | non | 120 caractères | `config.product` |
 | `option` | non | 80 caractères | `state.option` (ou `state.route` pour le speedboat) |
@@ -68,6 +68,42 @@ Ce que la feuille sait déjà, plus le numéro WhatsApp du visiteur (depuis le 1
 | `turnstile_token` | non | texte | jeton Cloudflare Turnstile, quand Jérémy l'aura allumé |
 
 Gestion se sert surtout de `message` : c'est le texte que la fiche de création (ancien « Coller une demande ») sait déjà lire (mêmes tests, `tests/fixtures/messages-site.json`). Les autres champs servent à la carte, à la notification et aux chiffres. Un champ inconnu est ignoré.
+
+## Pages du carnet de ZTP (22.11.2026)
+
+Les pages privées `https://zwaldtravelplanner.com/carnet/<sujet>-<code>/` (guides que les clients d'Anaïs ouvrent depuis leur carnet) laissent le client réserver une sortie directement. La demande arrive dans « Demandes du site » de **Secret** (`brand: "secret"`, jamais `"taxi"`), avec la source « Carnet ZTP » reconnue à `page_url` (chemin `/carnet/…`). Ces pages ne nomment ni ne lient jamais Secret ni VIP Taxi Lanta : le mot Secret ne figure dans aucun texte destiné au client. Après l'envoi, la page ouvre WhatsApp avec le message prérempli, comme le site Secret ; la copie vers Gestion ne doit jamais l'empêcher ni le retarder (même appel `sendCopy`, même règle).
+
+Nani valide d'abord la demande avec le partenaire, en dehors de l'outil. La demande reste « à traiter » tant qu'elle n'a pas créé le dossier (bouton « Créer le dossier »), aucun message ni aucune étape ne part vers le prestataire.
+
+### Corps envoyé par une page du carnet
+
+```json
+{
+  "brand": "secret",
+  "product_id": "pig-island-longtail-prive-4h",
+  "product": "Pig Island and Koh Tan by private longtail, 4 hours",
+  "option": "standard",
+  "option_label": "Whole boat",
+  "date": "2026-12-20",
+  "adults": 2,
+  "children": 2,
+  "pickup": "Hotel Example, Chaweng",
+  "name": "Anna Keller",
+  "whatsapp": "+41 79 123 45 67",
+  "estimated_total": 4500,
+  "currency": "THB",
+  "page_url": "https://zwaldtravelplanner.com/carnet/koh-samui-excursions-bateau-xc8do3/",
+  "message": "Booking request: Pig Island and Koh Tan by private longtail, 4 hours – Whole boat\nDate: Sun 20 Dec 2026\nGuests: 2 adults, 2 children (ages 5 and 9)\nPickup: Hotel Example, Chaweng\nName: Anna Keller\nEstimated total: 4,500 THB",
+  "website": ""
+}
+```
+
+- `product_id` : l'identifiant d'une sortie de `src/gestion/js/carnet-produits.mjs` (`id`). `option` : l'identifiant de l'option cochée (`options[].id`), `option_label` son titre (`options[].titre`). Une sortie à une seule option envoie `standard`.
+- Gestion retrouve le tarif par `product_id` et l'option, puis par le nombre de personnes pour un bateau privé (tranche « 1 to 3 people »…). Un enfant de moins de 4 ans ne compte pas dans le groupe.
+- `message` suit le format du site Secret : première ligne `Booking request: <product> – <option_label>`, puis `Date:`, `Guests:` (avec les âges : `2 adults, 2 children (ages 5 and 9)`), `Pickup:` (l'hôtel), `Name:`, `Estimated total:`. La fonction ne garde pas les âges des enfants : ils se lisent dans ce message.
+- Le total estimé est en THB et **sans les droits d'entrée** (à payer sur place, dits dans la fiche de la sortie).
+- Chaque sortie dit l'âge d'un enfant selon son partenaire : un âge hors barème n'est pas refusé, Gestion le signale au moment de créer le dossier.
+- Essai : `curl -X POST … -H "Origin: https://zwaldtravelplanner.com"` crée une vraie demande dans Secret : ne le faire que contre une base d'essai, puis « Classer » la demande.
 
 ## Numéro WhatsApp et nom complet (17.11.2026)
 

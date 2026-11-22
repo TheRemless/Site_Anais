@@ -1,4 +1,4 @@
-// Fonction publique « demande-site » : reçoit la copie d'une demande de réservation envoyée depuis la feuille du site secrettravelandtour.com,
+// Fonction publique « demande-site » : reçoit la copie d'une demande de réservation envoyée depuis la feuille du site secrettravelandtour.com (ou d'une page privée du carnet sur zwaldtravelplanner.com),
 // l'écrit dans demandes_site (Secret ou VIP Taxi Lanta) et prévient l'équipe de l'entreprise par une notification sur téléphone.
 // Le site l'appelle sans attendre la réponse, juste avant d'ouvrir WhatsApp : une panne ici n'empêche jamais la demande d'arriver sur WhatsApp.
 // Contrat et réponses : docs/gestion/demandes-site.md. Logique pure : ./calc.js (testée par tests/gestion-demandes-site.test.js).
@@ -8,13 +8,14 @@
 // Secrets : DEMANDES_SEL (sel de l'empreinte d'IP), VAPID_* (déjà posés pour les rappels). Facultatifs : TURNSTILE_SECRET, TURNSTILE_OBLIGATOIRE=1.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { origineAdmise, lireOrigines, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
+import { origineAdmise, lireOrigines, originesAdmises, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
 import { dateDans, fuseauValide } from "../rappels/calc.js";
 
 // Organisation propriétaire du site qui appelle cette fonction (Zwald par défaut). Une marque est le slug d'une de ses entreprises qui publient sur le site.
 const ORGANISATION = Deno.env.get("SITE_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 // Adresses de ce site (CORS et page d'où vient la demande). Sans réglage : secrettravelandtour.com.
-const ORIGINES = lireOrigines(Deno.env.get("SITE_ORIGINES"));
+// Plus, pour l'organisation Zwald seulement, les pages privées du carnet de ZTP (zwaldtravelplanner.com), marque « secret » seulement (calc.js).
+const ORIGINES = originesAdmises(lireOrigines(Deno.env.get("SITE_ORIGINES")), ORGANISATION);
 const admise = (origine: string | null) => origineAdmise(origine, ORIGINES);
 
 // Fuseau de cette organisation (organisations.fuseau) : « aujourd'hui » d'une demande est celui du client, pas celui de Bangkok.
@@ -103,7 +104,7 @@ Deno.serve(async (req) => {
   const aujourdhui = dateDans(await fuseauDuSite());
   let ligne;
   try {
-    ligne = lireDemande(corps, { aujourdhui, origines: ORIGINES });
+    ligne = lireDemande(corps, { aujourdhui, origines: ORIGINES, origine });
   } catch (e) {
     return repondre(e.code === "trop_gros" ? REPONSES.trop_gros : reponseInvalide(e), origine);
   }
