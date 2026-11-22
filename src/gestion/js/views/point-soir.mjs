@@ -13,7 +13,7 @@ import { dateDans, heureDans, FUSEAU_DEFAUT } from "../rappel-h1-calc.mjs";
 import { ERREURS_ENVOI, envoiIncertain, nomConversation, motifRefusEnvoi, codeEnvoi } from "../whatsapp-calc.mjs";
 import { numeroMasque, numeroDifferent } from "../whatsapp-voucher-calc.mjs";
 import { lienWhatsApp as lienConversation } from "../agent-whatsapp-lecture.mjs";
-import { joursDuPoint, pickupsDuPoint, messagePickup, modeleDuPickup, moyenEnvoi, fenetreDepuis, detailsAvecAnnonce, annonceDe, etatAnnonce, envoisAFaire, sansReponse, lieuPickup, pointSoirVisible, nomsInterdits } from "../point-soir-calc.mjs";
+import { joursDuPoint, pickupsDuPoint, messagePickup, modeleDuPickup, moyenEnvoi, fenetreDepuis, detailsAvecAnnonce, annonceDe, etatAnnonce, envoisAFaire, sansReponse, lieuPickup, pointSoirVisible, nomsInterdits, lienDuTexte } from "../point-soir-calc.mjs";
 import { lienDossier } from "./commun.mjs";
 import { messagesTypes } from "./messages.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
@@ -76,37 +76,55 @@ export async function confirmerNouvelEnvoi(r) {
 }
 
 // Les gestes d'un pickup, d'après le moyen d'envoi. `zone` est remplie une fois la fenêtre de 24 h connue.
-function remplirGestes(zone, { r, texte, conversation, client, fen }) {
+// `refuse` : un texte refusé par whatsapp-envoi (relecture de la PR 317). Il ne part jamais par le lien wa.me tant qu'il n'a pas changé.
+function remplirGestes(zone, { r, texte, conversation, client, fen, refuse = null }) {
   const telephone = (client && client.telephone) || "";
   const moyen = moyenEnvoi({ conversation, fenetre: fen, telephone, texte });
   const a = annonceCourante(r);
   const { bloque } = etatAnnonce(a);
   const enfants = [a ? tagAnnonce(a) : null];
-  const refaire = () => remplirGestes(zone, { r, texte, conversation, client, fen });
+  const refaire = () => remplirGestes(zone, { r, texte, conversation, client, fen, refuse });
   if (!moyen) return zone.replaceChildren(...enfants.filter(Boolean));
   if (!moyen.genre) enfants.push(h("span", { class: "point-soir-signal" }, tr(RAISONS.numero)));
   else if (moyen.genre === "lien") {
-    enfants.push(
-      h(
-        "a",
-        {
-          class: `bouton ${a ? "secondaire" : "principal"} petit`,
-          href: moyen.lien,
-          target: "_blank",
-          rel: "noopener",
-          onclick: async (e) => {
-            if (!a) return void noterAnnonce(r, "lien").then(refaire);
-            e.preventDefault();
-            if (!(await confirmerNouvelEnvoi(r))) return;
-            window.open(moyen.lien, "_blank", "noopener");
-            await noterAnnonce(r, "lien");
-            refaire();
-          },
+    // Le lien reprend le texte tel qu'il est ici. Le texte refusé par le serveur l'éteint, et une zone de texte permet de le modifier :
+    // le lien se rallume dès qu'il a changé et qu'aucun nom de partenaire n'y reste (le lien wa.me ne passe par aucun contrôle du serveur).
+    const lienRefuse = refuse !== null && texte === refuse;
+    const edition = lienRefuse ? h("textarea", { class: "point-soir-edition", rows: 6, "aria-label": tr("Message à modifier avant l'envoi") }) : null;
+    const signal = lienRefuse ? h("p", { class: "aide", role: "status" }, tr("Le message refusé ne part pas par WhatsApp : modifiez-le d'abord.")) : null;
+    let lienCourant = lienRefuse ? null : moyen.lien;
+    const lien = h(
+      "a",
+      {
+        class: `bouton ${a ? "secondaire" : "principal"} petit`,
+        target: "_blank",
+        rel: "noopener",
+        onclick: async (e) => {
+          if (!lienCourant) return void e.preventDefault();
+          if (!a) return void noterAnnonce(r, "lien").then(refaire);
+          e.preventDefault();
+          if (!(await confirmerNouvelEnvoi(r))) return;
+          window.open(lienCourant, "_blank", "noopener");
+          await noterAnnonce(r, "lien");
+          refaire();
         },
-        icone("whatsapp", 16),
-        tr("Ouvrir dans WhatsApp")
-      )
+      },
+      icone("whatsapp", 16),
+      tr("Ouvrir dans WhatsApp")
     );
+    const majLien = () => {
+      lienCourant = lienDuTexte({ texte: edition ? edition.value.trim() : texte, telephone, refuse, noms: noms() });
+      if (lienCourant) lien.setAttribute("href", lienCourant);
+      else lien.removeAttribute("href");
+      lien.classList.toggle("desactive", !lienCourant);
+      lien.setAttribute("aria-disabled", String(!lienCourant));
+    };
+    if (edition) {
+      edition.value = texte;
+      edition.addEventListener("input", majLien);
+    }
+    majLien();
+    enfants.push(signal, edition, lien);
   } else {
     // Le destinataire avant l'envoi, comme le voucher : nom, numéro masqué ; un numéro qui n'est pas celui de la fiche se confirme.
     const fiche = (client && client.telephone) || "";
@@ -114,20 +132,27 @@ function remplirGestes(zone, { r, texte, conversation, client, fen }) {
     const caseNumero = autre ? h("input", { type: "checkbox", id: `soir-numero-${r.id}` }) : null;
     const etatEnvoi = h("p", { class: "aide", role: "status", hidden: true });
     const bouton = h("button", { class: a ? "secondaire petit" : "principal petit", type: "button", disabled: bloque || autre }, icone("whatsapp", 16), tr("Envoyer sur WhatsApp"));
-    // Refus du serveur (contenu_interne ou montant_a_confirmer, décision du 22.11.2026) : le motif en clair, le message devient modifiable ici
-    // et l'envoi se rallume dès qu'il change. Pas d'envoi forcé : le serveur revérifie le nouveau texte.
+    // Refus du serveur (décision du 22.11.2026, relecture de la PR 317) : le motif en clair, le message devient modifiable ici et l'envoi se
+    // rallume dès qu'il change ; le serveur revérifie le nouveau texte. Un net (contenu_interne) : refus sec. Un prix de vente qui est aussi le
+    // net d'un autre service (montant_a_confirmer) : « Envoyer quand même » pour ce texte-là seulement.
     let edition = null;
-    let refuse = null;
+    let confirmation = null;
     const texteEnvoye = () => (edition ? edition.value.trim() : texte);
-    const majBouton = () => (bouton.disabled = bloque || (caseNumero && !caseNumero.checked) || !texteEnvoye() || (refuse !== null && texteEnvoye() === refuse));
+    const majBouton = () => {
+      bouton.disabled = bloque || (caseNumero && !caseNumero.checked) || !texteEnvoye() || (refuse !== null && texteEnvoye() === refuse);
+      if (confirmation) confirmation.hidden = refuse === null || texteEnvoye() !== refuse;
+    };
     if (caseNumero) caseNumero.addEventListener("change", majBouton);
-    const partir = async ({ dejaConfirme = false } = {}) => {
+    majBouton();
+    // `confirmes` : la liste de « Envoyer quand même », valable pour le texte refusé tel quel.
+    const partir = async ({ dejaConfirme = false, confirmes = null } = {}) => {
       if (caseNumero && !caseNumero.checked) return;
+      if (confirmes && texteEnvoye() !== refuse) return;
       if (!dejaConfirme && !(await confirmerNouvelEnvoi(r))) return;
       bouton.disabled = true;
       etatEnvoi.hidden = true;
       const envoye = texteEnvoye();
-      const res = await etat.store.whatsappEnvoyer({ conversation_id: moyen.conversation_id, texte: envoye });
+      const res = await etat.store.whatsappEnvoyer({ conversation_id: moyen.conversation_id, texte: envoye, ...(confirmes ? { montants_confirmes: confirmes } : {}) });
       if (res && (res.ok || res.demo)) {
         // Parti : la trace « direct » ; si elle ne s'écrit pas, « incertain » sur cet appareil, et le bouton reste bloqué.
         await noterAnnonce(r, "direct");
@@ -135,15 +160,16 @@ function remplirGestes(zone, { r, texte, conversation, client, fen }) {
         return refaire();
       }
       const code = (res && res.erreur) || "inconnu";
-      // La fenêtre s'est fermée entre-temps : le lien wa.me prend la place du bouton.
-      if (code === "fenetre_fermee") return remplirGestes(zone, { r, texte, conversation: null, client: { ...(client || {}), telephone: conversation.telephone || telephone }, fen: null });
+      // La fenêtre s'est fermée entre-temps : le lien wa.me prend la place du bouton, avec le texte corrigé ici. Un texte encore refusé
+      // n'y part pas (relecture de la PR 317).
+      if (code === "fenetre_fermee") return remplirGestes(zone, { r, texte: envoye, conversation: null, client: { ...(client || {}), telephone: conversation.telephone || telephone }, fen: null, refuse });
       if (envoiIncertain(code)) {
         // Résultat inconnu : le message est peut-être parti. Trace « incertain » : bouton bloqué, « Renvoyer quand même » se confirme.
         await noterAnnonce(r, "incertain");
         refaire();
         return toast(tr(ERREURS_ENVOI.verifier_whatsapp), true);
       }
-      const motif = motifRefusEnvoi(res, { nombre: (n) => n.toLocaleString(langueActive() === "en" ? "en-GB" : "fr-FR") });
+      const motif = motifRefusEnvoi(res, { texte: envoye, nombre: (n) => n.toLocaleString(langueActive() === "en" ? "en-GB" : "fr-FR") });
       etatEnvoi.textContent = motif ? tr(motif.texte, motif.vars) : tr(ERREURS_ENVOI[codeEnvoi(code, res && res.a_retirer)] || ERREURS_ENVOI.base);
       etatEnvoi.hidden = false;
       if (code === "contenu_interne" || code === "montant_a_confirmer") {
@@ -153,6 +179,13 @@ function remplirGestes(zone, { r, texte, conversation, client, fen }) {
           edition.value = envoye;
           edition.addEventListener("input", majBouton);
           bouton.before(edition);
+        }
+        if (confirmation) confirmation.remove();
+        confirmation = null;
+        if (motif && motif.confirmer) {
+          const liste = motif.confirmer;
+          confirmation = h("button", { class: "secondaire petit", type: "button", onclick: () => partir({ dejaConfirme: true, confirmes: liste }) }, tr("Envoyer quand même"));
+          bouton.after(confirmation);
         }
         majBouton();
         edition.focus();

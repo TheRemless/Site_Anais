@@ -119,6 +119,16 @@ export function moyenEnvoi({ conversation = null, fenetre = null, telephone = ""
   return lien ? { genre: "lien", lien } : { genre: null, raison: "numero" };
 }
 
+// Le lien wa.me d'un texte modifié dans le point du soir (relecture de la PR 317), ou null : jamais pour le texte refusé par le serveur tant
+// qu'il n'a pas changé, ni pour un texte où reste un nom de partenaire (le lien ne passe par aucun contrôle du serveur).
+export function lienDuTexte({ texte = "", telephone = "", refuse = null, noms = [] } = {}) {
+  const t = String(texte || "").trim();
+  if (!t || (refuse !== null && t === refuse)) return null;
+  if (resteBloque(t, { noms }).length) return null;
+  const m = moyenEnvoi({ conversation: null, fenetre: null, telephone, texte: t });
+  return m && m.genre === "lien" ? m.lien : null;
+}
+
 // La fenêtre de 24 h d'après le dernier message du client (une seule ligne lue : whatsappDernierEntrant). null s'il n'a jamais écrit.
 export function fenetreDepuis(dernierEntrant, maintenant = Date.now()) {
   const t = Date.parse(dernierEntrant || "");

@@ -140,13 +140,15 @@ Deno.serve(async (req) => {
       if (errN) console.error("whatsapp-envoi : message parti mais non rangé de nouveau", errN.message);
     }
   }
-  // Toutes les propositions ouvertes de la conversation sont soldées, comme pour une réponse depuis l'app.
-  const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
-  if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
-  // Le texte envoyé diffère de la proposition : l'écart devient un apprentissage de l'Assistant, en fond (agent/apprendre-whatsapp.js).
-  // Seulement pour l'envoi d'une proposition (branche d'intégration du 22.11.2026) : un message du point du soir ou de « Proposer une
-  // excursion » est un modèle, pas une réponse de Nani, et ne doit rien apprendre même si une proposition attend dans la conversation.
-  if (demande.proposition_id) apprendreEnFond(admin, conv.id, messageId, { auteur: qui.user.id });
+  // Envoi d'une proposition seulement (relecture de la PR 317) : toutes les propositions ouvertes de la conversation sont soldées, comme pour
+  // une réponse depuis l'app, et l'écart avec la proposition devient un apprentissage de l'Assistant, en fond (agent/apprendre-whatsapp.js).
+  // Un message du point du soir ou de « Proposer une excursion » est un modèle : il ne répond pas à la question du client, qui reste
+  // « à faire », et n'apprend rien.
+  if (demande.proposition_id) {
+    const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
+    if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
+    apprendreEnFond(admin, conv.id, messageId, { auteur: qui.user.id });
+  }
   return json({ ok: true, message_id: messageId, complet: complete });
 });
 

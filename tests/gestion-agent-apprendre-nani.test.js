@@ -256,7 +256,7 @@ test("whatsapp : un appel d'une ligne dans « whatsapp » et « whatsapp-envoi �
   assert.match(wa, /else if \(a\.message\.origine === "app"\) \{[\s\S]{0,700}enFond\(apprendreDeNani\(db, data\.conversation_id, data\.message_id\)\);\n    \}/);
   assert.equal((wa.match(/apprendreDeNani/g) || []).length, 2, "import et appel");
   const envoi = lire("supabase/functions/whatsapp-envoi/index.ts");
-  assert.match(envoi, /traitee_par_quoi: "gestion" \}\)[^\n]*\n[^\n]*propositions non soldées[^\n]*\n[^\n]*\n(?:[^\n]*\n){2}  if \(demande\.proposition_id\) apprendreEnFond\(admin, conv\.id, messageId, \{ auteur: qui\.user\.id \}\);\n  return json\(\{ ok: true/);
+  assert.match(envoi, /  if \(demande\.proposition_id\) \{\n[^\n]*traitee_par_quoi: "gestion" \}\)[^\n]*\n[^\n]*propositions non soldées[^\n]*\n    apprendreEnFond\(admin, conv\.id, messageId, \{ auteur: qui\.user\.id \}\);\n  \}\n  return json\(\{ ok: true/);
   assert.equal((envoi.match(/apprendreEnFond/g) || []).length, 2, "import et appel, seulement après un envoi parti");
   // La boîte relit les apprentissages par un seul appel, filtré des nets.
   const reponse = lire("supabase/functions/whatsapp/reponse.ts");
@@ -595,7 +595,7 @@ test("constat 7 : l'auteur réel d'un envoi depuis Gestion, « l'équipe » pour
   assert.match(b, /l'équipe a mis « Hello »/);
   assert.match(b, /Profil Deux a mis « 09:45 »/);
   assert.doesNotMatch(b, /Nani a mis/);
-  assert.match(lire("supabase/functions/whatsapp-envoi/index.ts"), /if \(demande\.proposition_id\) apprendreEnFond\(admin, conv\.id, messageId, \{ auteur: qui\.user\.id \}\);/);
+  assert.match(lire("supabase/functions/whatsapp-envoi/index.ts"), /if \(demande\.proposition_id\) \{\n[\s\S]{0,400}?    apprendreEnFond\(admin, conv\.id, messageId, \{ auteur: qui\.user\.id \}\);\n  \}/);
   assert.match(lire("docs/gestion/migration-74-apprentissages-nani.sql"), /raise exception 'auteur_autre_organisation'/);
 });
 

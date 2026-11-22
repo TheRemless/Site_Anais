@@ -628,7 +628,8 @@ async function envoyerVoucherDuDossier(dossierId) {
 // « Prêt à réserver » (migration 85) : le même « Créer le dossier » que la fiche des faits, ou null.
 // Pour un client, l'entreprise est demandée à chaque fois (versAssistant) : il suffit qu'un des deux Assistants soit permis.
 const creerPret = (c, prop) =>
-  !lectureSeule && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
+  // Jamais pour un Contact personnel (relecture de la PR 317) : rien de lui ne part chez l'IA.
+  !lectureSeule && reponsesDe(c) !== "jamais" && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
 // `dossier` : celui de la fiche des faits (relié, ou trouvé par le client). « Mettre à jour » demande un dossier relié (l'Assistant ne lit que
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
@@ -639,7 +640,8 @@ function actionsDossier(c, prop, dossier = null) {
   const ici = commun || !c.entite_id || c.entite_id === etat.entiteId;
   const relie = c.entite_id === etat.entiteId ? dossierDe(c) : null;
   // IA coupée pour cette conversation (migration 105) : l'Assistant s'ouvre toujours à la demande (décision du 22.11.2026).
-  const assistant = (commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id));
+  // Jamais pour un Contact personnel (relecture de la PR 317).
+  const assistant = reponsesDe(c) !== "jamais" && (commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id));
   const voucherDe = dossier && dossier.entite_id === etat.entiteId ? dossier : null;
   const boutons = [
     assistant && ici ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), relie ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,

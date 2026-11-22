@@ -158,6 +158,19 @@ await db.exec(lire("migration-85-whatsapp-pret.sql"));
 ok((await photo()) === p1, "la migration 85 se rejoue sans effet (aucune ligne touchée)");
 
 // ---- Retour en arrière --------------------------------------------------------------------------------------------------------------
+// Garde (relecture de la PR 317) : avec les colonnes de la 105, le retour de la 85 refuse et ne touche rien. Puis retour-105, puis retour-85.
+// Ce contrôle n'applique que les migrations 18 à 99 : la 105 passe ici pour tester la garde.
+await db.exec(lire("migration-105-whatsapp-etapes.sql"));
+let gardeRefuse = false;
+try {
+  await db.exec(lire("retour-85-whatsapp-pret.sql"));
+} catch (e) {
+  gardeRefuse = /appliquer retour-105-whatsapp-etapes\.sql d'abord/.test(e.message);
+  await db.exec("rollback").catch(() => {});
+}
+ok(gardeRefuse, "retour-85 refuse tant que les colonnes de la 105 existent");
+ok(!!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name = 'pret_reserver'")), "retour-85 refusé : rien n'est touché");
+await db.exec(lire("retour-105-whatsapp-etapes.sql"));
 await db.exec(lire("retour-85-whatsapp-pret.sql"));
 ok(!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name in ('pret_reserver', 'pret_retire_le')")), "retour : les deux colonnes sont parties");
 ok(!(await un("select 1 x from pg_proc where proname = 'whatsapp_pret_outil'")), "retour : le déclencheur est parti");

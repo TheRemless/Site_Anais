@@ -3,9 +3,18 @@
 -- n'affiche plus le filtre et la fonction « whatsapp » n'écrit plus rien (erreur de colonne absente ignorée).
 -- whatsapp_reclasser revient à la version de la migration 72 : une conversation de client reliée à un dossier de l'autre entreprise garde
 -- son lien tant qu'on n'y touche pas ; la prochaine écriture le retire.
+-- Appliquer retour-105-whatsapp-etapes.sql d'abord : la migration 105 dépend des colonnes de la 85. La garde ci-dessous refuse de
+-- s'exécuter tant que les colonnes de la 105 existent (rien n'est touché, la transaction est annulée).
 -- Avant (lecture seule) :
 --   select pret_reserver->>'pret' pret, count(*), count(pret_retire_le) retirees from whatsapp_conversations group by 1;
 begin;
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'whatsapp_conversations' and column_name in ('avancee', 'etape_manuelle', 'ia_coupee')) then
+    raise exception 'retour-85 refusé : appliquer retour-105-whatsapp-etapes.sql d''abord (colonnes de la migration 105 encore présentes)';
+  end if;
+end $$;
 
 -- whatsapp_reclasser de la migration 72 (une conversation se relie seulement à la fiche et au dossier de son entreprise).
 create or replace function whatsapp_reclasser() returns trigger language plpgsql security definer set search_path = public as $$

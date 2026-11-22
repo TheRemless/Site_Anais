@@ -64,7 +64,7 @@ test("n° 3 : iaPermise : tri si l'un des deux assistants est allumé ; IA coup�
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(vue, /dernier\.sens === "entrant" && etat\.store\.whatsappPreparer/, "bouton Préparer affiché");
   assert.match(vue, /if \(!demandePermise\(c\)\) return null;/, "« Demander à l'assistant » affiché");
-  assert.match(vue, /!lectureSeule && \(clientCommun\(c\)/, "« Créer le dossier » de la carte affiché");
+  assert.match(vue, /!lectureSeule && reponsesDe\(c\) !== "jamais" && \(clientCommun\(c\)/, "« Créer le dossier » de la carte affiché (sauf Contact personnel)");
   assert.ok(!/c\.ia_coupee\)? &&|!c\.ia_coupee/.test(vue), "aucun geste à la demande caché par l'IA coupée");
   const etapes = lire("src/gestion/js/views/whatsapp-etapes.mjs");
   assert.match(etapes, /c\.ia_coupee \? h\("p", \{ class: "aide wa-ia-coupee-aide" \}, tr\(AIDE_IA_COUPEE\)\)/);

@@ -249,7 +249,7 @@ test("écran : accueil de 17h à 6h, route #/soir, menu « Point du soir », rie
   assert.match(lire("views/dashboard.mjs"), /pointSoirMaintenant\(\) \? sectionPointSoir\(\) : null/);
   assert.match(lire("app.mjs"), /\[\/\^#\\\/soir\$\/, "soir", vers\(\(\) => import\("\.\/views\/point-soir\.mjs"\), "vuePointSoir"\)\]/);
   assert.match(lire("app.mjs"), /href: "#\/soir", libelle: tr\("Point du soir"\)/);
-  assert.match(vue, /etat\.store\.whatsappEnvoyer\(\{ conversation_id: moyen\.conversation_id, texte: envoye \}\)/);
+  assert.match(vue, /etat\.store\.whatsappEnvoyer\(\{ conversation_id: moyen\.conversation_id, texte: envoye, \.\.\.\(confirmes \? \{ montants_confirmes: confirmes \} : \{\}\) \}\)/);
   assert.doesNotMatch(vue, /type: "template"|template_name|new Notification|pushManager|showNotification|functions\/v1\/rappels/);
   assert.doesNotMatch(vue + lire("point-soir-calc.mjs"), /_nets|netReservation|netPrestation|commission/);
 });

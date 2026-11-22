@@ -202,11 +202,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // garde l'ancienne liste.
     const ETAPES = "avancee, etape_manuelle, ia_coupee";
     let etapesDisponible = true;
+    // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
+    // la migration n'est pas appliquée. Gardé d'une lecture à l'autre, comme PRET et ETAPES (relecture de la PR 317) : une colonne absente
+    // ne relance pas une lecture en échec à chaque rafraîchissement.
+    let manquesDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select([colonnes, pretDisponible ? PRET : "", pretDisponible && etapesDisponible ? ETAPES : ""].filter(Boolean).join(", ")).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
-      // la migration n'est pas appliquée.
-      let manquesDisponible = true;
       const BASE = `${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`;
       const lireBase = () => requete(manquesDisponible ? `${BASE}, manque_le, bsuid, meme_client_que` : BASE);
       let r = await lireBase();

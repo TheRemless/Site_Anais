@@ -52,5 +52,9 @@ export const EN_POINT_SOIR = {
   "Les montants {montants} sont égaux à des prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti.": "The amounts {montants} equal purchase prices. {noms} are partners' names. Change the message, nothing was sent.",
   "Un montant du message est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti.": "An amount in the message equals a purchase price. {noms} is a partner's name. Change the message, nothing was sent.",
   "Un montant du message est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti.": "An amount in the message equals a purchase price. {noms} are partners' names. Change the message, nothing was sent.",
+  "Le montant {montants} est un prix de vente, mais aussi le net d'un autre service. Vérifiez avant d'envoyer.": "The amount {montants} is a selling price, but also the net of another service. Check before sending.",
+  "Les montants {montants} sont des prix de vente, mais aussi les nets d'autres services. Vérifiez avant d'envoyer.": "The amounts {montants} are selling prices, but also the nets of other services. Check before sending.",
+  "Un montant du message est un prix de vente, mais aussi le net d'un autre service. Vérifiez avant d'envoyer.": "An amount in the message is a selling price, but also the net of another service. Check before sending.",
+  "Le message refusé ne part pas par WhatsApp : modifiez-le d'abord.": "The refused message is not sent through WhatsApp: change it first.",
   "Message à modifier avant l'envoi": "Message to change before sending",
 };
