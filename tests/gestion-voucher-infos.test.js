@@ -104,6 +104,8 @@ test("remarques : ce qui cite un net, une commission, un montant interne ou un p
   assert.equal(remarqueInterne("Pay 1,750 THB", memo({ internes: new Set([1750]) })), true);
   assert.equal(remarqueInterne("Pay 2,500 THB to the driver", memo({ controleImpossible: true })), true, "nets illisibles : un montant reste interne");
   assert.equal(remarqueInterne("Pay 2,500 THB to the driver", memo()), false, "un prix de vente passe");
+  assert.equal(remarqueInterne("Ferry cost included.", memo()), false, "« cost » sans montant reste sur le voucher (relecture)");
+  assert.equal(remarqueInterne("Cost 900 for the boat", memo()), true, "un montant près d'un mot de coût reste interne");
   const carte = await executer("proposer_dossier", dossierCarte([service({ sans_siege: true, remarque_voucher: "Commission 300 to the hotel", note_interne: "Rappeler la veille" })]), ctx(), memo());
   const s = carte.carte.donnees.services[0];
   assert.equal(s.remarque_voucher, "");
@@ -144,7 +146,15 @@ test("sièges : avec un enfant ou un bébé sur un transfert, la carte ne se val
   assert.deepEqual(siegesIncomplets([{ ligneIds: ["l1"], siegesRequis: true, personnes: { adultes: 2, enfants: 1 }, bebes: 0, sieges: 0, details: {} }]), { index: 0, ligneIds: ["l1"], champ: "sieges", code: "e_sieges_choix" });
   assert.equal(siegesIncomplets([{ siegesRequis: true, personnes: { adultes: 2, enfants: 1 }, sieges: 0, details: { sans_siege: true } }]), null);
   assert.equal(siegesIncomplets([{ siegesRequis: false, personnes: { adultes: 2, enfants: 1 }, sieges: 0, details: {} }]), null, "ZTP ou excursion : pas de champ, rien d'exigé");
-  assert.match(lire("src/gestion/js/views/reservations.mjs"), /else if \(siegesAChoisir\(\{ enfants: nb\(enfants\.value\) \|\| 0, bebes: nb\(bebes\.value\) \|\| 0, sieges: siegesSaisisTypes\(\) \}\)\) erreurChamp/);
+  assert.match(lire("src/gestion/js/views/reservations.mjs"), /else if \(siegesAChoisir\(\{ enfants: nb\(enfants\.value\) \|\| 0, bebes: nb\(bebes\.value\) \|\| 0, sieges: siegesSaisisTypes\(\) \}\) && siegesExiges\(base, petits\)\) erreurChamp/);
+  // Relecture : une réservation d'avant sans choix s'enregistre encore (une carte « Modification » de l'heure passe d'un geste) ; le choix
+  // est exigé pour un nouveau service, quand les enfants ou bébés changent, ou quand un choix posé est effacé.
+  const { siegesExiges } = await import("../src/gestion/js/views/reservations.mjs");
+  const ancienne = { id: RES, personnes: { adultes: 2, enfants: 1 }, details: {} };
+  assert.equal(siegesExiges(ancienne, 1), false);
+  assert.equal(siegesExiges(ancienne, 2), true, "un enfant de plus");
+  assert.equal(siegesExiges({ ...ancienne, details: { sans_siege: true } }, 1), true, "un choix effacé");
+  assert.equal(siegesExiges({ personnes: { enfants: 1 } }, 1), true, "un nouveau service");
   assert.equal(aChoisir({ enfants: 1, sieges: siegesLus({ sans_siege: "true" }) }), false, "la colonne lue en texte vaut aussi");
 });
 

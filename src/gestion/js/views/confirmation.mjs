@@ -7,6 +7,7 @@ import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissi
 import { confirmationExemple } from "../exemples.mjs";
 import { h, modal, toast, icone } from "../ui.mjs";
 import { tr, N_ } from "../i18n.mjs";
+import { ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
 import { lireConfirmation, erreursConfirmation, entreprisesConfirmation, clientsCandidats, reperesClient, chercherFiches } from "../confirmation-calc.mjs";
 import { donneesVoucher, valeursVides } from "../voucher-rapide-calc.mjs";
@@ -30,7 +31,7 @@ const ERREURS = {
   e_nombre: N_("Un nombre entier."),
   e_prix: N_("Prix absent ou illisible : écrivez-le en chiffres."),
   e_sieges: N_("Plus de sièges que d'enfants."),
-  e_sieges_choix: N_("Un enfant voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège »."),
+  e_sieges_choix: ERREURS_TRAJET.e_sieges_choix,
   e_tel: N_("Numéro incorrect."),
   e_duree: N_("Durée en heures, par exemple 3."),
 };

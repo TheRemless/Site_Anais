@@ -1555,11 +1555,13 @@ export function remarqueInterne(t, memo = {}) {
   const montants = montantsDuTexte(m);
   const internes = memo.internes instanceof Set ? memo.internes : new Set();
   const nets = netsDuControle(memo);
-  if (MOT_COUT.test(sansAccents(m))) return true;
+  // Un mot qui ne peut être qu'interne, ou un montant près d'un mot de coût. « Ferry cost included » seul reste sur le voucher (relecture).
+  if (MOT_INTERNE.test(sansAccents(m)) || montantsPresDuNet(m).size) return true;
   if (montants.some((x) => internes.has(x) || nets.bloquants.has(x) || nets.autres.has(x))) return true;
   if (memo.controleImpossible === true && montants.length) return true;
   return partenairesCites(m, memo.prestataires || []).length > 0;
 }
+const MOT_INTERNE = /(?<![a-z0-9])(?:nett?|commissions?|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat)(?![a-z0-9])/;
 // Rend { remarque_voucher, note_interne } ; une ancienne carte (« remarque » seule) reste une note interne, comme avant.
 export function remarquesDuService(s = {}, memo = {}, avert = []) {
   const voucher = texte(s.remarque_voucher, 300);

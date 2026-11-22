@@ -22,5 +22,4 @@ export const EN_VOUCHER = {
   "Aucun siège": "No seat",
   "Avec un enfant ou un bébé : le nombre de child seats et de baby seats, ou « Aucun siège ». Imprimé sur le voucher.": "With a child or a baby: the number of child seats and baby seats, or “No seat”. Printed on the voucher.",
   "Enfant ou bébé : choisissez child seat, baby seat ou aucun siège.": "Child or baby: choose child seat, baby seat or no seat.",
-  "Un enfant voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège ».": "A child is travelling: enter the child seats, the baby seats, or tick “No seat”.",
 };

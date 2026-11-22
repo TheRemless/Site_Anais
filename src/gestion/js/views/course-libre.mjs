@@ -7,10 +7,11 @@ import { uid } from "../defauts.mjs";
 import { valeursVides, suggestionsLieux, partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { erreursCourse, courseHorsCatalogue } from "../creation-voucher-calc.mjs";
 import { tr, N_ } from "../i18n.mjs";
+import { ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
 
 // Codes d'erreur de voucher-rapide-calc.mjs, dits en français (et en anglais par tr).
-const ERREURS = { e_vide: N_("Remplissez ce champ."), e_thai: N_("Écrivez en anglais : le client ne lit pas le thaï."), e_date: N_("Choisissez la date."), e_heure: N_("Choisissez l'heure."), e_adultes: N_("Au moins 1 personne."), e_nombre: N_("Saisissez un nombre."), e_prix: N_("Indiquez le prix en chiffres."), e_sieges: N_("Plus de sièges que d'enfants."), e_sieges_choix: N_("Un enfant voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège »."), e_duree: N_("Indiquez la durée en heures, par exemple 3 ou 1,5. Vide si elle n'est pas connue.") };
+const ERREURS = { e_vide: N_("Remplissez ce champ."), e_thai: N_("Écrivez en anglais : le client ne lit pas le thaï."), e_date: N_("Choisissez la date."), e_heure: N_("Choisissez l'heure."), e_adultes: N_("Au moins 1 personne."), e_nombre: N_("Saisissez un nombre."), e_prix: N_("Indiquez le prix en chiffres."), e_sieges: N_("Plus de sièges que d'enfants."), e_sieges_choix: ERREURS_TRAJET.e_sieges_choix, e_duree: N_("Indiquez la durée en heures, par exemple 3 ou 1,5. Vide si elle n'est pas connue.") };
 
 // `date` : la date proposée (celle du service précédent). `onAjout({ ligne, saisie })` reçoit la ligne de la course et sa réservation.
 export function ouvrirCourseLibre({ date = "", onAjout }) {

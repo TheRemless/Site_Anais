@@ -1,14 +1,14 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
 import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, avecNetsGroupes, chargerDossier, reglages, entiteActive, modeExcursions, modeTaxi } from "../etat.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
-import { champsVoucher, champsCourts, champsLongs } from "./champs-voucher.mjs";
+import { champsVoucher, champsCourts, champsLongs, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-calc.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
-import { siegesLus, siegesTotal, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
+import { siegesLus, siegesTotal, siegesChoisis, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
@@ -335,6 +335,9 @@ const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
 
 // `base` : la ligne telle qu'elle est en base, quand `r` arrive déjà modifiée (carte « Modification » de l'Assistant) : la fusion d'une
 // modification concurrente part d'elle, sinon le changement proposé passerait pour l'état d'origine et serait effacé en silence.
+// Le choix des sièges est exigé pour un nouveau service, quand le nombre d'enfants et de bébés change, ou quand un choix déjà posé est effacé.
+const petitsDe = (r) => (Number(((r && r.personnes) || {}).enfants) || 0) + (Number(((r && r.personnes) || {}).bebes) || 0);
+export const siegesExiges = (base, petits) => !(base && base.id) || petits !== petitsDe(base) || siegesChoisis(siegesLus((base && base.details) || {}));
 export function formulaireReservation(r, apres, { base = r } = {}) {
   const nets = voitNets() && peut("dossiers.ecrire");
   const n = r.id && nets ? netReservation(r) : null;
@@ -618,8 +621,10 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
           const petits = (nb(enfants.value) || 0) + (nb(bebes.value) || 0);
           const cle = `${s}:${petits}`;
           if (s > SIEGES_MAX) erreurChamp(champSieges, tr("{n} sièges enfant ou bébé au plus.", { n: SIEGES_MAX }));
-          // Un enfant ou un bébé (Jérémy, 22.11.2026) : child seats, baby seats ou « Aucun siège », toujours dit, jamais laissé vide.
-          else if (siegesAChoisir({ enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0, sieges: siegesSaisisTypes() })) erreurChamp(champSieges, tr("Un enfant ou un bébé voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège »."));
+          // Un enfant ou un bébé (Jérémy, 22.11.2026) : child seats, baby seats ou « Aucun siège ». Exigé pour un nouveau service, quand les
+          // enfants ou les bébés changent, ou quand un choix déjà fait est effacé ; une réservation d'avant sans choix s'enregistre encore
+          // telle quelle (une carte « Modification » de l'heure ne bloque pas sur une question qu'on ne lui pose pas, relecture de la PR).
+          else if (siegesAChoisir({ enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0, sieges: siegesSaisisTypes() }) && siegesExiges(base, petits)) erreurChamp(champSieges, tr(ERREURS_TRAJET.e_sieges_choix));
           else if (s > petits && siegesConfirmes !== cle) {
             siegesConfirmes = cle;
             erreurChamp(champSieges, tr("Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer."));
