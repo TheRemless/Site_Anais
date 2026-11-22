@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte } from "../agent-calc.mjs";
+import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
@@ -16,6 +16,7 @@ import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.m
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
+import { phraseInterne } from "../agent-apprendre-texte.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
@@ -531,7 +532,10 @@ export async function vueAgent(idOuvert = "") {
   const entiteDuFil = () => (conv && conv.entite_id) || etat.entiteId;
   // Les noms masqués d'un « Pas bien » sur une bulle : une réponse à l'équipe peut citer plusieurs clients (planning, vouchers, recherche) et
   // des partenaires. Tous les clients et partenaires chargés, en plus de ceux de la conversation (revue de sécurité).
-  const nomsDuFil = () => [...nomsAMasquer(), ...[...(etat.db.clients || []), ...(etat.brut.clients || [])].flatMap((x) => [x.prenom, x.nom]), ...(etat.brut.partenaires || []).map((x) => x.nom)].filter(Boolean);
+  const nomsDuFil = () => {
+    const m = nomsAMasquer();
+    return { noms: [...m.noms, ...[...(etat.db.clients || []), ...(etat.brut.clients || [])].flatMap((x) => [x.prenom, x.nom])].filter(Boolean), entiers: m.entiers };
+  };
   function element(it, i) {
     if (it.genre === "personne") {
       // Le premier message d'une conversation ouverte depuis WhatsApp : l'échange du client, à gauche et replié (design n° 4).
@@ -543,7 +547,7 @@ export async function vueAgent(idOuvert = "") {
     }
     // « Pas bien » : la raison et un extrait sans montant (la réponse à l'équipe peut citer des nets, des marges ou des gains), jamais la
     // question tapée (elle peut contenir le message d'un client collé). Relu par l'Assistant seulement, pas par la boîte WhatsApp.
-    if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte), boutonPasBien({ entiteId: entiteDuFil(), reponse: it.texte, contexte: "réponse de l'Assistant à l'équipe", noms: nomsDuFil, sansMontants: true }));
+    if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte), boutonPasBien({ entiteId: entiteDuFil(), reponse: it.texte, contexte: "réponse de l'Assistant à l'équipe", masques: nomsDuFil, prix: prixConnus, sansMontants: true }));
     if (it.genre === "pieces") return bullePieces(it.fichiers);
     if (it.genre === "planning") return frise(it.planning);
     // Les vouchers trouvés (trouver_vouchers) : une carte par dossier, avec l'aperçu et le bouton d'envoi.
@@ -876,7 +880,7 @@ export async function vueAgent(idOuvert = "") {
       const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
       corps.push(zone, alerte);
       // « Pas bien » sur la réponse au client préparée (la carte reste à copier ou à écarter).
-      const pasBien = boutonPasBien({ entiteId: entiteDuFil(), reponse: d.message || "", contexte: d.langue === "en" ? "réponse au client en anglais préparée par l'Assistant" : "réponse au client préparée par l'Assistant", noms: () => nomsAMasquer(c), carteId: c.id });
+      const pasBien = boutonPasBien({ entiteId: entiteDuFil(), reponse: d.message || "", contexte: d.langue === "en" ? "réponse au client en anglais préparée par l'Assistant" : "réponse au client préparée par l'Assistant", masques: () => nomsAMasquer(c), prix: prixConnus, carteId: c.id });
       if (pasBien) corps.push(pasBien);
       action = {
         libelle: tr("Copier la réponse"),
@@ -1006,7 +1010,60 @@ export async function vueAgent(idOuvert = "") {
     const client = dossier ? etat.db.clients.find((x) => x.id === dossier.client_id) : null;
     const waLue = conv && conv.whatsapp_conversation_id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === conv.whatsapp_conversation_id) || null : null;
     const cartes = c ? [c, ...fil.cartes] : fil.cartes;
-    return [client && client.prenom, client && client.nom, waLue && waLue.nom, ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom), ...nomsApporteurAMasquer({ partenaires: etat.brut.partenaires || [], conversationWa: waLue, cartes })].filter(Boolean);
+    // Un contact typé (partenaire, chauffeur, hôtel, apporteur) ou relié à une fiche partenaire : son nom se masque en entier.
+    const typee = (x) => !!x && (["partenaire", "chauffeur", "hotel", "apporteur"].includes(x.type_contact) || !!x.partenaire_id);
+    return {
+      // Les noms du client, masqués mot par mot (sauf mots courants et mots de deux lettres).
+      noms: [client && client.prenom, client && client.nom, waLue && !typee(waLue) ? waLue.nom : "", ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom)].filter(Boolean),
+      // Les partenaires, les apporteurs et les contacts typés, masqués en entier (revue de la PR 312).
+      entiers: [
+        // Les apporteurs et les contacts typés sont souvent des personnes (« Somchai (driver) ») : aussi mot par mot, hors mots courants.
+        ...nomsApporteurAMasquer({ partenaires: etat.brut.partenaires || [], conversationWa: waLue, cartes }).map((nom) => ({ nom, personne: true })),
+        ...(etat.brut.partenaires || []).map((x) => x.nom),
+        // Un hôtel typé n'est pas une personne (son nom sert de lieu de pickup) : en entier seulement.
+        ...(etat.brut.whatsapp_conversations || []).filter(typee).map((x) => ({ nom: x.nom, personne: x.type_contact !== "hotel" })),
+      ].filter((x) => x && (typeof x === "string" || x.nom)),
+    };
+  }
+  // Les prix connus au moment d'un « Pas bien » (demande de Jérémy, 22.11.2026), dans l'entreprise de la conversation :
+  //   - ventes : catalogue (prix de vente des prestations et des trajets), prix des cartes de la conversation (dont ceux que la règle des
+  //     PR 306 et 307 a déjà repris de la conversation : « donné par vous », « prix du client non corrigé »), réservations du dossier relié,
+  //     et les montants tapés par la personne dans cette conversation (règle de la PR 306, même lecture montantsDuTexte, jamais un échange
+  //     WhatsApp joint ni une phrase qui parle de net) ;
+  //   - nets : catalogue et dossier relié, seulement avec le droit de voir les nets (« partenaires.nets ») ; sinon null, et un montant qui
+  //     serait un net devient une question.
+  function prixConnus() {
+    const ent = entiteDuFil();
+    const ventes = new Set();
+    const ajouter = (set, v) => {
+      const n = Number(v);
+      if (n > 0) set.add(n);
+    };
+    for (const p of etat.brut.prestations || []) if (p.entite_id === ent) ajouter(ventes, p.prix_vente);
+    for (const t of etat.brut.trajets || []) if (t.entite_id === ent) for (const k of ["prix_adulte", "prix_enfant"]) ajouter(ventes, t[k]);
+    for (const c of fil.cartes) {
+      const d = c.donnees || {};
+      for (const sv of [...(d.services || []), d.service].filter(Boolean)) ajouter(ventes, sv.prix);
+    }
+    const dossierId = conv && conv.dossier_id;
+    for (const r of etat.brut.reservations || []) if (dossierId && r.dossier_id === dossierId) ajouter(ventes, r.montant_vente);
+    filDepuis(fil.messages, []).forEach((it, i) => {
+      if (it.genre !== "personne" || echangeWhatsApp(it.texte, { depuisWhatsApp: i === 0 && !!(conv && conv.whatsapp_conversation_id) }) || /<\/?(?:conversation|question)>/.test(it.texte)) return;
+      for (const phrase of String(it.texte).split(/\n+|(?<=[.!?;])\s+/)) if (!phraseInterne(phrase)) for (const n of montantsDuTexte(phrase)) ajouter(ventes, n);
+    });
+    if (!(permissionsDe(ent) || []).includes("partenaires.nets")) return { ventes, nets: null };
+    const nets = new Set(dossierId ? netsDuDossier(dossierId) : []);
+    const services = new Set([...(etat.brut.prestations || []), ...(etat.brut.trajets || [])].filter((x) => x.entite_id === ent).map((x) => x.id));
+    for (const n of etat.brut.prestations_nets || []) if (services.has(n.prestation_id)) for (const k of ["net", "net_enfant"]) ajouter(nets, n[k]);
+    for (const n of etat.brut.trajets_nets || []) if (services.has(n.trajet_id)) for (const k of ["net_adulte", "net_enfant"]) ajouter(nets, n[k]);
+    return { ventes, nets };
+  }
+  // Les nets, marges et commissions du dossier (lus seulement par qui a le droit de les voir) : une remarque qui en cite un n'est pas apprise.
+  function netsDuDossier(idNoms) {
+    const resas = new Set((etat.brut.reservations || []).filter((r) => r.dossier_id === idNoms).map((r) => r.id));
+    const out = new Set();
+    for (const l of etat.brut.reservations_nets || []) if (resas.has(l.reservation_id)) for (const [k, v] of Object.entries(l)) if (/^(?:nets?|marges?|commissions?|gains?)(?:_|$)/.test(k) && Number(v) > 0) out.add(Number(v));
+    return out;
   }
   async function apresValidation(c, { dossierId = null, enregistre = null, entiteId = etat.entiteId, typeLie = null, ecran = null } = {}) {
     try {
@@ -1022,7 +1079,7 @@ export async function vueAgent(idOuvert = "") {
       const idNoms = id || (conv && conv.dossier_id);
       // `ecran` : ce que « Vérifier avant » a fait de chaque service (prix_saisi), pour distinguer un prix tapé d'un recalcul.
       const vu = enregistre || (c.genre === "dossier" && id ? { reservations: etat.db.reservations.filter((r) => r.dossier_id === id), ...(ecran ? { ecran } : {}) } : null);
-      const lignes = correctionsDepuisCarte(c, vu, { noms: nomsAMasquer(c, idNoms) });
+      const lignes = correctionsDepuisCarte(c, vu, { ...nomsAMasquer(c, idNoms), nets: idNoms ? netsDuDossier(idNoms) : new Set() });
       if (lignes.length && (await etat.store.agentNoterApprentissages(entiteId, c.id, lignes))) toast(lignes.length === 1 ? tr("Correction notée : l'assistant s'en servira la prochaine fois.") : tr("{n} corrections notées : l'assistant s'en servira la prochaine fois.", { n: lignes.length }));
     } catch (err) {
       console.error("agent : après la validation", err);

@@ -662,12 +662,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // Les corrections d'une carte validée. Sans la migration, rien n'est noté (false).
     async agentNoterApprentissages(entiteId, carteId, lignes) {
       if (!lignes.length) return true;
-      const { error } = await sb.from("agent_apprentissages").insert(lignes.map((l) => ({ entite_id: entiteId, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres })));
+      const { error } = await sb.from("agent_apprentissages").insert(lignes.map((l) => ({ entite_id: entiteId, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres, ...(l.interne ? { interne: true } : {}) })));
       return !error;
     },
     // Tableau de l'assistant : les apprentissages des entreprises suivies (null tant que la migration manque).
     async agentApprentissages(entiteIds) {
-      const { data, error } = await sb.from("agent_apprentissages").select("id, entite_id, user_id, genre, contexte, avant, apres, cree_le").in("entite_id", entiteIds).order("cree_le", { ascending: false }).limit(500);
+      const { data, error } = await sb.from("agent_apprentissages").select("id, entite_id, user_id, genre, contexte, avant, apres, cree_le, interne").in("entite_id", entiteIds).order("cree_le", { ascending: false }).limit(500);
       return error ? null : data || [];
     },
     async agentSupprimerApprentissage(id) {

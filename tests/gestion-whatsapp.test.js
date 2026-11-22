@@ -384,7 +384,7 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
   // Lues et filtrées des montants égaux à un net dans agent/apprentissages.js (migration 74), dans l'entreprise de la conversation.
-  assert.match(reponse, /const lus = await lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true \}\);/);
+  assert.match(reponse, /const lus = await lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true, qui: reglagesAssistant\(reglages \|\| \{\}\)\.responsable \|\| "" \}\);/);
 });
 
 // ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------

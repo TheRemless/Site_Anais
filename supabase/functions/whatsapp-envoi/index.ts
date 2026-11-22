@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
   const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
   if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
   // Le texte envoyé diffère de la proposition : l'écart devient un apprentissage de l'Assistant, en fond (agent/apprendre-whatsapp.js).
-  apprendreEnFond(admin, conv.id, messageId);
+  apprendreEnFond(admin, conv.id, messageId, { auteur: qui.user.id });
   return json({ ok: true, message_id: messageId, complet: complete });
 });
 

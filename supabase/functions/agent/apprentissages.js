@@ -10,8 +10,22 @@
 import { montantsDuTexte, netsPourControle } from "./outils.js";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, apprentissagesUnifies } from "./prompt.js";
 import { tableAbsente } from "../assistant/budget.js";
+import { nombresBruts } from "./apprendre.js";
 
-export const COLONNES_APPRIS = "id, genre, contexte, avant, apres, cree_le";
+export const COLONNES_APPRIS = "id, genre, contexte, avant, apres, cree_le, source, user_id";
+// La seule source d'un prompt (migration 74) : la vue sans les lignes internes (« prix d'achat » d'un « Pas bien »). Aucune fonction ne lit
+// la table agent_apprentissages directement (un test le vérifie ; l'écriture, elle, va dans la table).
+export const VUE_POUR_IA = "agent_apprentissages_pour_ia";
+// Qui a fait la correction (migration 74, revue de la PR 312) : le nom de son profil, ou `qui` (la responsable des réglages) quand c'est
+// elle ; une réponse écrite depuis l'app du téléphone n'a pas d'auteur connu : « l'équipe ». Rien de « Nani » en dur.
+export const EQUIPE = "l'équipe";
+const cle = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+export function auteurDe(l, { profils = new Map(), qui = "" } = {}) {
+  if (!l || !l.user_id) return l && l.source === "whatsapp" ? EQUIPE : qui || EQUIPE;
+  const nom = String(profils.get(l.user_id) || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!nom) return EQUIPE;
+  return qui && cle(nom.split(" ")[0]) === cle(qui) ? qui : nom;
+}
 // Ce qui sert à une réponse au client (boîte WhatsApp, revue de sécurité) : jamais une remarque de service (notes internes) ni un « Pas bien »
 // sur une réponse de l'agent à l'équipe (qui peut parler de nets ou de marges) ; seulement un « Pas bien » sur une réponse au client.
 export const GENRES_POUR_CLIENT = ["reponse", "pickup", "lieu", "date", "libelle", "prix", "retour"];
@@ -41,7 +55,9 @@ export function sansNets(lignes = [], { nets = [], erreur = false } = {}) {
   return (lignes || []).filter((l) => {
     const m = montantsDe(l);
     if (erreur) return m.length === 0;
-    return !m.some((n) => n === 0 || valeurs.has(n));
+    // Aussi tout nombre brut, collé ou petit (« 2x1200 », « net1200 », « 85 ») : un net se reconnaît partout (apprendre.js).
+    const bruts = [l && l.contexte, l && l.avant, l && l.apres].flatMap((t) => nombresBruts(t).map((x) => x.valeur));
+    return !m.some((n) => n === 0 || valeurs.has(n)) && !bruts.some((n) => valeurs.has(n));
   });
 }
 
@@ -50,14 +66,14 @@ export function sansNets(lignes = [], { nets = [], erreur = false } = {}) {
 // (autre : l'autre entreprise de l'espace unifié, ou null). `jusqua` : seulement les lignes d'avant cette date (ouverture de la
 // conversation de l'Assistant). `limite` : lignes lues de l'entreprise active sans l'espace unifié. `nets` : déjà lus par l'appelant
 // ({ nets, erreur } de netsPourControle), sinon lus ici. `pourClient` : la boîte WhatsApp, seulement les lignes utiles à une réponse au
-// client (pourUnClient).
+// client (pourUnClient). `qui` : la responsable des réglages, nommée ainsi quand l'auteur est elle.
 // Rend { lignes, erreur } : erreur vraie si la lecture a échoué (table absente comprise : rien, l'agent marche comme avant).
-export async function lireApprentissages(db, { dbNets = db, active, autre = null, jusqua = null, limite = 80, nets = null, pourClient = false } = {}) {
+export async function lireApprentissages(db, { dbNets = db, active, autre = null, jusqua = null, limite = 80, nets = null, pourClient = false, qui = "" } = {}) {
   if (!db || !active || !active.id) return { lignes: [], erreur: true };
   const avant = (q) => (jusqua ? q.lte("cree_le", jusqua) : q);
   const [lus, lusAutre, lusNets] = await Promise.all([
-    avant(db.from("agent_apprentissages").select(COLONNES_APPRIS).eq("entite_id", active.id)).order("cree_le", { ascending: false }).limit(autre ? APPRIS_LUS_ACTIVE : limite),
-    autre ? avant(db.from("agent_apprentissages").select(COLONNES_APPRIS).eq("entite_id", autre.id).eq("genre", "reponse")).order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
+    avant(db.from(VUE_POUR_IA).select(COLONNES_APPRIS).eq("entite_id", active.id)).order("cree_le", { ascending: false }).limit(autre ? APPRIS_LUS_ACTIVE : limite),
+    autre ? avant(db.from(VUE_POUR_IA).select(COLONNES_APPRIS).eq("entite_id", autre.id).eq("genre", "reponse")).order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
     nets ? Promise.resolve(nets) : netsPourControle(dbNets, [active.id, ...(autre ? [autre.id] : [])]),
   ]);
   if (lus.error) {
@@ -67,5 +83,13 @@ export async function lireApprentissages(db, { dbNets = db, active, autre = null
   const filtre = { nets: (lusNets && lusNets.nets) || [], erreur: !lusNets || !!lusNets.erreur };
   const actives = sansNets((lus.data || []).filter((l) => !pourClient || pourUnClient(l)), filtre);
   const autres = lusAutre && !lusAutre.error ? sansNets(lusAutre.data || [], filtre) : [];
-  return { lignes: autre ? apprentissagesUnifies({ actives, autres, nomActive: active.nom || "", nomAutre: autre.nom || "" }) : actives, erreur: false };
+  // Les noms des auteurs (profils, clé de service). Une lecture en échec : « l'équipe », jamais un nom deviné.
+  const ids = [...new Set([...actives, ...autres].map((l) => l.user_id).filter(Boolean))];
+  const lusProfils = ids.length && dbNets ? await dbNets.from("profils").select("user_id, nom").in("user_id", ids) : { data: [], error: null };
+  const profils = new Map(lusProfils.error ? [] : (lusProfils.data || []).map((p) => [p.user_id, p.nom]));
+  const avecAuteur = (l) => {
+    const { user_id, source, ...reste } = l;
+    return { ...reste, auteur: lusProfils.error && user_id ? EQUIPE : auteurDe(l, { profils, qui }) };
+  };
+  return { lignes: autre ? apprentissagesUnifies({ actives: actives.map(avecAuteur), autres: autres.map(avecAuteur), nomActive: active.nom || "", nomAutre: autre.nom || "" }) : actives.map(avecAuteur), erreur: false };
 }

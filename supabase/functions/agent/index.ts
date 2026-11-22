@@ -888,7 +888,7 @@ Deno.serve(async (req) => {
   // Les nets du catalogue (lus plus bas aussi pour le contrôle de la réponse) écartent d'abord toute correction dont un montant leur est
   // égal (agent/apprentissages.js, lireApprentissages) : les lignes se lisent avec la session (RLS), les nets avec la clé de service.
   const lusNets = await netsPourControle(admin, idsEntites);
-  const lus = await lireApprentissages(sb, { dbNets: admin, active: { id: entiteId, nom: ent.data?.nom || "" }, autre: autreEnt, jusqua: conv!.cree_le || new Date().toISOString(), nets: lusNets });
+  const lus = await lireApprentissages(sb, { dbNets: admin, active: { id: entiteId, nom: ent.data?.nom || "" }, autre: autreEnt, jusqua: conv!.cree_le || new Date().toISOString(), nets: lusNets, qui: ra.responsable || "" });
   const lignesAppris = lus.lignes;
   // Chez Secret et Taxi, les réponses corrigées perdent leur signature avant de servir d'exemple (prompt.js, blocApprentissages).
   const appris = lus.erreur ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte, signatures: signe(reglages) ? null : [ent.data?.nom || "", ...(unifie ? unifie.entites.map((e) => e.nom) : [])].filter(Boolean) });

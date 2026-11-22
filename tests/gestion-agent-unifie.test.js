@@ -396,5 +396,5 @@ test("revue 8 : corrections marquées de leur entreprise, quota pour l'active, s
   const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
   assert.match(idx, /lireApprentissages\(sb, \{[^\n]*autre: autreEnt,/);
   const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
-  assert.match(wa, /lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true \}\)/);
+  assert.match(wa, /lireApprentissages\(db, \{ active: ent, autre: unifie && autre \? autre : null, pourClient: true, qui: reglagesAssistant\(reglages \|\| \{\}\)\.responsable \|\| "" \}\)/);
 });

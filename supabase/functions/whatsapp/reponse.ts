@@ -274,7 +274,7 @@ async function preparer(
     // Espace unifié : 60 corrections de l'entreprise active ; de l'autre, seulement les réponses au client (20), marquées de leur entreprise.
     // Lues et filtrées dans agent/apprentissages.js : une ligne dont un montant est égal à un net de l'entreprise est écartée, et seules les
     // lignes utiles à une réponse au client restent (ni remarque de service, ni « Pas bien » sur une réponse à l'équipe).
-    const lus = await lireApprentissages(db, { active: ent, autre: unifie && autre ? autre : null, pourClient: true });
+    const lus = await lireApprentissages(db, { active: ent, autre: unifie && autre ? autre : null, pourClient: true, qui: reglagesAssistant(reglages || {}).responsable || "" });
     const lignesAppris = lus.lignes;
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
     // Chez Secret et Taxi, les exemples perdent leur signature (« VIP Taxi Lanta 🌴 » d'un message type) : l'agent ne la recopie pas.

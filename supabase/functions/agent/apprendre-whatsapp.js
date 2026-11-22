@@ -6,8 +6,8 @@
 // envoi parti depuis Gestion : une ligne, apprendreDeNani(db, conversation, message). Tout le reste est ici. Ne lève jamais.
 // La correction est gardée (genre « reponse », source « whatsapp », migration 74) seulement si :
 //   - la conversation est celle d'un client : ni partenaire, ni chauffeur, ni hôtel, ni apporteur, ni fiche partenaire reliée, ni
-//     Contact personnel (reponses = 'jamais'). Un client confirmé (typé « client », ou relié à une fiche client ou à un dossier,
-//     clientConfirme) garde ses prix ; une conversation jamais typée (peut-être un chauffeur ou un hôtel pas encore classé, revue de
+//     Contact personnel (reponses = 'jamais'). Un client sûr (typé « client », ou relié à une fiche client, clientPourApprendre ; un
+//     dossier relié seul ne suffit pas) garde ses prix ; une conversation jamais typée (peut-être un chauffeur ou un hôtel pas encore classé, revue de
 //     sécurité) ne garde aucune phrase avec un montant : seulement le ton et la tournure. Classée ensuite partenaire, chauffeur, hôtel,
 //     apporteur ou Contact personnel, ses lignes sont effacées par la base (migration 74) ;
 //   - l'IA est ouverte pour elle (réception active, agent allumé dans l'entreprise, comme iaPermise de whatsapp/proposer.js) et l'agent est
@@ -21,9 +21,10 @@
 //     (net, commission, banque, marge chiffrée) ni phrase dont un montant est égal à un net de l'entreprise (nets du catalogue et des
 //     partenaires, et ceux du dossier relié). Nets ou noms illisibles : rien, ou aucune phrase avec un montant.
 // Une seule ligne par réponse préparée (index unique de la migration 74) : un événement rejoué ne note rien de plus.
-import { correctionReponse, propre } from "./apprendre.js";
-import { clientConfirme, conversationDeClient, dossierPourControle, netsPourControle } from "./outils.js";
-import { nomsABloquer, nomsContactsTypes } from "./apporteur.js";
+import { correctionReponse, nombresBruts, propre } from "./apprendre.js";
+import { conversationDeClient, dossierPourControle, netsPourControle } from "./outils.js";
+import { nomsABloquer } from "./apporteur.js";
+import { CONTACTS_NOMMES } from "./whatsapp-lecture.js";
 import { montantsDe } from "./apprentissages.js";
 
 export const FENETRE_APPRENDRE_MS = 2 * 3600 * 1000;
@@ -34,6 +35,11 @@ const STATUTS_COMPARABLES = ["a_faire", "envoi", "traitee"];
 const lettres = (t) => (String(t || "").match(/\p{L}/gu) || []).length;
 export const vraiMessage = (m) => !!m && m.sens === "sortant" && ["app", "gestion"].includes(m.origine) && (m.type || "text") === "text" && !m.supprime_le && lettres(m.texte) >= LETTRES_MIN;
 const ms = (x) => Date.parse(x || "") || 0;
+
+// Un client sûr pour garder des montants appris (revue de la PR 312) : typé « client », ou relié à une fiche client. Un dossier relié seul
+// ne suffit pas (un concierge ou un hôtel non typé peut être relié à un dossier). clientConfirme (outils.js) ne change pas pour ses autres
+// appelants.
+export const clientPourApprendre = (c) => conversationDeClient(c) && (c.type_contact === "client" || !!c.client_id);
 
 // Même règle que iaPermise (whatsapp/proposer.js, un test les compare) : réception active, conversation qui n'est pas un Contact personnel,
 // agent allumé dans son entreprise (ou dans l'une des deux pour une conversation à trier).
@@ -61,17 +67,22 @@ export function propositionAComparer({ propositions = [], messages = [], message
 // La ligne à écrire, ou null. `nets` : nombres (nets du catalogue, nets et marges du dossier relié) ; `netsIllisibles` : aucune phrase avec
 // un montant ne passe.
 // `sansMontants` : conversation jamais typée ou nets illisibles, aucune phrase avec un montant.
-export function ligneDeNani({ proposition, message, noms = [], nets = new Set(), sansMontants = false }) {
+// `noms` : client et contact, masqués mot par mot ; `entiers` : partenaires et contacts typés, masqués en entier.
+export function ligneDeNani({ proposition, message, noms = [], entiers = [], nets = new Set(), sansMontants = false }) {
   const exclure = (phrase) => {
     const m = montantsDe({ avant: phrase });
-    return sansMontants ? m.length > 0 : m.some((n) => n === 0 || nets.has(n));
+    if (sansMontants) return m.length > 0;
+    // Un net se reconnaît aussi collé ou petit (« 2x1200 », « net85 ») : tous les nombres bruts de la phrase.
+    return m.some((n) => n === 0 || nets.has(n)) || nombresBruts(phrase).some((x) => nets.has(x.valeur));
   };
   const contexte = proposition.langue === "fr" ? "réponse WhatsApp en français" : proposition.langue === "en" ? "réponse WhatsApp en anglais" : "réponse WhatsApp";
-  return correctionReponse(proposition.texte, message.texte, { noms, contexte, exclure });
+  return correctionReponse(proposition.texte, message.texte, { noms, entiers, contexte, exclure });
 }
 
 // Rend ce qui a été fait (pour les tests et les journaux) : { note: true } ou { rien: motif }.
-export async function apprendreDeNani(db, conversationId, messageId) {
+// `auteur` : la personne qui a envoyé depuis Gestion (whatsapp-envoi, session vérifiée) ; la ligne porte son user_id et l'agent dit son nom.
+// Un message écrit depuis l'app du téléphone n'a pas d'auteur connu : user_id nul, l'agent dit « l'équipe ».
+export async function apprendreDeNani(db, conversationId, messageId, { auteur = null } = {}) {
   try {
     if (!db || !conversationId || !messageId) return { rien: "entree" };
     const { data: message, error: errM } = await db.from("whatsapp_messages").select("id, conversation_id, sens, origine, type, texte, envoye_le, supprime_le").eq("id", messageId).eq("conversation_id", conversationId).maybeSingle();
@@ -86,9 +97,11 @@ export async function apprendreDeNani(db, conversationId, messageId) {
     const depuis = new Date(t - FENETRE_APPRENDRE_MS).toISOString();
     const { data: propositions, error: errP } = await db.from("whatsapp_propositions").select("id, cree_le, statut, texte, langue, entite_id").eq("conversation_id", conv.id).gte("cree_le", depuis).lte("cree_le", message.envoye_le).order("cree_le", { ascending: false }).limit(5);
     if (errP || !propositions || !propositions.length) return { rien: "aucune_proposition" };
-    const { data: messages, error: errL } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, envoye_le, supprime_le").eq("conversation_id", conv.id).gte("envoye_le", depuis).lte("envoye_le", message.envoye_le).limit(200);
+    // Les 200 plus récents de la fenêtre, remis dans l'ordre chronologique.
+    const { data: recents, error: errL } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, envoye_le, supprime_le").eq("conversation_id", conv.id).gte("envoye_le", depuis).lte("envoye_le", message.envoye_le).order("envoye_le", { ascending: false }).limit(200);
     if (errL) return { rien: "messages" };
-    const proposition = propositionAComparer({ propositions, messages: messages || [], message });
+    const messages = [...(recents || [])].reverse();
+    const proposition = propositionAComparer({ propositions, messages, message });
     if (!proposition) return { rien: "rien_a_comparer" };
     const entiteId = proposition.entite_id || conv.entite_id;
     if (!entiteId) return { rien: "entreprise" };
@@ -103,15 +116,22 @@ export async function apprendreDeNani(db, conversationId, messageId) {
     const [clients, partenaires, types] = await Promise.all([
       idsClients.length ? db.from("clients").select("prenom, nom").in("id", idsClients) : Promise.resolve({ data: [], error: null }),
       db.from("partenaires").select("id, nom").eq("entite_id", entiteId).limit(2000),
-      nomsContactsTypes(db, conv.organisation_id),
+      // Les contacts typés de l'organisation (comme nomsContactsTypes d'apporteur.js), avec leur type : un hôtel n'est pas une personne.
+      db.from("whatsapp_conversations").select("id, nom, type_contact, partenaire_id").eq("organisation_id", conv.organisation_id).or(`type_contact.in.(${CONTACTS_NOMMES.join(",")}),partenaire_id.not.is.null`).limit(2000),
     ]);
-    if (dossier.error || clients.error || partenaires.error || types.erreur) return { rien: "noms" };
-    const noms = [conv.nom, ...(clients.data || []).flatMap((c) => [c.prenom, c.nom]), ...nomsABloquer(partenaires.data || []), ...types.noms].filter(Boolean);
+    if (dossier.error || clients.error || partenaires.error || types.error) return { rien: "noms" };
+    const noms = [conv.nom, ...(clients.data || []).flatMap((c) => [c.prenom, c.nom])].filter(Boolean);
+    // Les partenaires en entier ; les contacts typés (souvent des personnes, « Prénom (driver) ») aussi mot par mot, hors mots courants.
+    const typees = (types.data || []).filter((c) => c && c.id !== conv.id && typeof c.nom === "string" && c.nom.trim());
+    const entiers = [...nomsABloquer(partenaires.data || []), ...typees.map((c) => ({ nom: c.nom.trim(), personne: c.type_contact !== "hotel" }))];
     const [lusNets, relie] = await Promise.all([netsPourControle(db, [entiteId]), dossierPourControle(db, conv.dossier_id || null, [entiteId])]);
     const nets = new Set([...lusNets.nets.map((n) => Number(n.montant)), ...relie.internes]);
-    const ligne = ligneDeNani({ proposition, message, noms, nets, sansMontants: !clientConfirme(conv) || lusNets.erreur || relie.services.has("*") });
+    const ligne = ligneDeNani({ proposition, message, noms, entiers, nets, sansMontants: !clientPourApprendre(conv) || lusNets.erreur || relie.services.has("*") });
     if (!ligne) return { rien: "aucun_ecart" };
-    const { error } = await db.from("agent_apprentissages").insert({ entite_id: entiteId, genre: ligne.genre, contexte: ligne.contexte, avant: ligne.avant, apres: ligne.apres, source: "whatsapp", proposition_id: proposition.id });
+    const { error } = await db.from("agent_apprentissages").insert({
+      entite_id: entiteId, genre: ligne.genre, contexte: ligne.contexte, avant: ligne.avant, apres: ligne.apres, source: "whatsapp",
+      proposition_id: proposition.id, whatsapp_conversation_id: conv.id, user_id: message.origine === "gestion" && auteur ? auteur : null,
+    });
     if (error) {
       // Déjà notée (événement rejoué) : rien de plus. Sans la migration 74 : dit dans les journaux, rien d'autre ne change.
       if (error.code === "23505") return { rien: "deja_notee" };
@@ -126,8 +146,8 @@ export async function apprendreDeNani(db, conversationId, messageId) {
 }
 
 // La même chose en tâche de fond, gardée en vie par le runtime après la réponse (whatsapp-envoi : l'envoi ne l'attend pas).
-export function apprendreEnFond(db, conversationId, messageId) {
-  const tache = apprendreDeNani(db, conversationId, messageId);
+export function apprendreEnFond(db, conversationId, messageId, options = {}) {
+  const tache = apprendreDeNani(db, conversationId, messageId, options);
   const runtime = globalThis.EdgeRuntime;
   if (runtime && typeof runtime.waitUntil === "function") runtime.waitUntil(tache);
   return tache;
