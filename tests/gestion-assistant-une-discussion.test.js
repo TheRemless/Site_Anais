@@ -13,6 +13,7 @@ import { chercherCatalogue, clientConfirme, clientProbable, clientPourPrixDeNani
 import { MOTIFS_A_PREPARER } from "../supabase/functions/whatsapp/proposer.js";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
 import { faitsAvancee } from "../supabase/functions/whatsapp/etapes.js";
+import { signauxPartenaire, avisApres } from "../supabase/functions/whatsapp/type-contact.js";
 import { MOTIFS_TRI_NON_CLIENT } from "../src/gestion/js/whatsapp-etapes-calc.mjs";
 import { HISTORIQUE_PLEIN, dernierPrixAccepte, discussionPleine, resumeReport } from "../supabase/functions/agent/discussion-pleine.js";
 import { MAX_CONVERSATION_B64, MAX_FICHIERS_CONVERSATION } from "../supabase/functions/agent/fichiers.js";
@@ -182,7 +183,7 @@ test("le prix de Nani n'est jamais repris pour un contact non client, ni sans tr
   // client confirmé.
   const f = lire("supabase/functions/agent/index.ts");
   // Constat 7 de la relecture : chaque repli 42703 garde ce que la migration d'avant a ajouté (nom_source jamais perdu).
-  assert.match(f, /const COLONNES_WA = \[\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
+  assert.match(f, /const COLONNES_WA = \[\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee, type_source, type_avis, type_signaux",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
   assert.match(f, /for \(const cols of COLONNES_WA\) \{\n\s+r = await sb\.from\("whatsapp_conversations"\)\.select\(cols\)\.eq\("id", id\)\.maybeSingle\(\);\n\s+if \(!\(r\.error && r\.error\.code === "42703"\)\) break;/);
   assert.match(f, /const wc: any = await lireWa\(waId\);/);
   assert.match(f, /const slugsDossier = unifie \? unifie\.entites\.map\(\(e\) => e\.slug\) : \[ent\.data\?\.slug \|\| ""\];/);
@@ -224,8 +225,11 @@ test("une étape client (migration 105) suffit : la réservation qui finit sur �
     assert.equal(clientPourPrixDeNani(c, ["taxi"]), false, JSON.stringify(o));
     assert.equal((await service(c)).prix, null, JSON.stringify(o));
   }
-  // L'endroit de la future fonction « déduit partenaire » (session « Prêt à réserver ») : appelée avant tout le reste.
-  assert.match(lire("supabase/functions/agent/outils.js"), /export const clientProbable = \(c, entreprises = \[\]\) => conversationDeClient\(c\) && !partenaireDeduit\(c\) &&/);
+  // La règle partenaire de la #319 (whatsapp/type-contact.js) : appelée avant tout le reste, et dans clientConfirme.
+  const o = lire("supabase/functions/agent/outils.js");
+  assert.match(o, /import \{ partenaireProbable, prixDeVentePermis \} from "\.\.\/whatsapp\/type-contact\.js";/);
+  assert.match(o, /export const clientProbable = \(c, entreprises = \[\]\) => conversationDeClient\(c\) && prixDeVentePermis\(c\) && !partenaireProbable\(c\) &&/);
+  assert.match(o, /export const clientConfirme = \(c\) => conversationDeClient\(c\) && prixDeVentePermis\(c\) &&/);
   // Les motifs « pas un client » sont ceux de l'écran des étapes, plus « non_client ».
   assert.deepEqual(MOTIFS_NON_CLIENT, [...MOTIFS_TRI_NON_CLIENT, "non_client"]);
 });
@@ -408,4 +412,41 @@ test("le résumé d'une discussion remplacée n'est que du contexte : jamais un 
   assert.ok(memoDepuis([{ role: "user", content: `${resume}\n\nLe prix est 2500` }], {}).tapes.has(2500));
   // L'écran : les prix connus pour « Pas bien » ignorent le résumé.
   assert.match(lire("src/gestion/js/views/agent.mjs"), /for \(const phrase of String\(separerResume\(it\.texte\)\.reste\)\.split\(/);
+});
+
+test("de bout en bout : le contact « bateau » de la #319, mal trié en demande_client, ne reprend aucun prix", async () => {
+  // Le modèle C12 de tests/gestion-whatsapp-type.test.js (messages inventés), avec un prix repris par Nani.
+  const t0 = Date.parse("2026-11-21T01:00:00.000Z");
+  const lignes = [
+    [">", "Hi! Is your boat free on Wednesday?"],
+    ["<", "Next Wednesday?"],
+    [">", "สวัสดีค่ะ พรุ่งนี้มีเรือว่างไหมคะ ลูกค้าอยากไปดำน้ำทั้งวัน"],
+    ["<", "I can propose a price of 12,500 with lunch included."],
+    [">", "Ok, I will check with my customers"],
+    ["<", "Could you send me the booking for Wednesday please?"],
+    [">", "OK 12,500 THB, see you Wednesday 8:30"],
+  ];
+  const messages = lignes.map(([s, texte], i) => ({ id: `b${i}`, sens: s === ">" ? "sortant" : "entrant", origine: s === ">" ? "app" : "client", type: "text", texte, medias: [], envoye_le: new Date(t0 + i * 60000).toISOString(), supprime_le: null }));
+  const base = { id: "0f000000-0000-4000-8000-0000000000b0", telephone: "+447700900456", nom: "", reponses: "auto", type_contact: null, type_source: null, client_id: null, dossier_id: null, partenaire_id: null, type_avis: null };
+  // Le tri se trompe : demande_client chez Taxi. Les repères de la #319 et les faits des étapes sont ceux que la fonction « whatsapp » garde.
+  const tri = { motif: "demande_client", preparer: true, entreprise: "taxi" };
+  const conv = { ...base, tri, avancee: faitsAvancee({ ...base, tri }, messages, "2026-11-22T00:00:00Z"), type_signaux: signauxPartenaire(messages, { conv: base, maintenant: "2026-11-22T00:00:00Z" }) };
+  assert.equal(conv.type_signaux.nets, true, "repères nets");
+  assert.ok(conv.avancee.par.taxi && conv.avancee.par.taxi.demande_le, "le contact a aussi « demandé » quelque chose : sans la #319, il serait client probable");
+  assert.equal(clientProbable(conv, ["taxi"]), false);
+  assert.equal(clientPourPrixDeNani(conv, ["taxi"]), false);
+  assert.equal(clientConfirme({ ...conv, dossier_id: "d1" }), false, "même relié à un dossier, pas un client confirmé");
+  // Le chemin de la fonction agent : memoDepuis puis proposer_dossier, avec le prix écrit par Nani.
+  const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv, messages }) }], { conversationClient: clientPourPrixDeNani(conv, ["taxi"]), clientProbable: !clientConfirme(conv) && clientProbable(conv, ["taxi"]), conversationLiee: conv.id });
+  assert.ok(!memo.nani.has(12500));
+  const s = (await executer("proposer_dossier", { ...carte(), services: [{ ...carte().services[0], prix_saisi: "12500" }] }, ctx, memo)).carte.donnees.services[0];
+  assert.deepEqual([s.prix, s.origine_prix], [null, "a_fixer"]);
+  // Sans repères, la seule décision « partenaire » du tri (type_avis) suffit aussi ; un type « client » posé par Nani l'emporte.
+  const avis = avisApres(null, { type: "partenaire", raison: "loue un bateau à Nani" }, "2026-11-22T00:00:00Z");
+  assert.equal(clientProbable({ ...conv, type_signaux: null, type_avis: avis }, ["taxi"]), false);
+  assert.equal(clientProbable({ ...conv, type_signaux: null, type_avis: null }, ["taxi"]), true, "sans la règle de la #319, le tri trompé suffisait");
+  assert.equal(clientConfirme({ ...conv, type_contact: "client", type_source: "nani" }), true, "Nani a posé « client » : son choix l'emporte");
+  // La fonction lit les colonnes de la migration 110, avec le repli 42703 vers la lecture d'avant.
+  const f = lire("supabase/functions/agent/index.ts");
+  assert.match(f, /"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee, type_source, type_avis, type_signaux",\n\s+"id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",/);
 });

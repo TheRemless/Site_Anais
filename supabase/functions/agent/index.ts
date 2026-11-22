@@ -94,7 +94,9 @@ async function alerterBudget(corps: Record<string, unknown>) {
 }
 
 // Les colonnes lues d'une conversation WhatsApp, de la plus récente migration à la plus ancienne (repli sur l'erreur 42703).
+// Migration 110 (#319) : la source du type, les décisions du tri et les repères, pour reconnaître un partenaire probable (prixDeVentePermis).
 const COLONNES_WA = [
+  "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee, type_source, type_avis, type_signaux",
   "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee",
   "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source",
   "id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id",

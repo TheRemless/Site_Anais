@@ -196,7 +196,7 @@ test("branchements : fonction, écran, stores, CI ; aucun appel à l'IA ; index.
   // 22.11.2026 (PR 318) : l'Assistant lit les faits des étapes seulement pour dire si un contact sans fiche est un client probable
   // (outils.js, etapeClient) ; ils ne vont jamais chez Claude.
   for (const f of fichiers.filter((f) => !["outils.js", "index.ts"].includes(f))) assert.doesNotMatch(lire(`supabase/functions/agent/${f}`), /avancee/, f);
-  assert.deepEqual(lire("supabase/functions/agent/index.ts").match(/avancee/g), ["avancee"], "seulement dans la lecture de la conversation (COLONNES_WA)");
+  assert.deepEqual(lire("supabase/functions/agent/index.ts").match(/avancee/g), ["avancee", "avancee"], "seulement dans la lecture de la conversation (COLONNES_WA, avec et sans la migration 110)");
   const outils = lire("supabase/functions/agent/outils.js");
   assert.deepEqual(outils.split("\n").filter((l) => /avancee/.test(l) && !/^\s*\/\//.test(l)), ["  const f = c && c.avancee;"], "seulement dans etapeClient");
 });

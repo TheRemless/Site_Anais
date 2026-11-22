@@ -23,6 +23,7 @@
 //   - vouchers (vouchers.js, 21.11.2026) : trouver_vouchers, en lecture, proposé et exécuté seulement dans Secret ou Taxi pour qui lit les
 //     réservations de l'entreprise active (dossiers.lire, jamais « vouchers.seul ») ; ZTP n'a pas de voucher. Ni net, ni commission, ni prix,
 //     ni nom de prestataire ; l'écran fait les cartes et l'image, rien ne part sans le clic de la personne.
+import { partenaireProbable, prixDeVentePermis } from "../whatsapp/type-contact.js";
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
@@ -1333,13 +1334,16 @@ export function montantsPresDuNet(t) {
 export const conversationDeClient = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
 // Un client confirmé (revue de sécurité de la PR 306) : typé « client », ou sans type mais relié à une fiche client ou à un dossier. Seule
 // une telle conversation donne des prix écrits par Nani : un partenaire jamais typé reste exclu.
-export const clientConfirme = (c) => conversationDeClient(c) && (c.type_contact === "client" || !!c.client_id || !!c.dossier_id);
+// Un partenaire posé, déduit ou probable (whatsapp/type-contact.js, #319, migration 110) n'est jamais un client confirmé : un prix que Nani
+// lui écrit est souvent un net.
+export const clientConfirme = (c) => conversationDeClient(c) && prixDeVentePermis(c) && (c.type_contact === "client" || !!c.client_id || !!c.dossier_id);
 // Un client probable (22.11.2026, nouveau client sans fiche) : personne ne type un contact « client » et la fiche n'existe qu'après la
 // validation du premier dossier, si bien que les prix écrits par Nani n'étaient jamais repris pour le premier dossier d'un client.
 // Resserré après la relecture de la PR 318 (un chauffeur non typé qui écrit « net 1,800 THB », Nani qui répond « OK 1,800 THB » et le
 // chauffeur « ok » ne doit jamais donner un prix de vente). Une conversation :
-//   - de client : aucun type non client, aucune fiche partenaire reliée, pas Contact personnel, pas reconnue comme partenaire
-//     (partenaireDeduit), et un tri qui ne dit pas « pas un client » ;
+//   - de client : aucun type non client, aucune fiche partenaire reliée, pas Contact personnel, pas un partenaire posé, déduit ou probable
+//     d'après le sens de toute la conversation (prixDeVentePermis et partenaireProbable, whatsapp/type-contact.js, #319), et un tri qui ne
+//     dit pas « pas un client » ;
 //   - ET une DEMANDE ENTRANTE du contact pour l'entreprise du dossier : demande_le des faits des étapes (whatsapp_conversations.avancee,
 //     migration 105), posé seulement par un message du contact qui demande un prix, une réservation ou une disponibilité (etapes.js). Un
 //     prix de Nani (prix_le) ou « Prêt à réserver » ne suffisent jamais : un partenaire en a aussi ;
@@ -1352,9 +1356,6 @@ export const clientConfirme = (c) => conversationDeClient(c) && (c.type_contact 
 export const MOTIFS_CLIENT = ["demande_client", "suivi_reservation"];
 // Les motifs du tri qui disent « pas un client » (comme l'écran, whatsapp-etapes-calc.mjs, MOTIFS_TRI_NON_CLIENT, avec « non_client »).
 export const MOTIFS_NON_CLIENT = ["personnel", "partenaire", "publicite", "contact_jamais", "non_client"];
-// Un contact reconnu comme partenaire d'après le sens de toute la conversation. L'endroit est prêt : la fonction « déduit partenaire » de
-// la session « Prêt à réserver » viendra ici. D'ici là, seuls le type, la fiche reliée et le tri l'écartent.
-export const partenaireDeduit = (_c) => false;
 const entreprisesDuDossier = (entreprises) => (entreprises || []).filter((e) => ENTREPRISES_UNIFIEES.includes(e));
 // Une demande entrante du contact, pour l'entreprise du dossier (`entreprises` : « secret », « taxi »), d'après les faits gardés.
 export function etapeClient(c, entreprises = []) {
@@ -1366,7 +1367,7 @@ export function etapeClient(c, entreprises = []) {
 const triDe = (c) => (c && c.tri && typeof c.tri === "object" ? c.tri : {});
 // Un tri de demande de client, pour l'entreprise du dossier.
 export const triClient = (c, entreprises = []) => MOTIFS_CLIENT.includes(triDe(c).motif) && entreprisesDuDossier(entreprises).includes(triDe(c).entreprise);
-export const clientProbable = (c, entreprises = []) => conversationDeClient(c) && !partenaireDeduit(c) && !MOTIFS_NON_CLIENT.includes(triDe(c).motif) && (etapeClient(c, entreprises) || triClient(c, entreprises));
+export const clientProbable = (c, entreprises = []) => conversationDeClient(c) && prixDeVentePermis(c) && !partenaireProbable(c) && !MOTIFS_NON_CLIENT.includes(triDe(c).motif) && (etapeClient(c, entreprises) || triClient(c, entreprises));
 // Les prix écrits par Nani dans la conversation liée valent prix de vente : client confirmé, ou client probable.
 export const clientPourPrixDeNani = (c, entreprises = []) => clientConfirme(c) || clientProbable(c, entreprises);
 // Les messages de la base (boîte WhatsApp, reponse.ts) : sortants, écrits depuis l'app ou depuis Gestion, d'un client confirmé.
