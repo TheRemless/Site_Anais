@@ -15,7 +15,7 @@ import { disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 import { resumeTrajet } from "../trajet-calc.mjs";
 import { sectionDemandesAccueil } from "./demandes-site.mjs";
 import { sectionProchainsServices } from "./reservation-rappel.mjs";
-import { sectionPointSoir, pointSoirMaintenant } from "./point-soir.mjs";
+import { sectionPointSoir, pointSoirMaintenant, noterAnnonce, confirmerNouvelEnvoi } from "./point-soir.mjs";
 
 
 function phrase(item) {
@@ -32,7 +32,9 @@ function phrase(item) {
 
 
 // Un service du jour : l'heure de pickup en grand, ce qu'il faut savoir, et d'un geste appeler ou écrire au client.
-function carteService(r) {
+// `demain` (section « Demain ») : le rappel de la veille partage la trace du point du soir (details.pickup_annonce), un client ne le reçoit
+// jamais deux fois ; à partir de 17h, le bouton mène au point du soir, qui prépare ce même rappel.
+function carteService(r, { demain = false } = {}) {
   const d = etat.db.dossiers.find((x) => x.id === r.dossier_id);
   const c = d && etat.db.clients.find((x) => x.id === d.client_id);
   const tel = c ? numeroDe(c.telephone) : "";
@@ -56,12 +58,16 @@ function carteService(r) {
         r.statut === "annule" ? pastilleReservation("annule") : null,
         tel ? h("a", { class: "bouton secondaire petit", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(c) }) }, icone("telephone", 16), tr("Appeler")) : null,
         // Le message prêt d'après la date du service (rappel la veille, confirmation le jour, avis après) : jamais une conversation vide à rédiger.
-        wa ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageReservation(r, aujourdhui())), "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp")) : null
+        wa && demain && pointSoirMaintenant()
+          ? h("a", { class: "bouton secondaire petit", href: "#/soir", "aria-label": tr("Rappel à {nom} dans le point du soir", { nom: nomClient(c) }) }, icone("lune", 16), tr("Point du soir"))
+          : wa
+            ? h("button", { class: "secondaire petit", type: "button", onclick: async () => { if (demain && !(await confirmerNouvelEnvoi(r))) return; messageClient(r, cleMessageReservation(r, aujourdhui()), demain ? { surEnvoi: () => noterAnnonce(r, "lien") } : {}); }, "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp"))
+            : null
       )
     )
   );
 }
-const listeServices = (rs) => h("ul", { class: "services" }, rs.map(carteService));
+const listeServices = (rs, options = {}) => h("ul", { class: "services" }, rs.map((r) => carteService(r, options)));
 
 export async function tableauDeBord() {
   const ajd = aujourdhui();
@@ -121,7 +127,7 @@ export async function tableauDeBord() {
     moduleActif("reservations") ? h("section", { class: "section-jour" }, h("h2", null, tr("Départs et pickups aujourd'hui"), h("span", { class: "tag" }, ag.aujourdhui.length)), ag.aujourdhui.length ? listeServices(ag.aujourdhui) : h("p", { class: "vide-court" }, tr("Aucun service aujourd'hui."))) : null,
     // Les locations commencées et pas encore rendues : une ligne chacune, avec la date de retour sur la carte.
     moduleActif("reservations") && ag.enCours.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Locations en cours"), h("span", { class: "tag" }, ag.enCours.length)), listeReservations(ag.enCours, { apres: rafraichir })) : null,
-    moduleActif("reservations") && ag.demain.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Demain"), h("span", { class: "tag" }, ag.demain.length)), listeServices(ag.demain)) : null,
+    moduleActif("reservations") && ag.demain.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Demain"), h("span", { class: "tag" }, ag.demain.length)), listeServices(ag.demain, { demain: true })) : null,
     // Taxi : rien ne s'encaisse chez Anaïs (le client paie le chauffeur), ces chiffres resteraient à zéro.
     peut("finances.voir") && !modeTaxi() ? h(
       "div",

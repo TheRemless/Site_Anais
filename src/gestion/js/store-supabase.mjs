@@ -412,6 +412,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       ]);
       return fusionnerFenetre(lus, [...verifie(avant).reverse(), ...verifie(apres)]);
     },
+    // Le dernier message du client d'une conversation (sa date seulement), pour la fenêtre de 24 h du point du soir : une ligne lue au lieu de
+    // 500. null s'il n'a jamais écrit ; une erreur de lecture est levée (elle n'est jamais prise pour une fenêtre fermée).
+    async whatsappDernierEntrant(conversationId) {
+      const r = await sb.from("whatsapp_messages").select("envoye_le").eq("conversation_id", conversationId).eq("sens", "entrant").order("envoye_le", { ascending: false }).limit(1);
+      const lus = verifie(r);
+      return (lus[0] && lus[0].envoye_le) || null;
+    },
     // Recherche plein texte dans les messages (whatsapp_rechercher, migration 67, PR B) pour la recherche de Gestion. La base applique les droits
     // (whatsapp_lit) et écarte les contacts personnels. Sans la migration, ou en cas d'erreur, rien : la recherche marche sans WhatsApp.
     async whatsappRechercher(q, { lim = 20 } = {}) {

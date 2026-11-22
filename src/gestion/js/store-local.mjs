@@ -684,6 +684,12 @@ export function creer() {
       const tout = await this.charger();
       return Object.fromEntries(Object.entries(tout).filter(([k]) => k.startsWith("whatsapp_")));
     },
+    // Comme la base : la date du dernier message du client, ou null.
+    async whatsappDernierEntrant(conversationId) {
+      if (!conversationLue(conversationId)) return null;
+      const d = data.whatsapp_messages.filter((m) => m.conversation_id === conversationId && m.sens === "entrant").map((m) => m.envoye_le).sort().pop();
+      return d || null;
+    },
     async whatsappMessages(conversationId) {
       if (!conversationLue(conversationId)) return [];
       return structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === conversationId).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)));
