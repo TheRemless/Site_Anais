@@ -136,9 +136,9 @@ const SERVICE = {
 };
 
 test("dépose : la carte porte l'établissement du lien et la réservation le reçoit dans details.drop_off", async () => {
-  const carte = await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", DOS), service: SERVICE }, ctx(), memo({ lieuxMaps: [{ url: COURT, nom: `${NOM_TH} / Exemple`, adresse: "" }] }));
+  const carte = await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", DOS), service: SERVICE }, ctx(), memo({ lieuxMaps: [{ url: COURT, nom: NOM_TH, adresse: "12 3 ต.ตัวอย่าง เมือง Krabi 81000, Thailand" }] }));
   const s = carte.carte.donnees.service;
-  assert.equal(s.vers, `Krabi Town ${NOM_TH} / Exemple`);
+  assert.equal(s.vers, NOM_TH, "le nom exact de Google Maps, sans la zone ni l'adresse");
   assert.doesNotMatch(JSON.stringify(carte.carte), /goo\.gl|https?:/, "aucun lien dans la carte");
   const r = reservationDepuisCarte(carte.carte.donnees);
   assert.equal(r.details.drop_off, s.vers, "la dépose de la carte n'est plus perdue");
@@ -367,4 +367,14 @@ test("relecture 11 : la dépose se modifie par carte, sans lien", async () => {
   assert.deepEqual([mod.carte.donnees.avant, mod.carte.donnees.valeur], ["Krabi Town", "Hotel Exemple Hotel Exemple"]);
   const r = reservationModifiee(donneesMod.reservations[0], { champ: "drop_off", valeur: "Villa Exemple goo.gl/maps/Abc" });
   assert.equal(r.details.drop_off, "Villa Exemple");
+});
+
+test("précision de Jérémy : le lieu prend le nom exact affiché par Google Maps, sans transcription ni traduction ni adresse", () => {
+  const lieux = [{ url: COURT, nom: NOM_TH, adresse: "12 3 ต.ตัวอย่าง เมือง Krabi 81000, Thailand" }];
+  for (const v of [COURT, `${NOM_TH} / Ran Tua Yang`, `${NOM_TH} (Example Shop), Krabi Town`, `Krabi Town: ${COURT}`]) assert.equal(lieuxDuService({ vers: v }, { lieuxMaps: lieux }).vers, NOM_TH, v);
+  assert.equal(lieuxDuService({ vers: "Krabi Town" }, { lieuxMaps: lieux }).vers, "Krabi Town", "un autre lieu reste tel quel");
+  const prompt = lire("supabase/functions/agent/prompt.js");
+  assert.match(prompt, /exactement comme Google Maps l'affiche/);
+  assert.doesNotMatch(prompt, /transcription latine/);
+  assert.doesNotMatch(lire("supabase/functions/agent/outils.js"), /transcription latine/);
 });

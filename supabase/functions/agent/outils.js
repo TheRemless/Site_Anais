@@ -221,7 +221,7 @@ const SERVICE = obj({
   heure_pickup: S("HH:MM, de préférence celle de planifier_course, ou \"\"."),
   lieu_pickup: S("Hôtel ou point de prise en charge (nom de l'établissement), ou \"\". Jamais un lien."),
   de: S("Lieu de départ d'un transfert, ou \"\". Jamais un lien."),
-  vers: S("Lieu d'arrivée d'un transfert : le nom de l'établissement de dépose (celui d'un lien Google Maps lu, nom thaï suivi de sa transcription latine : « บ้านตัวอย่าง / Baan Tua Yang »), sinon la zone, ou \"\". Jamais un lien."),
+  vers: S("Lieu d'arrivée d'un transfert : le nom de l'établissement de dépose (celui d'un lien Google Maps lu, recopié tel que Google Maps l'affiche, sans traduction, transcription ni adresse), sinon la zone, ou \"\". Jamais un lien."),
   adultes: I("0 si inconnu."),
   enfants: I("0 si inconnu."),
   // Les sièges par type et le « aucun siège » (Jérémy, 22.11.2026) : dès qu'il y a un enfant ou un bébé, le choix est fait avant la carte.
@@ -1618,7 +1618,10 @@ export function lieuxDuService(s = {}, memo = {}, avert = []) {
   for (const [cle, n] of [["lieu_pickup", 120], ["de", 120], ["vers", 120]]) {
     const r = lieuSansLien(texte(s[cle], 300), lieux);
     if (r.lien && !lieux.some((l) => l && l.nom && String(s[cle] || "").includes(l.url))) douteux = true;
-    out[cle] = texte(r.valeur, n);
+    // Le nom tel que Google Maps l'affiche (Jérémy, 22.11.2026) : un lieu qui contient un établissement lu devient ce nom seul, sans la zone,
+    // la traduction ou la transcription ajoutées autour.
+    const lu = lieux.find((l) => l && l.nom && r.valeur.includes(l.nom));
+    out[cle] = texte(lu ? lu.nom : r.valeur, n);
   }
   if ((out.de || out.vers) && lieux.some((l) => l && !l.nom)) douteux = true;
   if (douteux && !avert.includes("lieu_a_verifier")) avert.push("lieu_a_verifier");
