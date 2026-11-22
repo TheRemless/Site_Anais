@@ -194,9 +194,17 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     let contactsDisponible = true;
     // nom_source (migration 70, nom saisi à la main) : relue sans elle tant que la migration n'est pas appliquée ; l'écran n'offre pas le crayon.
     let nomDisponible = true;
+    // pret_reserver, pret_retire_le (migration 85, filtre « Prêt à réserver ») : ajoutées à toutes les lectures ; absentes, on relit sans elles
+    // et l'écran n'offre pas le filtre.
+    const PRET = "pret_reserver, pret_retire_le";
+    let pretDisponible = true;
     const lireConversations = async () => {
-      const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
+      const requete = (colonnes) => sb.from("whatsapp_conversations").select(pretDisponible ? `${colonnes}, ${PRET}` : colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
       let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
+      if (r.error && PRET.split(", ").some((c) => colonneAbsente(r.error, c))) {
+        pretDisponible = false;
+        r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
+      }
       if (r.error && colonneAbsente(r.error, "nom_source")) {
         nomDisponible = false;
         r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);
@@ -233,6 +241,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_suivi_disponible: conversations !== null && suiviDisponible,
       whatsapp_contacts_disponible: conversations !== null && contactsDisponible,
       whatsapp_nom_disponible: conversations !== null && nomDisponible,
+      whatsapp_pret_disponible: conversations !== null && pretDisponible,
     };
   }
 

@@ -30,6 +30,8 @@ import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
+// Filtre « Prêt à réserver » (migration 85), à part dans whatsapp-pret.mjs.
+import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -94,7 +96,8 @@ function ligneConversation(c, prop, ouverte) {
           att ? h("span", { class: `wa-attente${att.urgent ? " urgente" : ""}`, title: tr("Le client attend depuis {duree}", { duree: att.texte }), "aria-label": tr("Le client attend depuis {duree}", { duree: att.texte }) }, icone("horloge", 14), att.texte) : null,
           nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null
         )
-      )
+      ),
+      filtre === FILTRE_PRET.valeur ? resumeLignePret(c) : null
     )
   );
 }
@@ -576,6 +579,9 @@ async function envoyerVoucherDuDossier(dossierId) {
   if (!x.reservation) return toast(tr("Ce dossier n'a pas encore de service à mettre sur un voucher."), true);
   envoyerVoucher(x);
 }
+// « Prêt à réserver » (migration 85) : le même « Créer le dossier » que la fiche des faits, ou null.
+const creerPret = (c, prop) =>
+  !lectureSeule && (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id))) ? () => versAssistant(c, prop) : null;
 // `dossier` : celui de la fiche des faits (relié, ou trouvé par le client). « Mettre à jour » demande un dossier relié (l'Assistant ne lit que
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
@@ -1016,7 +1022,8 @@ async function fil(c, prop) {
       !erreur && !messages.length ? h("p", { class: "aide" }, tr("Aucun message gardé pour cette conversation.")) : null,
       jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
       lignesTaches(c),
-      cartePaiement(c)
+      cartePaiement(c),
+      cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
     doute ? carteVerifier(c, doute) : null,
     carteProposition(c, prop, messages)
@@ -1093,7 +1100,7 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
-  const filtrer = (liste, f) => filtrerConversations(liste, f, marqueDe);
+  const filtrer = (liste, f) => (f === FILTRE_PRET.valeur ? filtrerPretes(liste) : filtrerConversations(liste, f, marqueDe));
   if (filtre === null) filtre = filtreDeDepart(conversations);
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
   if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
@@ -1103,7 +1110,8 @@ export async function vueWhatsApp() {
   // « À faire » (PR B) : tout ce qui attend, trié par urgence, sans IA. Placé après « Toutes ».
   const aFaireBoite = aFaireDeLaBoite(entitesWhatsApp());
   nombres.a_faire = aFaireBoite.nombre;
-  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...FILTRES.slice(1)];
+  if (filtrePretDisponible()) nombres[FILTRE_PRET.valeur] = nombrePretes(conversations);
+  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...(filtrePretDisponible() ? [FILTRE_PRET] : []), ...FILTRES.slice(1)];
 
   const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: filtres.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
@@ -1124,6 +1132,8 @@ export async function vueWhatsApp() {
       ? listeAFaire(aFaireBoite, { entites: entitesWhatsApp(), idOuvert })
       : liste.length
       ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
+      : filtre === FILTRE_PRET.valeur
+      ? videPret()
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
   racine.append(colonneListe);
