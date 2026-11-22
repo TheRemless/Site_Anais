@@ -52,7 +52,8 @@ export const contactPersonnel = (c) => !c || c.reponses === "jamais";
 // Contacts typés (migration 68). Revue de sécurité de la PR 299 : on lit un partenaire comme un client, mais ce qu'il écrit reste interne.
 // Les montants de sa conversation comptent comme des nets (montant_interne) et son nom comme un nom de partenaire (nom_prestataire) dans le
 // contrôle de la réponse au client (agent/outils.js, retenirLecture). L'apporteur ne parle pas de nets : seul son nom est retenu.
-export const CONTACTS_INTERNES = ["partenaire", "chauffeur", "hotel"];
+// Migration 110 : plus de type « chauffeur » ni « hôtel », devenus « partenaire » (Jérémy, 22.11.2026).
+export const CONTACTS_INTERNES = ["partenaire"];
 export const CONTACTS_NOMMES = [...CONTACTS_INTERNES, "apporteur"];
 const contactDe = (conv) => (conv && CONTACTS_NOMMES.includes(conv.type_contact) ? conv.type_contact : null);
 // Revue de sécurité de la PR 300 : une conversation reliée à une fiche partenaire (partenaire_id) sans type nommé. Son nom (souvent saisi

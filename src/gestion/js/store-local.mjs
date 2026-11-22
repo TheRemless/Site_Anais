@@ -13,6 +13,7 @@ import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { conversationPret } from "./demo-pret.mjs";
+import { conversationTypeDeduit } from "./demo-type-contact.mjs";
 import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
@@ -135,12 +136,22 @@ export function creer() {
         data.whatsapp_messages.push(...p.whatsapp_messages);
       }
     }
+    // Type du contact déduit (migration 110) : un bateau reconnu comme partenaire par le sens de l'échange, posé une fois.
+    if (!AGENCE && !data.demo_type_contact) {
+      data.demo_type_contact = 1;
+      const secretT = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
+      if (secretT) {
+        const p = conversationTypeDeduit({ secret: secretT, uid, organisation: ORG_DEMO });
+        data.whatsapp_conversations.push(...p.whatsapp_conversations);
+        data.whatsapp_messages.push(...p.whatsapp_messages);
+      }
+    }
     // Étapes des clients (migration 105) : les faits que la fonction tirerait des messages, posés une fois pour les conversations de clients.
     // Version 2 (relecture du 22.11.2026 : faits par entreprise) : reposés aussi sur une démo qui avait la version 1.
     if (!AGENCE && data.demo_etapes !== 2) {
       data.demo_etapes = 2;
       const marque = (id) => { const e = data.entites.find((x) => x.id === id); return e && (e.slug === "taxi" ? "taxi" : e.slug === "excursions" || e.slug === "secret" ? "secret" : null); };
-      for (const c of data.whatsapp_conversations) if (c.reponses !== "jamais" && !["partenaire", "chauffeur", "hotel", "apporteur"].includes(c.type_contact) && !c.partenaire_id) c.avancee = faitsDemo(c, data.whatsapp_messages, marque(c.entite_id));
+      for (const c of data.whatsapp_conversations) if (c.reponses !== "jamais" && !["partenaire", "apporteur"].includes(c.type_contact) && !c.partenaire_id) c.avancee = faitsDemo(c, data.whatsapp_messages, marque(c.entite_id));
     }
     // Espace unifié Secret et Taxi (migration 63) : fiches partagées dans les deux sens, deux dossiers liés, une fiche en double et une
     // conversation de l'Assistant dans chaque entreprise. Posé une fois, aussi dans une démo déjà enregistrée.
@@ -362,7 +373,7 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom", "pret_retire_le", "etape_manuelle", "ia_coupee"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id", "nom", "pret_retire_le", "etape_manuelle", "ia_coupee", "type_source"].includes(k)) delete patch[k];
     // Nom saisi à la main (migration 70, whatsapp_nom_manuel) : dès que « nom » est écrit, même à l'identique, il est nettoyé et devient
     // manuel (60 caractères, sans caractère invisible) ; vide après nettoyage, plus de nom ni de source.
     if ("nom" in patch) {
@@ -376,6 +387,10 @@ export function creer() {
     // Étape choisie par Nani (migration 105, whatsapp_etape_outil) : clés et étapes contrôlées, heure du moment, un choix inchangé garde la sienne.
     if ("etape_manuelle" in patch) patch.etape_manuelle = etapeManuelleLocale(ligne.etape_manuelle, patch.etape_manuelle);
     if ("ia_coupee" in patch) patch.ia_coupee = patch.ia_coupee === true;
+    // Qui a posé le type (migration 110, whatsapp_type_source) : un type changé depuis l'outil devient celui de Nani ; elle confirme un type
+    // déduit (« nani »), jamais l'inverse.
+    if ("type_contact" in patch && patch.type_contact !== (ligne.type_contact ?? null)) patch.type_source = "nani";
+    else if ("type_source" in patch) patch.type_source = patch.type_source === "nani" && ligne.type_contact ? "nani" : ligne.type_source ?? null;
     // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
     if ("reponses" in patch && !["auto", "jamais"].includes(patch.reponses)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
     if ("non_lus" in patch && !(patch.non_lus <= ligne.non_lus)) patch.non_lus = ligne.non_lus;

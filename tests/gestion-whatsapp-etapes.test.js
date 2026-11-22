@@ -118,13 +118,18 @@ test("le dossier relié compte même sans fiche ni numéro identiques ; un autre
 });
 
 // ---- Contacts exclus --------------------------------------------------------------------------------------------------------------
-test("modèles C2, C11, C13, C31, C34 : Contact personnel, partenaire, chauffeur, hôtel, apporteur, fiche partenaire, tri « partenaire » : jamais d'étape", () => {
+test("modèles C2, C11, C13, C31, C34 : Contact personnel, partenaire (posé ou déduit), apporteur, fiche partenaire, tri « personnel » : jamais d'étape", () => {
   const lignes = [["entrant", "Price for tomorrow?", 3 * H], ["sortant", "1,900 THB", 2 * H]];
-  for (const extra of [{ reponses: "jamais" }, { type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "hotel" }, { type_contact: "apporteur" }, { partenaire_id: "p" }, { tri: { motif: "partenaire" } }, { tri: { motif: "personnel" } }]) {
+  for (const extra of [{ reponses: "jamais" }, { type_contact: "partenaire" }, { type_contact: "partenaire", type_source: "deduit" }, { type_contact: "apporteur" }, { partenaire_id: "p" }, { tri: { motif: "personnel" } }]) {
     const c = conv(lignes, extra);
     assert.deepEqual(etapes(c), [], JSON.stringify(extra));
     assert.equal(E.conversationClient(c), false);
   }
+  // Relecture finale (migration 110) : le motif « partenaire » d'un seul tri ne sort plus des étapes ; seul un type posé ou déduit le fait.
+  const unTri = conv(lignes, { tri: { motif: "partenaire" } });
+  assert.equal(E.conversationClient(unTri), true);
+  assert.notDeepEqual(etapes(unTri), [], "un seul tri « partenaire » : l'étape reste");
+  assert.ok(!E.MOTIFS_TRI_NON_CLIENT.includes("partenaire"));
 });
 
 test("modèle C1 (cas douteux) : un bateau non typé qui propose un prix ressemble à une demande : Nani le type en partenaire et il sort", () => {
@@ -183,7 +188,7 @@ test("branchements : fonction, écran, stores, CI ; aucun appel à l'IA ; index.
   assert.match(vue, /etapesDisponibles\(\) && conversationClient\(c\) \? pastillesEtapes\(c\)/);
   assert.match(vue, /blocEtapes\(c, \{ lectureSeule, rafraichir \}\)/);
   assert.match(lire("src/gestion/js/store-supabase.mjs"), /whatsapp_etapes_disponible: conversations !== null && pretDisponible && etapesDisponible/);
-  assert.match(lire("src/gestion/js/store-local.mjs"), /"pret_retire_le", "etape_manuelle", "ia_coupee"\]\.includes\(k\)/);
+  assert.match(lire("src/gestion/js/store-local.mjs"), /"pret_retire_le", "etape_manuelle", "ia_coupee"(?:, "type_source")?\]\.includes\(k\)/);
   assert.match(lire(".github/workflows/ci.yml"), /verif-whatsapp-etapes/);
   const agent = fs.readdirSync(new URL("../supabase/functions/agent/", import.meta.url)).map((f) => lire(`supabase/functions/agent/${f}`)).join("\n");
   assert.doesNotMatch(agent, /avancee|etape_manuelle/, "l'Assistant ne lit pas ces colonnes");

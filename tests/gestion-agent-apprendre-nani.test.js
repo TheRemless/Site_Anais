@@ -137,7 +137,7 @@ test("apprendre : « Pas bien » garde la raison (200 caractères au plus) et un
 // ---- Point A : correction de Nani dans WhatsApp -------------------------------------------------------------------------------
 test("whatsapp : la règle de l'IA ouverte est celle de iaPermise", () => {
   const agents = { e1: true, e2: false };
-  for (const conv of [null, { entite_id: "e1" }, { entite_id: "e2" }, { entite_id: null }, { entite_id: "e1", reponses: "jamais" }, { entite_id: "e2", type_contact: "chauffeur" }, { entite_id: "e2", type_contact: "client", partenaire_id: "p1" }, { entite_id: "e1", ia_coupee: true }, { entite_id: "e1", telephone: null }, { entite_id: "e1", telephone: null, type_contact: "client" }])
+  for (const conv of [null, { entite_id: "e1" }, { entite_id: "e2" }, { entite_id: null }, { entite_id: "e1", reponses: "jamais" }, { entite_id: "e2", type_contact: "partenaire" }, { entite_id: "e2", type_contact: "client", partenaire_id: "p1" }, { entite_id: "e1", ia_coupee: true }, { entite_id: "e1", telephone: null }, { entite_id: "e1", telephone: null, type_contact: "client" }])
     for (const receptionActive of [true, false]) assert.equal(iaOuvertePour({ receptionActive, conv, agents }), iaPermise({ receptionActive, conv, agents }));
   assert.equal(iaOuvertePour({ receptionActive: true, conv: { entite_id: null }, agents: { e2: false } }), iaPermise({ receptionActive: true, conv: { entite_id: null }, agents: { e2: false } }));
 });
@@ -214,7 +214,7 @@ test("whatsapp : rien pour un partenaire, un apporteur, un Contact personnel, l'
   const cas = [
     [{ conv: { type_contact: "partenaire" } }, "pas_un_client"],
     [{ conv: { type_contact: "apporteur" } }, "pas_un_client"],
-    [{ conv: { type_contact: "chauffeur" } }, "pas_un_client"],
+    [{ conv: { type_contact: "partenaire" } }, "pas_un_client"],
     [{ conv: { partenaire_id: "pa1" } }, "pas_un_client"],
     [{ conv: { reponses: "jamais" } }, "pas_un_client"],
     [{ reception: false }, "ia_fermee"],
@@ -544,7 +544,7 @@ test("constat 4 : pour apprendre des montants, il faut un client typé ou une fi
   assert.equal(clientPourApprendre(base), false, "un concierge non typé relié à un dossier n'apprend pas de montant");
   assert.equal(clientPourApprendre({ ...base, client_id: "cl1" }), true);
   assert.equal(clientPourApprendre({ ...base, dossier_id: null, type_contact: "client" }), true);
-  assert.equal(clientPourApprendre({ ...base, type_contact: "hotel" }), false);
+  assert.equal(clientPourApprendre({ ...base, type_contact: "apporteur" }), false);
   const db = scene({ conv: { type_contact: null, dossier_id: "d1" } });
   assert.deepEqual(await apprendreDeNani(db, "c1", "m1"), { note: true });
   assert.ok(!/1,500|THB/.test(db.ecrits[0].apres), db.ecrits[0].apres);
@@ -567,7 +567,7 @@ test("constat 5 : une remarque apprise est la remarque retouchée (70 % de ses m
 
 test("constat 6 : « Pas bien » sur une carte client masque aussi les partenaires, en entier", () => {
   const v = lire("src/gestion/js/views/agent.mjs");
-  assert.match(v, /\.\.\.\(etat\.brut\.partenaires \|\| \[\]\)\.map\(\(x\) => x\.nom\),\n[^\n]*\n\s+\.\.\.\(etat\.brut\.whatsapp_conversations \|\| \[\]\)\.filter\(typee\)\.map\(\(x\) => \(\{ nom: x\.nom, personne: x\.type_contact !== "hotel" \}\)\),/);
+  assert.match(v, /\.\.\.\(etat\.brut\.partenaires \|\| \[\]\)\.map\(\(x\) => x\.nom\),\n[^\n]*\n\s+\.\.\.\(etat\.brut\.whatsapp_conversations \|\| \[\]\)\.filter\(typee\)\.map\(\(x\) => \(\{ nom: x\.nom, personne: true \}\)\),/);
   assert.match(v, /masques: \(\) => nomsAMasquer\(c\), prix: prixConnus, carteId: c\.id \}\)/);
   const r = T.ligneRetour({ reponse: "Hello, your boat with Partenaire Fictif Tour leaves at 8.", raison: "Ne cite pas Partenaire Fictif Tour", contexte: "réponse au client préparée par l'Assistant", entiers: ["Partenaire Fictif Tour"] });
   assert.ok(!/Fictif/.test(JSON.stringify(r.ligne)), JSON.stringify(r.ligne));
@@ -665,16 +665,18 @@ test("contre-vérification A : un net de la raison est reconnu partout (collé, 
   assert.ok(!/1200/.test(JSON.stringify(l)), JSON.stringify(l));
 });
 
-test("contre-vérification B : un mot seul n'est masqué qu'avec sa majuscule, un hôtel typé seulement en entier", () => {
+test("contre-vérification B : un mot seul n'est masqué qu'avec sa majuscule ; un nom marqué « pas une personne » seulement en entier", () => {
   assert.equal(T.anonymiser("Please book the boat, Book will drive", [], [{ nom: "Book (driver)", personne: true }]), "Please book the boat, {partenaire} will drive");
   assert.equal(T.anonymiser("air con ok, Air is here", [], [{ nom: "Air", personne: true }]), "air con ok, {partenaire} is here");
   assert.equal(T.anonymiser("you may pay, May said ok, he will come", ["Will May"]), "you may pay, {client} said ok, he will come");
   // Une expression de plusieurs mots reste insensible à la casse.
   assert.equal(T.anonymiser("AGENCE FICTIVE et agence fictive", [], ["Agence Fictive"]), "{partenaire} et {partenaire}");
-  // Un hôtel typé n'est masqué qu'en entier : « Ban Saladan pier » reste.
+  // Un nom marqué « pas une personne » n'est masqué qu'en entier : « Ban Saladan pier » reste.
   assert.equal(T.anonymiser("Ban Saladan pier, Ban Hotel Fictif", [], [{ nom: "Ban Hotel Fictif", personne: false }]), "Ban Saladan pier, {partenaire}");
-  assert.match(lire("src/gestion/js/views/agent.mjs"), /personne: x\.type_contact !== "hotel"/);
-  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /personne: c\.type_contact !== "hotel"/);
+  // Migration 110 : plus de type « hôtel », un contact typé est toujours une personne (aussi mot par mot).
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /\.filter\(typee\)\.map\(\(x\) => \(\{ nom: x\.nom, personne: true \}\)\)/);
+  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /typees\.map\(\(c\) => \(\{ nom: c\.nom\.trim\(\), personne: true \}\)\)/);
+  assert.doesNotMatch(lire("src/gestion/js/views/agent.mjs") + lire("supabase/functions/agent/apprendre-whatsapp.js"), /type_contact !== "hotel"/);
 });
 
 test("contre-vérification C : un seul choix possible à la question (les trois boutons se désactivent au premier clic)", () => {

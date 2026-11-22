@@ -165,7 +165,7 @@ export function envoisAFaire(vouchers = [], jours = []) {
 // ---- Clients WhatsApp sans réponse ----------------------------------------------------------------------------------------------------
 // Depuis plus de 12 heures, Nani n'a pas répondu au premier message resté sans réponse (attend_depuis, migration 65 ; même règle que la
 // liste WhatsApp, attenteClient : un « merci » que le tri a vu sans réponse à faire ne compte pas). Seulement les clients : un contact
-// réglé sur « Contact personnel », typé partenaire, chauffeur, hôtel ou apporteur, ou relié à une fiche partenaire (partenaire_id, même
+// réglé sur « Contact personnel », typé partenaire (posé ou déduit) ou apporteur, ou relié à une fiche partenaire (partenaire_id, même
 // sans type) n'y est pas. Dans l'entreprise ouverte, plus les conversations pas encore rangées (à trier). Les plus anciennes d'abord.
 export const ATTENTE_SOIR_H = 12;
 export function sansReponse({ conversations = [], propositions = [], entiteId = null, maintenant = Date.now(), heures = ATTENTE_SOIR_H } = {}) {

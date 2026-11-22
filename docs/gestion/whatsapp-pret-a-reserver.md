@@ -65,7 +65,7 @@ Jamais une question, une demande d'avis, une demande de client recopiée pour un
 
 **Dossier déjà créé mais pas relié** : un dossier non annulé du même client (fiche reliée ou même numéro) créé depuis le prix donné. La conversation reste dans le filtre, la carte dit « Le dossier … existe déjà » et propose « Relier au dossier » à la place de « Créer le dossier ». Une conversation à trier est rangée dans l'entreprise du dossier en même temps (la base, `whatsapp_reclasser`, refuse un lien incohérent). Une conversation rangée dans l'autre entreprise n'est pas déplacée : la ligne d'information reste, le lien se fait depuis l'en-tête.
 
-**Jamais** : Contact personnel, partenaire, chauffeur, hôtel, apporteur, fiche partenaire reliée, tri « personnel », « partenaire » ou « publicite ».
+**Jamais** : Contact personnel, partenaire, chauffeur, hôtel, apporteur, fiche partenaire reliée, tri « personnel » ou « publicite ». Depuis la migration 110, partenaire seulement posé par Nani ou déduit : un tri « partenaire » seul ne suffit plus, chauffeur et hôtel n’existent plus.
 
 ## Relecture du 22.11.2026 (corrections)
 

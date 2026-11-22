@@ -31,10 +31,10 @@ test("n° 1 : la réponse préparée prend le catalogue de l'entreprise de la de
   assert.equal(entrepriseReponse({ conv: { entite_id: "T", reponses: "auto" }, ents, suggestion: "secret" }).id, "S", "client rangé chez Taxi, demande d'excursion : Secret");
   assert.equal(entrepriseReponse({ conv: { entite_id: "T", reponses: "auto" }, ents, suggestion: null }).id, "T", "sans demande reconnue : l'entreprise de la conversation");
   assert.equal(entrepriseReponse({ conv: { entite_id: null, reponses: "auto" }, ents, suggestion: null, defaut: "secret" }).id, "S");
-  assert.equal(entrepriseReponse({ conv: { entite_id: "T", type_contact: "hotel" }, ents, suggestion: "secret" }).id, "T", "un hôtel rangé : son entreprise");
+  assert.equal(entrepriseReponse({ conv: { entite_id: "T", type_contact: "partenaire" }, ents, suggestion: "secret" }).id, "T", "un partenaire rangé : son entreprise");
   const ts = lire("supabase/functions/whatsapp/reponse.ts");
   assert.equal((ts.match(/entrepriseReponse\(\{/g) || []).length, 3, "préparation automatique, à la demande, et réglage de la préparation automatique");
-  assert.match(ts, /parametresTri\(messages, \{ aTrier: !conv\.entite_id \|\| clientCommun\(conv\) \}\)/, "le tri donne toujours l'entreprise de la demande d'un client");
+  assert.match(ts, /parametresTri\(messages, \{ aTrier: !conv\.entite_id \|\| clientCommun\(conv\)(?:, debut, signaux: conv\.type_signaux \|\| null)? \}\)/, "le tri donne toujours l'entreprise de la demande d'un client");
 });
 
 test("n° 2 : ZTP ne se mélange jamais : un prix en CHF n'est pas un prix de Secret ou de Taxi", () => {
@@ -50,7 +50,7 @@ test("n° 2 : ZTP ne se mélange jamais : un prix en CHF n'est pas un prix de Se
 test("n° 3 : iaPermise : tri si l'un des deux assistants est allumé ; IA coupée par conversation sans Contact personnel", () => {
   const agents = { S: false, T: true };
   assert.equal(iaPermise({ receptionActive: true, conv: { entite_id: "S", reponses: "auto" }, agents }), true, "client rangé chez Secret, assistant de Taxi allumé");
-  assert.equal(iaPermise({ receptionActive: true, conv: { entite_id: "S", reponses: "auto", type_contact: "chauffeur" }, agents }), false);
+  assert.equal(iaPermise({ receptionActive: true, conv: { entite_id: "S", reponses: "auto", type_contact: "partenaire" }, agents }), false);
   assert.equal(iaPermise({ receptionActive: true, conv: { entite_id: null, reponses: "auto", ia_coupee: true }, agents: { S: true, T: true } }), false);
   assert.equal(triSansAppel({ conv: { reponses: "auto", ia_coupee: true }, messages: [] }).motif, "ia_coupee");
   assert.equal(clientCommun({ reponses: "auto", ia_coupee: true }), true, "l'IA coupée ne fait pas un Contact personnel");
@@ -161,10 +161,10 @@ test("n° 8 : performance : 500 conversations et 2 000 clients, cinq appels par 
 
 test("n° 9 : contact remis en Client repris tout de suite ; ligne résumé dans le filtre d'étape ; messages « non transmis » ignorés", () => {
   const lignes = [["entrant", "How much is a taxi to the airport?", 5 * H], ["sortant", "The minivan is 1,900 THB.", 4 * H]];
-  const chauffeur = conv(lignes, { type_contact: "chauffeur", tri: { motif: "non_client" } });
+  const chauffeur = conv(lignes, { type_contact: "partenaire", tri: { motif: "non_client" } });
   assert.deepEqual(etapes(chauffeur), []);
   assert.deepEqual(etapes({ ...chauffeur, type_contact: "client" }), ["taxi:prix_envoye"], "remis en Client : le motif « non_client » laissé par le tri n'écarte pas");
-  assert.equal(faitsAvancee({ reponses: "auto", type_contact: "chauffeur" }, []).jamais, undefined, "les faits sont calculés aussi pour un contact typé");
+  assert.equal(faitsAvancee({ reponses: "auto", type_contact: "partenaire" }, []).jamais, undefined, "les faits sont calculés aussi pour un contact typé");
   assert.match(lire("src/gestion/js/views/whatsapp.mjs"), /filtre === FILTRE_PRET\.valeur \|\| filtre === "etape:pret" \? resumeLignePret\(c\)/);
   const ts = lire("supabase/functions/whatsapp/pret.ts");
   assert.match(ts, /\.neq\("type", "non_transmis"\)/);

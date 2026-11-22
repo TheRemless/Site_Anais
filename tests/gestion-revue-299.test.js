@@ -62,8 +62,8 @@ test("point 1 : scénario Blue Ocean, « net 1,350 per pax » joint, « Hi Tom�
 });
 
 // ---- 2. Lectures de la boîte et nets dans l'Assistant -------------------------------------------------------------------------------
-test("point 2 : lire_conversation et chercher_conversations d'un partenaire, d'un chauffeur ou d'un hôtel rendent ses montants internes", async () => {
-  for (const type of ["partenaire", "chauffeur", "hotel"]) {
+test("point 2 : lire_conversation et chercher_conversations d'un partenaire rendent ses montants internes (migration 110 : un chauffeur est un partenaire)", async () => {
+  for (const type of ["partenaire"]) {
     const c = conv({ type_contact: type, nom: `Contact ${type}` });
     const ctx = {
       whatsapp: { permis: true, slug: "secret", qui: "Nani", candidats: async () => ({ conversations: [c], entites: ENTITES, trouves: [{ conversation_id: c.id, message_id: id(), extrait: "kids net 950", envoye_le: "2026-11-21T05:00:00Z" }] }), conversation: async () => ({ conversation: c, messages: [msg(c, "net 1,350 per pax, commission 200")], entites: ENTITES }), aFaire: async () => ({ conversations: [] }) },
@@ -176,7 +176,7 @@ test("point 3 : le nom d'une conversation typée lue ou jointe est bloqué ; l'a
   const blue = conv({ nom: "Blue Ocean Speedboat" });
   const jade = conv({ nom: "Jade", type_contact: "apporteur" });
   const lucie = conv({ nom: "Lucie Planner", type_contact: "apporteur" });
-  const lek = conv({ nom: "Driver Lek", type_contact: "chauffeur" });
+  const lek = conv({ nom: "Driver Lek", type_contact: "partenaire" });
   const tom = conv({ nom: "Tom Client", type_contact: "client" });
   const lu = (c) => L.lireConversation({ conversation: c.id }, { conversation: c, messages: [msg(c, "hello")] });
   assert.deepEqual(retenuDeLecture(lu(tom)).noms, [], "un client n'est pas un nom bloqué");
@@ -195,12 +195,12 @@ test("point 3 : le nom d'une conversation typée lue ou jointe est bloqué ; l'a
 });
 
 test("point 3 : whatsapp-envoi et la réponse préparée bloquent les noms des conversations typées de l'organisation", async () => {
-  const lignes = [{ id: "a", nom: "Blue Ocean", type_contact: "partenaire" }, { id: "b", nom: "Jade", type_contact: "apporteur" }, { id: "c", nom: " ", type_contact: "hotel" }, { id: "d", nom: "Blue Ocean", type_contact: "chauffeur" }];
+  const lignes = [{ id: "a", nom: "Blue Ocean", type_contact: "partenaire" }, { id: "b", nom: "Jade", type_contact: "apporteur" }, { id: "c", nom: " ", type_contact: "partenaire" }, { id: "d", nom: "Blue Ocean", type_contact: "partenaire" }];
   let filtre = null;
   // Revue de la PR 300 : aussi les conversations reliées à une fiche partenaire (partenaire_id), sans type nommé.
   const db = (resultat) => ({ from: () => ({ select: () => ({ eq: (k, v) => ({ or: (expr) => ((filtre = [k, v, expr]), { limit: async () => resultat }) }) }) }) });
   assert.deepEqual(await nomsContactsTypes(db({ data: lignes, error: null }), "org"), { noms: ["Blue Ocean", "Jade"], erreur: false });
-  assert.deepEqual(filtre, ["organisation_id", "org", "type_contact.in.(partenaire,chauffeur,hotel,apporteur),partenaire_id.not.is.null"]);
+  assert.deepEqual(filtre, ["organisation_id", "org", "type_contact.in.(partenaire,apporteur),partenaire_id.not.is.null"]);
   assert.deepEqual((await nomsContactsTypes(db({ data: lignes, error: null }), "org", { sauf: "b" })).noms, ["Blue Ocean"], "l'apporteur à qui l'on répond");
   assert.deepEqual(await nomsContactsTypes(db({ data: null, error: { code: "42703" } }), "org"), { noms: [], erreur: false }, "migration 68 absente");
   assert.deepEqual(await nomsContactsTypes(db({ data: null, error: { code: "500" } }), "org"), { noms: [], erreur: true });
@@ -251,18 +251,19 @@ test("point 5 : « Préparer une réponse » est refusé pour un contact personn
 });
 
 // ---- 6. Réponse préparée pour un partenaire -------------------------------------------------------------------------------------------
-test("point 6 : chauffeur, hôtel ou partenaire : sans client ni dossier, consigne « destinataire partenaire », jamais préparée seule", () => {
-  const c = conv({ type_contact: "chauffeur", nom: "Lek" });
-  const t = demandeAgent({ messages: [msg(c, "Pickup done, net 900")], nomProfil: "Lek", client: { prenom: "Tom" }, dossier: { ref_courte: "D-1", reference: "2026-1" }, contact: "chauffeur" });
+test("point 6 : partenaire : sans client ni dossier, consigne « destinataire partenaire », jamais préparée seule", () => {
+  const c = conv({ type_contact: "partenaire", nom: "Lek" });
+  const t = demandeAgent({ messages: [msg(c, "Pickup done, net 900")], nomProfil: "Lek", client: { prenom: "Tom" }, dossier: { ref_courte: "D-1", reference: "2026-1" }, contact: "partenaire" });
   assert.match(t, new RegExp(CONSIGNE_PARTENAIRE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.equal(CONSIGNE_PARTENAIRE, "Destinataire partenaire : jamais un prix de vente, un total, un solde ni une marge du client.");
+  assert.equal(CONSIGNE_PARTENAIRE, "Destinataire partenaire : jamais un prix de vente, un total, un solde ni une marge du client. Un prix écrit plus haut dans cette conversation n'est jamais un prix de vente.");
   assert.doesNotMatch(t, /Tom|D-1|2026-1|lire_dossier avant/, "ni client ni dossier, même passés par erreur");
   assert.match(t, /pas un client/);
-  const p = promptPreparation({ entreprise: "Secret", reglages: {}, messages: [msg(c, "hello")], aujourdhui: "2026-11-21", contact: "hotel" });
-  assert.match(p.texte, /un hôtel, pas un client/);
+  const p = promptPreparation({ entreprise: "Secret", reglages: {}, messages: [msg(c, "hello")], aujourdhui: "2026-11-21", contact: "partenaire" });
+  assert.match(p.texte, /un partenaire, pas un client/);
   assert.doesNotMatch(promptPreparation({ entreprise: "Secret", reglages: {}, messages: [msg(c, "hello")], aujourdhui: "2026-11-21" }).texte, /Destinataire partenaire/);
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
-  assert.match(rep, /const versPartenaire = \(conv: \{ type_contact\?: string \| null \}\) => CONTACTS_INTERNES\.includes\(String\(conv\.type_contact \|\| ""\)\);/);
+  // Migration 110 : posé par Nani ou déduit, ou fiche partenaire (type-contact.js, traiterEnPartenaire) ; jamais sur des repères seuls.
+  assert.match(rep, /const versPartenaire = \(conv: Conv\) => traiterEnPartenaire\(conv\);/);
   assert.match(rep, /conv\.entite_id === ent\.id && !partenaire \? \{ clientId: conv\.client_id, dossierId: conv\.dossier_id \} : \{ clientId: null, dossierId: null \}/);
   assert.match(rep, /conv\.client_id && conv\.entite_id === ent\.id && !partenaire \?/);
   assert.match(rep, /conv\.dossier_id && conv\.entite_id === ent\.id && !partenaire \?/);
@@ -272,8 +273,8 @@ test("point 6 : chauffeur, hôtel ou partenaire : sans client ni dossier, consig
 });
 
 // ---- 7. Promesses ---------------------------------------------------------------------------------------------------------------------
-test("point 7 : la promesse faite à un partenaire, un chauffeur ou un hôtel ne garde aucun chiffre", () => {
-  for (const type of ["partenaire", "chauffeur", "hotel"]) {
+test("point 7 : la promesse faite à un partenaire ne garde aucun chiffre", () => {
+  for (const type of ["partenaire"]) {
     const t = tachePromesse({ conv: { entite_id: "e", type_contact: type, nom: "Blue Ocean", telephone: "+66810000001" }, quoi: "confirmer le net de 1,350 THB pour 2 pax", echeance: "2026-11-22" });
     const quoi = t.titre.slice(t.titre.indexOf(" : ") + 3);
     assert.doesNotMatch(quoi, /\d/, type);

@@ -183,7 +183,7 @@ test("modèle C44 : une question de confirmation, sans prix", () => {
 test("modèles C13, C11 : partenaire (récapitulatif envoyé au chauffeur, « go ahead » d'une partenaire) : exclu à l'écran, sur le type du moment", () => {
   const recap = [["sortant", "Customer:\nHow much for a return trip to the old town?"], ["entrant", "Around 600 baht return"], ["sortant", "New booking\nName: Lena\nDate: Friday\nPick-up time: 12pm\nPick-up location: Pier\nDrop-off location: Hotel C\nPrice: 400 THB"]];
   // La fonction calcule pour tout contact sauf un Contact personnel ; l'écran écarte le contact typé tant qu'il l'est.
-  for (const extra of [{ type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "hotel" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }]) {
+  for (const extra of [{ type_contact: "partenaire" }, { type_contact: "partenaire", type_source: "deduit" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }]) {
     const d = decide(recap, extra);
     assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", ...extra }), null, JSON.stringify(extra));
   }
@@ -192,9 +192,9 @@ test("modèles C13, C11 : partenaire (récapitulatif envoyé au chauffeur, « go
 
 test("relecture n° 9 : un contact remis en Client est repris tout de suite, sans attendre un nouveau message", () => {
   const lignes = [["sortant", "A songthaew from the pier costs 400 THB. Shall I book it for you?"], ["entrant", "Great, we'll take it!"]];
-  const d = decide(lignes, { type_contact: "chauffeur" });
-  assert.equal(d.pret, true, "la décision est déjà calculée pendant que le contact est typé « chauffeur »");
-  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "chauffeur" }), null);
+  const d = decide(lignes, { type_contact: "partenaire" });
+  assert.equal(d.pret, true, "la décision est déjà calculée pendant que le contact est typé « partenaire »");
+  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "partenaire" }), null);
   assert.ok(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "client" }), "remis en Client : dans le filtre aussitôt");
   // Un Contact personnel n'est jamais lu ; remis en « auto », la reprise le recalcule (FILTRE_RATTRAPAGE).
   assert.equal(decide(lignes, { reponses: "jamais" }).motif, "exclue");
@@ -205,9 +205,19 @@ test("préparation de la #314 : les messages « non transmis » ne sont pas lus"
   assert.match(lire("supabase/functions/whatsapp/pret.ts"), /\.neq\("type", "non_transmis"\)/);
 });
 
-test("modèle C34 : un « Yes » d'un bateau sur l'itinéraire (tri « partenaire ») : exclu à l'écran", () => {
+test("modèle C34 : un « Yes » d'un bateau sur l'itinéraire : pas « prêt » (la question n'est pas un prix) ; exclu à l'écran une fois typé partenaire", () => {
   const d = decide([["sortant", "Do you stop at the snorkeling spot on the Sunday trip?"], ["entrant", "Yes"]], { tri: { motif: "partenaire" } });
   assert.equal(E.pretAReserver({ pret_reserver: d, tri: { motif: "partenaire" } }), null);
+  assert.equal(E.pretAReserver({ pret_reserver: d, type_contact: "partenaire", type_source: "deduit" }), null);
+});
+
+test("relecture finale (migration 110) : le motif « partenaire » d'un seul tri ne sort plus une conversation du « Prêt à réserver »", () => {
+  const d = decide([["entrant", "How much to the pier for 2?"], ["sortant", "450 THB by songthaew"], ["entrant", "Yes please book it"]]);
+  assert.equal(d.pret, true);
+  assert.ok(E.pretAReserver({ pret_reserver: d, reponses: "auto", tri: { motif: "partenaire" } }), "un seul tri « partenaire » : reste");
+  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "partenaire", type_source: "deduit" }), null, "type déduit : sort");
+  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "partenaire", type_source: "nani" }), null, "type de Nani : sort");
+  assert.ok(!E.MOTIFS_TRI_EXCLUS.includes("partenaire") && !MOTIFS_TRI_EXCLUS.includes("partenaire"));
 });
 
 test("modèles C2, C3, C10 : Contact personnel : exclu sans même lire les messages ; tri personnel ou publicité : exclu à l'écran", () => {
@@ -279,7 +289,7 @@ test("écran : entre avec la décision « prêt », jamais pour un contact exclu
   assert.equal(E.pretAReserver(C({ pret_reserver: { pret: false, motif: "aucun" } })), null);
   assert.equal(E.pretAReserver(C({ pret_reserver: { pret: true, le: "pas une date" } })), null);
   assert.equal(E.pretAReserver(C({ reponses: "jamais" })), null, "passé en Contact personnel après le calcul");
-  assert.equal(E.pretAReserver(C({ type_contact: "chauffeur" })), null);
+  assert.equal(E.pretAReserver(C({ type_contact: "partenaire", type_source: "deduit" })), null);
   assert.equal(E.pretAReserver(C({ partenaire_id: "p" })), null);
   assert.equal(E.pretAReserver(C({ tri: { motif: "publicite" } })), null);
 });
@@ -341,7 +351,7 @@ test("relecture n° 1 : relier ne range jamais la conversation d'un client ; un 
   assert.deepEqual(E.patchRelier(C(), dS), { client_id: "ks", dossier_id: "ds" });
   assert.deepEqual(E.patchRelier(C({ entite_id: "taxi" }), dT), { client_id: "kt", dossier_id: "dt" }, "déjà chez Taxi, dossier Taxi : rien ne change d'entreprise");
   assert.deepEqual(E.patchRelier(C({ entite_id: "taxi" }), dS), { entite_id: null, client_id: "ks", dossier_id: "ds" }, "rangée chez Taxi, dossier Secret : redevient commune");
-  assert.equal(E.patchRelier(C({ type_contact: "hotel" }), dT), null, "pas pour un contact qui n'est pas un client");
+  assert.equal(E.patchRelier(C({ type_contact: "partenaire" }), dT), null, "pas pour un contact qui n'est pas un client");
   // « Créer le dossier » demande toujours l'entreprise pour un client, la suggestion présélectionnée.
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(vue, /const entreprise = commun \? await choisirEntreprise\(c, prop, suggeree\)/);

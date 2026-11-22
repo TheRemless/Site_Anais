@@ -120,14 +120,14 @@ export async function apprendreDeNani(db, conversationId, messageId, { auteur = 
     const [clients, partenaires, types] = await Promise.all([
       idsClients.length ? db.from("clients").select("prenom, nom").in("id", idsClients) : Promise.resolve({ data: [], error: null }),
       db.from("partenaires").select("id, nom").eq("entite_id", entiteId).limit(2000),
-      // Les contacts typés de l'organisation (comme nomsContactsTypes d'apporteur.js), avec leur type : un hôtel n'est pas une personne.
+      // Les contacts typés de l'organisation (comme nomsContactsTypes d'apporteur.js), des personnes (migration 110 : plus de type « hôtel »).
       db.from("whatsapp_conversations").select("id, nom, type_contact, partenaire_id").eq("organisation_id", conv.organisation_id).or(`type_contact.in.(${CONTACTS_NOMMES.join(",")}),partenaire_id.not.is.null`).limit(2000),
     ]);
     if (dossier.error || clients.error || partenaires.error || types.error) return { rien: "noms" };
     const noms = [conv.nom, ...(clients.data || []).flatMap((c) => [c.prenom, c.nom])].filter(Boolean);
     // Les partenaires en entier ; les contacts typés (souvent des personnes, « Prénom (driver) ») aussi mot par mot, hors mots courants.
     const typees = (types.data || []).filter((c) => c && c.id !== conv.id && typeof c.nom === "string" && c.nom.trim());
-    const entiers = [...nomsABloquer(partenaires.data || []), ...typees.map((c) => ({ nom: c.nom.trim(), personne: c.type_contact !== "hotel" }))];
+    const entiers = [...nomsABloquer(partenaires.data || []), ...typees.map((c) => ({ nom: c.nom.trim(), personne: true }))];
     const [lusNets, relie] = await Promise.all([netsPourControle(db, [entiteId]), dossierPourControle(db, conv.dossier_id || null, [entiteId])]);
     const nets = new Set([...lusNets.nets.map((n) => Number(n.montant)), ...relie.internes]);
     const ligne = ligneDeNani({ proposition, message, noms, entiers, nets, sansMontants: !clientPourApprendre(conv) || lusNets.erreur || relie.services.has("*") });

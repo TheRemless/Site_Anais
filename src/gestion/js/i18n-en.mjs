@@ -4529,7 +4529,6 @@ export const EN = {
   "Tous les messages reçus sont rangés.": "All received messages are stored.",
   // Contacts WhatsApp typés et apporteurs d'affaires (migration 68, 21.11.2026)
   "Apporteur": "Referrer",
-  "Chauffeur": "Driver",
   "Personnel": "Personal",
   "Apporteur introuvable dans cette entreprise.": "Referrer not found in this company.",
   "Fiche partenaire introuvable dans l'entreprise de la conversation.": "Partner record not found in the conversation's company.",
@@ -4634,3 +4633,7 @@ export const EN = {
 // Prêt à réserver (migration 85) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_PRET } from "./i18n-en-pret.mjs";
 for (const [k, v] of Object.entries(EN_PRET)) if (!(k in EN)) EN[k] = v;
+
+// Type du contact déduit (migration 110) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_TYPE } from "./i18n-en-type.mjs";
+for (const [k, v] of Object.entries(EN_TYPE)) if (!(k in EN)) EN[k] = v;

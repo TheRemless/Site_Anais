@@ -4,7 +4,7 @@
 //   2. un inconnu à trier qui demande une excursion, réponse prête préparée pour Secret, l'entreprise que l'agent propose ;
 //   3. une conversation déjà répondue depuis l'app, fenêtre de 24 h fermée, une photo expirée ;
 //   4. un client rangé par Nani dans Taxi, réponse en préparation ;
-//   5. un chauffeur réglé « Contact personnel » (migration 60) : rien n'est envoyé à l'IA, pas de bouton « Préparer une réponse » ;
+//   5. un partenaire (chauffeur) réglé « Contact personnel » (migration 60) : rien n'est envoyé à l'IA, pas de bouton « Préparer une réponse » ;
 //   6. Jade, travel planner et amie de Nani, qui envoie deux clients dans un même message (conversationJade). Elle sert aux PR suivantes
 //      (contacts typés : apporteur ; deux dossiers depuis un message).
 // Suivi (migrations 61 et 62) : résumé en trois lignes, signal de paiement et promesse en tâche, sur la conversation 3 reliée à un
@@ -109,7 +109,7 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     out.whatsapp_messages.push(...j.whatsapp_messages);
   }
 
-  // 5. Un chauffeur, contact réglé sur « Jamais » : le tri n'a rien préparé, le message reste non lu.
+  // 5. Un partenaire (chauffeur), contact réglé sur « Jamais » : le tri n'a rien préparé, le message reste non lu.
   if (taxi) {
     const c = conversation({ telephone: "+447700900844", nom: "Driver Somchai", entite_id: taxi.id, entite_source: "manuel", reponses: "jamais", non_lus: 1 });
     message(c, 60 * 5, "sortant", "Pickup Lanta Sand 14:00 tomorrow, 2 pax, airport.", { origine: "app" });

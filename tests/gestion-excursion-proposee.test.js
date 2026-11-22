@@ -383,7 +383,7 @@ test("revue n° 6 : noms sans « co, ltd, tour, travel », jamais le client ni u
   const { resteBloque } = await import("../src/gestion/js/agent-calc.mjs");
   const noms = nomsInterdits({
     partenaires: [{ nom: "Blue Ocean Co., Ltd" }, { nom: "Sunny Travel" }],
-    conversations: [{ nom: "Mr Brown", type_contact: "chauffeur" }, { nom: "Lea", type_contact: "personnel" }, { nom: "Paul", type_contact: "client" }, { nom: "Jade", type_contact: "apporteur" }],
+    conversations: [{ nom: "Mr Brown", type_contact: "partenaire" }, { nom: "Lea", type_contact: "personnel" }, { nom: "Paul", type_contact: "client" }, { nom: "Jade", type_contact: "apporteur" }],
     client: { prenom: "Jade", nom: "Moreau" },
   });
   assert.ok(noms.includes("blue ocean"));
@@ -420,7 +420,7 @@ test("revue n° 8 : bouton seulement pour qui écrit dans WhatsApp, jamais Mook 
 
 test("noms interdits : partenaires et contacts WhatsApp typés, jamais un client", async () => {
   const { nomsInterdits } = await load();
-  assert.deepEqual(nomsInterdits({ partenaires: [{ nom: "Rattana" }, { nom: "AB" }], conversations: [{ nom: "Mr Brown", type_contact: "chauffeur" }, { nom: "Lea", type_contact: "client" }, { nom: "Desk", partenaire_id: "p" }] }), ["Rattana", "Mr Brown", "Desk"]);
+  assert.deepEqual(nomsInterdits({ partenaires: [{ nom: "Rattana" }, { nom: "AB" }], conversations: [{ nom: "Mr Brown", type_contact: "partenaire" }, { nom: "Lea", type_contact: "client" }, { nom: "Desk", partenaire_id: "p" }] }), ["Rattana", "Mr Brown", "Desk"]);
 });
 
 test("écran : bouton sur la fiche du dossier et sur la carte WhatsApp, rien n'est envoyé sans geste, aucun net lu", () => {

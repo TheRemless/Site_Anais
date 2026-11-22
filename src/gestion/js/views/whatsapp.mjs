@@ -27,6 +27,7 @@ import {
 import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
 import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-calc.mjs";
 import { blocApporteurWhatsApp } from "./apporteurs.mjs";
+import { noteTypeDeduit } from "./whatsapp-type.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
@@ -153,8 +154,8 @@ function selecteurEntreprise(c, prop) {
   );
 }
 
-// Type du contact (migration 68), d'un tap : client, apporteur, partenaire, chauffeur, hôtel ou personnel. Depuis la migration 69, le type ne
-// coupe plus l'IA : partenaire, chauffeur, hôtel et apporteur se lisent comme un client. Seul « Personnel » ferme (rien envoyé à l'IA) et
+// Type du contact (migration 68), d'un tap : client, apporteur, partenaire ou personnel (migration 110 : plus de chauffeur ni d'hôtel, nos
+// chauffeurs sont des partenaires). Depuis la migration 69, le type ne coupe plus l'IA : partenaire et apporteur se lisent comme un client. Seul « Personnel » ferme (rien envoyé à l'IA) et
 // vide le type ; quitter « Personnel » pour un type rouvre (patchType). Le réglage des réponses reste dans le menu « … ». La fonction
 // « whatsapp » ne change jamais un type posé ici. Une conversation typée « apporteur » propose de créer ou de relier sa fiche apporteur.
 function selecteurType(c) {
@@ -177,6 +178,8 @@ function selecteurType(c) {
     "div",
     { class: "wa-contact", "data-pas-saisie": "" },
     h("div", { class: "wa-contacts", role: "group", "aria-label": tr("Type de contact") }, TYPES_CONTACT.map(([k, l]) => h("button", { type: "button", class: "wa-contact-puce", "aria-pressed": k === actuel ? "true" : "false", onclick: () => choisir(k) }, tr(l)))),
+    // Migration 110 : partenaire déduit (« Confirmer ») ou probable, avec sa raison.
+    noteTypeDeduit(c, { ecrit: !lectureSeule, apres: () => rafraichir() }),
     actuel === "apporteur" ? blocApporteurWhatsApp(c, { ecrit: !lectureSeule, apres: () => rafraichir() }) : null
   );
 }

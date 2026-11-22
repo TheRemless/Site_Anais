@@ -15,7 +15,7 @@
 //   - espace unifié Secret et Taxi (unifie.js, migration 63) : chaque ligne porte son entreprise, ses nets et son partenaire suivent les
 //     droits de la personne dans l'entreprise de CETTE ligne, chaque service d'une carte porte son entreprise. Sans ce mode, rien ne change ;
 //   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui administre
-//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ; partenaire, chauffeur, hôtel et apporteur se
+//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ; partenaire et apporteur se
 //     lisent comme un client (migration 69) ; le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs
 //     résultats sont retirés de l'historique au message suivant (retirerLecturesWhatsApp) ;
 //   - contact WhatsApp de type « apporteur » (apporteur.js, PR D) : proposer_dossier note la fiche apporteur de chaque entreprise (ctx.apporteur,
@@ -984,8 +984,8 @@ export function ajouterNoms(memo, noms = []) {
     if (Array.isArray(memo.prestatairesApporteur) && !(conversation && conversation === memo.contactLie) && !memo.prestatairesApporteur.includes(nom)) memo.prestatairesApporteur.push(nom);
   }
 }
-// `nom` : l'outil WhatsApp lu. Seule une conversation lue en entier (lire_conversation) d'un contact qui n'est ni partenaire, ni chauffeur,
-// ni hôtel peut donner un numéro de vol (revue de sécurité) : pas les extraits d'une recherche, qui mêlent les clients.
+// `nom` : l'outil WhatsApp lu. Seule une conversation lue en entier (lire_conversation) d'un contact qui n'est pas un partenaire
+// peut donner un numéro de vol (revue de sécurité) : pas les extraits d'une recherche, qui mêlent les clients.
 export function retenirLecture(resultat, memo, nom = "lire_conversation") {
   // Le texte lu (messages du client) peut donner un numéro de vol : seulement pour contrôler le champ « vol » d'une carte (volSource).
   if (!Array.isArray(memo.sourcesVol)) memo.sourcesVol = [];

@@ -202,18 +202,23 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // garde l'ancienne liste.
     const ETAPES = "avancee, etape_manuelle, ia_coupee";
     let etapesDisponible = true;
+    // type_source, type_avis, type_signaux (migration 110, type du contact déduit) : ajoutées à toutes les lectures ; absentes, on relit sans
+    // elles et l'écran ne montre pas « Partenaire déduit ».
+    const TYPE = "type_source, type_avis, type_signaux";
+    let typeDisponible = true;
     // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
     // la migration n'est pas appliquée. Gardé d'une lecture à l'autre, comme PRET et ETAPES (relecture de la PR 317) : une colonne absente
     // ne relance pas une lecture en échec à chaque rafraîchissement.
     let manquesDisponible = true;
     const lireConversations = async () => {
-      const requete = (colonnes) => sb.from("whatsapp_conversations").select([colonnes, pretDisponible ? PRET : "", pretDisponible && etapesDisponible ? ETAPES : ""].filter(Boolean).join(", ")).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
+      const requete = (colonnes) => sb.from("whatsapp_conversations").select([colonnes, pretDisponible ? PRET : "", pretDisponible && etapesDisponible ? ETAPES : "", typeDisponible ? TYPE : ""].filter(Boolean).join(", ")).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
       const BASE = `${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`;
       const lireBase = () => requete(manquesDisponible ? `${BASE}, manque_le, bsuid, meme_client_que` : BASE);
       let r = await lireBase();
-      // Chaque migration récente (85, 100, 105) peut manquer seule : on retire ses colonnes, puis on relit. Sans la 85, pas d'étapes non plus.
-      for (let essai = 0; essai < 3 && r.error; essai++) {
-        if (pretDisponible && etapesDisponible && ETAPES.split(", ").some((c) => colonneAbsente(r.error, c))) etapesDisponible = false;
+      // Chaque migration récente (85, 100, 105, 110) peut manquer seule : on retire ses colonnes, puis on relit. Sans la 85, pas d'étapes non plus.
+      for (let essai = 0; essai < 4 && r.error; essai++) {
+        if (typeDisponible && TYPE.split(", ").some((c) => colonneAbsente(r.error, c))) typeDisponible = false;
+        else if (pretDisponible && etapesDisponible && ETAPES.split(", ").some((c) => colonneAbsente(r.error, c))) etapesDisponible = false;
         else if (pretDisponible && PRET.split(", ").some((c) => colonneAbsente(r.error, c))) {
           pretDisponible = false;
           etapesDisponible = false;
