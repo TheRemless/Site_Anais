@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule, entite_id",
     // `vol` : seulement le numéro de vol de la réservation (details->>vol), pas le reste de `details`.
-    reservations: "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id, vol:details->>vol, prix_origine:details->>prix_origine",
+    reservations: "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id, vol:details->>vol, prix_origine:details->>prix_origine, sieges:details->>sieges",
     // Le net et la commission d'un service (migrations 11, 18 et 57). Sans la migration 57, repli sur les colonnes d'avant (NETS_RES_AVANT_57).
     reservations_nets: "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le, commission_recue_moyen, commission_partielle_le, commission_ecart_motif, commission_ecart_note",
   };

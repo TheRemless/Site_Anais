@@ -240,7 +240,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     sv.noeuds = noeuds;
     // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges), modifiable dans la fenêtre.
     const site = d.type === "transfer";
-    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: site ? Number(d.sieges) || 0 : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
+    // Les sièges du service (carte de l'Assistant, 22.11.2026) passent avant ceux du formulaire du site.
+    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: Number(sv.sieges) || (site ? Number(d.sieges) || 0 : 0), details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
     // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
     if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
@@ -654,7 +655,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", sieges: Number(t.sieges) || 0, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }

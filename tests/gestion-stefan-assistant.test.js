@@ -456,7 +456,7 @@ test("PR 307, point 4 : prix du client au niveau du net ou dessous, refusé (pri
   const h2 = memoDepuis([{ role: "assistant", content: [{ type: "tool_use", id: "t", name: "lire_dossier", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: JSON.stringify(lu.contenu) }] }]);
   assert.equal(h2.prixServices.size, 0);
   // La réservation garde l'origine (details.prix_origine) : lue par la fonction.
-  assert.match(lire("supabase/functions/agent/index.ts"), /vol:details->>vol, prix_origine:details->>prix_origine"/);
+  assert.match(lire("supabase/functions/agent/index.ts"), /vol:details->>vol, prix_origine:details->>prix_origine[,"]/);
   assert.match(lire("src/gestion/js/views/demande.mjs"), /details\.prix_origine = "client_non_corrige";/);
 });
 

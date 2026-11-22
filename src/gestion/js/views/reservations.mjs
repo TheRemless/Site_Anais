@@ -521,7 +521,7 @@ export function formulaireReservation(r, apres) {
   const dessinerModele = () => {
     const m = modele.value === SANS_VOUCHER ? null : modele.value || modeleAuto;
     legende.textContent = m ? TITRES_VOUCHER[m] : tr("Voucher");
-    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]())] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
+    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), [...(m === "location" && blocRetour ? RETOUR : []), "sieges"]).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]())] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
   };
   modele.addEventListener("change", dessinerModele);
   if (avecVoucher) dessinerModele();
@@ -572,7 +572,7 @@ export function formulaireReservation(r, apres) {
   };
   for (const x of [tarif, partenaire]) x.addEventListener("change", majNetsAvantChangement);
   const blocVoucher = modeTaxi()
-    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()), CHAMPS.remarques())
+    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages()), CHAMPS.remarques())
     : avecVoucher
     ? h("fieldset", null, legende, champ(tr("Modèle de voucher"), modele, tr("Automatique : déduit de la prestation et du libellé. Choisissez-le quand la déduction se trompe, ou « Pas de voucher » pour une option.")), propositionModele, champsDuModele)
     : null;
@@ -665,7 +665,7 @@ export function formulaireReservation(r, apres) {
     zonesPickup.noeud,
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
-    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), type === null || type === "billet" ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), type === null || type === "billet" ? champ(tr("Bébés"), bebes) : null, type === "location" ? null : CHAMPS.sieges(), peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,

@@ -99,6 +99,8 @@ export function quand(iso, { maintenant = new Date(), langue = "fr" } = {}) {
 // Une carte « dossier » dans la forme que lit la fiche de création (views/demande.mjs, par assistant-calc.mjs propositionVersDemande) :
 // client, services avec leur ligne de la base, transfert privé hors catalogue à prix libre. Un prix tapé par la personne dans la conversation
 // (origine « saisi ») devient le prix du transfert privé ; le lieu de pickup proposé devient celui du service.
+// Les sièges enfant ou bébé d'un service de carte : un entier de 0 à 10.
+export const siegesCarte = (s) => Math.min(10, Math.max(0, Math.floor(Number(s && s.sieges) || 0)));
 export function propositionDepuisCarte(donnees = {}) {
   const c = donnees.client || {};
   return {
@@ -109,6 +111,8 @@ export function propositionDepuisCarte(donnees = {}) {
       heure: s.heure_pickup || "",
       adultes: s.adultes || 0,
       enfants: s.enfants || 0,
+      // Les sièges enfant ou bébé lus par l'Assistant (22.11.2026) : ils suivent jusqu'à la réservation (details.sieges).
+      sieges: siegesCarte(s),
       de: s.de || "",
       vers: s.vers || "",
       prive: true,
@@ -149,7 +153,7 @@ export function reservationDepuisCarte(donnees = {}) {
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
     // L'origine d'un prix repris du client sans correction de Nani (revue de la PR 307) : relue par le contrôle (dossierPourControle).
-    ...(s.vol || s.origine_prix === "client_non_corrige" ? { details: { ...(s.vol ? { vol: s.vol } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) } } : {}),
+    ...(s.vol || s.origine_prix === "client_non_corrige" || siegesCarte(s) ? { details: { ...(s.vol ? { vol: s.vol } : {}), ...(siegesCarte(s) ? { sieges: siegesCarte(s) } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) } } : {}),
     notes: s.remarque || "",
   };
 }
@@ -170,6 +174,12 @@ export function reservationModifiee(r, donnees = {}) {
       return { ...r, personnes: { ...p, adultes: Number(v) || 0 } };
     case "enfants":
       return { ...r, personnes: { ...p, enfants: Number(v) || 0 } };
+    // Les sièges enfant ou bébé : dans `details.sieges` (0 les retire), ce que le voucher et la Booking confirmation impriment.
+    case "sieges": {
+      const { sieges, ...autres } = r.details || {};
+      const n = siegesCarte({ sieges: v });
+      return { ...r, details: n ? { ...autres, sieges: n } : autres };
+    }
     // Le numéro de vol : dans `details.vol`, ce que le voucher et la Booking confirmation impriment (le reste de `details` est gardé).
     case "vol":
       return { ...r, details: { ...(r.details || {}), vol: String(v || "").trim() } };

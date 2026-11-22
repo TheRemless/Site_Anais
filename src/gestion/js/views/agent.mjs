@@ -748,6 +748,8 @@ export async function vueAgent(idOuvert = "") {
   // Les prix comme partout dans Gestion (formatMontant, design n° 15) : « THB 2'300 ».
   const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, formatMontant(Number(s.prix), devise()), h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : s.origine_prix === "client_non_corrige" ? [tr("prix du client, non corrigé par Nani"), s.prix_catalogue !== undefined && s.prix_catalogue !== null ? ` · ${tr("catalogue : {prix}", { prix: formatMontant(Number(s.prix_catalogue), devise()) })}` : ""].join("") : tr("catalogue"))));
   // L'heure de pickup manque : dit sur la carte, comme « Prix à fixer », avant de créer le dossier (design n° 5).
+  // Les sièges enfant ou bébé lus par l'Assistant (22.11.2026), dits sur la carte avant de créer.
+  const siegesTexte = (s) => (Number(s.sieges) > 0 ? pluriel(Number(s.sieges), N_("{n} siège enfant"), N_("{n} sièges enfant")) : "");
   const pickupTexte = (s) => (s.heure_pickup ? tr("pickup {h}", { h: s.heure_pickup }) : h("span", { class: "agent-a-fixer" }, tr("heure de pickup à fixer")));
 
   // Ce qu'une validation a créé pendant cette visite (dossier, course) : la carte validée montre ensuite le voucher et le message.
@@ -812,7 +814,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
+      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -825,10 +827,10 @@ export async function vueAgent(idOuvert = "") {
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol })].filter(Boolean).join(", "))), prixTexte(s))));
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s)].filter(Boolean).join(", "))), prixTexte(s))));
       action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
     } else if (c.genre === "modification") {
-      corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, d.champ === "vol" ? h("span", null, tr("Numéro de vol"), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
+      corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, d.champ === "vol" ? h("span", null, tr("Numéro de vol"), " ") : d.champ === "sieges" ? h("span", null, tr("Sièges enfant ou bébé"), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
     } else if (c.genre === "temps") {
       corps.push(h("p", { class: "agent-modif" }, h("strong", null, d.de), " ", icone("inverser", 16), " ", h("strong", null, d.vers), " ", h("span", null, texteDuree(d.duree_min))), h("p", { class: "aide" }, [d.ferry ? tr("ferry") : "", d.marge_min ? tr("marge {m} min", { m: d.marge_min }) : "", d.source].filter(Boolean).join(", ")));

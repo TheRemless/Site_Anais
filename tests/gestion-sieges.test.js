@@ -1,0 +1,124 @@
+// Sièges enfant ou bébé (22.11.2026) : saisis depuis l'Assistant, ils se perdaient (aucun champ dans les outils proposer_*, la fiche de
+// création ne les reprenait que d'une demande du site). Chaque chemin de création garde désormais details.sieges, l'Assistant les lit et
+// les modifie, la fiche de réservation les montre, et ils s'impriment. Données fictives.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { executer, normaliserEntree, refDe, OUTILS } from "../supabase/functions/agent/outils.js";
+import { tempsSimule } from "../supabase/functions/agent/planifier.js";
+import { propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, siegesCarte } from "../src/gestion/js/agent-calc.mjs";
+import { propositionVersDemande } from "../src/gestion/js/assistant-calc.mjs";
+import { lireConfirmation } from "../src/gestion/js/confirmation-calc.mjs";
+import { donneesVoucher, reservationVoucher, valeursDepuis, valeursVides } from "../src/gestion/js/voucher-rapide-calc.mjs";
+import { siegesVoucher } from "../src/gestion/js/operations-calc.mjs";
+import { champsBooking, passagersBooking } from "../src/gestion/js/taxi-calc.mjs";
+import { lireMessage } from "../src/gestion/js/demande-calc.mjs";
+import { saisieDepuisDemande, parServiceCreation } from "../src/gestion/js/creation-voucher-calc.mjs";
+
+const ici = path.dirname(fileURLToPath(import.meta.url));
+const lire = (f) => fs.readFileSync(path.join(ici, "..", f), "utf8");
+
+const PA = "aaaaaaaa-0000-4000-8000-000000000001";
+const RES = "e1000000-0000-4000-8000-000000000001";
+const donnees = {
+  partenaires: [{ id: PA, nom: "Transports Démo", actif: true }],
+  prestations: [{ id: "a1000000-0000-4000-8000-000000000001", famille: "transfert", groupe: "Private minivan", libelle: "Minivan privé", libelle_en: "Private minivan", prix_vente: 2500, unite: "veh", partenaire_id: PA, actif: true }],
+  trajets: [],
+  clients: [{ id: "c1000000-0000-4000-8000-000000000001", prenom: "Test", nom: "Client" }],
+  dossiers: [{ id: "d1000000-0000-4000-8000-000000000001", ref: "2026-0001", client_id: "c1000000-0000-4000-8000-000000000001", annule: false }],
+  reservations: [{ id: RES, dossier_id: "d1000000-0000-4000-8000-000000000001", libelle: "Transfer Lanta → Krabi Airport", date_service: "2026-12-03", heure_pickup: "09:00", lieu_pickup: "Hotel Test", personnes: { adultes: 2, enfants: 2 }, statut: "confirme", sieges: "1" }],
+};
+const ctx = (extra = {}) => ({ charger: async (n) => donnees[n] || [], reglages: {}, simule: tempsSimule, ...extra });
+const memo = () => ({ prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer: false, prestataires: [], entreprise: "Test" });
+const service = (o = {}) => ({ texte: "Transfert", ref: "", date: "2026-12-03", heure_pickup: "09:00", lieu_pickup: "Hotel Test", de: "Koh Lanta", vers: "Krabi Airport", adultes: 2, enfants: 2, prix_saisi: "", vol: "", remarque: "", ...o });
+
+test("Assistant : le schéma des services a les sièges ; proposer_dossier et proposer_reservation les gardent sur la carte", async () => {
+  const schema = OUTILS.find((o) => o.name === "proposer_dossier").input_schema.properties.services.items;
+  assert.ok(schema.properties.sieges, "proposer_dossier");
+  assert.ok(schema.required.includes("sieges"));
+  assert.match(schema.properties.sieges.description, /child seat.*baby seat.*car seat/);
+  assert.ok(OUTILS.find((o) => o.name === "proposer_reservation").input_schema.properties.service.properties.sieges);
+  assert.equal(normaliserEntree("proposer_dossier", { titre: "x", services: [service({ sieges: 2 })] }).services[0].sieges, 2);
+  const carte = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 2, bebes: 0, services: [service({ sieges: 2 }), service({ sieges: 0 })], apporteur: "" }, ctx(), memo());
+  assert.deepEqual(carte.carte.donnees.services.map((s) => s.sieges), [2, 0]);
+  // Borné : un nombre absurde est ramené à 10, un texte à 0.
+  const borne = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [service({ sieges: 40 })], apporteur: "" }, ctx(), memo());
+  assert.equal(borne.carte.donnees.services[0].sieges, 10);
+  const ajout = await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", donnees.dossiers[0].id), service: service({ sieges: 1 }) }, ctx(), memo());
+  assert.equal(ajout.carte.donnees.service.sieges, 1);
+});
+
+test("Assistant : lire_dossier montre les sièges, proposer_modification les change (champ « sieges »)", async () => {
+  const lu = await executer("lire_dossier", { dossier: "2026-0001" }, ctx(), memo());
+  assert.equal(lu.contenu.services[0].sieges, 1);
+  const ref = refDe("R", RES);
+  const enum_ = OUTILS.find((o) => o.name === "proposer_modification").input_schema.properties.champ.enum;
+  assert.ok(enum_.includes("sieges"));
+  const m = await executer("proposer_modification", { titre: "Sièges", reservation: ref, champ: "sieges", valeur: "2", raison: "Deux sièges demandés." }, ctx(), memo());
+  assert.deepEqual([m.carte.donnees.champ, m.carte.donnees.avant, m.carte.donnees.valeur], ["sieges", "1", "2"]);
+  for (const v of ["deux", "11", ""]) assert.equal((await executer("proposer_modification", { titre: "x", reservation: ref, champ: "sieges", valeur: v, raison: "" }, ctx(), memo())).contenu.erreur, "valeur_invalide", v);
+  // L'écran applique la modification dans details.sieges ; 0 les retire.
+  const r = { id: RES, personnes: { adultes: 2, enfants: 2 }, details: { vol: "FD3217", sieges: 1 } };
+  assert.deepEqual(reservationModifiee(r, { champ: "sieges", valeur: "2" }).details, { vol: "FD3217", sieges: 2 });
+  assert.deepEqual(reservationModifiee(r, { champ: "sieges", valeur: "0" }).details, { vol: "FD3217" });
+  // La fonction lit la colonne sieges:details->>sieges.
+  assert.match(lire("supabase/functions/agent/index.ts"), /sieges:details->>sieges/);
+});
+
+test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusqu'au service de la fiche de création, puis à la réservation", () => {
+  const donneesCarte = { client: { nom: "Test" }, adultes: 2, enfants: 2, services: [{ texte: "Transfert", offre: null, date: "2026-12-03", de: "Koh Lanta", vers: "Krabi Airport", adultes: 2, enfants: 2, sieges: 2 }, { texte: "Retour", offre: null, date: "2026-12-10", de: "Krabi Airport", vers: "Koh Lanta", adultes: 2, enfants: 2 }] };
+  const prop = propositionDepuisCarte(donneesCarte);
+  assert.deepEqual(prop.services.map((s) => s.sieges), [2, 0]);
+  const { services } = propositionVersDemande(prop, { prestations: [], trajets: [], partenaires: [] });
+  assert.deepEqual(services.map((s) => s.sieges), [2, undefined]);
+  // Fiche de création (views/demande.mjs) : le service garde ses sièges dans sa saisie, posée sur la réservation (creation-excursions.mjs).
+  const demande = lire("src/gestion/js/views/demande.mjs");
+  assert.match(demande, /sieges: Number\(sv\.sieges\) \|\| \(site \? Number\(d\.sieges\) \|\| 0 : 0\)/, "plus seulement pour une demande du site");
+  assert.match(demande, /vol: t\.vol \|\| "", sieges: Number\(t\.sieges\) \|\| 0,/, "le service de l'Assistant porte ses sièges");
+  assert.match(demande, /sieges: v\.sieges, details/, "la réservation reçoit la saisie");
+  assert.match(lire("src/gestion/js/views/creation-excursions.mjs"), /\.\.\.\(sieges \? \{ sieges: Number\(sieges\) \} : \{\}\)/);
+  // « Vérifier avant » : même fiche, champ visible et modifiable pour un transfert.
+  const parService = parServiceCreation([{ ligneIds: ["l1"] }], new Map([["l1", saisieDepuisDemande({ sieges: 2 })]]));
+  assert.equal(parService[0].sieges, 2);
+  // Ajout à un dossier existant : details.sieges sur la réservation ouverte.
+  assert.deepEqual(reservationDepuisCarte({ dossier_id: "d", service: { texte: "Transfert", sieges: 1, vol: "FD3217" } }).details, { vol: "FD3217", sieges: 1 });
+  assert.equal(reservationDepuisCarte({ dossier_id: "d", service: { texte: "Transfert" } }).details, undefined);
+  assert.equal(siegesCarte({ sieges: "3" }), 3);
+});
+
+test("course Taxi collée, saisie rapide de Mook, demande du site : les sièges sont lus et gardés", () => {
+  // Confirmation collée (carte « Course » de l'Assistant).
+  const lu = lireConfirmation("Name: Test\nDate: 3 December 2026\nPick-up: Hotel Test\nDrop-off: Krabi Airport\nTime: 09:00\nPassengers: 2 adults, 2 children, 2 child seats", { aujourdhui: "2026-11-22" });
+  assert.equal(lu.valeurs.sieges, "2");
+  // Saisie rapide (écran thaï de Mook) : details.sieges posé, relu pour une correction.
+  const x = donneesVoucher({ ...valeursVides(), nom: "Test", date: "2026-12-03", pickup: "Hotel Test", heure: "09:00", trajet: "aller", dropoff: "Krabi Airport", adultes: "2", enfants: "2", sieges: "2" });
+  const r = reservationVoucher(x);
+  assert.equal(r.sieges, 2);
+  assert.equal(valeursDepuis({ ...r, details: { sieges: 2 }, personnes: { adultes: 2, enfants: 2 } }).sieges, "2");
+  // Demande d'un transfert du site.
+  const site = lireMessage("Transfer request: Koh Lanta → Krabi Airport\nDate: Thu 3 Dec 2026\nGuests: 2 adults, 2 children\nChild seats: 2\nName: Test", "2026-11-22");
+  assert.equal(site.sieges, 2);
+});
+
+test("impression : voucher de transfert, Booking confirmation (Taxi et Secret), voucher de Mook", () => {
+  assert.equal(siegesVoucher(2), " (2 child seats)");
+  assert.equal(passagersBooking({ adultes: 2, enfants: 2 }, "", 1), "2 adults, 2 children (1 child seat)");
+  const champs = champsBooking({ nom: "Test", date: "2026-12-03", pickup: "Hotel Test", heure: "09:00", dropoff: "Krabi Airport", personnes: { adultes: 2, enfants: 2 }, sieges: 2 });
+  assert.ok(champs.some((c) => /2 child seats/.test(c.valeur)), "Booking confirmation");
+  // Les trois rendus lisent details.sieges de la réservation.
+  assert.match(lire("src/gestion/js/views/voucher.mjs"), /siegesVoucher\(dt\.sieges\)/);
+  assert.match(lire("src/gestion/js/views/voucher-taxi.mjs"), /sieges: dt\.sieges/);
+  assert.match(lire("src/gestion/js/views/voucher-secret.mjs"), /sieges: dt\.sieges/);
+});
+
+test("fiche de réservation : « Sièges enfant ou bébé » à côté des personnes, pour tout service sauf une location, une seule fois", () => {
+  const vue = lire("src/gestion/js/views/reservations.mjs");
+  assert.match(vue, /type === "location" \? null : CHAMPS\.sieges\(\)/);
+  assert.doesNotMatch(vue, /CHAMPS\.bagages\(\), CHAMPS\.sieges\(\)/, "plus dans le bloc Taxi");
+  assert.match(vue, /"sieges"\]\)\.map\(\(c\) => CHAMPS\[c\]\(\)\)/, "plus dans le bloc du modèle de voucher");
+  assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /sieges: \(\) => champ\(tr\("Sièges enfant ou bébé"\)/);
+  // La carte de l'Assistant les dit avant de créer.
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /siegesTexte\(s\)/);
+});

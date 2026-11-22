@@ -4552,4 +4552,7 @@ export const EN = {
   "Réponse à l'apporteur": "Reply to the referrer",
   "Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant.": "Partner records could not be read to check the text. Nothing was sent, try again in a moment.",
   "Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur.": "File created without a referrer: the WhatsApp contact is no longer marked as a referrer.",
+  // Sièges enfant ou bébé sur la carte de l'Assistant (22.11.2026)
+  "{n} siège enfant": "{n} child seat",
+  "{n} sièges enfant": "{n} child seats",
 };
