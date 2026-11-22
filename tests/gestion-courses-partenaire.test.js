@@ -122,6 +122,22 @@ test("démo : ses courses de Taxi seulement, à venir et passées encore à paye
   assert.deepEqual(coursesLocales(d, u, AJD), []);
 });
 
+test("démo : toutes les courses de l'entreprise Taxi, même sans partenaire, jamais une autre entreprise", () => {
+  const d = demo();
+  const u = chauffeurDe(d);
+  const taxi = d.entites.find((e) => e.slug === "taxi");
+  const avant = coursesLocales(d, u, AJD);
+  const r = d.reservations.find((x) => x.id === avant.find((c) => c.date_service > AJD).id);
+  r.partenaire_id = null;
+  const apres = coursesLocales(d, u, AJD);
+  assert.ok(apres.some((c) => c.id === r.id), "une course de Taxi sans partenaire reste dans la liste");
+  assert.equal(apres.length, avant.length);
+  assert.ok(saisieLocale(d, u, AJD, r.id, 100));
+  const autre = d.reservations.find((x) => x.entite_id !== taxi.id && x.date_service >= AJD);
+  autre.partenaire_id = d.partenaires_acces[0].partenaire_id;
+  assert.ok(!coursesLocales(d, u, AJD).some((c) => c.id === autre.id), "une course d'une autre entreprise reste invisible, même posée sur sa fiche");
+});
+
 test("démo : la saisie suit les règles de la base", () => {
   const d = demo();
   const u = chauffeurDe(d);

@@ -146,14 +146,15 @@ export function accesLocal(data, userId) {
   return { partenaire: p, entite: e, devise: reglages.devise || "THB" };
 }
 
-// partenaire_courses : ses courses (ni annulées, ni d'un dossier annulé), d'aujourd'hui à plus tard, plus les 60 derniers jours encore à payer.
+// partenaire_courses : toutes les courses de l'entreprise Taxi, avec ou sans partenaire (ni annulées, ni d'un dossier annulé), d'aujourd'hui
+// à plus tard, plus les 60 derniers jours encore à payer.
 export function coursesLocales(data, userId, aujourdhui) {
   const acces = accesLocal(data, userId);
   if (!acces) return [];
   const limite = jourSuivant(aujourdhui, -60);
   const nets = (id) => (data.reservations_nets || []).find((n) => n.reservation_id === id) || {};
   return (data.reservations || [])
-    .filter((r) => r.entite_id === acces.entite.id && r.partenaire_id === acces.partenaire.id && r.statut !== "annule" && r.date_service)
+    .filter((r) => r.entite_id === acces.entite.id && r.statut !== "annule" && r.date_service)
     .map((r) => {
       const d = (data.dossiers || []).find((x) => x.id === r.dossier_id && x.entite_id === r.entite_id);
       const c = d && (data.clients || []).find((x) => x.id === d.client_id);

@@ -1,16 +1,16 @@
 # Accès d'un partenaire chauffeur (Mr. Brown, VIP Taxi Lanta)
 
-Migration 115 (22.11.2026). Le partenaire voit en thaï ses courses de Taxi (aujourd'hui, demain, les jours suivants, et les courses passées dont la commission reste à payer) et saisit sur chacune la commission qu'il doit à Nani. L'outil fait le total.
+Migration 115 (22.11.2026). Le partenaire voit en thaï toutes les courses de l'entreprise Taxi (avec ou sans partenaire posé sur la réservation : Mr. Brown fait toutes les courses de VIP Taxi Lanta, décision de Jérémy du 22.11.2026) (aujourd'hui, demain, les jours suivants, et les courses passées dont la commission reste à payer) et saisit sur chacune la commission qu'il doit à Nani. L'outil fait le total.
 
 ## Ce que le compte voit et peut faire
 
 | Il voit | Il ne voit jamais |
 |---|---|
-| Heure, lieu de prise en charge, destination (ou aller-retour et programme) | Nets, marges, notes internes, référence du dossier |
-| Nombre de personnes, nom et téléphone du client, numéro de vol | Courses d'un autre partenaire, d'une autre entreprise (Secret, ZTP) |
+| Toutes les courses de Taxi, à venir et passées encore à payer : heure, lieu de prise en charge, destination (ou aller-retour et programme) | Nets, marges, notes internes, référence du dossier |
+| Nombre de personnes, nom et téléphone du client, numéro de vol | Courses d'une autre entreprise (Secret, ZTP) |
 | Prix payé par le client, sa commission, ce qui est déjà payé | Réglages, équipe, journal, menu de Gestion |
 
-Il ne peut que saisir ou corriger la commission d'une de ses courses tant qu'elle n'est pas payée (même en partie). Rien d'autre.
+Il ne peut que saisir ou corriger la commission d'une course de Taxi tant qu'elle n'est pas payée (même en partie). Rien d'autre.
 
 Le compte n'est membre d'aucune entreprise. La base lui ferme toutes les tables et ne lui répond que par trois fonctions (`partenaire_mon_acces`, `partenaire_courses`, `partenaire_saisir_commission`). Contrôlé sur Postgres par `verif-acces-partenaire.mjs`.
 
@@ -28,12 +28,15 @@ Aucun identifiant ne passe par Claude ni par ce dépôt.
 update profils set organisation_id = (select organisation_id from entites where id = '00000000-0000-4000-8000-000000000003')
 where email = 'EMAIL_DE_MR_BROWN' and organisation_id is null;
 
+-- L'accès vaut pour toute l'entreprise Taxi (0003). La fiche partenaire sert seulement au nom affiché et à la coupure :
+-- « VIP Taxi Lanta » si elle existe (nom exact), sinon la première fiche active de Taxi.
 insert into partenaires_acces (user_id, partenaire_id)
-select p.user_id, pa.id
-from profils p, partenaires pa
-where p.email = 'EMAIL_DE_MR_BROWN'
-  and pa.entite_id = '00000000-0000-4000-8000-000000000003'
-  and pa.nom = 'VIP Taxi Lanta';
+select p.user_id,
+  (select pa.id from partenaires pa
+   where pa.entite_id = '00000000-0000-4000-8000-000000000003' and pa.actif
+   order by (pa.nom = 'VIP Taxi Lanta') desc, pa.created_at limit 1)
+from profils p
+where p.email = 'EMAIL_DE_MR_BROWN';
 
 -- Contrôle : une ligne, le bon partenaire, aucun accès à une entreprise. Aucune ligne : vérifier l'e-mail et le nom du partenaire (Partenaires).
 select pr.email, pa.nom as partenaire, (select count(*) from membres m where m.user_id = a.user_id) as entreprises

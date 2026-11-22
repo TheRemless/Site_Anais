@@ -86,6 +86,7 @@ const R = {
   annulee: await course(ent.taxi, P.vip, 1, { statut: "annule" }),
   dossierAnnule: await course(ent.taxi, P.vip, 1, { dossierAnnule: true }),
   autreChauffeur: await course(ent.taxi, P.autreTaxi, 1),
+  sansPartenaire: await course(ent.taxi, null, 3, { heure: "08:00", details: { drop_off: "Ao Nang" } }),
   secretAvecVip: await course(ent.secret, P.vip, 1),
   secret: await course(ent.secret, P.secret, 1),
 };
@@ -136,9 +137,11 @@ ok(r.ok && r.rows.length === 1 && r.rows[0].partenaire === "VIP Taxi test" && r.
 r = await essaie(u.brown, "select * from partenaire_courses()");
 ok(r.ok, "partenaire_courses répond pour Mr. Brown " + (r.err || ""));
 const ids = (r.rows || []).map((x) => x.id);
-const attendues = ["passeeDue", "passeeSansCom", "passeePartielle", "aujourdhui", "demain", "futurePayee", "plusTard"];
-ok(attendues.every((k) => ids.includes(R[k])) && ids.length === attendues.length, `ses ${attendues.length} courses : à venir (même payée) et passées à payer`);
-for (const k of ["passeePayee", "vieille", "annulee", "dossierAnnule", "autreChauffeur", "secretAvecVip", "secret"]) ok(!ids.includes(R[k]), `pas la course « ${k} »`);
+const attendues = ["passeeDue", "passeeSansCom", "passeePartielle", "aujourdhui", "demain", "autreChauffeur", "futurePayee", "sansPartenaire", "plusTard"];
+ok(attendues.every((k) => ids.includes(R[k])) && ids.length === attendues.length, `les ${attendues.length} courses de Taxi : à venir (même payée) et passées à payer`);
+ok(ids.includes(R.sansPartenaire), "une course de Taxi sans partenaire apparaît (filtre sur l'entreprise, pas sur le partenaire)");
+ok(ids.includes(R.autreChauffeur), "une course de Taxi posée sur une autre fiche partenaire apparaît aussi");
+for (const k of ["passeePayee", "vieille", "annulee", "dossierAnnule", "secretAvecVip", "secret"]) ok(!ids.includes(R[k]), `pas la course « ${k} »`);
 ok(r.rows.find((x) => x.id === R.demain)?.client === "Partage Ztp", "un client partagé de ZTP (migration 46) garde son nom sur la course de Taxi");
 ok(ids[0] === R.passeeDue && ids[ids.length - 1] === R.plusTard, "triées par date");
 const auj = r.rows.find((x) => x.id === R.aujourdhui);
@@ -177,7 +180,9 @@ r = await essaie(u.brown, "select partenaire_saisir_commission($1, 100) v", [R.p
 ok(!r.ok && /payée/.test(r.err) && Number((await com(R.passeePartielle)).commission_prevue) === 400, "refusé : commission déjà payée en partie");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 100) v", [R.futurePayee]);
 ok(!r.ok && /payée/.test(r.err), "refusé : commission déjà payée");
-for (const k of ["passeePayee", "vieille", "annulee", "autreChauffeur", "secretAvecVip", "secret"]) {
+r = await essaie(u.brown, "select partenaire_saisir_commission($1, 150) v", [R.sansPartenaire]);
+ok(r.ok && Number((await com(R.sansPartenaire)).commission_prevue) === 150, "il saisit la commission d'une course de Taxi sans partenaire");
+for (const k of ["passeePayee", "vieille", "annulee", "dossierAnnule", "secretAvecVip", "secret"]) {
   r = await essaie(u.brown, "select partenaire_saisir_commission($1, 10) v", [R[k]]);
   ok(!r.ok, `refusé sur la course « ${k} »`);
 }

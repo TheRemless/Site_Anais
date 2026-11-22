@@ -14,7 +14,9 @@
 -- Les trois passent par partenaire_acces_actuel(), qui ne rend l'accès que si : le profil est actif, n'est ni administrateur ni éditeur du
 -- logiciel, appartient à l'organisation de l'entreprise ; le partenaire est actif ; l'entreprise est active et en mode taxi. Désactiver le compte
 -- (Administration, Utilisateurs) ou le partenaire coupe donc l'accès tout de suite.
--- Seules ses courses : réservations de l'entreprise du partenaire, à ce partenaire, ni annulées ni dans un dossier annulé. Rien d'une autre entreprise.
+-- Les courses montrées : TOUTES les réservations de l'entreprise Taxi du partenaire (décision de Jérémy, 22.11.2026 : Mr. Brown fait toutes les
+-- courses de VIP Taxi Lanta), avec ou sans partenaire posé sur la réservation, ni annulées ni dans un dossier annulé. Le lien vers la fiche
+-- partenaire sert à l'accès (fiche active, entreprise en mode taxi, nom affiché) ; ce n'est pas lui qui filtre. Rien d'une autre entreprise.
 -- La commission saisie est la « commission prévue » (reservations_nets.commission_prevue) : la carte « Commissions à demander » de Nani la
 -- reprend telle quelle (« Commission annoncée »), l'écran « À encaisser » aussi. Le journal des nets (migration 37) note chaque saisie avec
 -- le compte qui l'a faite. Une commission reçue, même en partie, ne se modifie plus. Aucune notification n'est envoyée.
@@ -105,8 +107,8 @@ language sql stable security definer set search_path = public as $$
   join reglages g on g.entite_id = a.entite_id
 $$;
 
--- Ses courses : d'aujourd'hui à plus tard, plus celles des 60 derniers jours dont la commission n'est pas encore saisie ou reste à payer.
--- Rien d'autre que ces colonnes : ni net, ni note interne, ni référence de dossier, ni autre partenaire.
+-- Les courses de l'entreprise : d'aujourd'hui à plus tard, plus celles des 60 derniers jours dont la commission n'est pas encore saisie ou reste à payer.
+-- Rien d'autre que ces colonnes : ni net, ni note interne, ni référence de dossier, ni nom du partenaire de la réservation.
 create or replace function partenaire_courses() returns table (
   id uuid, date_service date, heure text, pickup text, dropoff text, retour boolean, programme text,
   adultes integer, enfants integer, bebes integer, client text, telephone text, vol text, prix numeric,
@@ -119,7 +121,8 @@ language sql stable security definer set search_path = public as $$
     trim(coalesce(c.prenom, '') || ' ' || coalesce(c.nom, '')), coalesce(c.telephone, ''), coalesce(r.details->>'vol', ''), r.montant_vente,
     n.commission_prevue, n.commission_recue, n.commission_recue_le is not null
   from partenaire_acces_actuel() a
-  join reservations r on r.entite_id = a.entite_id and r.partenaire_id = a.partenaire_id
+  -- Toute l'entreprise Taxi, quel que soit le partenaire de la réservation (même aucun).
+  join reservations r on r.entite_id = a.entite_id
   join dossiers d on d.id = r.dossier_id and d.entite_id = r.entite_id
   -- Le client peut être une fiche partagée d'une autre entreprise (migration 46) : seuls son nom et son téléphone sortent.
   join clients c on c.id = d.client_id
