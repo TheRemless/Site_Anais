@@ -61,11 +61,22 @@ Jamais avec un refus, une hésitation, une contre-proposition ou une question de
 
 Jamais une question, une demande d'avis, une demande de client recopiée pour un chauffeur (« Transfer request: », « Customer: », « Could you please confirm availability ») ni un rappel.
 
-**Sort** : un dossier relié à la conversation ; Nani qui touche « Retirer » (elle revient seulement sur un signal plus récent, « Remettre dans la liste » tant que la conversation est ouverte) ; une annulation du client après le signal (« cancel », « no longer need », « changed our plans ») ou de Nani (« I have cancelled »).
+**Sort** : le dossier de cette réservation relié à la conversation (créé depuis le prix donné) ; Nani qui touche « Retirer » (elle revient seulement sur un signal plus récent, « Remettre dans la liste » tant que la conversation est ouverte) ; une annulation du client après le signal (« cancel », « no longer need », « changed our plans ») ou de Nani (« I have cancelled »).
 
 **Dossier déjà créé mais pas relié** : un dossier non annulé du même client (fiche reliée ou même numéro) créé depuis le prix donné. La conversation reste dans le filtre, la carte dit « Le dossier … existe déjà » et propose « Relier au dossier » à la place de « Créer le dossier ». Une conversation à trier est rangée dans l'entreprise du dossier en même temps (la base, `whatsapp_reclasser`, refuse un lien incohérent). Une conversation rangée dans l'autre entreprise n'est pas déplacée : la ligne d'information reste, le lien se fait depuis l'en-tête.
 
 **Jamais** : Contact personnel, partenaire, chauffeur, hôtel, apporteur, fiche partenaire reliée, tri « personnel », « partenaire » ou « publicite ».
+
+## Relecture du 22.11.2026 (corrections)
+
+| Point | Règle |
+|---|---|
+| Entreprise d'un client | Un client appartient à Secret et à Taxi. « Créer le dossier » demande toujours l'entreprise, la suggestion du tri présélectionnée et modifiable. « Relier au dossier » ne range jamais la conversation : il marche pour un dossier de Secret comme de Taxi (`whatsapp_reclasser`, migration 85) ; une conversation rangée dans l'autre entreprise redevient commune. Un contact qui n'est pas un client garde la règle d'avant |
+| ZTP | Seuls les dossiers de Secret et de Taxi comptent : un dossier ZTP n'est jamais proposé « à relier » ni pris pour celui de la réservation, en base comme à l'écran |
+| « Créer le dossier » | Jamais masqué par un dossier déjà là (il peut être de l'autre entreprise) : « Relier » devient le bouton principal, « Créer » reste à côté |
+| Client qui revient | Un dossier relié plus ancien que le prix donné (arrivée, puis demande du transfert retour) ne fait pas sortir la conversation ; seul le dossier de cette réservation, relié, la fait sortir |
+| Contact remis en Client | La fonction calcule pour tout contact sauf un Contact personnel ; l'écran écarte partenaire, chauffeur, hôtel, apporteur et fiche partenaire sur leur valeur du moment. Un contact remis en Client entre aussitôt ; un Contact personnel remis en « auto » est recalculé par la reprise |
+| Messages « non transmis » (#314) | Jamais lus par le calcul (`.neq("type", "non_transmis")`) |
 
 ## Où est quoi
 
@@ -73,7 +84,7 @@ Jamais une question, une demande d'avis, une demande de client recopiée pour un
 |---|---|
 | `supabase/functions/whatsapp/pret.js` | La règle, pure, sans réseau ni IA. Rend la décision et la carte pré-remplie |
 | `supabase/functions/whatsapp/pret.ts` | Après chaque message (et à la reprise pour les conversations jamais calculées) : écrit `pret_reserver` si la décision change |
-| `docs/gestion/migration-85-whatsapp-pret.sql` | Colonnes `pret_reserver` (fonction seulement) et `pret_retire_le` (Nani, daté par la base) |
+| `docs/gestion/migration-85-whatsapp-pret.sql` | Colonnes `pret_reserver` (fonction seulement) et `pret_retire_le` (Nani, daté par la base) ; `whatsapp_reclasser` : un client relié à un dossier de Secret comme de Taxi sans être rangé |
 | `src/gestion/js/whatsapp-pret-calc.mjs` | Entrée et sortie du filtre à l'écran (dossier relié, retrait), dossier à relier |
 | `src/gestion/js/views/whatsapp-pret.mjs` | Le filtre, la ligne de la liste, la carte dans la conversation |
 | `tests/gestion-whatsapp-pret.test.js` | Les cas ci-dessus, rejoués avec des messages inventés |

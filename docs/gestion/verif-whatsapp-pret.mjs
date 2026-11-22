@@ -113,6 +113,44 @@ ok((await conv(tom)).pret_retire_le === null && (await conv(lena)).pret_retire_l
 r = await essaie(u.adminTaxi, "update whatsapp_conversations set pret_retire_le = now() where id = $1 returning pret_retire_le", [lena]);
 ok(r.ok && r.n === 1, "l'administratrice de Taxi retire une conversation rangée chez Taxi");
 
+// ---- Un client appartient à Secret et à Taxi : relier sans ranger (whatsapp_reclasser, migration 85) --------------------------------
+const fiche = async (e, tel) => (await un("insert into clients (entite_id, prenom, nom, telephone) values ($1, 'Test', 'Client', $2) returning id", [ent[e], tel])).id;
+let nDos = 0;
+const dos = async (e, k) => (await un("insert into dossiers (entite_id, ref, client_id) values ($1, $2, $3) returning id", [ent[e], `${e.toUpperCase()}-85-${++nDos}`, k])).id;
+const sam = await ranger("+447700900555", "We would like the airport transfer, yes please");
+const kS = await fiche("secret", "+44 7700 900555"), kT = await fiche("taxi", "+44 7700 900555"), kZ = await fiche("ztp", "+44 7700 900555");
+const dS = await dos("secret", kS), dT = await dos("taxi", kT), dZ = await dos("ztp", kZ);
+const lien = (id) => un("select entite_id, client_id, dossier_id from whatsapp_conversations where id = $1", [id]);
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning entite_id, client_id, dossier_id", [kT, dT, sam]);
+ok(r.ok && r.rows[0].entite_id === null && r.rows[0].dossier_id === dT && r.rows[0].client_id === kT, "client à trier : relié au dossier Taxi sans être rangé" + (r.ok ? "" : ` (${r.err})`));
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning entite_id, dossier_id", [kS, dS, sam]);
+ok(r.ok && r.rows[0].entite_id === null && r.rows[0].dossier_id === dS, "… puis au dossier Secret, toujours commun");
+await essaie(u.nani, "update whatsapp_conversations set entite_id = $1 where id = $2", [ent.taxi, sam]);
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning entite_id, dossier_id", [kS, dS, sam]);
+ok(r.ok && r.rows[0].dossier_id === dS, "rangé chez Taxi, un dossier Secret se relie quand même");
+r = await essaie(u.nani, "update whatsapp_conversations set entite_id = null, client_id = $1, dossier_id = $2 where id = $3 returning entite_id, dossier_id", [kT, dT, sam]);
+ok(r.ok && r.rows[0].entite_id === null && r.rows[0].dossier_id === dT, "rangé dans l'autre entreprise : redevient commun en se reliant");
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning dossier_id, client_id", [kZ, dZ, sam]);
+ok(r.ok && r.rows[0].dossier_id === null && r.rows[0].client_id === null, "jamais un dossier ou une fiche ZTP");
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning dossier_id", [kS, dT, sam]);
+ok(r.ok && r.rows[0].dossier_id === null, "un dossier qui n'est pas celui de la fiche est retiré");
+// Une administratrice de Taxi seulement ne relie pas un dossier de Secret.
+await essaie(u.nani, "update whatsapp_conversations set client_id = null, dossier_id = null where id = $1", [sam]);
+r = await essaie(u.adminTaxi, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning dossier_id", [kS, dS, sam]);
+ok(r.ok && r.n === 1 && r.rows[0].dossier_id === null, "l'administratrice de Taxi seule ne relie pas un dossier de Secret");
+r = await essaie(u.adminTaxi, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning dossier_id", [kT, dT, sam]);
+ok(r.ok && r.rows[0].dossier_id === dT, "… mais relie un dossier de Taxi");
+// Un contact qui n'est pas un client garde la règle d'avant.
+const hotel = await ranger("+447700900566", "Room 12 is ready");
+await essaie(u.nani, "update whatsapp_conversations set type_contact = 'hotel' where id = $1", [hotel]);
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning dossier_id", [kT, dT, hotel]);
+ok(r.ok && r.rows[0].dossier_id === null, "un hôtel à trier n'est relié à aucun dossier (règle d'avant)");
+// La fonction (clé de service) relie aussi un client sans le ranger (liaison après une demande du site), depuis un lien vide (un lien posé
+// n'est jamais écrasé par elle, whatsapp_proteger_classement).
+await essaie(u.nani, "update whatsapp_conversations set client_id = null, dossier_id = null where id = $1", [sam]);
+await db.query("update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3", [kS, dS, sam]);
+ok((await lien(sam)).dossier_id === dS, "la clé de service relie un client à un dossier Secret");
+
 // ---- Se rejoue sans effet -----------------------------------------------------------------------------------------------------------
 const photo = async () => JSON.stringify((await db.query("select id, pret_reserver, pret_retire_le, updated_at from whatsapp_conversations order by id")).rows);
 const p1 = await photo();
@@ -123,6 +161,8 @@ ok((await photo()) === p1, "la migration 85 se rejoue sans effet (aucune ligne t
 await db.exec(lire("retour-85-whatsapp-pret.sql"));
 ok(!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name in ('pret_reserver', 'pret_retire_le')")), "retour : les deux colonnes sont parties");
 ok(!(await un("select 1 x from pg_proc where proname = 'whatsapp_pret_outil'")), "retour : le déclencheur est parti");
+r = await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3 returning dossier_id", [kT, dT, sam]);
+ok(r.ok && r.rows[0].dossier_id === null, "retour : whatsapp_reclasser de la migration 72 (une conversation à trier n'a plus de dossier)");
 await ranger("+447700900877", "Hi");
 ok(!!(await un("select 1 x from whatsapp_conversations where telephone = '+447700900877'")), "retour : la fonction range toujours un nouveau contact");
 r = await essaie(u.nani, "update whatsapp_conversations set reponses = 'jamais' where id = $1 returning reponses", [tom]);

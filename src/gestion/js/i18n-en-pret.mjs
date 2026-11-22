@@ -35,4 +35,5 @@ export const EN_PRET = {
   "Revenir au calcul automatique": "Back to automatic",
   "Étape de la conversation": "Conversation stage",
   "Aucune conversation à cette étape.": "No conversation at this stage.",
+  "Ce client est commun à Secret et à Taxi : le dossier appartient à l'entreprise choisie, la conversation reste aux deux.": "This client is shared by Secret and Taxi: the file belongs to the company you choose, the chat stays with both.",
 };

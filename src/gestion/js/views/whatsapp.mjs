@@ -31,6 +31,7 @@ import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Filtre « Prêt à réserver » (migration 85), à part dans whatsapp-pret.mjs.
+import { clientCommun } from "../whatsapp-pret-calc.mjs";
 import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
 // Étapes des conversations de clients (migration 105), à part dans whatsapp-etapes.mjs.
 import { etapesDisponibles, conversationClient, filtresEtapes, estFiltreEtape, filtrerParEtape, dansEntreprise, aTrierNonClient, pastillesEtapes, blocEtapes } from "./whatsapp-etapes.mjs";
@@ -450,16 +451,17 @@ function blocFaits(c, prop) {
 // « Créer le dossier » ou « Mettre à jour le dossier » : l'Assistant de l'entreprise de la conversation s'ouvre et lit l'échange lui-même
 // (texte, photos, PDF). Proposé seulement là où l'Assistant est allumé et permis (comme son onglet).
 const assistantDans = (id) => !!id && agentActif(reglagesDe(id)) && ["partenaires.lire", "dossiers.ecrire"].every((d) => permissionsDe(id).includes(d));
-function choisirEntreprise(c, prop) {
+// `suggeree` : l'entreprise présélectionnée (bouton principal), toujours modifiable. Pour un client, la question est toujours posée.
+function choisirEntreprise(c, prop, suggeree = null) {
   const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
-  const proposee = entrepriseProposee(prop, choix);
+  const proposee = suggeree || entrepriseProposee(prop, choix);
   return new Promise((resoudre) => {
     let fermer;
     // Résolue avant de fermer : la fermeture rend « null » (fenêtre fermée sans choix), sans effet après un choix.
     const prendre = (e) => (resoudre(e), fermer());
     fermer = modal(
       tr("Dans quelle entreprise ?"),
-      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("La conversation est à trier. Elle sera rangée dans l'entreprise du dossier une fois le dossier validé.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
+      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, clientCommun(c) ? tr("Ce client est commun à Secret et à Taxi : le dossier appartient à l'entreprise choisie, la conversation reste aux deux.") : tr("La conversation est à trier. Elle sera rangée dans l'entreprise du dossier une fois le dossier validé.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
       { protege: false, ferme: () => resoudre(null) }
     );
   });
@@ -515,11 +517,22 @@ async function choisirPieces(c) {
 
 async function versAssistant(c, prop) {
   let entiteId = c.entite_id;
-  if (!entiteId) {
+  // Un client appartient à Secret et à Taxi : « Créer le dossier » demande toujours l'entreprise, la suggestion du tri présélectionnée et
+  // modifiable (une excursion ne se crée plus chez Taxi en silence). Une conversation rangée dans l'autre entreprise redevient commune.
+  const commun = clientCommun(c);
+  if (!entiteId || commun) {
     const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
-    const entreprise = entreprisePourAssistant({ conv: c, prop, choix, activeId: etat.entiteId }) || (await choisirEntreprise(c, prop));
+    const suggeree = entreprisePourAssistant({ conv: commun ? { ...c, entite_id: null } : c, prop, choix, activeId: etat.entiteId });
+    const entreprise = commun ? await choisirEntreprise(c, prop, suggeree) : suggeree || (await choisirEntreprise(c, prop));
     if (!entreprise) return;
     entiteId = entreprise.id;
+    if (commun && c.entite_id && c.entite_id !== entiteId) {
+      try {
+        await modifier("whatsapp_conversations", c.id, { entite_id: null });
+      } catch (err) {
+        return toast(err.message, true);
+      }
+    }
   }
   // Les pièces d'abord : fermer la feuille annule tout.
   const pieces = await choisirPieces(c);
@@ -585,16 +598,19 @@ async function envoyerVoucherDuDossier(dossierId) {
   envoyerVoucher(x);
 }
 // « Prêt à réserver » (migration 85) : le même « Créer le dossier » que la fiche des faits, ou null.
+// Pour un client, l'entreprise est demandée à chaque fois (versAssistant) : il suffit qu'un des deux Assistants soit permis.
 const creerPret = (c, prop) =>
-  !lectureSeule && (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id))) ? () => versAssistant(c, prop) : null;
+  !lectureSeule && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
 // `dossier` : celui de la fiche des faits (relié, ou trouvé par le client). « Mettre à jour » demande un dossier relié (l'Assistant ne lit que
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
   if (lectureSeule) return null;
   const demander = boutonDemander(c, prop);
-  const ici = !c.entite_id || c.entite_id === etat.entiteId;
+  // Un client est commun à Secret et à Taxi : « Créer le dossier » reste proposé où que la conversation soit rangée (l'entreprise est demandée).
+  const commun = clientCommun(c);
+  const ici = commun || !c.entite_id || c.entite_id === etat.entiteId;
   const relie = c.entite_id === etat.entiteId ? dossierDe(c) : null;
-  const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
+  const assistant = commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id);
   const voucherDe = dossier && dossier.entite_id === etat.entiteId ? dossier : null;
   const boutons = [
     assistant && ici ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), relie ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,

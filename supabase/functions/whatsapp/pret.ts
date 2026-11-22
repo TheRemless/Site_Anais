@@ -1,10 +1,11 @@
 // Boîte WhatsApp, « Prêt à réserver » (migration 85) et étapes de la conversation (migration 105, 22.11.2026), lancé par index.ts :
 //   - après chaque nouveau message (client ou Nani), modifié ou supprimé : la décision et les faits sont refaits sur les 60 derniers messages ;
-//   - à la reprise (pg_cron, toutes les 5 minutes) : 20 conversations jamais calculées, les plus récentes d'abord. Les conversations déjà
-//     là avant la migration entrent ainsi dans le calcul sans attendre leur prochain message, sans aucune écriture à la main.
+//   - à la reprise (pg_cron, toutes les 5 minutes) : 20 conversations jamais calculées (ou sorties de « Contact personnel »), les plus
+//     récentes d'abord. Les conversations déjà là avant la migration entrent ainsi dans le calcul sans attendre leur prochain message.
 // Aucun appel à l'IA : la règle est dans pret.js et etapes.js (expressions sur le texte). Rien ne part chez Anthropic, ni au client, ni au
 // prestataire. Seules les colonnes pret_reserver et avancee sont écrites, et seulement quand elles changent. Ne lève jamais ; chaque échec va
 // dans la console. Sans la migration 85, rien n'est écrit ; sans la 105, seule pret_reserver l'est.
+// Avec la #314 : les messages « non transmis » n'ont pas de texte du client, ils ne sont jamais lus ici.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { MESSAGES_LUS, etatPret, pretChange } from "./pret.js";
 import { faitsAvancee } from "./etapes.js";
@@ -29,7 +30,8 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
     }
     const conv = r.data;
     if (!conv) return;
-    const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, type, texte, medias, envoye_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
+    // origine et statut_envoi : un voucher envoyé depuis Gestion (média « voucher » rangé par whatsapp-envoi) et son résultat.
+    const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, supprime_le, statut_envoi").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
     if (errM) return console.error("whatsapp : prêt à réserver, messages illisibles", errM.message);
     const messages = [...(msgs || [])].reverse();
     const patch: Record<string, unknown> = {};
@@ -47,11 +49,14 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
   }
 }
 
+// Jamais calculées, ou calculées comme Contact personnel puis remises en « auto » (rien n'avait été lu d'elles).
+export const FILTRE_RATTRAPAGE = "pret_reserver.is.null,and(pret_reserver->>motif.eq.exclue,reponses.neq.jamais)";
+export const FILTRE_RATTRAPAGE_ETAPES = `${FILTRE_RATTRAPAGE},avancee.is.null,and(avancee->>jamais.eq.true,reponses.neq.jamais)`;
 export async function rattraperPret(db: SupabaseClient, organisation: string) {
   const requete = (filtre: string) => db.from("whatsapp_conversations").select("id").eq("organisation_id", organisation).or(filtre).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(RATTRAPAGE_MAX);
-  let { data, error } = await requete("pret_reserver.is.null,avancee.is.null");
+  let { data, error } = await requete(FILTRE_RATTRAPAGE_ETAPES);
   // Sans la migration 105, seulement les conversations sans décision « prêt à réserver ».
-  if (error && absente(error)) ({ data, error } = await requete("pret_reserver.is.null"));
+  if (error && absente(error)) ({ data, error } = await requete(FILTRE_RATTRAPAGE));
   if (error) {
     if (!absente(error)) console.error("whatsapp : rattrapage prêt à réserver", error.message);
     return 0;

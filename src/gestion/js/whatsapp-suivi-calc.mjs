@@ -75,8 +75,22 @@ export function basculerPiece(cochees = [], chemin) {
 //   « demander » : un autre client ou un autre dossier est déjà relié, la personne décide avant de le remplacer.
 // Un apporteur d'affaires (type_contact « apporteur », PR D) n'est jamais le client : sa conversation ne se relie ni au client ni au dossier
 // d'un client qu'il envoie (il en envoie plusieurs). Encore à trier, elle est seulement rangée dans l'entreprise du dossier.
+// Un client (contact non typé ou « client », sans fiche partenaire) appartient à Secret et à Taxi (22.11.2026) : le dossier se relie sans
+// ranger la conversation dans son entreprise ; rangée dans l'autre, elle redevient commune. La base accepte le lien vers un dossier de Secret
+// comme de Taxi pour un client (whatsapp_reclasser, migration 85).
+const clientCommun = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
 export function liaisonApresDossier(conv, dossier, entiteId) {
   if (!conv || !dossier || !dossier.id) return { action: "rien", patch: null };
+  if (clientCommun(conv)) {
+    const client = dossier.client_id || null;
+    const commun = conv.entite_id && conv.entite_id !== (dossier.entite_id || entiteId) ? { entite_id: null } : {};
+    const conflit = (conv.client_id && client && conv.client_id !== client && !commun.entite_id && !("entite_id" in commun)) || (conv.dossier_id && conv.dossier_id !== dossier.id);
+    if (conflit) return { action: "demander", patch: { ...commun, client_id: client, dossier_id: dossier.id } };
+    const patch = { ...commun };
+    if ((!conv.client_id || "entite_id" in commun) && client) patch.client_id = client;
+    if (conv.dossier_id !== dossier.id) patch.dossier_id = dossier.id;
+    return Object.keys(patch).length ? { action: "ecrire", patch } : { action: "rien", patch: null };
+  }
   if (conv.type_contact === "apporteur") {
     const ent = dossier.entite_id || entiteId;
     return !conv.entite_id && ent ? { action: "ecrire", patch: { entite_id: ent } } : { action: "rien", patch: null };
