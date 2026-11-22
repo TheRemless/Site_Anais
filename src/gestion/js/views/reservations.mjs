@@ -8,6 +8,7 @@ import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremi
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
+import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
 import { venteDuTarif } from "../demande-calc.mjs";
@@ -431,7 +432,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   };
   // Un service payé sur place ne doit rien au prestataire : le net n'a pas lieu d'être saisi.
   const blocNets = h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera à l'agence.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe));
-  const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, regleCommission), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
+  const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, h("span", null, regleCommission, mentionPartenaire(n))), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
   partenaire.addEventListener("change", () => {
     // Le service prend le mode habituel de son partenaire, aussi quand on change le partenaire d'une réservation existante (16.11.2026) :
     // un autre prestataire se paie peut-être autrement. La puce reste modifiable.
@@ -871,3 +872,9 @@ export function vueReservations() {
 
 const ajouter = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
 export { formatMontant };
+
+// Commission saisie par le partenaire chauffeur lui-même (migration 115) : la fiche le dit, jamais confondue avec celle de l'équipe.
+function mentionPartenaire(n) {
+  if (!commissionDuPartenaire(n)) return null;
+  return h("span", { class: "mention-partenaire" }, " ", n.commission_partenaire_le ? tr("Saisie par le partenaire le {date}.", { date: formatDate(String(n.commission_partenaire_le).slice(0, 10)) }) : tr("Saisie par le partenaire."));
+}

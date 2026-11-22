@@ -7,6 +7,7 @@ import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
@@ -52,6 +53,17 @@ export function creer() {
     if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
+    // Partenaire chauffeur (migration 115) : posé aussi dans une démo déjà enregistrée, sur le premier partenaire d'une entreprise en mode taxi.
+    if (!data.partenaires_acces) {
+      data.partenaires_acces = [];
+      const taxi = data.entites.find((e) => (data.reglages[e.id] || {}).fonctionnement === "taxi");
+      const p = taxi && data.partenaires.find((x) => x.entite_id === taxi.id);
+      if (p && !AGENCE) {
+        const profil = { user_id: uid(), email: "chauffeur@demo.local", nom: "Partenaire chauffeur démo (ses courses)", super_admin: false, actif: true };
+        data.profils.push(profil);
+        data.partenaires_acces.push({ user_id: profil.user_id, partenaire_id: p.id, created_at: aujourdhui() });
+      }
+    }
     // Hôtels situés (migration 48), comme la base : une ligne par hôtel et par entreprise.
     data.hotels_lieux = data.hotels_lieux || [];
     // Conversations de l'agent (migration 52), comme la base : à la personne qui les ouvre.
@@ -657,6 +669,23 @@ export function creer() {
     },
     async fiduciaireMigration36() {
       return true;
+    },
+    // Compte d'un partenaire chauffeur (migration 115), avec les règles des fonctions de la base (courses-partenaire-calc.mjs).
+    async partenaireAcces() {
+      const a = accesLocal(data, utilisateur.user_id);
+      return a ? { partenaire: a.partenaire.nom, contact: ((a.partenaire.contact || {}).personne || "").trim() || a.partenaire.nom, entreprise: a.entite.nom, devise: a.devise } : null;
+    },
+    async partenaireCourses() {
+      return structuredClone(coursesLocales(data, utilisateur.user_id, aujourdhui()));
+    },
+    async partenaireSaisirCommission(reservationId, montant) {
+      const valeurs = saisieLocale(data, utilisateur.user_id, aujourdhui(), reservationId, montant);
+      const r = data.reservations.find((x) => x.id === reservationId);
+      const n = data.reservations_nets.find((x) => x.reservation_id === reservationId);
+      if (n) Object.assign(n, valeurs);
+      else if (montant !== null) data.reservations_nets.push({ id: uid(), entite_id: r.entite_id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, net_prevu_auto: null, commission_prevue_auto: null, commission_recue: null, commission_recue_le: null, ...valeurs });
+      sauve();
+      return montant;
     },
     async fiduciaireAPreparer() {
       return structuredClone(aPreparerLocal(data, { droit, resumeDe, voit }));

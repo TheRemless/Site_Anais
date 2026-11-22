@@ -83,6 +83,15 @@ export async function recharger() {
   const ids = entitesAccessibles().map((e) => e.id);
   etat.entiteId = ids.includes(choisi) ? choisi : ids[0] || null;
   etat.voucherDepuis = null;
+  // Compte d'un partenaire chauffeur (migration 115) : aucune entreprise, seulement ses courses. Demandé seulement à un compte sans entreprise.
+  etat.partenaire = null;
+  if (!ids.length && etat.store.partenaireAcces) {
+    try {
+      etat.partenaire = await etat.store.partenaireAcces();
+    } catch {
+      etat.partenaire = null;
+    }
+  }
   rebatir();
   copierPourHorsLigne();
   signature = signer(etat.brut);

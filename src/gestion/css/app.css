@@ -2569,3 +2569,45 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .excursion-choix input { margin-right: 6px; }
 .proposer-excursion textarea { width: 100%; }
 .proposer-excursion .actions a[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+
+/* Écran du partenaire chauffeur (migration 115), en thaï : gros caractères, une colonne, un seul champ par course, cibles de 52 px. */
+.coque-partenaire { min-height: 100dvh; max-width: 560px; margin: 0 auto; background: var(--fond); font-size: 18px; line-height: 1.5; }
+@media (min-width: 600px) { .coque-partenaire { border-inline: 1px solid var(--bord); } }
+.cp-barre { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--surface); border-bottom: 1px solid var(--bord); }
+.cp-qui { display: flex; flex-direction: column; min-width: 0; }
+.cp-qui strong { font-size: 20px; }
+.cp-qui span { color: var(--texte-2); font-size: 16px; }
+.cp-barre button { min-height: 48px; font-size: 16px; }
+.cp-contenu { padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); }
+.cp-contenu .bandeau-demo { margin-bottom: 16px; font-size: 14px; }
+.cp-h1 { font-size: 24px; margin: 0 0 12px; }
+.cp-total { display: flex; flex-direction: column; gap: 2px; padding: 16px; margin-bottom: 20px; border-radius: 10px; background: var(--teal-700); color: #fff; }
+.cp-total-libelle { font-size: 18px; }
+.cp-total-montant { font-size: 34px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.cp-total-aide { font-size: 15px; opacity: 0.9; }
+.cp-jour { margin-bottom: 20px; }
+.cp-titre-jour { font-size: 20px; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--teal); }
+.cp-titre-bloc { font-size: 20px; margin: 28px 0 12px; color: var(--danger); }
+.cp-courses { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.cp-course { background: var(--surface); border: 1px solid var(--bord-fort); border-radius: 10px; padding: 14px 16px; }
+.cp-tete { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.cp-heure { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--teal-700); }
+.cp-client { font-size: 20px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.cp-details { margin: 0 0 12px; display: flex; flex-direction: column; gap: 6px; }
+.cp-ligne { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; align-items: baseline; }
+.cp-ligne dt { color: var(--texte-2); }
+.cp-ligne dd { margin: 0; overflow-wrap: anywhere; }
+.cp-vol, .cp-prix { font-weight: 700; }
+.cp-tel { display: inline-block; padding: 10px 0; font-weight: 600; color: var(--teal-700); }
+.cp-form { border-top: 1px solid var(--bord); padding-top: 12px; }
+.cp-libelle { display: block; font-weight: 600; margin-bottom: 6px; }
+.cp-saisie { display: flex; gap: 8px; }
+.cp-champ { flex: 1; min-width: 0; min-height: 52px; font-size: 22px; padding: 8px 12px; border: 2px solid var(--bord-champ); border-radius: var(--rayon); font-variant-numeric: tabular-nums; }
+.cp-champ:focus { outline: 3px solid var(--teal); outline-offset: 1px; }
+.cp-champ:disabled { background: var(--surface-2); color: var(--texte-2); }
+.cp-bouton { min-height: 52px; min-width: 96px; font-size: 18px; touch-action: manipulation; }
+.cp-msg { margin: 6px 0 0; min-height: 1.5em; color: var(--teal-700); font-weight: 600; }
+.cp-msg.erreur { color: var(--danger); }
+.cp-payee { margin: 6px 0 0; font-weight: 600; color: var(--teal-700); }
+.cp-vide { color: var(--texte-2); margin: 4px 0 12px; }
+.cp-vide.erreur { color: var(--danger); }

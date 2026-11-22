@@ -395,6 +395,25 @@ function ecranDeLEntreprise(cle) {
   return !m || moduleActif(m.id);
 }
 
+// Quitter l'écran du partenaire (autre compte, déconnexion) retire son écouteur de retour sur l'application.
+function quitterPartenaire() {
+  const e = racine.querySelector(".coque-partenaire");
+  if (e && e.arreter) e.arreter(), (e.arreter = null);
+}
+// L'écran du partenaire chauffeur se dessine une fois par compte : la relecture automatique ne le redessine pas (il recharge ses courses lui-même).
+async function afficherPartenaire() {
+  const cle = `partenaire|${etat.session.id}`;
+  if (location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
+  const existante = racine.querySelector(".coque-partenaire");
+  if (existante && existante.dataset.cle === cle) return;
+  quitterPartenaire();
+  const { vueCoursesPartenaire } = await import("./views/courses-partenaire.mjs");
+  const noeud = vueCoursesPartenaire({ acces: etat.partenaire, demo: etat.store.mode === "demo" ? bandeauDemo() : null, deconnecter: etat.store.mode === "supabase" ? deconnecter : null });
+  noeud.dataset.cle = cle;
+  vider(racine).append(noeud);
+  document.title = `${noeud.dataset.titre} - ${etat.partenaire.entreprise}`;
+}
+
 async function afficherVoucherSeul() {
   // Chaque affichage repart de l'entreprise Taxi (logo VIP Taxi Lanta par défaut, 18.11.2026) : un voucher en cours sous le logo de Secret
   // marque l'écran occupé, la relecture automatique ne le redessine pas.
@@ -625,17 +644,22 @@ window.matchMedia("(min-width: 720px)").addEventListener("change", (e) => e.matc
 let rendu = 0;
 async function afficher() {
   if (!etat.session) {
+    quitterPartenaire();
     vider(racine).append(vueConnexion());
     document.title = tr("Connexion - Gestion");
     return;
   }
   // Lien d'invitation ou de mot de passe oublié : la session est ouverte, la personne choisit son mot de passe avant tout autre écran.
   if (etat.retour.type) {
+    quitterPartenaire();
     const { vueNouveauMotDePasse } = await import("./views/compte.mjs");
     vider(racine).append(vueNouveauMotDePasse(etat.retour.type, () => ((etat.retour = { type: null, erreur: null }), history.replaceState(null, "", "#/"), afficher())));
     document.title = tr("Mot de passe - Gestion");
     return;
   }
+  // Partenaire chauffeur (migration 115) : son écran en thaï, rien d'autre (ni menu, ni entreprise, ni réglages).
+  if (etat.partenaire && !entiteActive()) return afficherPartenaire();
+  quitterPartenaire();
   if (!entiteActive()) {
     vider(racine).append(
       h(

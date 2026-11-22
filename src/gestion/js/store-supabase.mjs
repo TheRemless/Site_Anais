@@ -1045,6 +1045,22 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       return data;
     },
+    // Compte d'un partenaire chauffeur (migration 115) : son accès, ses courses et la saisie de sa commission, par les seules fonctions de la base.
+    // Sans la migration (fonction absente), aucun compte n'est partenaire : l'outil se comporte comme avant.
+    async partenaireAcces() {
+      const { data, error } = await sb.rpc("partenaire_mon_acces");
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883") return null;
+        throw new Error(error.message);
+      }
+      return (data && data[0]) || null;
+    },
+    async partenaireCourses() {
+      return verifie(await sb.rpc("partenaire_courses")) || [];
+    },
+    async partenaireSaisirCommission(reservationId, montant) {
+      return verifie(await sb.rpc("partenaire_saisir_commission", { p_reservation: reservationId, p_montant: montant }));
+    },
     async fiduciaireAPreparer() {
       return verifie(await sb.rpc("fiduciaire_a_preparer"));
     },
