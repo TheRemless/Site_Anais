@@ -21,10 +21,11 @@ export function demandeAgent(valeur) {
   if (!v || typeof v !== "object" || typeof v.id !== "string" || !v.id || !MODES_DEMANDE.includes(v.mode)) return null;
   const pieces = Array.isArray(v.pieces) ? [...new Set(v.pieces.filter((x) => typeof x === "string" && x))].slice(0, PIECES_MAX) : [];
   const base = { whatsapp_conversation_id: v.id, whatsapp_mode: v.mode, entite_id: typeof v.entite === "string" ? v.entite : null, whatsapp_pieces: pieces };
-  // « Demander à l'assistant » (PR B) : rien ne part tout seul, la personne tape ou choisit sa question. `agent` : la conversation de
-  // l'Assistant déjà liée, rouverte au lieu d'en créer une.
+  // `agent` : la conversation de l'Assistant déjà liée, rouverte au lieu d'en créer une, pour une question comme pour un dossier
+  // (22.11.2026). « Demander à l'assistant » (PR B) : rien ne part tout seul, la personne tape ou choisit sa question.
   // `lecture` : la personne n'administre pas l'entreprise de la conversation (lecture seule) ; « Prépare les dossiers » n'est pas proposé.
-  return v.mode === "question" ? { ...base, whatsapp_pieces: [], agent_conversation_id: typeof v.agent === "string" && v.agent ? v.agent : null, lecture_seule: v.lecture === true } : base;
+  const agent = typeof v.agent === "string" && v.agent ? v.agent : null;
+  return v.mode === "question" ? { ...base, whatsapp_pieces: [], agent_conversation_id: agent, lecture_seule: v.lecture === true } : { ...base, agent_conversation_id: agent };
 }
 // Revue de sécurité de la PR 297 : la demande déposée par l'écran WhatsApp ne vaut que deux minutes (`le` : Date.now() au dépôt). Plus
 // vieille, sans date ou datée dans le futur, elle est ignorée : un onglet rouvert plus tard n'envoie rien.

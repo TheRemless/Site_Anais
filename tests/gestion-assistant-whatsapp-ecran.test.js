@@ -20,7 +20,7 @@ const TAXI = { id: id(), slug: "taxi" };
 const conv = (o = {}) => ({ id: id(), telephone: "+447700900311", nom: "Tom", entite_id: SECRET.id, client_id: null, dossier_id: null, dernier_message_le: il_y_a(10), dernier_sens: "entrant", non_lus: 1, reponses: "auto", tri: {}, dernier_texte: "Hello", attend_depuis: il_y_a(10), ...o });
 
 // ---- Demander à l'assistant -----------------------------------------------------------------------------------------------------
-test("demander : jamais pour un contact personnel ; la conversation liée de l'Assistant est rouverte, la plus récente non archivée", () => {
+test("demander : jamais pour un contact personnel ; la conversation liée de l'Assistant est rouverte, la plus récente ouverte", () => {
   const c = conv();
   assert.equal(R.demandePermise(c), true);
   assert.equal(R.demandePermise({ ...c, reponses: "jamais" }), false, "contact personnel : pas de bouton");
@@ -32,7 +32,8 @@ test("demander : jamais pour un contact personnel ; la conversation liée de l'A
     { id: "a4", whatsapp_conversation_id: id(), statut: "ouverte", maj_le: il_y_a(0) },
   ];
   assert.equal(R.conversationLiee(a, c.id).id, "a3");
-  assert.equal(R.conversationLiee(a.slice(0, 1), c.id).id, "a1", "une conversation archivée vaut mieux qu'une nouvelle");
+  // Règle de Jérémy du 22.11.2026 : « le bouton rouvre la plus récente qui est ouverte ». Archivée, elle ne se rouvre plus.
+  assert.equal(R.conversationLiee(a.slice(0, 1), c.id), null, "une conversation archivée ne se rouvre pas");
   assert.equal(R.conversationLiee(a, id()), null);
   assert.equal(R.conversationLiee(a, "x"), null);
 });
@@ -213,7 +214,8 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
 
 test("revue 297, point 4 : une question dans la conversation liée rouverte joint l'échange frais, liaison contrôlée", () => {
   const f = lire("supabase/functions/agent/index.ts");
-  assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id && waMode === "question";/);
+  // 22.11.2026 : créer et mettre à jour le dossier passent aussi dans la conversation liée, avec le même contrôle de liaison.
+  assert.match(f, /const waSuite = !!waBrut && !!demande\.conversation_id;/);
   assert.match(f, /lie\.data\.whatsapp_conversation_id !== waId\) return json\(\{ erreur: "conversation_introuvable" \}, 404\);/);
   const vue = lire("src/gestion/js/views/agent.mjs");
   assert.match(vue, /\.\.\.\(conv \? \{ conversation_id: conv\.id \} : \{\}\), whatsapp_conversation_id: question\.whatsapp_conversation_id, whatsapp_mode: "question"/);

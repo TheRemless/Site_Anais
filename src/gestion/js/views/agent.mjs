@@ -103,6 +103,8 @@ const AVERTISSEMENTS = {
   prix_non_tape: N_("Un prix proposé ne venait ni du catalogue ni de vous : il a été laissé vide."),
   // 22.11.2026 : le prix écrit par le client, que Nani n'a pas corrigé ensuite. Repère seulement, rien n'est bloqué.
   prix_client_non_corrige: N_("Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider."),
+  // 22.11.2026 : le prix écrit par Nani à un nouveau client, sans fiche encore (clientProbable). Repère seulement, rien n'est bloqué.
+  prix_nani_a_verifier: N_("Un prix vient d'un message de Nani à un contact pas encore relié à une fiche client : vérifiez-le avant de valider."),
   prix_egal_net: N_("Un prix proposé est égal à un net interne : il a été laissé vide."),
   prix_client_sans_net: N_("Le prix écrit par le client n'a pas pu être comparé au net : il a été laissé vide."),
   prix_sous_net: N_("Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant »."),
@@ -347,7 +349,8 @@ export async function vueAgent(idOuvert = "") {
     dessinerFil();
     // Message venu d'une autre entreprise (« Passer à … ») : il attend dans la zone de saisie, la personne l'envoie.
     // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61) : la demande part aussitôt, la fonction lit
-    // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois.
+    // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois, dans la conversation déjà
+    // liée quand l'écran l'a désignée (une seule discussion par conversation WhatsApp, 22.11.2026).
     let depuisWhatsApp = null;
     let questionBoite = "";
     try {
@@ -627,7 +630,7 @@ export async function vueAgent(idOuvert = "") {
     zoneFil.append(etape);
     descendre();
     const corps = whatsapp
-      ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" }
+      ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" }
       : question
         ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: question.whatsapp_conversation_id, whatsapp_mode: "question", whatsapp_pieces: [], texte }
         : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };

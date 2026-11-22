@@ -1090,8 +1090,9 @@ export function creer() {
       // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61), comme la fonction : la conversation est lue
       // avec les droits de la personne, le message est construit depuis l'échange. En démonstration, seulement le texte des messages du client.
       const modeWa = corps.whatsapp_mode === "maj" ? "maj" : corps.whatsapp_mode === "question" ? "question" : "creer";
-      // Une question dans une conversation de l'Assistant déjà liée (revue de la PR 297, point 4) : l'échange frais est joint aussi.
-      const suiteWa = !!corps.whatsapp_conversation_id && !!corps.conversation_id && modeWa === "question";
+      // Une demande dans une conversation de l'Assistant déjà liée (revue de la PR 297, point 4) : l'échange frais est joint aussi. Une
+      // seule discussion par conversation WhatsApp (22.11.2026) : créer et mettre à jour le dossier y passent aussi.
+      const suiteWa = !!corps.whatsapp_conversation_id && !!corps.conversation_id;
       const avecWa = !!corps.whatsapp_conversation_id && (!corps.conversation_id || suiteWa);
       const wc = avecWa ? conversationLue(corps.whatsapp_conversation_id) : null;
       // « Demander à l'assistant » (PR B) : la question de la personne, puis l'échange joint, comme la fonction (texteDepuisWhatsApp).

@@ -38,7 +38,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { lireApprentissages } from "./apprentissages.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -106,10 +106,11 @@ Deno.serve(async (req) => {
   // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (agent/whatsapp.js) : le message et les pièces jointes sont
   // construits ici, plus bas, depuis la conversation WhatsApp lue avec la session de la personne.
   const waMode = MODES_WA.includes(demande.whatsapp_mode) ? demande.whatsapp_mode : "creer";
-  // Une question dans une conversation de l'Assistant déjà liée (PR 297, point 4) : l'échange frais est joint, la liaison est contrôlée
-  // plus bas (conversation de la personne, liée à cette conversation WhatsApp). Créer et mettre à jour restent pour une nouvelle conversation.
+  // Une demande dans une conversation de l'Assistant déjà liée (PR 297, point 4) : l'échange frais est joint, la liaison est contrôlée
+  // plus bas (conversation de la personne, liée à cette conversation WhatsApp). Une seule discussion par conversation WhatsApp (règle de
+  // Jérémy du 22.11.2026) : créer et mettre à jour le dossier passent aussi dans la conversation déjà liée.
   const waBrut = typeof demande.whatsapp_conversation_id === "string" && UUID.test(demande.whatsapp_conversation_id) ? demande.whatsapp_conversation_id : null;
-  const waSuite = !!waBrut && !!demande.conversation_id && waMode === "question";
+  const waSuite = !!waBrut && !!demande.conversation_id;
   const waId = waBrut && (!demande.conversation_id || waSuite) ? waBrut : null;
   // « Demander à l'assistant » (PR B) : la question tapée par la personne est obligatoire ; la conversation est jointe comme pour un dossier.
   const waQuestion = waId && waMode === "question" ? message : "";
@@ -190,7 +191,7 @@ Deno.serve(async (req) => {
   // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
   // pas typé, son nom est lu comme un nom de profil).
   const lireWa = async (id: string) => {
-    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", id).maybeSingle();
+    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri").eq("id", id).maybeSingle();
     if (r.error && r.error.code === "42703") r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
     return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
   };
@@ -202,7 +203,7 @@ Deno.serve(async (req) => {
     // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
     // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
     // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
-    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", waId).maybeSingle();
+    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri").eq("id", waId).maybeSingle();
     if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
     if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", waId).maybeSingle();
     if (wc.error) return json({ erreur: "base" }, 500);
@@ -247,7 +248,8 @@ Deno.serve(async (req) => {
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
     message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
-    controle = verifierPieces(demande.fichiers);
+    // Dans une conversation existante, les pièces se contrôlent plus bas avec celles qu'elle garde déjà (nombre et taille).
+    controle = conversationId ? null : verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
     waConv = wc.data;
     waLue = wc.data;
@@ -896,9 +898,10 @@ Deno.serve(async (req) => {
   const appris = lus.erreur ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte, signatures: signe(reglages) ? null : [ent.data?.nom || "", ...(unifie ? unifie.entites.map((e) => e.nom) : [])].filter(Boolean) });
   // Le contrôle de la réponse au client (revue de sécurité de la PR 299). Une conversation jointe ou liée de partenaire, de chauffeur ou
   // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne. Celle
-  // d'un client : les montants écrits par Nani y sont des prix de vente (conversationClient, 21.11.2026), jamais ceux du client.
+  // d'un client : les montants écrits par Nani y sont des prix de vente (conversationClient, 21.11.2026), jamais ceux du client. Un client
+  // sans fiche que le tri range parmi les demandes de client compte aussi (clientProbable, 22.11.2026), ses prix marqués à vérifier.
   const typeLu = waLue && typeof waLue.type_contact === "string" ? waLue.type_contact : "";
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientConfirme(waLue), conversationLiee: waLue ? waLue.id : null });
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue), clientProbable: !clientConfirme(waLue) && clientProbable(waLue), conversationLiee: waLue ? waLue.id : null });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;

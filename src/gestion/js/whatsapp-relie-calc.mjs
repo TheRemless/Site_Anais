@@ -25,30 +25,30 @@ export const QUESTION_MAX = 2000;
 export const CLE_QUESTION_AGENT = "gestion-agent-question";
 // Le bouton n'existe pas pour un contact personnel : rien de lui ne part chez l'IA.
 export const demandePermise = (conv) => !!conv && estUuid(conv.id) && reponsesDe(conv) !== "jamais";
-// La conversation de l'Assistant déjà liée à cette conversation WhatsApp (migration 61), la plus récente, archivée ou non (`agent` : celles
-// de la personne dans l'entreprise, store.agentConversations). Sans elle, une nouvelle conversation se crée au premier envoi.
+// La conversation de l'Assistant déjà liée à cette conversation WhatsApp (migration 61), la plus récente qui est ouverte (`agent` : celles
+// de la personne dans l'entreprise, store.agentConversations). Une seule discussion par conversation WhatsApp (règle de Jérémy du
+// 22.11.2026) : « Demander à l'assistant », « Créer le dossier », « Mettre à jour le dossier » et « Prêt à réserver »
+// la rouvrent tous. Archivée, elle ne se rouvre pas ; sans conversation ouverte, une nouvelle se crée au premier envoi.
 export function conversationLiee(agent = [], whatsappId = "") {
   if (!estUuid(whatsappId)) return null;
-  const liees = (agent || []).filter((c) => c && c.whatsapp_conversation_id === whatsappId);
-  liees.sort((a, b) => Number(a.statut === "archivee") - Number(b.statut === "archivee") || String(b.maj_le || "").localeCompare(String(a.maj_le || "")));
+  const liees = (agent || []).filter((c) => c && c.whatsapp_conversation_id === whatsappId && c.statut !== "archivee" && !!c.id);
+  liees.sort((a, b) => String(b.maj_le || "").localeCompare(String(a.maj_le || "")));
   return liees[0] || null;
 }
 
 // Ce que l'Assistant fait de la demande déposée par l'écran WhatsApp (sessionStorage, déjà retirée par l'appelant). Revue de sécurité de la
 // PR 297 : seulement une demande de moins de deux minutes, pour l'entreprise ouverte, et qui correspond à la conversation ouverte :
-//   - une question (« Demander à l'assistant ») : dans la conversation de l'Assistant désignée par l'écran, liée à la même conversation
-//     WhatsApp, ou dans une nouvelle conversation si l'écran n'en a désigné aucune ;
-//   - « Créer le dossier » ou « Mettre à jour le dossier » : seulement dans une nouvelle conversation.
+//   - une question (« Demander à l'assistant »), « Créer le dossier » ou « Mettre à jour le dossier » : dans la conversation de l'Assistant
+//     désignée par l'écran, liée à la même conversation WhatsApp, ou dans une nouvelle conversation si l'écran n'en a désigné aucune
+//     (une seule discussion par conversation WhatsApp, 22.11.2026).
 // Rend { question }, { dossier } ou null.
 export function demandeAOuvrir(brut, { conv = null, entiteId = "", maintenant = Date.now() } = {}) {
   if (!brut || !demandeRecente(brut, maintenant)) return null;
   const w = demandeAgent(brut);
   if (!w || (w.entite_id && w.entite_id !== entiteId)) return null;
-  if (w.whatsapp_mode === "question") {
-    const ok = conv ? !!conv.id && w.agent_conversation_id === conv.id && conv.whatsapp_conversation_id === w.whatsapp_conversation_id : !w.agent_conversation_id;
-    return ok ? { question: w } : null;
-  }
-  return conv ? null : { dossier: w };
+  const ok = conv ? !!conv.id && w.agent_conversation_id === conv.id && conv.whatsapp_conversation_id === w.whatsapp_conversation_id : !w.agent_conversation_id;
+  if (!ok) return null;
+  return w.whatsapp_mode === "question" ? { question: w } : { dossier: w };
 }
 // La question de la vue « À faire » (CLE_QUESTION_AGENT) : datée elle aussi, pour l'entreprise ouverte. Rend le texte ou "".
 export function questionBoiteAOuvrir(brut, { entiteId = "", maintenant = Date.now() } = {}) {

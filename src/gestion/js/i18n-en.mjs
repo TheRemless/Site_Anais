@@ -45,6 +45,7 @@ export const EN = {
   "Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».": "The price written by the client is at or below the net: set it with “Check first”.",
   "catalogue : {prix}": "catalogue: {prix}",
   "Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider.": "A price comes from the client and Nani did not correct it: check it before validating.",
+  "Un prix vient d'un message de Nani à un contact pas encore relié à une fiche client : vérifiez-le avant de valider.": "A price comes from a message Nani sent to a contact not yet linked to a client record: check it before validating.",
   "Un prix proposé est égal à un net interne : il a été laissé vide.": "A proposed price equals an internal net: it was left empty.",
   "Un montant interne (net, marge ou commission) est dans la réponse. À retirer.": "An internal amount (net, margin or commission) is in the reply. Remove it.",
   "« {nom} » écrit par le contact": "“{nom}” written by the contact",
