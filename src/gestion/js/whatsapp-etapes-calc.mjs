@@ -183,7 +183,14 @@ export function etapesConversation(c, { dossiers = [], clients = [], reservation
     // Un prix donné après la création du dossier : une nouvelle demande (client qui revient : arrivée, puis transfert retour), les messages
     // reprennent. La confirmation de ce dossier n'est pas un prix : elle ne le fait pas.
     const m = (f && f.par && f.par[cle]) || {};
-    const prixApres = d && (t(m.prix_le) || 0) > (t(d.created_at) || 0);
+    // Un service ajouté au dossier ensuite (carte de l'Assistant, relecture du 22.11.2026) répond à ce prix : seul un prix plus récent que le
+    // dernier service, ET précédé d'un message du client écrit après ce service, est une nouvelle demande (relecture de la PR 329 : un
+    // récapitulatif avec son prix envoyé après la création n'en est pas une). Faits d'avant ce repère : le dernier message du client compte
+    // s'il tombe entre le service et le prix.
+    const dernierService = maxi(t(d && d.created_at), ...resas.filter((r) => r && r.statut !== "annule").map((r) => t(r.created_at)));
+    const prixLe = t(m.prix_le) || 0;
+    const clientAvantPrix = "client_avant_prix_le" in m ? t(m.client_avant_prix_le) || 0 : (t(f && f.dernier_client_le) || 0) <= prixLe ? t(f && f.dernier_client_le) || 0 : 0;
+    const prixApres = d && prixLe > (dernierService || 0) && clientAvantPrix > (dernierService || 0);
     // Une question sans prix, posée pendant qu'un dossier de l'autre entreprise est en cours (« le transfert du retour est-il inclus ? »,
     // cas C18) : un suivi de ce dossier, pas une nouvelle demande ici.
     const suiviAutre = parMessages && parMessages.etape === "nouvelle" && !d && duClient.some((x) => x && !x.annule && ["secret", "taxi"].includes(marqueDe(x.entite_id)) && marqueDe(x.entite_id) !== cle && (t(x.created_at) || 0) <= parMessages.depuis);

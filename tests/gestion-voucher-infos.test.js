@@ -39,7 +39,7 @@ const donnees = {
 const ctx = (extra = {}) => ({ charger: async (n) => donnees[n] || [], reglages: { fonctionnement: "excursions" }, simule: tempsSimule, ...extra });
 const memo = (extra = {}) => ({ prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer: false, prestataires: ["Navette Exemple"], entreprise: "Test", textes: ["Flight FD3217 tomorrow"], ...extra });
 // Le service d'une course de l'exemple du 22.11.2026 (rendu fictif) : 2 bagages, ferry inclus, espèces au chauffeur, heure d'arrivée.
-const REMARQUE = "Ferry included. Cash payment to the driver. Expected arrival 13:26 (latest 13:36).";
+const REMARQUE = "Meet at the pier exit, the driver holds a name sign.";
 const service = (o = {}) => ({ texte: "Transfert", ref: "", date: "2026-12-03", heure_pickup: "09:00", lieu_pickup: "Hotel Exemple", de: "Koh Lanta", vers: "Krabi Airport", adultes: 2, enfants: 1, sieges: 0, sieges_bebe: 0, sans_siege: false, bagages: 2, prix_saisi: "", vol: "FD3217", remarque_voucher: REMARQUE, note_interne: "", ...o });
 const dossierCarte = (services, o = {}) => ({ titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 1, bebes: 0, services, apporteur: "", ...o });
 const T = textesVoucher(null);
@@ -63,7 +63,8 @@ test("schéma de l'Assistant : bagages, sièges par type, aucun siège, remarque
   // La consigne : poser la question des sièges, tout l'utile sur le voucher.
   const consignes = lire("supabase/functions/agent/prompt.js");
   assert.match(consignes, /« sieges_a_choisir » et ne se valide pas/);
-  assert.match(consignes, /Seul ce qui est vraiment interne .* va dans « note_interne »/);
+  assert.match(consignes, /« remarque_voucher » reste donc vide par défaut/);
+  assert.match(consignes, /« note_interne » aussi reste vide par défaut : une ligne au plus/);
 });
 
 test("contrôle : chaque champ voucher saisi par l'Assistant arrive sur la Booking confirmation (ajout à un dossier, puis dossier)", async () => {
@@ -72,7 +73,7 @@ test("contrôle : chaque champ voucher saisi par l'Assistant arrive sur la Booki
   const s = ajout.carte.donnees.service;
   assert.deepEqual([s.bagages, s.sieges, s.sieges_bebe, s.sans_siege, s.remarque_voucher, s.note_interne], [2, 1, 1, false, REMARQUE, ""]);
   const r = { ...reservationDepuisCarte(ajout.carte.donnees), date_service: "2026-12-03" };
-  assert.deepEqual(r.details, { vol: "FD3217", bagages: "2", remarques: REMARQUE, sieges: 1, sieges_bebe: 1 });
+  assert.deepEqual(r.details, { drop_off: "Krabi Airport", vol: "FD3217", bagages: "2", remarques: REMARQUE, sieges: 1, sieges_bebe: 1 });
   assert.equal(r.notes, "", "rien de tout cela dans les notes internes");
   const b = booking(r);
   assert.equal(b[T("b_bagages")], "2 pieces");

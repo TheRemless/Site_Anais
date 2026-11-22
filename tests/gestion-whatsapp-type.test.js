@@ -235,7 +235,7 @@ test("relecture n° 1 : jamais de « partenaire » déduit sur une conversation 
   const garde = /\.is\("partenaire_id", null\)\.is\("client_id", null\)\.is\("dossier_id", null\)\.neq\("reponses", "jamais"\)/;
   assert.match(lire("supabase/functions/whatsapp/reponse.ts"), garde, "reponse.ts");
   assert.match(lire("supabase/functions/whatsapp/pret.ts"), garde, "pret.ts");
-  assert.match(lire("supabase/functions/whatsapp/pret.ts"), /const COLONNES = "id, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";/);
+  assert.match(lire("supabase/functions/whatsapp/pret.ts"), /const COLONNES = "id, organisation_id, telephone, reponses, type_contact, partenaire_id, client_id, dossier_id, tri, pret_reserver";/);
   assert.match(lire("docs/gestion/migration-110-whatsapp-type-contact.sql"), /and old\.client_id is null and new\.client_id is null and old\.dossier_id is null and new\.dossier_id is null then/, "défense en base");
 });
 
