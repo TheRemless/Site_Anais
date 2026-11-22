@@ -306,7 +306,7 @@ test("revue n° 1 : whatsapp-envoi contrôle Secret et Taxi ensemble pour une co
 
 test("revue n° 2 : après un refus contenu_interne, copie, lien et envoi éteints jusqu'à ce que le texte change", () => {
   const vue = lire("views/proposer-excursion.mjs");
-  assert.match(vue, /if \(code === "contenu_interne"\) refuse = texte;/);
+  assert.match(vue, /if \(code === "contenu_interne" \|\| code === "montant_a_confirmer"\) refuse = texte;/);
   assert.match(vue, /const aRefaire = refuse !== null && texte === refuse;/);
   assert.match(vue, /const ok = !!texte && !noms_\.length && !aRefaire;/);
   assert.match(vue, /copier\.disabled = !ok \|\| !charges;/);

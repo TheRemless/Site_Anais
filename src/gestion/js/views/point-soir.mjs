@@ -10,7 +10,7 @@ import { formatDate } from "../calc.mjs";
 import { ajouterJours, personnesTexte, langueClient, variablesMessage, notePasseport } from "../operations-calc.mjs";
 import { messagesDefautPour } from "../defauts.mjs";
 import { dateDans, heureDans, FUSEAU_DEFAUT } from "../rappel-h1-calc.mjs";
-import { ERREURS_ENVOI, envoiIncertain, nomConversation } from "../whatsapp-calc.mjs";
+import { ERREURS_ENVOI, envoiIncertain, nomConversation, motifRefusEnvoi, codeEnvoi } from "../whatsapp-calc.mjs";
 import { numeroMasque, numeroDifferent } from "../whatsapp-voucher-calc.mjs";
 import { lienWhatsApp as lienConversation } from "../agent-whatsapp-lecture.mjs";
 import { joursDuPoint, pickupsDuPoint, messagePickup, modeleDuPickup, moyenEnvoi, fenetreDepuis, detailsAvecAnnonce, annonceDe, etatAnnonce, envoisAFaire, sansReponse, lieuPickup, pointSoirVisible, nomsInterdits } from "../point-soir-calc.mjs";
@@ -114,13 +114,20 @@ function remplirGestes(zone, { r, texte, conversation, client, fen }) {
     const caseNumero = autre ? h("input", { type: "checkbox", id: `soir-numero-${r.id}` }) : null;
     const etatEnvoi = h("p", { class: "aide", role: "status", hidden: true });
     const bouton = h("button", { class: a ? "secondaire petit" : "principal petit", type: "button", disabled: bloque || autre }, icone("whatsapp", 16), tr("Envoyer sur WhatsApp"));
-    if (caseNumero) caseNumero.addEventListener("change", () => (bouton.disabled = bloque || !caseNumero.checked));
+    // Refus du serveur (contenu_interne ou montant_a_confirmer, décision du 22.11.2026) : le motif en clair, le message devient modifiable ici
+    // et l'envoi se rallume dès qu'il change. Pas d'envoi forcé : le serveur revérifie le nouveau texte.
+    let edition = null;
+    let refuse = null;
+    const texteEnvoye = () => (edition ? edition.value.trim() : texte);
+    const majBouton = () => (bouton.disabled = bloque || (caseNumero && !caseNumero.checked) || !texteEnvoye() || (refuse !== null && texteEnvoye() === refuse));
+    if (caseNumero) caseNumero.addEventListener("change", majBouton);
     const partir = async ({ dejaConfirme = false } = {}) => {
       if (caseNumero && !caseNumero.checked) return;
       if (!dejaConfirme && !(await confirmerNouvelEnvoi(r))) return;
       bouton.disabled = true;
       etatEnvoi.hidden = true;
-      const res = await etat.store.whatsappEnvoyer({ conversation_id: moyen.conversation_id, texte });
+      const envoye = texteEnvoye();
+      const res = await etat.store.whatsappEnvoyer({ conversation_id: moyen.conversation_id, texte: envoye });
       if (res && (res.ok || res.demo)) {
         // Parti : la trace « direct » ; si elle ne s'écrit pas, « incertain » sur cet appareil, et le bouton reste bloqué.
         await noterAnnonce(r, "direct");
@@ -136,9 +143,22 @@ function remplirGestes(zone, { r, texte, conversation, client, fen }) {
         refaire();
         return toast(tr(ERREURS_ENVOI.verifier_whatsapp), true);
       }
-      etatEnvoi.textContent = tr(ERREURS_ENVOI[code] || ERREURS_ENVOI.base);
+      const motif = motifRefusEnvoi(res, { nombre: (n) => n.toLocaleString(langueActive() === "en" ? "en-GB" : "fr-FR") });
+      etatEnvoi.textContent = motif ? tr(motif.texte, motif.vars) : tr(ERREURS_ENVOI[codeEnvoi(code, res && res.a_retirer)] || ERREURS_ENVOI.base);
       etatEnvoi.hidden = false;
-      bouton.disabled = ["contenu_interne", "montant_a_confirmer", "droit_manquant"].includes(code);
+      if (code === "contenu_interne" || code === "montant_a_confirmer") {
+        refuse = envoye;
+        if (!edition) {
+          edition = h("textarea", { class: "point-soir-edition", rows: 6, "aria-label": tr("Message à modifier avant l'envoi") });
+          edition.value = envoye;
+          edition.addEventListener("input", majBouton);
+          bouton.before(edition);
+        }
+        majBouton();
+        edition.focus();
+        return;
+      }
+      bouton.disabled = code === "droit_manquant";
     };
     bouton.addEventListener("click", () => partir());
     // Trace « incertain » : le bouton reste éteint ; seul ce bouton renvoie, après une confirmation explicite.

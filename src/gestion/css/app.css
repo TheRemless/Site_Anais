@@ -2555,6 +2555,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .point-soir-signal { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .point-soir-destinataire { margin: 0; flex: 1 0 100%; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
 .point-soir-numero { flex: 1 0 100%; font-size: 0.9rem; }
+.point-soir-edition { flex: 1 0 100%; width: 100%; font: inherit; font-size: 0.92rem; }
 
 /* Proposer une excursion (22.11.2026) : une ou deux excursions cochées, le message relu avant de partir. */
 .excursion-choix { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }

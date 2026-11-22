@@ -5,11 +5,11 @@
 // dans la conversation du client si le client a écrit il y a moins de 24 h (whatsapp-envoi, avec ses contrôles des nets et des noms).
 import { etat, entitesAccessibles, organisationActiveId, reglagesDe, nomClient, permissionsDe } from "../etat.mjs";
 import { h, icone, modal, toast } from "../ui.mjs";
-import { tr } from "../i18n.mjs";
+import { tr, langueActive } from "../i18n.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { exempleDe } from "../exemples.mjs";
 import { resteBloque } from "../agent-calc.mjs";
-import { marqueEntite, lienWhatsApp, fenetre, ERREURS_ENVOI, envoiIncertain, aConfirmerEnvoi } from "../whatsapp-calc.mjs";
+import { marqueEntite, lienWhatsApp, fenetre, ERREURS_ENVOI, envoiIncertain, motifRefusEnvoi, codeEnvoi } from "../whatsapp-calc.mjs";
 import { conversationDuVoucher, contactVoucher } from "../whatsapp-voucher-calc.mjs";
 import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, lieuxExterieurs, reservationsDuDossierLie, voucherEnvoye, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
 import { adminsWhatsApp } from "./voucher-whatsapp.mjs";
@@ -102,8 +102,10 @@ function ouvrirProposition(ctx, conversationDonnee) {
   const envoyer = conversation ? h("button", { class: "principal", type: "button", disabled: true }, icone("whatsapp", 18), tr("Envoyer dans la conversation")) : null;
   let fenetreOk = false;
   let bloque = false;
-  // Le texte refusé par whatsapp-envoi (contenu_interne) : ni copie, ni lien, ni envoi tant qu'il n'a pas changé.
+  // Le texte refusé par whatsapp-envoi (contenu_interne ou montant_a_confirmer) : ni copie, ni lien, ni envoi tant qu'il n'a pas changé.
+  // Le motif est dit en clair (motifRefusEnvoi) ; pas d'envoi forcé (décision du 22.11.2026).
   let refuse = null;
+  let motif = null;
 
   // Le texte est relu à chaque frappe : un nom de partenaire ou de contact typé bloque la copie, le lien et l'envoi.
   const maj = () => {
@@ -113,7 +115,9 @@ function ouvrirProposition(ctx, conversationDonnee) {
     alerte.textContent = noms_.length
       ? tr("À retirer du message : {liste}.", { liste: noms_.join(", ") })
       : aRefaire
-        ? tr("Le texte contient un net, une commission ou un nom de partenaire : corrigez-le avant de le copier ou de l'envoyer.")
+        ? motif
+          ? tr(motif.texte, motif.vars)
+          : tr("Le texte contient un net, une commission ou un nom de partenaire : corrigez-le avant de le copier ou de l'envoyer.")
         : !charges
           ? tr("Les fiches partenaires ou les contacts WhatsApp de Secret et de Taxi ne sont pas tous chargés : le texte ne peut pas être contrôlé ici. Copie et lien WhatsApp éteints ; l'envoi dans la conversation reste contrôlé par le serveur.")
           : "";
@@ -180,12 +184,12 @@ function ouvrirProposition(ctx, conversationDonnee) {
       },
       () => maj()
     );
-    const partir = async (confirmes = []) => {
+    const partir = async () => {
       if (envoyer.disabled) return;
       envoyer.disabled = true;
       etatEnvoi.hidden = true;
       const texte = zone.value.trim();
-      const res = await etat.store.whatsappEnvoyer({ conversation_id: conversation.id, texte, montants_confirmes: confirmes });
+      const res = await etat.store.whatsappEnvoyer({ conversation_id: conversation.id, texte });
       if (res && (res.ok || res.demo)) {
         bloque = true;
         toast(res.demo ? tr("En démo, rien ne part : le message serait envoyé dans la conversation WhatsApp.") : tr("Message envoyé dans la conversation WhatsApp."));
@@ -193,20 +197,14 @@ function ouvrirProposition(ctx, conversationDonnee) {
         return;
       }
       const code = (res && res.erreur) || "inconnu";
-      const question = aConfirmerEnvoi(res, texte);
-      if (question) {
-        // Un prix de vente égal au net d'un autre service : Nani confirme d'un clic, la même liste repart et la fonction la revérifie.
-        const encore = h("button", { class: "secondaire", type: "button" }, tr("Envoyer quand même"));
-        encore.addEventListener("click", () => partir(question.renvoi));
-        etatEnvoi.replaceChildren(h("p", null, h("strong", null, tr(question.texte, question.vars))), encore);
-        etatEnvoi.hidden = false;
-        return maj();
-      }
-      // Refus contenu_interne (net, commission ou nom trouvé par le serveur) : la copie et le lien s'éteignent aussi, jusqu'à ce que le texte
-      // change (revue de la PR 310). Les autres refus sûrs ou un résultat incertain éteignent l'envoi.
-      if (code === "contenu_interne") refuse = texte;
+      // Refus contenu_interne (net, commission ou nom trouvé par le serveur) ou montant_a_confirmer (montant égal à un prix d'achat) : le motif
+      // en clair, la copie et le lien s'éteignent aussi jusqu'à ce que le texte change (revue de la PR 310). Aucun envoi forcé.
+      // Les autres refus sûrs ou un résultat incertain éteignent l'envoi.
+      motif = motifRefusEnvoi(res, { nombre: (n) => n.toLocaleString(langueActive() === "en" ? "en-GB" : "fr-FR") });
+      if (code === "contenu_interne" || code === "montant_a_confirmer") refuse = texte;
       else if (envoiIncertain(code) || ["droit_manquant", "fenetre_fermee"].includes(code)) bloque = true;
-      dire(tr(ERREURS_ENVOI[code] || ERREURS_ENVOI.verifier_whatsapp));
+      if (motif) etatEnvoi.hidden = true;
+      else dire(tr(ERREURS_ENVOI[codeEnvoi(code, res && res.a_retirer)] || ERREURS_ENVOI.verifier_whatsapp));
       maj();
     };
     envoyer.addEventListener("click", () => partir());

@@ -40,4 +40,17 @@ export const EN_POINT_SOIR = {
   "Ce n'est pas le numéro de la fiche ({fiche}) : c'est bien le client": "Not the number on the record ({fiche}): it is the client",
   "Ce matin": "This morning",
   "Rappel à {nom} dans le point du soir": "Reminder to {nom} in the evening check",
+  // Motif en clair d'un refus du serveur (point du soir et « Proposer une excursion », 22.11.2026)
+  "Le montant {montants} est égal à un prix d'achat. Modifiez le message, rien n'est parti.": "The amount {montants} equals a purchase price. Change the message, nothing was sent.",
+  "Les montants {montants} sont égaux à des prix d'achat. Modifiez le message, rien n'est parti.": "The amounts {montants} equal purchase prices. Change the message, nothing was sent.",
+  "Un montant du message est égal à un prix d'achat. Modifiez le message, rien n'est parti.": "An amount in the message equals a purchase price. Change the message, nothing was sent.",
+  "{noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti.": "{noms} is a partner's name. Change the message, nothing was sent.",
+  "{noms} sont des noms de partenaires. Modifiez le message, rien n'est parti.": "{noms} are partners' names. Change the message, nothing was sent.",
+  "Le montant {montants} est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti.": "The amount {montants} equals a purchase price. {noms} is a partner's name. Change the message, nothing was sent.",
+  "Le montant {montants} est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti.": "The amount {montants} equals a purchase price. {noms} are partners' names. Change the message, nothing was sent.",
+  "Les montants {montants} sont égaux à des prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti.": "The amounts {montants} equal purchase prices. {noms} is a partner's name. Change the message, nothing was sent.",
+  "Les montants {montants} sont égaux à des prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti.": "The amounts {montants} equal purchase prices. {noms} are partners' names. Change the message, nothing was sent.",
+  "Un montant du message est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti.": "An amount in the message equals a purchase price. {noms} is a partner's name. Change the message, nothing was sent.",
+  "Un montant du message est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti.": "An amount in the message equals a purchase price. {noms} are partners' names. Change the message, nothing was sent.",
+  "Message à modifier avant l'envoi": "Message to change before sending",
 };

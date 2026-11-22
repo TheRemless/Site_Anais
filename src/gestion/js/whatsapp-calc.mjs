@@ -5,7 +5,7 @@
 import { N_ } from "./i18n.mjs";
 import { numeroAffiche } from "./demandes-site-calc.mjs";
 import { nomContact, nomSaisi } from "./agent-whatsapp-lecture.mjs";
-import { montantsDuTexte } from "./agent-calc.mjs";
+import { montantsDuTexte, bloquantsReponse, CONTROLE_IMPOSSIBLE } from "./agent-calc.mjs";
 
 export { numeroAffiche };
 
@@ -362,6 +362,47 @@ export function aConfirmerEnvoi(r, texte = "") {
   const texteQuestion = r.portee === "autre_service" ? N_("Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.") : N_("Le montant {liste} est aussi un net du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.");
   return { renvoi: liste, texte: texteQuestion, vars: { liste: liste.join(", ") } };
 }
+// Motif en clair d'un refus du serveur pour un message écrit d'avance (point du soir, « Proposer une excursion », décision du 22.11.2026) :
+// le refus reste, il n'est jamais muet, et il n'y a pas d'envoi forcé. Le texte reste modifiable ; l'écran rallume l'envoi dès qu'il change.
+// Rend { texte, vars } (à passer à tr) pour un refus « contenu_interne » (422) ou « montant_a_confirmer » (409), sinon null. Un montant
+// masqué (pas le droit de voir les nets) n'est jamais nommé. `nombre` : la mise en forme d'un montant (langue de l'écran).
+export function motifRefusEnvoi(r, { nombre = (n) => new Intl.NumberFormat("fr-FR").format(n) } = {}) {
+  if (!r || !["contenu_interne", "montant_a_confirmer"].includes(r.erreur)) return null;
+  const brut = (r.a_retirer || []).map(String);
+  // Lecture impossible côté serveur : le texte n'est pas en cause, le message habituel s'applique (codeEnvoi).
+  if (r.erreur === "contenu_interne" && (brut.includes(LECTURE_IMPOSSIBLE) || brut.includes(CONTROLE_IMPOSSIBLE))) return null;
+  const b = r.erreur === "contenu_interne" ? bloquantsReponse(brut) : { montants: r.masque ? [] : (r.a_confirmer || []).map(Number).filter((x) => Number.isFinite(x) && x > 0), noms: [], empreintes: r.masque ? [{}] : [] };
+  const montants = [...new Set(b.montants)];
+  const noms = [...new Set([...b.noms, ...(r.erreur === "contenu_interne" ? brut.filter((x) => !/^[a-z_]+:/.test(x)) : [])])];
+  const phrases = [];
+  const vars = {};
+  if (montants.length) {
+    phrases.push(montants.length > 1 ? "Les montants {montants} sont égaux à des prix d'achat." : "Le montant {montants} est égal à un prix d'achat.");
+    vars.montants = montants.map(nombre).join(", ");
+  } else if ((b.empreintes || []).length || r.erreur === "montant_a_confirmer") phrases.push("Un montant du message est égal à un prix d'achat.");
+  if (noms.length) {
+    phrases.push(noms.length > 1 ? "{noms} sont des noms de partenaires." : "{noms} est le nom d'un partenaire.");
+    vars.noms = noms.join(", ");
+  }
+  if (!phrases.length) return { texte: ERREURS_ENVOI.contenu_interne, vars: {} };
+  return { texte: MOTIFS_REFUS[phrases.join(" ")] || ERREURS_ENVOI.contenu_interne, vars };
+}
+// Les phrases possibles, écrites en entier pour la traduction (N_).
+const MOTIFS_REFUS = Object.fromEntries(
+  [
+    N_("Le montant {montants} est égal à un prix d'achat. Modifiez le message, rien n'est parti."),
+    N_("Les montants {montants} sont égaux à des prix d'achat. Modifiez le message, rien n'est parti."),
+    N_("Un montant du message est égal à un prix d'achat. Modifiez le message, rien n'est parti."),
+    N_("{noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+    N_("{noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+    N_("Le montant {montants} est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+    N_("Le montant {montants} est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+    N_("Les montants {montants} sont égaux à des prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+    N_("Les montants {montants} sont égaux à des prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+    N_("Un montant du message est égal à un prix d'achat. {noms} est le nom d'un partenaire. Modifiez le message, rien n'est parti."),
+    N_("Un montant du message est égal à un prix d'achat. {noms} sont des noms de partenaires. Modifiez le message, rien n'est parti."),
+  ].map((t) => [t.replace(" Modifiez le message, rien n'est parti.", ""), t])
+);
 export const montantsAConfirmer = (r, texte = "") => (aConfirmerEnvoi(r, texte) || { renvoi: [] }).renvoi;
 export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" && (aRetirer || []).includes("controle_impossible") ? "controle_impossible" : (code === "contenu_interne" && (aRetirer || []).includes(LECTURE_IMPOSSIBLE) ? "partenaires_illisibles" : code));
 // « Préparer une réponse » (fonction whatsapp-preparer, 202 puis préparation en tâche de fond).
