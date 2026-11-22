@@ -130,6 +130,11 @@ export function entrepriseReponse({ conv, ents = [], suggestion = null, defaut =
   return choisie || (defaut ? ents.find((e) => e.slug === defaut) || null : null);
 }
 export const clientCommun = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
+// Geste demandé par Nani (« Préparer une réponse », fonction whatsapp-preparer) : refusé seulement pour un Contact personnel. L'IA coupée
+// (ia_coupee, migration 105) ne coupe que l'automatique (iaPermise, triSansAppel) : décision du 22.11.2026, règle du 21.11.2026.
+// Rend le code d'erreur pour l'écran, ou null si la demande est permise.
+export const refusDemande = (conv) => (!conv ? "droit_manquant" : conv.reponses === "jamais" ? "contact_personnel" : null);
+// Automatique (tri, résumé, promesse, réponse préparée d'office) : l'IA coupée et le Contact personnel ferment.
 export function iaPermise({ receptionActive, conv, agents = {} }) {
   if (receptionActive !== true || !conv || conv.reponses === "jamais" || conv.ia_coupee === true) return false;
   // Client connu par son seul BSUID (migration 100) : pas d'IA tant que la conversation n'a pas de numéro ou que Nani ne l'a pas typée.

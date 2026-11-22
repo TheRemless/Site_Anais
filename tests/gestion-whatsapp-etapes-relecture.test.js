@@ -58,7 +58,7 @@ test("n° 3 : iaPermise : tri si l'un des deux assistants est allumé ; IA coup�
   // coupe tout) : « Préparer une réponse » n'est plus refusé, les boutons restent affichés, l'aide le dit.
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
   const demande = rep.slice(rep.indexOf("export async function preparerALaDemande"), rep.indexOf("const t0 = Date.now() + ATTENTE_MS"));
-  assert.ok(demande.includes('return { erreur: "contact_personnel" }'));
+  assert.ok(demande.includes("const refus = refusDemande(lu.conv);"), "Contact personnel refusé par refusDemande (gestion-ia-coupee.test.js)");
   assert.ok(!/ia_coupee === true\) return \{ erreur: "ia_coupee" \}/.test(demande), "« Préparer une réponse » permis à la demande");
   assert.match(rep, /if \(!decision && !\(await iaOuverte\(db, conv\)\)\) decision = \{ preparer: false, motif: "ia_coupee" \};/, "le tri automatique reste coupé");
   const vue = lire("src/gestion/js/views/whatsapp.mjs");

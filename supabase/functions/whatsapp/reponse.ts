@@ -22,7 +22,7 @@ import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu } from "../assistant/budget.js";
 import { dateBangkok, reglagesAssistant } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
-import { clientCommun, entrepriseReponse } from "./proposer.js";
+import { clientCommun, entrepriseReponse, refusDemande } from "./proposer.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
@@ -100,9 +100,9 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
 export async function preparerALaDemande(db: SupabaseClient, conversationId: string) {
   const lu = await lireConversation(db, conversationId);
   if (!lu) return { erreur: "droit_manquant" };
-  if (lu.conv.reponses === "jamais") return { erreur: "contact_personnel" };
-  // IA coupée par Nani pour cette conversation (migration 105) : seul l'automatique est coupé (tri, résumé, réponse préparée d'office).
-  // « Préparer une réponse » touché par Nani reste permis (décision du 22.11.2026, seul le Contact personnel coupe tout).
+  // Contact personnel : refusé. IA coupée par Nani (migration 105) : permis, seul l'automatique est coupé (refusDemande, décision du 22.11.2026).
+  const refus = refusDemande(lu.conv);
+  if (refus) return { erreur: refus };
   const dernier = lu.messages.filter((m) => !m.supprime_le).reduce((a: any, m: any) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
   if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
