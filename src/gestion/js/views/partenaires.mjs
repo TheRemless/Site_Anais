@@ -745,6 +745,9 @@ export function formulairePrestation(x, apres, options = {}) {
   const horaires = texte("x-horaires", d.horaires);
   const duree = texte("x-duree", d.duree, { placeholder: tr("4 h, journée…") });
   const capacite = texte("x-cap", d.capacite, { placeholder: tr("1 à 6 personnes") });
+  // Migration 90 : personnes au plus par véhicule ou par bateau, lu par « Calculer le devis » pour compter les véhicules. Champ chiffré,
+  // jamais déduit du texte « Capacité » ni d'une remarque.
+  const placesVehicule = h("input", { id: "x-places", type: "number", step: "1", min: "1", max: "60", value: x.places_vehicule ?? "", inputmode: "numeric" });
   const qui = texte("x-qui", d.qui, { placeholder: tr("Dès 6 ans, débutants acceptés…") });
   const bateau = zone("x-bateau", d.bateau);
   const parc = zone("x-parc", d.parc);
@@ -770,6 +773,7 @@ export function formulairePrestation(x, apres, options = {}) {
   const champParc = champ(tr("Frais de parc"), parc, tr("Ce que le client paie sur place, ou « inclus ». Imprimé sur le voucher."));
   const champMoteur = champ(tr("Moteur"), moteur, tr("Imprimé sur le voucher de location."));
   const champsThai = h("div", { class: "grille-form compacte" }, champ(tr("Tarif thaï adulte"), thaiAdulte), champ(tr("Tarif thaï enfant"), thaiEnfant));
+  const champPlaces = champ(tr("Personnes au plus par véhicule"), placesVehicule, tr("Sert au devis : 11 personnes pour 9 places font 2 véhicules. Vide : le devis demande de le renseigner."));
   const majSurPlace = () => {
     const frais = surPlacePossible(famille.value);
     if (caseSurPlace) caseSurPlace.hidden = !frais;
@@ -784,6 +788,8 @@ export function formulairePrestation(x, apres, options = {}) {
     champParc.hidden = taxi || !["excursion", "activite"].includes(f);
     champMoteur.hidden = taxi || f !== "location";
     champsThai.hidden = taxi || f !== "frais";
+    // Seulement pour un tarif au véhicule ou au bateau ; masqué, il garde sa valeur.
+    champPlaces.hidden = !["veh", "boat"].includes(unite.value);
     // Prix enfant : seulement pour un tarif par personne ou par adulte. Une prestation enfant séparée existante continue de servir tant que le champ est vide.
     const parPersonne = ["pp", "ad"].includes(unite.value);
     prixEnfant.disabled = !parPersonne;
@@ -812,7 +818,10 @@ export function formulairePrestation(x, apres, options = {}) {
     // Les nombres vides disparaissent des détails (un « 0 » reste : prix enfant gratuit). Les textes vides absents au départ ne s'ajoutent pas.
     for (const [k, v] of Object.entries(nombres)) if (v === null) delete details[k]; else details[k] = v;
     for (const k of ["duree", "qui", "bateau", "parc", "moteur", "montant_thai"]) if (details[k] === "" && !(k in d)) delete details[k];
-    return { partenaire_id: partenaire.value === AUCUN ? null : partenaire.value, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlacePossible(famille.value) && surPlace.checked, actif: actif.checked, details };
+    // places_vehicule n'est envoyé que s'il est saisi ou déjà en base : avant la migration 90, une fiche sans capacité s'enregistre encore.
+    const places = nombreOuNul(placesVehicule.value);
+    const placesSaisies = places !== null || (x.places_vehicule !== undefined && x.places_vehicule !== null) ? { places_vehicule: places === null ? null : Math.min(60, Math.max(1, Math.round(places))) } : {};
+    return { ...placesSaisies, partenaire_id: partenaire.value === AUCUN ? null : partenaire.value, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlacePossible(famille.value) && surPlace.checked, actif: actif.checked, details };
   };
   const ecrit = peut("partenaires.ecrire");
   // Enregistre la fiche ; rend la prestation enregistrée, ou null (erreur dite à la personne).
@@ -855,6 +864,7 @@ export function formulairePrestation(x, apres, options = {}) {
     h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, prixFige ? tr("Prix, prix enfant et unité : réservés à qui a le droit « Modifier les prix de vente ».") : tr("Vide : « prix à saisir » à chaque client. 0 : offert, la ligne s'imprime « Offert » sur la facture.")), champ(tr("Unité"), unite), champ(tr("Prix enfant"), prixEnfant), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant, tr("Pris pour la ligne enfant.")) : null),
     aideEnfant,
     h("div", { class: "grille-form" }, champ(tr("Horaires"), horaires), champ(tr("Durée"), duree, tr("Imprimée sur le voucher.")), champ(tr("Capacité"), capacite), champ(tr("Pour qui"), qui)),
+    champPlaces,
     champBateau,
     champParc,
     champMoteur,

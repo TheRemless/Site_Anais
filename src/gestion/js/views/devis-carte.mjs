@@ -2,7 +2,7 @@
 // Assistant ou depuis une conversation WhatsApp. Le calcul est fait ici, dans le navigateur, par devis-calc.mjs : aucun appel IA, rien
 // d'écrit en base, rien d'envoyé. Nani relit la réponse anglaise et la copie ; la copie est bloquée tant qu'un net ou un nom de partenaire
 // reste dans le texte (resteBloque, agent-calc.mjs).
-import { etat, reglages, nomPartenaire } from "../etat.mjs";
+import { etat, reglages, nomPartenaire, peut } from "../etat.mjs";
 import { h, toast } from "../ui.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { formatMontant } from "../calc.mjs";
@@ -17,7 +17,7 @@ const MOTIFS = {
   autre_entreprise: N_("Ce service est d'une autre entreprise : calculez-le depuis son Assistant."),
   sans_prix: N_("Le tarif n'a pas de prix de vente au catalogue : aucun calcul."),
   sur_place: N_("Ce service se paie sur place : aucun prix à annoncer."),
-  capacite_inconnue: N_("La capacité du véhicule n'est pas écrite au catalogue (champ « Capacité » du tarif) : le nombre de véhicules ne se calcule pas."),
+  capacite_inconnue: N_("Capacité du véhicule à renseigner dans le catalogue."),
   capacite_depassee: N_("Le groupe dépasse la capacité écrite au catalogue ({n} personnes) : prix à fixer par vous."),
 };
 const ORIGINES = { catalogue: N_("catalogue"), saisi: N_("donné par vous"), client_non_corrige: N_("prix du client, non corrigé par Nani") };
@@ -27,14 +27,22 @@ export function blocDevis(donnees, { client = (donnees && donnees.client) || {} 
   if (!devisPossible(donnees)) return null;
   const resultat = h("div", { class: "devis-resultat", "aria-live": "polite" });
   const bouton = h("button", { type: "button", class: "secondaire petit" }, tr("Calculer le devis"));
-  bouton.addEventListener("click", () => {
-    resultat.replaceChildren(...dessiner(donnees, client));
+  const refaire = () => {
+    resultat.replaceChildren(...dessiner(donnees, client, refaire));
     bouton.textContent = tr("Recalculer le devis");
-  });
+  };
+  bouton.addEventListener("click", refaire);
   return h("div", { class: "devis-carte" }, bouton, resultat);
 }
 
-function dessiner(donnees, client) {
+// Le tarif à compléter, ouvert dans sa fiche habituelle (Partenaires). Sans le droit d'écrire le catalogue : le dire, sans bouton.
+function lienTarif(tarif, apres) {
+  const x = (etat.db.prestations || []).find((p) => p.id === tarif.id);
+  if (!x || !peut("partenaires.ecrire")) return h("span", null, tr("Une administratrice peut le renseigner dans le tarif « {libelle} ».", { libelle: tarif.libelle }));
+  return h("button", { type: "button", class: "lien", onclick: async () => (await import("./partenaires.mjs")).ouvrirPrestation(x, apres) }, tr("Ouvrir le tarif « {libelle} »", { libelle: tarif.libelle }));
+}
+
+function dessiner(donnees, client, refaire) {
   const devise = reglages().devise || "THB";
   const contexte = { prestations: etat.db.prestations || [], trajets: etat.db.trajets || [], partenaires: etat.db.partenaires || [], nomPartenaire };
   const devis = calculerDevis(donnees, contexte, { activeId: etat.entiteId });
@@ -54,7 +62,18 @@ function dessiner(donnees, client) {
         )
       )
     );
-  for (const m of devis.manquants) out.push(h("p", { class: "erreur-form", role: "alert" }, h("strong", null, m.libelle || tr("Service")), " : ", tr(MOTIFS[m.motif] || MOTIFS.incomplet, { n: m.capacite || "" })));
+  for (const m of devis.manquants)
+    out.push(
+      h(
+        "p",
+        { class: "erreur-form", role: "alert" },
+        h("strong", null, m.libelle || tr("Service")),
+        " : ",
+        tr(MOTIFS[m.motif] || MOTIFS.incomplet, { n: m.capacite || "" }),
+        // Le lien vers le tarif à compléter (fiche habituelle du catalogue) ; le devis se refait quand la fiche est enregistrée.
+        m.tarif ? [" ", lienTarif(m.tarif, () => refaire())] : null
+      )
+    );
   if (!devis.complet) {
     out.push(h("p", { class: "aide" }, tr("Pas de réponse préparée tant qu'un service n'a pas de prix.")));
     return out;

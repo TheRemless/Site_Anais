@@ -13,11 +13,11 @@ const lire = (f) => fs.readFileSync(path.join(ici, "..", "src", "gestion", "js",
 
 const partenaires = [{ id: "pa1", nom: "Transports Démo", actif: true }];
 const prestations = [
-  { id: "van", partenaire_id: "pa1", famille: "transfert", groupe: "Private minivan", libelle: "Minivan privé Krabi Airport → Koh Lanta", libelle_en: "Private minivan: Krabi Airport → Koh Lanta", prix_vente: 2500, unite: "veh", details: { capacite: "1 to 9 people" }, actif: true },
-  { id: "van-retour", partenaire_id: "pa1", famille: "transfert", groupe: "Private minivan", libelle: "Minivan privé Koh Lanta → Krabi Airport", libelle_en: "Private minivan: Koh Lanta → Krabi Airport", prix_vente: 2300, unite: "veh", details: { capacite: "Up to 9 people" }, actif: true },
+  { id: "van", partenaire_id: "pa1", famille: "transfert", groupe: "Private minivan", libelle: "Minivan privé Krabi Airport → Koh Lanta", libelle_en: "Private minivan: Krabi Airport → Koh Lanta", prix_vente: 2500, unite: "veh", places_vehicule: 9, details: { capacite: "1 to 9 people" }, actif: true },
+  { id: "van-retour", partenaire_id: "pa1", famille: "transfert", groupe: "Private minivan", libelle: "Minivan privé Koh Lanta → Krabi Airport", libelle_en: "Private minivan: Koh Lanta → Krabi Airport", prix_vente: 2300, unite: "veh", places_vehicule: 9, details: {}, actif: true },
   { id: "van-sans-cap", partenaire_id: "pa1", famille: "transfert", groupe: "Private minivan", libelle: "Minivan privé Koh Lanta → Phuket Airport", libelle_en: "Private minivan: Koh Lanta → Phuket Airport", prix_vente: 4500, unite: "veh", details: { note: "Child seat provided free. Price for 1 to 2 guests. Ferry crossing included up to 4 people, 60 per person from the 5th." }, actif: true },
-  { id: "bateau", partenaire_id: "pa1", famille: "excursion", groupe: "Private longtail", libelle: "Koh Rok en longtail privé", libelle_en: "Koh Rok by private longtail", prix_vente: 6500, unite: "boat", details: { capacite: "1 à 6 personnes" }, actif: true },
-  { id: "groupe", partenaire_id: "pa1", famille: "excursion", groupe: "Private speedboat", libelle: "Speedboat privé, journée", libelle_en: "Private speedboat, custom day", prix_vente: 18000, unite: "grp", details: { capacite: "10 passengers plus crew" }, actif: true },
+  { id: "bateau", partenaire_id: "pa1", famille: "excursion", groupe: "Private longtail", libelle: "Koh Rok en longtail privé", libelle_en: "Koh Rok by private longtail", prix_vente: 6500, unite: "boat", places_vehicule: 6, details: { capacite: "1 à 6 personnes" }, actif: true },
+  { id: "groupe", partenaire_id: "pa1", famille: "excursion", groupe: "Private speedboat", libelle: "Speedboat privé, journée", libelle_en: "Private speedboat, custom day", prix_vente: 18000, unite: "grp", places_vehicule: 10, details: { capacite: "10 passengers plus crew" }, actif: true },
   { id: "join", partenaire_id: "pa1", famille: "excursion", groupe: "Join tour", libelle: "4 îles en groupe", libelle_en: "4 Islands join tour", prix_vente: 1200, unite: "pp", details: {}, actif: true },
 ];
 const trajets = [{ id: "ferry", partenaire_id: "pa1", de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "08:00", prix_adulte: 1900, prix_enfant: 1400, actif: true }];
@@ -69,7 +69,9 @@ test("capacité : 11 personnes pour un minivan de 9 places font 2 minivans au pr
 test("capacité absente ou dépassée : pas de calcul, motif clair, aucune réponse", () => {
   const inconnue = calculerDevis(carte([service({ offre: { genre: "prestation", id: "van-sans-cap" }, adultes: 4 })]), contexte);
   assert.equal(inconnue.complet, false);
-  assert.deepEqual(inconnue.manquants.map((m) => m.motif), ["capacite_inconnue"]);
+  assert.deepEqual(inconnue.manquants.map((m) => [m.motif, m.tarif]), [["capacite_inconnue", { id: "van-sans-cap", libelle: "Minivan privé Koh Lanta → Phuket Airport" }]]);
+  // Un tarif à la personne n'a pas besoin de capacité : prix × quantité.
+  assert.equal(calculerDevis(carte([service({ offre: { genre: "prestation", id: "join" }, adultes: 3 })]), contexte).total, 3600);
   assert.equal(inconnue.total, null);
   assert.equal(reponseDevis(inconnue), "");
   // Un tarif de groupe au-delà de la capacité écrite : la sortie ne prend pas tout le monde.
@@ -79,17 +81,15 @@ test("capacité absente ou dépassée : pas de calcul, motif clair, aucune répo
   assert.equal(calculerDevis(carte([service({ offre: { genre: "prestation", id: "groupe" }, adultes: 10 })]), contexte).total, 18000);
 });
 
-test("lecture de la capacité : seulement le champ Capacité du tarif, jamais la remarque ni le libellé", () => {
-  assert.equal(capaciteDe({ unite: "boat", details: { capacite: "1 à 6 personnes" } }), 6);
-  assert.equal(capaciteDe({ unite: "grp", details: { capacite: "20 passengers plus crew" } }), 20);
-  assert.equal(capaciteDe({ unite: "veh", details: { capacite: "Up to 9 people" } }), 9);
-  assert.equal(capaciteDe({ unite: "veh", details: { capacite: "max 10" } }), 10);
-  // La remarque de Taxi dit une tranche de prix et un billet de ferry, pas les places du minivan.
+test("capacité : seulement le champ chiffré du tarif (migration 90), jamais un texte ni une remarque", () => {
+  assert.equal(capaciteDe({ unite: "veh", places_vehicule: 9 }), 9);
+  assert.equal(capaciteDe({ unite: "boat", places_vehicule: "6" }), 6);
+  // Le texte « Capacité » du voucher et la remarque Taxi ne comptent jamais.
+  assert.equal(capaciteDe({ unite: "boat", details: { capacite: "1 à 6 personnes" } }), null);
   assert.equal(capaciteDe({ unite: "veh", details: { note: "Price for 1 to 2 guests. Ferry crossing included up to 4 people." } }), null);
-  // « Base 1-2 pers » est la tranche de prix d'un tarif de groupe ; « 1 to 8 people » dans un libellé n'est pas lu non plus.
-  assert.equal(capaciteDe({ unite: "grp", details: {}, libelle: "Programme B : Private Fishing, Base 1-2 pers" }), null);
-  assert.equal(capaciteDe({ unite: "boat", details: {}, libelle_en: "Private boat to Turtle Island, 1 to 8 people" }), null);
-  assert.equal(capaciteDe({ unite: "veh", details: {} }), null);
+  assert.equal(capaciteDe({ unite: "veh", details: {}, libelle_en: "Private boat, 1 to 8 people" }), null);
+  // Valeurs hors du champ : vides.
+  for (const v of [null, undefined, "", 0, -2, 2.5, 61, "neuf"]) assert.equal(capaciteDe({ unite: "veh", places_vehicule: v }), null, String(v));
   assert.equal(motVehicule({ libelle: "Speedboat privé", unite: "boat" }, 1), "speedboat");
 });
 
@@ -180,7 +180,7 @@ test("écran : le bouton est sur la carte « Nouveau dossier » en attente, le c
 });
 
 test("catalogue Taxi : le libellé « destination » prend le groupe et le trajet de la carte, le véhicule s'appelle un taxi", () => {
-  const taxi = { id: "kbv", partenaire_id: "pa1", famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Airport", libelle_en: "", prix_vente: 2300, unite: "veh", details: { capacite: "1 to 9 people" }, actif: true };
+  const taxi = { id: "kbv", partenaire_id: "pa1", famille: "transfert", groupe: "Private Taxi", libelle: "Krabi Airport", libelle_en: "", prix_vente: 2300, unite: "veh", places_vehicule: 9, details: { capacite: "1 to 9 people" }, actif: true };
   const ctx = { ...contexte, prestations: [taxi] };
   const devis = calculerDevis(carte([service({ offre: { genre: "prestation", id: "kbv" }, de: "Lanta Sand", vers: "Krabi Airport", adultes: 11 }), service({ offre: { genre: "prestation", id: "kbv" }, adultes: 2 })]), ctx);
   assert.deepEqual(devis.lignes.map((l) => l.libelle), ["Private Taxi: Lanta Sand → Krabi Airport", "Private Taxi: Krabi Airport"]);
@@ -196,4 +196,25 @@ test("revue : bébés comptés dans les places, date impossible refusée, prix a
   const masque = calculerDevis(carte([service({ offre: { genre: "prestation", id: "efface" }, adultes: 2, prix: 3900, origine_prix: "saisi" })]), contexte);
   assert.equal(masque.complet, true);
   assert.equal(masque.total, 3900);
+});
+
+test("migration 90 : colonne places_vehicule de 1 à 60, vide par défaut, rejouable, avec son retour", () => {
+  const sql = fs.readFileSync(path.join(ici, "..", "docs", "gestion", "migration-90-places-vehicule.sql"), "utf8");
+  assert.match(sql, /alter table prestations add column if not exists places_vehicule integer;/);
+  assert.match(sql, /drop constraint if exists prestations_places_vehicule_check;/);
+  assert.match(sql, /check \(places_vehicule is null or places_vehicule between 1 and 60\)/);
+  assert.doesNotMatch(sql.replace(/^--.*$/gm, ""), /\bupdate\b|\binsert\b|\bdelete\b|nets/i, "aucune donnée modifiée, rien sur les nets");
+  const retour = fs.readFileSync(path.join(ici, "..", "docs", "gestion", "retour-90-places-vehicule.sql"), "utf8");
+  assert.match(retour, /drop column if exists places_vehicule/);
+});
+
+test("fiche du tarif : le champ « Personnes au plus par véhicule » s'enregistre, seulement s'il est saisi ou déjà en base", () => {
+  const vue = lire("views/partenaires.mjs");
+  assert.match(vue, /champ\(tr\("Personnes au plus par véhicule"\), placesVehicule/);
+  assert.match(vue, /champPlaces\.hidden = !\["veh", "boat"\]\.includes\(unite\.value\)/);
+  assert.match(vue, /places !== null \|\| \(x\.places_vehicule !== undefined && x\.places_vehicule !== null\) \? \{ places_vehicule:/);
+  // Le devis renvoie vers le tarif à compléter, avec le message demandé.
+  const devis = lire("views/devis-carte.mjs");
+  assert.match(devis, /capacite_inconnue: N_\("Capacité du véhicule à renseigner dans le catalogue\."\)/);
+  assert.match(devis, /\.ouvrirPrestation\(x, apres\)/);
 });

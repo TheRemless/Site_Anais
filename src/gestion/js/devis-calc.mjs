@@ -39,20 +39,12 @@ export function devisPossible(donnees = {}) {
 // ---- Capacité du catalogue -------------------------------------------------------------------------------------------------------
 // Tarifs vendus au véhicule ou au bateau : le nombre de véhicules suit la capacité.
 export const PAR_VEHICULE = ["veh", "boat"];
-const MOT_PERSONNES = "(?:people|persons?|personnes?|pers|pax|passengers?|passagers?|seats?|places?|guests?)";
-const AVANT_MOT = new RegExp(`(\\d{1,3})\\s*${MOT_PERSONNES}(?![\\p{L}])`, "giu");
-const APRES_MOT = /(?:up to|max(?:imum)?\.?|jusqu['’]?\s*à)\s*(\d{1,3})(?!\d)/giu;
-function plusGrand(texte) {
-  const t = String(texte || "");
-  const vus = [...t.matchAll(AVANT_MOT), ...t.matchAll(APRES_MOT)].map((m) => Number(m[1])).filter((n) => n > 0);
-  return vus.length ? Math.max(...vus) : null;
-}
-// La capacité en personnes d'une prestation, lue seulement dans le champ « Capacité » du tarif (« 1 à 6 personnes », « 20 passengers plus
-// crew »). Ni la remarque ni le libellé : chez Taxi, la remarque dit « Price for 1 to 2 guests… ferry crossing included up to 4 people »,
-// une tranche de prix et un billet de ferry, pas les places du minivan ; un libellé « Base 1-2 pers » dit aussi une tranche. null : rien
-// d'écrit, le nombre de véhicules ne se devine pas.
+// La capacité vient seulement du champ chiffré « Personnes au plus par véhicule » du tarif (prestations.places_vehicule, migration 90).
+// Jamais du texte « Capacité » (details.capacite) ni d'une remarque : chez Taxi, la remarque dit « Price for 1 to 2 guests… ferry crossing
+// included up to 4 people », une tranche de prix et un billet de ferry, pas les places du minivan. null : à renseigner, rien ne se devine.
 export function capaciteDe(p) {
-  return (p && p.details && plusGrand(p.details.capacite)) || null;
+  const n = p ? Number(p.places_vehicule) : NaN;
+  return Number.isInteger(n) && n >= 1 && n <= 60 ? n : null;
 }
 
 // Le mot du véhicule pour le client, d'après le groupe et le libellé du tarif.
@@ -85,7 +77,7 @@ function libelleDuService(base, s) {
 // Rend { lignes, manquants, total, complet } :
 //   ligne : { index, libelle, date, personnes, total, unitaire, vehicules, vehicule, origine ("catalogue" | "saisi" | "client_non_corrige"),
 //             avertissement, offre: { genre, id } | null, tarif (la ligne du catalogue, pour le contrôle des nets) } ;
-//   manquant : { index, libelle, motif, capacite? } ; total : la somme des lignes, null tant qu'un service manque.
+//   manquant : { index, libelle, motif, capacite?, tarif? (id et libellé du tarif à compléter) } ; total : la somme des lignes, null tant qu'un service manque.
 export function calculerDevis(donnees = {}, contexte = {}, { activeId = null } = {}) {
   const services = (donnees && donnees.services) || [];
   // Les prix acceptés dans la conversation (PR 306 et 307) : prix_carte d'un service du catalogue, prix_libre d'un service hors catalogue.
@@ -123,7 +115,8 @@ export function calculerDevis(donnees = {}, contexte = {}, { activeId = null } =
     }
     if (base.total === null || base.total === undefined) return manque(p && p.sur_place ? "sur_place" : "sans_prix");
     if (parVehicule) {
-      if (!capacite) return manque("capacite_inconnue");
+      // Sans capacité, la quantité de véhicules n'est pas connue : rien à multiplier. Le tarif est rendu pour que Nani le complète.
+      if (!capacite) return manque("capacite_inconnue", { tarif: { id: p.id, libelle: p.libelle } });
       return ligne(base, Number(base.total) * vehicules, { unitaire: Number(base.total), vehicules, vehicule });
     }
     // Un tarif de groupe ou à la personne au-delà de la capacité écrite : la sortie ne prend pas tout le monde, Nani tranche.
