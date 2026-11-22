@@ -1,6 +1,6 @@
-{#- BreadcrumbList : Accueil > (Blog >) Page. Rien sur la home. -#}
+{#- BreadcrumbList : Accueil > (Blog >) Page. Rien sur la home, rien sur les pages privées (privatePage : /carnet/). -#}
 {%- set home = "/en/" if lang == "en" else "/" %}
-{%- if page.url != home %}
+{%- if page.url != home and not privatePage %}
 {%- set items = [{ "@type": "ListItem", "position": 1, "name": crumbs[lang][home], "item": "https://zwaldtravelplanner.com" + home }] %}
 {%- if tags and "post" in tags %}
 {%- set blogUrl = "/en/blog/" if lang == "en" else "/blog/" %}

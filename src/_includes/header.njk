@@ -10,6 +10,8 @@
           <li><a href="{{ href }}"{% if active == href %} class="active"{% endif %}>{{ item.labelKey | t(lang) }}{% if item.tagKey %} <span class="nav-tag">{{ item.tagKey | t(lang) }}</span>{% endif %}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a></li>
         {%- endfor %}
       </ul></nav>
+      {#- Pages privées : ni sélecteur de devise (currency.js appelle un CDN tiers) ni sélecteur de langue (le lien EN mène à une page sans rapport) -#}
+      {%- if not privatePage %}
       <div class="currency-switch">
         <select id="currency-switch" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
           <option value="CHF">CHF</option>
@@ -24,6 +26,7 @@
         <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
         {% endif %}
       </div>
+      {%- endif %}
       {#- Une page peut remplacer le bouton de l'en-tête (front matter headerCta : label, href, external) -#}
       {%- if headerCta %}
       <div class="nav-cta"><a class="btn btn-teal" href="{{ headerCta.href }}"{% if headerCta.external %} target="_blank" rel="noopener"{% endif %}><span>{{ headerCta.label }}</span></a></div>
@@ -39,6 +42,7 @@
     <a href="{{ href }}"{% if active == href %} class="active"{% endif %}>{{ item.labelKey | t(lang) }}{% if item.tagKey %} <span class="nav-tag">{{ item.tagKey | t(lang) }}</span>{% endif %}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a>
   {%- endfor %}
     <a href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"{% if active == ('/en/contact/' if lang == 'en' else '/contact/') %} class="active"{% endif %}>{{ 'nav.contact' | t(lang) }}</a>
+    {%- if not privatePage %}
     <div class="currency-switch currency-switch-mobile">
       <select id="currency-switch-mobile" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
         <option value="CHF">CHF</option>
@@ -53,4 +57,5 @@
       <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
       {% endif %}
     </div>
+    {%- endif %}
   </div>
