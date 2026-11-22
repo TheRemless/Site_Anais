@@ -14,7 +14,8 @@
 // 2. Repérage sans webhook, sur une réponse de Nani depuis l'app, pour un client seulement (jamais un partenaire, un chauffeur, un hôtel,
 //    un apporteur, une fiche partenaire ni un Contact personnel) :
 //      - le message d'avant était déjà à elle, date de plus de 6 heures, et sa réponse ressemble à une réponse (prix, oui ou non,
-//        confirmation, heure) et pas à une relance ;
+//        confirmation, heure, « how can I help ») et pas à une relance ni à un message commercial ;
+//      - c'est le premier message connu de la conversation, et c'est une vraie réponse (oui ou non, prix, « how can I help ») ;
 //      - ou elle cite un message passé par Telnyx (id Telnyx, donc reçu depuis le 20.11.2026) que Gestion n'a pas. Un wamid cité ne se date
 //        pas : aucun repère.
 //    Repère discret, sans IA ni notification.
@@ -142,15 +143,22 @@ export function repereAutorise(conv) {
 
 // Une réponse de Nani qui répond à quelque chose (prix, oui ou non, confirmation, disponibilité, heure), et pas une relance (« would you
 // like to book », « any news », « just checking »…). Règle mesurée sur les messages du 20 au 22.11.2026 (docs/gestion/whatsapp.md).
-const RELANCE = /\b(would you like|do you (?:still )?want|are you still|still interested|any news|any updates?|just (?:checking|following up)|following up|follow up|did you (?:have|get|see|receive|manage)|have you (?:had|decided|seen|received)|reminder|toujours (?:partant|intéressée?|ok)|des nouvelles|as-tu (?:pu|eu|vu)|avez-vous (?:pu|eu|vu))\b/i;
+const RELANCE = /\b(would you like|do you (?:still )?want|are you still|still interested|any news|any updates?|just (?:checking|following up)|following up|follow up|did you (?:have|get|see|receive|manage)|have you (?:had|decided|seen|received)|reminder|toujours (?:partant|intéressée?|ok)|des nouvelles|as-tu (?:pu|eu|vu)|avez-vous (?:pu|eu|vu)|revenir vers (?:vous|toi)|je me permets de (?:revenir|vous relancer|te relancer)|relancer)\b/i;
 const PRIX = /\d[\d'’,.\s]*\s?(?:thb|baht|฿|chf|eur|€|usd|\$)|\b(?:price|prices|prix|tarif|cost|costs|total)\b/i;
 const ACCORD = /^[^\p{L}\p{N}]*(?:(?:hello|hi|hey|bonjour|coucou|dear)\b[^\p{L}\p{N}]*(?:\p{L}+[^\p{L}\p{N}]+)?)?(?:yes|yeah|yep|sure|of course|ok|okay|no problem|noted|perfect|great|no|oui|non|d'accord|d’accord|bien sûr|parfait|c'est noté|c’est noté|pas de (?:souci|problème))\b/iu;
 const CONFIRME = /\b(?:confirmed|booked|available|availability|dispo|disponib\p{L}*|confirmée?|réservée?|it'?s possible|we can|on peut|c'est possible|c’est possible)/iu;
 const HEURE = /\b\d{1,2}[:h.]\d{2}\b|\bat \d{1,2}\s?(?:am|pm)\b|\bà \d{1,2}\s?h\b/i;
-export function ressembleReponse(texte) {
+// « How can I help you? » répond à un premier message du client qu'on n'a pas.
+const AIDE = /\b(?:how can (?:i|we) help|what can (?:i|we) do for you|how may (?:i|we) help|comment (?:puis-je|pouvons-nous) (?:vous|t)['’ ]?aider|en quoi (?:puis-je|pouvons-nous))/i;
+// Un message que Nani lance elle-même : remerciement après le séjour, proposition commerciale. Jamais une réponse.
+const COMMERCIAL = /\b(?:thank you (?:for|so much for) (?:choosing|staying|booking|your stay|your visit|travell?ing)|thanks for (?:choosing|staying|booking)|hope you (?:enjoyed|had|liked)|we (?:offer|propose)|special offer|promo(?:tion)?s?|discount|newsletter|merci (?:pour|de) votre (?:séjour|confiance|visite)|nous (?:proposons|offrons)|offre spéciale)\b/i;
+export function ressembleReponse(texte, { premier = false } = {}) {
   const t = String(texte || "").trim();
-  if (!t || RELANCE.test(t)) return false;
-  return PRIX.test(t) || ACCORD.test(t) || CONFIRME.test(t) || HEURE.test(t);
+  if (!t || RELANCE.test(t) || COMMERCIAL.test(t)) return false;
+  // Premier message connu : seulement une vraie réponse (oui ou non, prix, « how can I help »). Une confirmation ou une heure seule peut être
+  // un avis que Nani envoie d'elle-même (« your driver is confirmed tomorrow »), et une disponibilité, une question à un prestataire.
+  if (premier) return ACCORD.test(t) || PRIX.test(t) || AIDE.test(t);
+  return PRIX.test(t) || ACCORD.test(t) || CONFIRME.test(t) || HEURE.test(t) || AIDE.test(t);
 }
 
 // Un id Telnyx (UUID) : le message cité est passé par Telnyx, donc depuis le 20.11.2026, et Gestion devrait l'avoir. Un wamid ne se date pas.
@@ -158,11 +166,14 @@ export const citationDatable = (id) => typeof id === "string" && /^[0-9a-f]{8}-[
 
 // Repérage sans webhook, sur un message de Nani envoyé depuis l'app (écho). conv : la conversation (type_contact, partenaire_id, reponses) ;
 // precedent : le message d'avant ({ sens, envoye_le }) ou null ; texte : la réponse de Nani ; citeInconnu : elle cite un id Telnyx que
-// Gestion n'a pas. Rend la raison, ou null.
+// Gestion n'a pas. Rend la raison, ou null :
+//   « cite_inconnu » ; « premier » : premier message connu de la conversation, et c'est une réponse (le client a écrit avant, Gestion ne
+//   l'a pas) ; « silence » : le message d'avant était déjà à Nani, plus de 6 heures avant, et c'est une réponse.
 export function sembleManquer({ conv = null, envoyeLe, texte = "", precedent = null, citeInconnu = false } = {}) {
   if (!repereAutorise(conv)) return null;
   if (citeInconnu) return "cite_inconnu";
-  if (!precedent || precedent.sens !== "sortant") return null;
+  if (!precedent) return ressembleReponse(texte, { premier: true }) ? "premier" : null;
+  if (precedent.sens !== "sortant") return null;
   const t = Date.parse(envoyeLe || "");
   const avant = Date.parse(precedent.envoye_le || "");
   if (!Number.isFinite(t) || !Number.isFinite(avant)) return null;

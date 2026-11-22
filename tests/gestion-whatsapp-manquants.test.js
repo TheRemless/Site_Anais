@@ -210,11 +210,42 @@ test("repère : seulement pour un client, et seulement si la réponse de Nani re
   assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: "Hello!", precedent: longtemps }), null, "un bonjour seul");
   assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: reponse, precedent: { sens: "sortant", envoye_le: iso(t - 5 * 3600_000) } }), null, "5 heures : rien");
   assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: reponse, precedent: { sens: "entrant", envoye_le: iso(t - 24 * 3600_000) } }), null, "le client a écrit en dernier");
-  assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: reponse, precedent: null }), null, "premier message : rien");
+  assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: "Hello!", precedent: null }), null, "premier message sans réponse : rien");
   assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), precedent: null, citeInconnu: true }), "cite_inconnu");
   assert.equal(REPERE, "semble_manquer");
   assert.equal(repereAutorise({ type_contact: "client" }), true);
   assert.equal(repereAutorise({ type_contact: "partenaire" }), false);
+});
+
+// Tests d'acceptation (22.11.2026) : les trois pertes réelles connues, rejouées avec des phrases inventées de même forme.
+test("repère : acceptation, les trois formes de pertes réelles sont repérées", () => {
+  const t = Date.UTC(2026, 10, 22, 2, 20, 0);
+  const iso = (ms) => new Date(ms).toISOString();
+  const client = { type_contact: null, partenaire_id: null, reponses: "auto" };
+  // 1. Un prix, plus de 6 heures après son propre message, sans message du client entre les deux.
+  assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: "Hello, the price for 3 people is 1200 THB, do you also need a car seat?", precedent: { sens: "sortant", envoye_le: iso(t - 25 * 3600_000) } }), "silence");
+  // 2. Premier message connu : Nani répond « oui, confirmé ».
+  assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: "Hello yes the transfer is confirmed ☀️", precedent: null }), "premier");
+  // 3. Premier message connu : Nani répond « how can I help ».
+  assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: "Hi, how can I help you? 🙏", precedent: null }), "premier");
+  assert.equal(sembleManquer({ conv: client, envoyeLe: iso(t), texte: "Bonjour, comment puis-je vous aider ?", precedent: null }), "premier");
+});
+
+test("repère : un premier message que Nani lance elle-même ne pose rien", () => {
+  const client = { type_contact: null, partenaire_id: null, reponses: "auto" };
+  const quand = "2026-11-22T02:20:00.000Z";
+  for (const texte of [
+    "Thank you again for choosing us. We hope you had a great stay!",
+    "Hello, are you interested in booking the boat trip? 😊",
+    "Your driver is confirmed for tomorrow, have a safe flight ☀️",
+    "Hello my friend, is your boat available on Friday?",
+    "Bonjour, je me permets de revenir vers vous au sujet de votre voyage",
+    "Special offer this week: 10% discount on island tours",
+    "Pickup tomorrow at 8:40 am",
+    "Hello!",
+  ]) assert.equal(sembleManquer({ conv: client, envoyeLe: quand, texte, precedent: null }), null, texte);
+  // La même réponse « oui », mais à un partenaire : rien.
+  assert.equal(sembleManquer({ conv: { ...client, type_contact: "partenaire" }, envoyeLe: quand, texte: "Ok yes confirmed", precedent: null }), null);
 });
 
 test("repère : ce qui ressemble à une réponse, et ce qui est une relance (phrases inventées)", () => {
