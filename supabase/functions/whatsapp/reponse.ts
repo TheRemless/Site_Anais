@@ -22,6 +22,7 @@ import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu } from "../assistant/budget.js";
 import { dateBangkok, reglagesAssistant } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
+import { clientCommun, entrepriseReponse } from "./proposer.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
@@ -42,7 +43,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     const lu = await lireConversation(db, conversationId);
     if (!lu || !aRepondre(lu.messages, messageId)) return;
     const { conv, messages } = lu;
-    // Partenaire, chauffeur, hôtel et apporteur sont triés comme un client (migration 69) : seul le Contact personnel coupe l'IA.
+    // Partenaire, chauffeur, hôtel, apporteur et fiche partenaire reliée : plus de tri automatique (22.11.2026, triSansAppel), l'Assistant
+    // reste à la demande. Seul le Contact personnel coupe toute IA.
     let decision = triSansAppel({ conv, messages });
     // Assistant éteint ou réception suspendue (audit sécurité n° 1) : pas même le tri chez Anthropic.
     if (!decision && !(await iaOuverte(db, conv))) decision = { preparer: false, motif: "ia_coupee" };
@@ -58,7 +60,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     if (!decision) {
       try {
         // deno-lint-ignore no-explicit-any
-        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id }) as any);
+        // Un client est commun à Secret et à Taxi : le tri donne toujours l'entreprise de la demande en cours, même si la conversation est rangée.
+        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id || clientCommun(conv) }) as any);
         appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
         decision = decisionDepuisReponse(m);
         if (decision.motif === "tri_illisible") console.error("whatsapp : tri illisible", m.stop_reason, (m.usage as { output_tokens?: number })?.output_tokens);
@@ -98,6 +101,8 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
   const lu = await lireConversation(db, conversationId);
   if (!lu) return { erreur: "droit_manquant" };
   if (lu.conv.reponses === "jamais") return { erreur: "contact_personnel" };
+  // IA coupée par Nani pour cette conversation (migration 105) : rien chez Anthropic, même à la demande.
+  if ((lu.conv as Record<string, unknown>).ia_coupee === true) return { erreur: "ia_coupee" };
   const dernier = lu.messages.filter((m) => !m.supprime_le).reduce((a: any, m: any) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
   if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
@@ -109,12 +114,13 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
   // Sans l'espace unifié, Nani choisit d'abord (on ne prend pas un catalogue au hasard).
   const { data: ents } = await db.from("entites").select("id, slug").eq("organisation_id", lu.conv.organisation_id).in("slug", ["secret", "taxi"]);
   let defaut: string | null = null;
-  if (!lu.conv.entite_id && !suggestion && unifieAllume(Deno.env.get("AGENT_UNIFIE") || "")) {
+  if ((!lu.conv.entite_id || clientCommun(lu.conv)) && !suggestion && unifieAllume(Deno.env.get("AGENT_UNIFIE") || "")) {
     const { data: regls } = await db.from("reglages").select("entite_id, valeur").in("entite_id", (ents || []).map((e) => e.id));
     const allumees = (ents || []).filter((e) => (regls || []).some((r) => r.entite_id === e.id && r.valeur && r.valeur.agent_ia === true)).map((e) => e.slug);
     defaut = entrepriseParDefaut({ unifie: true, slugs: (ents || []).map((e) => e.slug), allumees });
   }
-  const ent = (ents || []).find((e) => e.id === lu.conv.entite_id) || (ents || []).find((e) => e.slug === (suggestion || defaut));
+  // Un client : l'entreprise de la demande en cours d'abord (le tri), puis celle de la conversation.
+  const ent = entrepriseReponse({ conv: lu.conv, ents: ents || [], suggestion, defaut });
   if (!ent) return { erreur: "a_trier" };
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
   if (!regl || !regl.valeur || regl.valeur.agent_ia !== true) return { erreur: "agent_eteint" };
@@ -149,7 +155,7 @@ export async function iaOuverte(db: SupabaseClient, conv: Conv) {
 async function preparationAutoPermise(db: SupabaseClient, conv: Conv, suggestion: string | null) {
   const { data: ents, error } = await db.from("entites").select("id, slug").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
   if (error) return false;
-  const ent = (ents || []).find((e) => e.id === conv.entite_id) || (!conv.entite_id && suggestion ? (ents || []).find((e) => e.slug === suggestion) : null);
+  const ent = entrepriseReponse({ conv, ents: ents || [], suggestion });
   const lu = ent ? await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle() : null;
   return !!lu && !lu.error && preparationAuto(lu.data ? lu.data.valeur : null);
 }
@@ -228,9 +234,9 @@ async function preparer(
   { anthropic, appels, j, suggestion, defaut = null }: { anthropic: Anthropic; appels: { usage: Record<string, unknown>; modele: string }[]; j: ReturnType<typeof journalEnCours>; suggestion: string | null; defaut?: string | null },
 ) {
   const { data: entites } = await db.from("entites").select("id, slug, nom").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
-  const parSlug = new Map((entites || []).map((e) => [e.slug, e]));
-  const ent = (entites || []).find((e) => e.id === conv.entite_id) || (suggestion ? parSlug.get(suggestion) : null) || (defaut ? parSlug.get(defaut) : null) || null;
-  const proposee = conv.entite_id ? null : suggestion;
+  // Un client : le catalogue de l'entreprise de la demande en cours (le tri), pas celui de la conversation. Un autre contact : son entreprise.
+  const ent = entrepriseReponse({ conv, ents: entites || [], suggestion, defaut });
+  const proposee = conv.entite_id && !clientCommun(conv) ? null : suggestion;
   // À trier sans entreprise suggérée : pas de réponse (on ne prend pas le catalogue d'une entreprise au hasard), mais une trace visible.
   if (!ent) return echecVisible(db, conv.id, messageId, null, "a_trier");
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();

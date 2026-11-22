@@ -198,8 +198,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // et l'écran n'offre pas le filtre.
     const PRET = "pret_reserver, pret_retire_le";
     let pretDisponible = true;
+    // avancee, etape_manuelle (migration 105, étapes des clients) : ajoutées à toutes les lectures ; absentes, on relit sans elles et l'écran
+    // garde l'ancienne liste.
+    const ETAPES = "avancee, etape_manuelle, ia_coupee";
+    let etapesDisponible = true;
     const lireConversations = async () => {
-      const requete = (colonnes) => sb.from("whatsapp_conversations").select(pretDisponible ? `${colonnes}, ${PRET}` : colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
+      const requete = (colonnes) => sb.from("whatsapp_conversations").select([colonnes, pretDisponible ? PRET : "", pretDisponible && etapesDisponible ? ETAPES : ""].filter(Boolean).join(", ")).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
       // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
       // la migration n'est pas appliquée.
       const MANQUES = "manque_le, bsuid, meme_client_que";
@@ -207,10 +211,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       let manquesDisponible = true;
       const lireBase = () => requete(manquesDisponible ? `${BASE}, ${MANQUES}` : BASE);
       let r = await lireBase();
-      // Chaque migration récente (85, 100) peut manquer seule : on retire ses colonnes, puis on relit.
-      for (let essai = 0; essai < 2 && r.error; essai++) {
-        if (pretDisponible && PRET.split(", ").some((c) => colonneAbsente(r.error, c))) pretDisponible = false;
-        else if (manquesDisponible && MANQUES.split(", ").some((c) => colonneAbsente(r.error, c))) manquesDisponible = false;
+      // Chaque migration récente (85, 100, 105) peut manquer seule : on retire ses colonnes, puis on relit. Sans la 85, pas d'étapes non plus.
+      for (let essai = 0; essai < 3 && r.error; essai++) {
+        if (pretDisponible && etapesDisponible && ETAPES.split(", ").some((c) => colonneAbsente(r.error, c))) etapesDisponible = false;
+        else if (pretDisponible && PRET.split(", ").some((c) => colonneAbsente(r.error, c))) {
+          pretDisponible = false;
+          etapesDisponible = false;
+        } else if (manquesDisponible && MANQUES.split(", ").some((c) => colonneAbsente(r.error, c))) manquesDisponible = false;
         else break;
         r = await lireBase();
       }
@@ -251,6 +258,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_contacts_disponible: conversations !== null && contactsDisponible,
       whatsapp_nom_disponible: conversations !== null && nomDisponible,
       whatsapp_pret_disponible: conversations !== null && pretDisponible,
+      whatsapp_etapes_disponible: conversations !== null && pretDisponible && etapesDisponible,
     };
   }
 

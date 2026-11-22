@@ -168,7 +168,10 @@ test("serveur : préparer et créer le dossier sur une conversation à trier", a
   const r = source("supabase/functions/whatsapp/reponse.ts");
   assert.equal(entrepriseParDefaut({ unifie: true, slugs: ["secret", "taxi"], allumees: ["taxi"] }), "taxi", "jamais une entreprise à l'assistant éteint");
   assert.match(r, /defaut = entrepriseParDefaut\(\{ unifie: true, slugs: \(ents \|\| \[\]\)\.map\(\(e\) => e\.slug\), allumees \}\)/);
-  assert.match(r, /\|\| \(defaut \? parSlug\.get\(defaut\) : null\)/);
+  // 22.11.2026 : le choix passe par entrepriseReponse (proposer.js), qui garde l'entreprise de départ de l'espace unifié en dernier recours.
+  assert.match(r, /const ent = entrepriseReponse\(\{ conv, ents: entites \|\| \[\], suggestion, defaut \}\)/);
+  const { entrepriseReponse } = await import("../supabase/functions/whatsapp/proposer.js");
+  assert.equal(entrepriseReponse({ conv: { entite_id: null, reponses: "auto" }, ents: [{ id: "S", slug: "secret" }], suggestion: null, defaut: "secret" }).id, "S");
   const { titreWhatsApp } = await import("../supabase/functions/agent/whatsapp.js");
   assert.equal(titreWhatsApp({ nom: "Lea [Moreau]", telephone: "+33600000000" }), "Lea (Moreau)", "le nom du contact, crochets neutralisés");
   assert.equal(titreWhatsApp({ nom: "", telephone: "+33600000000" }), "WhatsApp +33600000000");

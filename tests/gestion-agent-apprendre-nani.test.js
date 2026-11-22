@@ -137,7 +137,7 @@ test("apprendre : « Pas bien » garde la raison (200 caractères au plus) et un
 // ---- Point A : correction de Nani dans WhatsApp -------------------------------------------------------------------------------
 test("whatsapp : la règle de l'IA ouverte est celle de iaPermise", () => {
   const agents = { e1: true, e2: false };
-  for (const conv of [null, { entite_id: "e1" }, { entite_id: "e2" }, { entite_id: null }, { entite_id: "e1", reponses: "jamais" }])
+  for (const conv of [null, { entite_id: "e1" }, { entite_id: "e2" }, { entite_id: null }, { entite_id: "e1", reponses: "jamais" }, { entite_id: "e2", type_contact: "chauffeur" }, { entite_id: "e2", type_contact: "client", partenaire_id: "p1" }, { entite_id: "e1", ia_coupee: true }, { entite_id: "e1", telephone: null }, { entite_id: "e1", telephone: null, type_contact: "client" }])
     for (const receptionActive of [true, false]) assert.equal(iaOuvertePour({ receptionActive, conv, agents }), iaPermise({ receptionActive, conv, agents }));
   assert.equal(iaOuvertePour({ receptionActive: true, conv: { entite_id: null }, agents: { e2: false } }), iaPermise({ receptionActive: true, conv: { entite_id: null }, agents: { e2: false } }));
 });
@@ -396,8 +396,10 @@ test("migration 74 : écriture serveur, genres remarque et retour, auteur tenu p
   assert.match(m, /whatsapp_conversation_id uuid references whatsapp_conversations \(id\) on delete cascade/);
   assert.ok(fs.existsSync(new URL("../docs/gestion/retour-74-apprentissages-nani.sql", import.meta.url)));
   assert.match(lire(".github/workflows/ci.yml"), /verif-agent-apprendre-nani/);
-  // Aucune migration au-delà de 79.
-  assert.ok(!fs.readdirSync(new URL("../docs/gestion/", import.meta.url)).some((n) => /^migration-(8\d|9\d|\d{3,})-/.test(n)));
+  // Branche d'intégration du 22.11.2026 (migrations 85, 100 et 105 à côté) : chaque numéro de migration reste unique, la 74 comprise.
+  const numeros = fs.readdirSync(new URL("../docs/gestion/", import.meta.url)).map((f) => /^migration-(\d+)-/.exec(f)?.[1]).filter(Boolean);
+  assert.equal(new Set(numeros).size, numeros.length);
+  assert.equal(numeros.filter((x) => x === "74").length, 1);
 });
 
 // ---- Revue de sécurité de cette PR ---------------------------------------------------------------------------------------------

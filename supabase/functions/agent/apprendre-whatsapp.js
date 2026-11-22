@@ -43,9 +43,13 @@ export const clientPourApprendre = (c) => conversationDeClient(c) && (c.type_con
 
 // Même règle que iaPermise (whatsapp/proposer.js, un test les compare) : réception active, conversation qui n'est pas un Contact personnel,
 // agent allumé dans son entreprise (ou dans l'une des deux pour une conversation à trier).
+// IA coupée pour la conversation (migration 105) ou client connu par son seul BSUID (migration 100) : fermée aussi. Client commun de Secret
+// et Taxi (PR 316) : l'agent de l'une des deux suffit.
+const clientCommunPour = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
 export function iaOuvertePour({ receptionActive, conv, agents = {} }) {
-  if (receptionActive !== true || !conv || conv.reponses === "jamais") return false;
-  if (conv.entite_id) return agents[conv.entite_id] === true;
+  if (receptionActive !== true || !conv || conv.reponses === "jamais" || conv.ia_coupee === true) return false;
+  if (conv.telephone === null && !conv.type_contact) return false;
+  if (conv.entite_id && !clientCommunPour(conv)) return agents[conv.entite_id] === true;
   return Object.values(agents).some((v) => v === true);
 }
 
@@ -88,7 +92,7 @@ export async function apprendreDeNani(db, conversationId, messageId, { auteur = 
     const { data: message, error: errM } = await db.from("whatsapp_messages").select("id, conversation_id, sens, origine, type, texte, envoye_le, supprime_le").eq("id", messageId).eq("conversation_id", conversationId).maybeSingle();
     if (errM || !message) return { rien: "message" };
     if (!vraiMessage(message)) return { rien: "pas_une_reponse" };
-    const { data: conv, error: errC } = await db.from("whatsapp_conversations").select("id, organisation_id, entite_id, nom, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", conversationId).maybeSingle();
+    const { data: conv, error: errC } = await db.from("whatsapp_conversations").select("id, organisation_id, entite_id, nom, telephone, client_id, dossier_id, reponses, type_contact, partenaire_id, ia_coupee").eq("id", conversationId).maybeSingle();
     if (errC || !conv) return { rien: "conversation" };
     if (!conversationDeClient(conv)) return { rien: "pas_un_client" };
     const agents = await agentsOuverts(db, conv);
