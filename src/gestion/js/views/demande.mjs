@@ -53,7 +53,8 @@ function lignesDe(offre, d, langue, devise) {
 
 function lignesBrutes(offre, d, langue, devise) {
   if (offre.genre === "trajet") return lignesDepuisTrajet(offre.source, netTrajet(offre.source), { langue, date: d.date, adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants, compagnie: "" });
-  const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.enfant ? d.adultes || 1 : quantite(offre.source, d), devise });
+  // Les véhicules du devis calculé par Nani (offre.vehicules, assistant-calc.mjs avecVehicules) : la ligne en prend la quantité.
+  const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.vehicules || (offre.enfant ? d.adultes || 1 : quantite(offre.source, d)), devise });
   // Prix de base pour 1 ou 2 personnes, puis une ligne de supplément par personne en plus (aucune ligne à une ou deux personnes).
   const supplement = offre.supplement ? [ligneDepuisPrestation(offre.supplement.source, netPrestation(offre.supplement.source), { langue, date: d.date, qte: offre.supplement.qte, devise })] : [];
   if (!offre.enfant) return [adulte, ...supplement];

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { devisPossible, calculerDevis, reponseDevis, capaciteDe, netsDuDevis, motVehicule } from "../src/gestion/js/devis-calc.mjs";
+import { devisPossible, calculerDevis, reponseDevis, capaciteDe, netsDuDevis, motVehicule, remarquesDuDevis } from "../src/gestion/js/devis-calc.mjs";
 import { resteBloque } from "../src/gestion/js/agent-calc.mjs";
 
 const ici = path.dirname(fileURLToPath(import.meta.url));
@@ -170,8 +170,8 @@ test("contrôle de la copie : un net ou un nom de partenaire tapé dans la répo
 
 test("écran : le bouton est sur la carte « Nouveau dossier » en attente, le calcul ne part qu'au clic et sans IA", () => {
   const agent = lire("views/agent.mjs");
-  assert.match(agent, /import \{ blocDevis \} from "\.\/devis-carte\.mjs";/);
-  assert.match(agent, /if \(c\.statut === "proposee"\) corps\.push\(blocDevis\(du\)\);/);
+  assert.match(agent, /import \{ blocDevis, donneesAvecDevis \} from "\.\/devis-carte\.mjs";/);
+  assert.match(agent, /if \(c\.statut === "proposee"\) corps\.push\(blocDevis\(du, \{ id: c\.id \}\)\);/);
   const vue = lire("views/devis-carte.mjs");
   assert.match(vue, /if \(!devisPossible\(donnees\)\) return null;/);
   assert.match(vue, /bouton\.addEventListener\("click"/);
@@ -217,4 +217,62 @@ test("fiche du tarif : le champ « Personnes au plus par véhicule » s'enregist
   const devis = lire("views/devis-carte.mjs");
   assert.match(devis, /capacite_inconnue: N_\("Capacité du véhicule à renseigner dans le catalogue\."\)/);
   assert.match(devis, /\.ouvrirPrestation\(x, apres\)/);
+});
+
+test("dossier = devis : 11 personnes et 2 minivans au devis donnent 2 véhicules et le même total dans le dossier", async () => {
+  const { propositionDepuisCarte } = await import("../src/gestion/js/agent-calc.mjs");
+  const { propositionVersDemande, offresRecalculees, lignesAuPrixCarte } = await import("../src/gestion/js/assistant-calc.mjs");
+  const { ligneDepuisPrestation } = await import("../src/gestion/js/partenaires-calc.mjs");
+  const { appliquerDevis, resumeDevis } = await import("../src/gestion/js/devis-calc.mjs");
+  const totalLignes = (lignes) => lignes.reduce((t, l) => t + Number(l.unite) * Number(l.qte), 0);
+  const d = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11, prix: 2500, origine_prix: "catalogue" })]);
+  const devis = calculerDevis(d, contexte);
+  assert.equal(devis.total, 5000);
+  // « Créer le dossier » : la carte avec le devis, puis la fiche de création habituelle.
+  const avec = appliquerDevis(d, resumeDevis(devis));
+  const { services } = propositionVersDemande(propositionDepuisCarte(avec), contexte);
+  const offre = services[0].offres[0];
+  assert.equal(offre.vehicules, 2);
+  assert.equal(offre.total, devis.total);
+  const lignes = lignesAuPrixCarte([ligneDepuisPrestation(offre.source, null, { qte: offre.vehicules, uid: () => "x" })], offre.prixCarte);
+  assert.deepEqual(lignes.map((l) => [l.qte, l.unite]), [[2, 2500]]);
+  assert.equal(totalLignes(lignes), devis.total);
+  // Le formulaire recalcule pour les mêmes personnes : rien ne change. D'autres personnes : le catalogue, avec l'avertissement.
+  assert.equal(offresRecalculees([offre], { adultes: 11, enfants: 0 }, contexte)[0].total, 5000);
+  const autres = offresRecalculees([offre], { adultes: 4, enfants: 0 }, contexte)[0];
+  assert.deepEqual([autres.total, autres.vehicules, autres.avertissement], [2500, undefined, "prix_carte_personnes"]);
+  // Prix accepté (4 800 pour 2 minivans) : le dossier garde 4 800, réparti sur les 2 véhicules.
+  const accepte = carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 11, prix: 4800, origine_prix: "saisi" })]);
+  const devisAccepte = calculerDevis(accepte, contexte);
+  const oA = propositionVersDemande(propositionDepuisCarte(appliquerDevis(accepte, resumeDevis(devisAccepte))), contexte).services[0].offres[0];
+  const lA = lignesAuPrixCarte([ligneDepuisPrestation(oA.source, null, { qte: oA.vehicules, uid: () => "x" })], oA.prixCarte);
+  assert.deepEqual([oA.total, lA[0].qte, totalLignes(lA)], [4800, 2, 4800]);
+  // Sans devis calculé, rien ne change (un véhicule, comme avant) ; un devis incomplet n'est pas repris.
+  assert.equal(propositionVersDemande(propositionDepuisCarte(d), contexte).services[0].offres[0].vehicules, undefined);
+  assert.equal(resumeDevis(calculerDevis(carte([service({ offre: { genre: "prestation", id: "van-sans-cap" }, adultes: 4 })]), contexte)), null);
+  // Un service changé depuis le devis (autres personnes) n'est pas touché.
+  const change = { ...d, services: [{ ...d.services[0], adultes: 5 }] };
+  assert.equal(appliquerDevis(change, resumeDevis(devis)).services[0].vehicules, undefined);
+});
+
+test("dossier = devis : la carte, la validation et la fiche de création reprennent le devis", () => {
+  const agent = lire("views/agent.mjs");
+  assert.match(agent, /const donneesCarte = \(c\) => donneesAvecDevis\(c\.id,/);
+  assert.match(agent, /preparation\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\)/);
+  assert.match(agent, /blocDevis\(du, \{ id: c\.id \}\)/);
+  assert.match(lire("views/demande.mjs"), /qte: offre\.vehicules \|\| \(offre\.enfant/);
+  assert.match(lire("views/devis-carte.mjs"), /noterDevis\(id, resumeDevis\(devis\)\)/);
+});
+
+test("remarque du tarif : montrée à Nani, jamais dans la réponse ; masquée si elle cite un partenaire, un net ou un coût", () => {
+  const avecNote = (id, note) => ({ ...prestations.find((p) => p.id === "van"), id, details: { note } });
+  const ctx = { ...contexte, prestations: [...prestations, avecNote("n1", "Price for 1 to 2 guests. 60 per person from the 5th."), avecNote("n2", "Pickup by Transports Démo"), avecNote("n3", "Ask for 2,250 first"), avecNote("n4", "Commission paid monthly")] };
+  const devis = calculerDevis(carte(["n1", "n2", "n3", "n4", "n1"].map((id) => service({ offre: { genre: "prestation", id }, adultes: 4 }))), ctx);
+  const r = remarquesDuDevis(devis, { nets: [2250], noms: ["Transports Démo"] });
+  assert.deepEqual(r.map((x) => x.texte), ["Price for 1 to 2 guests. 60 per person from the 5th.", null, null, null], "une seule fois par tarif");
+  assert.doesNotMatch(reponseDevis(devis), /60 per person|guests|Transports|Commission/);
+  assert.deepEqual(remarquesDuDevis(calculerDevis(carte([service({ offre: { genre: "prestation", id: "van" }, adultes: 2 })]), contexte)), [], "pas de remarque, rien");
+  const vue = lire("views/devis-carte.mjs");
+  assert.match(vue, /tr\("Remarque du tarif à vérifier dans le catalogue"\)/);
+  assert.match(vue, /tr\("Remarque du tarif à vérifier : \{remarque\}", \{ remarque: r\.texte \}\)/);
 });

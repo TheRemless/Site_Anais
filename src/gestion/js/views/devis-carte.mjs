@@ -7,7 +7,34 @@ import { h, toast } from "../ui.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { formatMontant } from "../calc.mjs";
 import { resteBloque } from "../agent-calc.mjs";
-import { devisPossible, calculerDevis, reponseDevis, netsDuDevis } from "../devis-calc.mjs";
+import { devisPossible, calculerDevis, reponseDevis, netsDuDevis, resumeDevis, appliquerDevis, remarquesDuDevis } from "../devis-calc.mjs";
+
+// Le dernier devis complet calculé sur chaque carte (id de la carte -> resumeDevis), gardé pour l'onglet (sessionStorage) : « Créer le
+// dossier » et « Vérifier avant » le reprennent (donneesAvecDevis, appelé par donneesCarte dans agent.mjs). Rien n'est écrit en base.
+const CLE_DEVIS = "gestion-devis-cartes";
+const devisCartes = new Map();
+function lireDevis(id) {
+  if (devisCartes.has(id)) return devisCartes.get(id);
+  try {
+    const tout = JSON.parse(sessionStorage.getItem(CLE_DEVIS) || "{}");
+    return tout && tout[id] ? tout[id] : null;
+  } catch {
+    return null;
+  }
+}
+function noterDevis(id, resume) {
+  if (!id) return;
+  devisCartes.set(id, resume);
+  try {
+    const tout = JSON.parse(sessionStorage.getItem(CLE_DEVIS) || "{}") || {};
+    if (resume) tout[id] = resume;
+    else delete tout[id];
+    sessionStorage.setItem(CLE_DEVIS, JSON.stringify(tout));
+  } catch {
+    // Stockage refusé : le devis reste en mémoire pour cette page.
+  }
+}
+export const donneesAvecDevis = (id, donnees) => appliquerDevis(donnees, id ? lireDevis(id) : null);
 
 // Pourquoi un service n'a pas été calculé, dit à Nani (écran interne).
 const MOTIFS = {
@@ -23,12 +50,12 @@ const MOTIFS = {
 const ORIGINES = { catalogue: N_("catalogue"), saisi: N_("donné par vous"), client_non_corrige: N_("prix du client, non corrigé par Nani") };
 
 // `donnees` : celles de la carte (entreprises corrigées comprises). Rien si les trois éléments ne sont pas connus.
-export function blocDevis(donnees, { client = (donnees && donnees.client) || {} } = {}) {
+export function blocDevis(donnees, { id = null, client = (donnees && donnees.client) || {} } = {}) {
   if (!devisPossible(donnees)) return null;
   const resultat = h("div", { class: "devis-resultat", "aria-live": "polite" });
   const bouton = h("button", { type: "button", class: "secondaire petit" }, tr("Calculer le devis"));
   const refaire = () => {
-    resultat.replaceChildren(...dessiner(donnees, client, refaire));
+    resultat.replaceChildren(...dessiner(donnees, client, refaire, id));
     bouton.textContent = tr("Recalculer le devis");
   };
   bouton.addEventListener("click", refaire);
@@ -42,10 +69,17 @@ function lienTarif(tarif, apres) {
   return h("button", { type: "button", class: "lien", onclick: async () => (await import("./partenaires.mjs")).ouvrirPrestation(x, apres) }, tr("Ouvrir le tarif « {libelle} »", { libelle: tarif.libelle }));
 }
 
-function dessiner(donnees, client, refaire) {
+function dessiner(donnees, client, refaire, id) {
   const devise = reglages().devise || "THB";
   const contexte = { prestations: etat.db.prestations || [], trajets: etat.db.trajets || [], partenaires: etat.db.partenaires || [], nomPartenaire };
   const devis = calculerDevis(donnees, contexte, { activeId: etat.entiteId });
+  // Complet : le dossier reprendra ce devis. Incomplet : plus aucun devis gardé pour cette carte.
+  noterDevis(id, resumeDevis(devis));
+  // Les partenaires de toutes les entreprises chargées (espace unifié Secret et Taxi), pas seulement de l'entreprise active.
+  const noms = ((etat.brut && etat.brut.partenaires) || etat.db.partenaires || []).map((p) => p.nom).filter(Boolean);
+  const tousNets = [...(etat.db.prestations_nets || []).flatMap((n) => [n.net, n.net_enfant]), ...(etat.db.trajets_nets || []).flatMap((n) => [n.net_adulte, n.net_enfant])].filter((v) => v !== null && v !== undefined && Number(v) > 0).map(Number);
+  // La remarque de chaque tarif du devis, à vérifier par Nani (jamais dans la réponse au client).
+  const remarques = remarquesDuDevis(devis, { nets: tousNets, noms }).map((r) => h("p", { class: "bandeau-info devis-remarque", role: "note" }, h("strong", null, r.libelle), " : ", r.texte === null ? tr("Remarque du tarif à vérifier dans le catalogue") : tr("Remarque du tarif à vérifier : {remarque}", { remarque: r.texte })));
   const out = [];
   if (devis.lignes.length)
     out.push(
@@ -74,6 +108,7 @@ function dessiner(donnees, client, refaire) {
         m.tarif ? [" ", lienTarif(m.tarif, () => refaire())] : null
       )
     );
+  out.push(...remarques);
   if (!devis.complet) {
     out.push(h("p", { class: "aide" }, tr("Pas de réponse préparée tant qu'un service n'a pas de prix.")));
     return out;
@@ -83,8 +118,7 @@ function dessiner(donnees, client, refaire) {
   zone.value = reponseDevis(devis, { client, devise });
   const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
   const copier = h("button", { type: "button", class: "principal" }, tr("Copier la réponse"));
-  // Les partenaires de toutes les entreprises chargées (espace unifié Secret et Taxi), pas seulement de l'entreprise active.
-  const bloquants = { montants: netsDuDevis(devis, etat.db), noms: ((etat.brut && etat.brut.partenaires) || etat.db.partenaires || []).map((p) => p.nom).filter(Boolean) };
+  const bloquants = { montants: netsDuDevis(devis, etat.db), noms };
   const maj = () => {
     const reste = resteBloque(zone.value, bloquants);
     copier.disabled = reste.length > 0;

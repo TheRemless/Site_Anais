@@ -4562,6 +4562,8 @@ export const EN = {
   "Le tarif n'a pas de prix de vente au catalogue : aucun calcul.": "The rate has no selling price in the catalogue: nothing calculated.",
   "Ce service se paie sur place : aucun prix à annoncer.": "This service is paid on site: no price to give.",
   "Capacité du véhicule à renseigner dans le catalogue.": "Vehicle capacity to fill in the catalogue.",
+  "Remarque du tarif à vérifier dans le catalogue": "Rate remark to check in the catalogue",
+  "Remarque du tarif à vérifier : {remarque}": "Rate remark to check: {remarque}",
   "Une administratrice peut le renseigner dans le tarif « {libelle} ».": "An administrator can fill it in the rate “{libelle}”.",
   "Ouvrir le tarif « {libelle} »": "Open the rate “{libelle}”",
   "Personnes au plus par véhicule": "Maximum people per vehicle",

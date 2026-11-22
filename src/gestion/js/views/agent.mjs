@@ -26,7 +26,7 @@ import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
-import { blocDevis } from "./devis-carte.mjs";
+import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -757,7 +757,8 @@ export async function vueAgent(idOuvert = "") {
   const motifs = new Map();
   // Espace unifié : l'entreprise d'un service corrigée d'un tap avant de valider (carte -> { index du service: { id, slug } }).
   const corrections = new Map();
-  const donneesCarte = (c) => (carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
+  // Le devis calculé par Nani sur cette carte (devis-carte.mjs) passe aussi : « Créer le dossier » reprend ses véhicules et son total.
+  const donneesCarte = (c) => donneesAvecDevis(c.id, carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
   const entrepriseDe = (id) => entitesAccessibles().find((e) => e.id === id) || null;
   const libelleEntreprise = (id) => {
     const e = entrepriseDe(id);
@@ -825,7 +826,7 @@ export async function vueAgent(idOuvert = "") {
       // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
-      if (c.statut === "proposee") corps.push(blocDevis(du));
+      if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id }));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
       corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol })].filter(Boolean).join(", "))), prixTexte(s))));
@@ -1139,7 +1140,7 @@ export async function vueAgent(idOuvert = "") {
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
       else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c);
-      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
       else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(c, reservationDepuisCarte(c.donnees), tr("Service ajouté au dossier.")));

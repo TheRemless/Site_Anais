@@ -9,7 +9,7 @@
 //     (origine_prix « saisi » ou « client_non_corrige ») et reprise telle quelle par propositionDepuisCarte et auPrixCarte ;
 //   - un service sans ligne au catalogue (ni prix accepté), une capacité absente ou dépassée, un prix vide : pas de calcul, un motif clair,
 //     et aucune réponse préparée tant qu'un service manque (un devis partiel oublierait un service).
-import { propositionDepuisCarte } from "./agent-calc.mjs";
+import { propositionDepuisCarte, resteBloque } from "./agent-calc.mjs";
 import { offreDepuisBase, auPrixCarte } from "./assistant-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte } from "./operations-calc.mjs";
@@ -171,4 +171,44 @@ export function netsDuDevis(devis, { prestations_nets = [], trajets_nets = [] } 
       }
   }
   return [...out];
+}
+
+// ---- Du devis au dossier (22.11.2026) --------------------------------------------------------------------------------------------
+// Le dossier créé depuis la carte ne diffère jamais du devis calculé par Nani : même nombre de véhicules, même total. Le devis complet est
+// résumé par service (index, tarif, personnes, véhicules, total). appliquerDevis le pose sur les services de la carte : `vehicules` suit
+// jusqu'aux lignes du dossier (assistant-calc.mjs, avecVehicules ; views/demande.mjs, quantité de la ligne). Un service dont le tarif ou les
+// personnes ont changé depuis le devis n'est pas touché.
+export function resumeDevis(devis) {
+  if (!devis || !devis.complet) return null;
+  return { lignes: devis.lignes.map((l) => ({ index: l.index, offre: l.offre ? l.offre.id : null, adultes: l.personnes.adultes, enfants: l.personnes.enfants, vehicules: l.vehicules || null, total: l.total })) };
+}
+export function appliquerDevis(donnees = {}, resume = null) {
+  if (!resume || !Array.isArray(resume.lignes) || !donnees || !Array.isArray(donnees.services)) return donnees;
+  const services = donnees.services.map((s, i) => {
+    const l = resume.lignes.find((x) => x.index === i);
+    if (!l || ((s.offre && s.offre.id) || null) !== l.offre) return s;
+    const p = personnesDuService(s, donnees);
+    if (p.adultes !== l.adultes || p.enfants !== l.enfants) return s;
+    return { ...s, prix: l.total, ...(l.vehicules > 1 ? { vehicules: l.vehicules } : {}) };
+  });
+  return { ...donnees, services };
+}
+
+// ---- Remarque du tarif (22.11.2026) ----------------------------------------------------------------------------------------------
+// Une surcharge écrite seulement dans la remarque du tarif (« 60 ฿ per person from the 5th ») n'est ni lue ni devinée : la remarque est
+// montrée à Nani sous le devis, à vérifier. Si elle cite un partenaire, un montant égal à un net ou un mot de coût (net, commission,
+// marge…), seul « à vérifier dans le catalogue » est montré. Rien de tout cela n'entre dans la réponse au client.
+const MOT_COUT = /(?<![a-z0-9])(?:nets?|nett|costs?|couts?|coûts?|commissions?|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat)(?![a-z0-9])/i;
+export function remarquesDuDevis(devis, { nets = [], noms = [] } = {}) {
+  const out = [];
+  const vus = new Set();
+  for (const l of (devis && devis.lignes) || []) {
+    const t = l.tarif;
+    const note = t && t.details && typeof t.details.note === "string" ? t.details.note.replace(/\s+/g, " ").trim() : "";
+    if (!note || vus.has(t.id)) continue;
+    vus.add(t.id);
+    const interne = MOT_COUT.test(note.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) || resteBloque(note, { montants: nets, noms }).length > 0;
+    out.push({ index: l.index, libelle: l.libelle, texte: interne ? null : note });
+  }
+  return out;
 }
