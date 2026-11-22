@@ -182,3 +182,28 @@ test("fiche de réservation : le champ « Sièges enfant ou bébé » existe et 
   assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /sieges: \(\) => champ\(tr\("Sièges enfant ou bébé"\)/);
   assert.match(lire("src/gestion/js/views/agent.mjs"), /siegesTexte\(s\)/);
 });
+
+test("carte « Modification » de l'Assistant : la date, puis les personnes changées font suivre la facture (comparaison à la ligne d'origine)", async () => {
+  const { comparaisonEnregistrement } = await import("../src/gestion/js/carte-reservation-calc.mjs");
+  const origine = { id: RES, dossier_id: "d1", date_service: "2026-12-03", personnes: { adultes: 2, enfants: 1 }, statut: "confirme", paye_sur_place: false, details: { ligne_id: "l1" } };
+  // La fiche s'ouvre avec la réservation déjà modifiée par la carte ; ses valeurs enregistrées sont celles-là.
+  const valeursDe = (x) => ({ date_service: x.date_service, personnes: x.personnes, statut: x.statut });
+  const date = reservationModifiee(origine, { champ: "date", valeur: "2026-12-05" });
+  const cDate = comparaisonEnregistrement(origine, valeursDe(date));
+  assert.deepEqual([cDate.dateChangee, cDate.personnesChangees, cDate.avant.date_service, cDate.apres.date_service], [true, false, "2026-12-03", "2026-12-05"]);
+  // L'ancien calcul (comparer à la réservation déjà modifiée) ne voyait rien : la facture ne suivait pas.
+  assert.equal(comparaisonEnregistrement(date, valeursDe(date)).dateChangee, false);
+  const gens = reservationModifiee(origine, { champ: "adultes", valeur: "4" });
+  const cGens = comparaisonEnregistrement(origine, valeursDe(gens));
+  assert.deepEqual([cGens.personnesChangees, cGens.dateChangee, cGens.avant.personnes.adultes, cGens.apres.personnes.adultes], [true, false, 2, 4]);
+  assert.equal(comparaisonEnregistrement(gens, valeursDe(gens)).personnesChangees, false);
+  // Une annulation proposée pose enfin la question de la facture (le formulaire habituel).
+  assert.equal(comparaisonEnregistrement(origine, valeursDe(reservationModifiee(origine, { champ: "annulation", valeur: "annule" }))).annulee, true);
+  // La fiche s'en sert : suivreFacture reçoit la ligne d'origine et son « avant ».
+  const vue = lire("src/gestion/js/views/reservations.mjs");
+  assert.match(vue, /const cmp = comparaisonEnregistrement\(base, valeurs, \{ surPlace: estSurPlace\(\) \}\);/);
+  assert.match(vue, /await suivreFacture\(base, valeurs, \{ avant: cmp\.avant, apres: cmp\.apres,/);
+  assert.match(vue, /if \(r\.id && \(dateChangee \|\| annulee\)\) await synchroniserDatesDossier/);
+  // Et suivreFacture fait suivre la facture dès que la date ou les personnes diffèrent entre « avant » et « après ».
+  assert.match(lire("src/gestion/js/views/suivi-facture.mjs"), /const dateChangee = \(apres\.date_service \|\| null\) !== \(avant\.date_service \|\| null\);/);
+});

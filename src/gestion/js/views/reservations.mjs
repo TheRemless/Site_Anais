@@ -28,7 +28,7 @@ import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire } from "./prestataire.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
-import { gestePrincipal, entreesMenu } from "../carte-reservation-calc.mjs";
+import { gestePrincipal, entreesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 import { saisieRapideNet } from "./saisie-net.mjs";
 import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
@@ -632,19 +632,20 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
         let nouvelEssaiNets = null;
         try {
           // La facture suit la réservation (mode de règlement, date, personnes, annulation) par le chemin commun : total montré, confirmation si elle est partie.
-          const modeChange = estSurPlace() !== !!r.paye_sur_place;
-          const dateChangee = (valeurs.date_service || null) !== (r.date_service || null);
-          const annulee = !!r.id && valeurs.statut === "annule" && r.statut !== "annule";
+          // Tout se compare à la ligne d'origine (`base`), pas à `r` déjà modifiée par une carte de l'Assistant (relecture de la PR 315) : la
+          // date, les personnes et l'annulation proposées font suivre la facture comme une saisie à la main.
+          const cmp = comparaisonEnregistrement(base, valeurs, { surPlace: estSurPlace() });
+          const { modeChange, dateChangee, annulee } = cmp;
           let retirer = false;
-          if (annulee && lieeFacture(r)) {
+          if (annulee && lieeFacture(base)) {
             await chargerDossier(r.dossier_id);
-            const choix = await questionAnnulation(r, etat.db.documents.filter((x) => x.dossier_id === r.dossier_id));
+            const choix = await questionAnnulation(base, etat.db.documents.filter((x) => x.dossier_id === r.dossier_id));
             if (choix === null) return;
             retirer = choix === "retirer";
           }
           // Libellé, partenaire, tarif et prix changés ici : les lignes de la facture (et du devis) suivent, avec le même avertissement (16.11.2026).
           const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {};
-          const suivi = await suivreFacture(r, valeurs, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes }, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
+          const suivi = await suivreFacture(base, valeurs, { avant: cmp.avant, apres: cmp.apres, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
           if (!suivi) return;
           const { changements, ecartRestant } = suivi;
           if (suivi.montantVente !== null) valeurs.montant_vente = suivi.montantVente;
