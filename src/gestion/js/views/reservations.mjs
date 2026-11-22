@@ -13,7 +13,7 @@ import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-c
 import { venteDuTarif } from "../demande-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
-import { CONTENU_DEFAUT } from "../defauts.mjs";
+import { CONTENU_DEFAUT, messagesDefautPour } from "../defauts.mjs";
 import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
@@ -41,8 +41,9 @@ const entreprise = () => ({ nom: reglages().emetteur.nom || entiteActive().nom, 
 // `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour noter que l'avis a été demandé.
 export function messageClient(r, cle = "confirmation", { surEnvoi = null } = {}) {
   const c = clientDe(r) || {};
-  // Taxi n'a pas de rappel de la veille ni de message météo : le message d'envoi de la confirmation est proposé à la place.
-  if (modeTaxi() && cle !== "avis" && !(reglages().messages || []).some((m) => m.cle === cle)) cle = "confirmation";
+  // Taxi n'a pas de message météo : le message d'envoi de la confirmation est proposé à la place. Le rappel de la veille existe depuis le
+  // point du soir (modèle par défaut taxi-rappel-en) : même modèle des deux côtés.
+  if (modeTaxi() && cle !== "avis" && ![...(reglages().messages || []), ...messagesDefautPour(reglages())].some((m) => m.cle === cle)) cle = "confirmation";
   // Les clients de Secret et de Taxi reçoivent tout en anglais (d'après le mode de l'entreprise) : le message est proposé en anglais aussi.
   const langue = langueClient(reglages());
   // Trajet vers ou depuis une destination à passeport (réglages) : la confirmation et le rappel portent la note du passeport et du check-in (en anglais, comme les vouchers).

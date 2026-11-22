@@ -2546,3 +2546,12 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .wa-choix-etapes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
 .wa-choix-entreprise { justify-content: flex-start; }
 .wa-marque.wa-ia-coupee { background: var(--surface-2); color: var(--texte-2); }
+
+/* Point du soir (22.11.2026) : le message prêt de chaque pickup, lisible avant d'être envoyé. */
+.point-soir h2 { display: flex; align-items: center; gap: 6px; }
+.point-soir-bloc { margin-top: 14px; }
+.point-soir-bloc h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 1rem; margin: 0 0 8px; }
+.point-soir-message { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); border-radius: var(--rayon); font-size: 0.92rem; overflow-wrap: anywhere; white-space: pre-line; }
+.point-soir-signal { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
+.point-soir-destinataire { margin: 0; flex: 1 0 100%; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.point-soir-numero { flex: 1 0 100%; font-size: 0.9rem; }
