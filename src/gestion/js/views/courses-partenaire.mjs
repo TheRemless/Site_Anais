@@ -1,11 +1,11 @@
-// Écran du partenaire chauffeur (22.11.2026, migration 115), en thaï : Mr. Brown voit ses courses de VIP Taxi Lanta, jour par jour, et saisit
+// Écran du partenaire chauffeur (22.11.2026, migrations 115 et 116), en thaï : Mr. Brown voit ses courses de VIP Taxi Lanta, jour par jour, et saisit
 // sur chacune la commission qu'il doit à Nani. Le total dû est en tête. Un seul champ par course, gros caractères, prévu pour un téléphone.
 // Rien d'autre : ni menu, ni entreprise, ni réglages. Les données viennent des fonctions de la base (store : partenaireCourses,
 // partenaireSaisirCommission), jamais des tables. Logique et textes : courses-partenaire-calc.mjs.
 import { etat } from "../etat.mjs";
 import { h, vider } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
-import { TH, parJour, totalDu, montantTh, personnesTh, destinationTh, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
+import { TH, parJour, totalDu, montantTh, lignesCourse, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
 
 const telLien = (t) => `tel:${String(t || "").replace(/[^\d+]/g, "")}`;
 
@@ -43,19 +43,19 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
           rendre(/payée/.test(m) ? TH.erreur_payee : /équipe/.test(m) ? TH.posee_equipe : /prix/.test(m) ? TH.erreur_trop : /nul/.test(m) ? TH.erreur_zero : /négatif|décimales/.test(m) ? TH.erreur_montant : TH.erreur_reseau, true);
         }
       };
+      const lignes = lignesCourse(c, devise);
       const payee = c.reglee ? TH.payee : Number(c.commission_payee || 0) ? `${TH.payee_partie} · ${TH.reste} ${montantTh(resteDu(c), devise)}` : posee_par_equipe(c) ? TH.posee_equipe : null;
       vider(li).append(
         h("div", { class: "cp-tete" }, h("span", { class: "cp-heure" }, c.heure || "–"), h("span", { class: "cp-client" }, c.client)),
+        // L'essentiel en gros (lieux, vol, personnes, bagages, véhicule, paiement), le téléphone, puis tout le reste de la réservation en dessous,
+        // toujours visible (migration 116 : tout ce qu'imprime la Booking confirmation, pour le transmettre au chauffeur).
         h(
           "dl",
           { class: "cp-details" },
-          ligne(TH.pickup, c.pickup),
-          ligne(TH.dropoff, destinationTh(c)),
-          ligne(TH.vol, c.vol, { class: "cp-vol" }),
-          ligne(TH.personnes, personnesTh(c)),
-          c.telephone ? h("div", { class: "cp-ligne" }, h("dt", null, TH.telephone), h("dd", null, h("a", { href: telLien(c.telephone), class: "cp-tel" }, c.telephone))) : null,
-          ligne(TH.prix, montantTh(c.prix, devise), { class: "cp-prix" })
+          lignes.essentiel.map((x) => ligne(x.libelle, x.valeur, { class: `cp-v-${x.cle}` })),
+          c.telephone ? h("div", { class: "cp-ligne" }, h("dt", null, TH.telephone), h("dd", null, h("a", { href: telLien(c.telephone), class: "cp-tel" }, c.telephone))) : null
         ),
+        lignes.details.length ? h("dl", { class: "cp-details cp-plus" }, lignes.details.map((x) => ligne(x.libelle, x.valeur, { class: `cp-v-${x.cle}` }))) : null,
         h(
           "form",
           { class: "cp-form", onsubmit: envoyer, novalidate: true },

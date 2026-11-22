@@ -2597,7 +2597,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .cp-ligne { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; align-items: baseline; }
 .cp-ligne dt { color: var(--texte-2); }
 .cp-ligne dd { margin: 0; overflow-wrap: anywhere; }
-.cp-vol, .cp-prix { font-weight: 700; }
+.cp-vol, .cp-prix, .cp-v-vol, .cp-v-prix { font-weight: 700; }
 .cp-tel { display: inline-block; padding: 10px 0; font-weight: 600; color: var(--teal-700); }
 .cp-form { border-top: 1px solid var(--bord); padding-top: 12px; }
 .cp-libelle { display: block; font-weight: 600; margin-bottom: 6px; }
@@ -2611,3 +2611,8 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .cp-payee { margin: 6px 0 0; font-weight: 600; color: var(--teal-700); }
 .cp-vide { color: var(--texte-2); margin: 4px 0 12px; }
 .cp-vide.erreur { color: var(--danger); }
+/* Détail de la course (migration 116) : sous l'essentiel, plus petit mais lisible, jamais replié. */
+.cp-plus { margin-top: -4px; padding-top: 10px; border-top: 1px dashed var(--bord); font-size: 16px; gap: 4px; }
+.cp-plus .cp-ligne dt { font-size: 15px; }
+.cp-v-paiement { font-weight: 700; color: var(--teal-700); }
+.cp-v-vehicule, .cp-v-bagages { font-weight: 600; }

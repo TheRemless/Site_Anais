@@ -157,7 +157,7 @@ const auj = r.rows.find((x) => x.id === R.aujourdhui);
 ok(auj && auj.heure === "14:30" && auj.pickup === "Hotel Test, Long Beach" && auj.dropoff === "Krabi Airport" && auj.vol === "FD0000" && auj.adultes === 2 && auj.enfants === 1 && Number(auj.prix) === 1800 && /^Test Client/.test(auj.client) && auj.telephone.startsWith("+44"), "chaque course : heure, lieux, vol, personnes, client, téléphone, prix");
 ok(r.rows.find((x) => x.id === R.plusTard).retour === true && r.rows.find((x) => x.id === R.plusTard).programme === "Old Town tour", "un retour au point de départ est signalé avec son programme");
 const colonnes = Object.keys(auj || {});
-ok(!colonnes.some((c) => /net|note|ref|partenaire/.test(c)) && !JSON.stringify(r.rows).includes("1234") && !JSON.stringify(r.rows).includes("note interne"), "aucun net, aucune note interne, aucune référence de dossier");
+ok(!colonnes.some((c) => /net|note|marge/.test(c)) && !JSON.stringify(r.rows).includes("1234") && !JSON.stringify(r.rows).includes("note interne"), "aucun net, aucune note interne");
 for (const k of ["nani", "mook", "autre"]) {
   const x = await essaie(u[k], "select * from partenaire_courses()");
   const y = await essaie(u[k], "select * from partenaire_mon_acces()");

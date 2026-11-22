@@ -16,6 +16,14 @@ Le compte n'est membre d'aucune entreprise. La base lui ferme toutes les tables 
 
 La commission saisie devient la « commission prévue » de la course, marquée « saisie par le partenaire » (`commission_partenaire`, `commission_partenaire_le`). Nani le voit dans la fiche de la course et dans « Commissions à demander ». Si elle la change, la commission redevient la sienne et passe en lecture seule pour lui. Le journal des nets note chaque saisie avec le compte. Aucune notification n'est envoyée.
 
+## Détail de chaque course (migration 116)
+
+Chaque course montre tout ce qu'imprime la Booking confirmation de Taxi et le voucher de Mook, sauf l'interne. En gros : lieu de prise en charge (et chambre), destination ou aller-retour avec programme et durée, vol ou bateau, personnes (adultes, enfants, bébés, sièges enfant), bagages, véhicule et nombre de véhicules, paiement (ce que le chauffeur encaisse en espèces, ou déjà payé), prix. En dessous, toujours visibles : hôtel et chambre, point de rendez-vous, zone, retour (date, heure, lieu), horaires de bateau, remarques, remarques de paiement, libellé de la course, référence de la réservation et sa propre référence.
+
+Les champs de `details` qui sortent sont une liste blanche (`partenaire_champs_details()` en base, `CHAMPS_COURSE` dans le code, comparées par `verif-courses-partenaire-details.mjs`). Ne sortent jamais : nets, marges, notes internes (réservation, dossier, client, Mook), traces d'envoi, prix d'origine, nom ou référence d'un autre prestataire.
+
+Rejouer la migration 115 après la 116 rend l'ancienne fonction : relancer alors la 116.
+
 ## Créer le compte (Jérémy)
 
 Aucun identifiant ne passe par Claude ni par ce dépôt.

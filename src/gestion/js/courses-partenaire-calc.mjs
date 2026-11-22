@@ -4,6 +4,7 @@
 // partenaire_saisir_commission) : la démonstration rejoue ici les mêmes règles (coursesLocales, saisieLocale).
 
 import { RETOUR_DEPART } from "./trajet-calc.mjs";
+import { separerChambreLigne } from "./operations-calc.mjs";
 
 // La personne à qui la commission est due, nommée comme les Thaïs l'appellent (voir la mémoire « Anaïs = Nani en Thaïlande »).
 export const DESTINATAIRE = "Nani";
@@ -47,7 +48,159 @@ export const TH = {
   erreur_chargement: "โหลดไม่ได้", // Chargement impossible
   reessayer: "ลองใหม่", // Réessayer
   deconnexion: "ออกจากระบบ", // Se déconnecter
+  // Détail de la course (migration 116, 22.11.2026) : tout ce qu'imprime la Booking confirmation, pour le chauffeur.
+  vehicule: "รถ", // Véhicule
+  cnt_vehicules: "คัน", // (unité : véhicules)
+  v_taxi: "แท็กซี่", // Taxi (voiture)
+  v_minivan: "รถตู้", // Minivan
+  v_partage: "รถตู้รวม", // Minivan partagé
+  paiement: "เงินค่ารถ", // Paiement de la course
+  p_sur_place: "คนขับเก็บเงินสด {montant}", // Le chauffeur encaisse {montant} en espèces
+  p_paye: "ลูกค้าจ่ายแล้ว ไม่ต้องเก็บเงิน", // Le client a déjà payé, rien à encaisser
+  p_acompte: "ลูกค้าจ่ายแล้วบางส่วน คนขับเก็บ {montant}", // Le client a payé une partie, le chauffeur encaisse {montant}
+  p_en_attente: "ยังไม่ได้จ่าย ถาม Nani ก่อน", // Pas encore payé, demander à Nani
+  hotel: "โรงแรม", // Hôtel
+  chambre: "ห้อง", // Chambre
+  bagages: "กระเป๋า", // Bagages
+  cnt_bagages: "ใบ", // (unité : bagages)
+  oui: "มี", // Oui (il y en a)
+  sieges: "คาร์ซีทเด็ก", // Sièges enfant
+  rendez_vous: "จุดนัดพบ", // Point de rendez-vous
+  zone: "โซนรับ", // Zone de prise en charge
+  duree: "ใช้เวลา", // Durée
+  heures: "ชั่วโมง", // heures
+  retour_date: "วันกลับ", // Date du retour
+  retour_heure: "เวลากลับ", // Heure du retour
+  retour_lieu: "จุดรับขากลับ", // Lieu de prise en charge du retour
+  bateau: "เรือ", // Bateau
+  de: "จาก", // De
+  vers: "ไป", // Vers
+  depart: "เวลาออก", // Heure de départ
+  arrivee: "เวลาถึง", // Heure d'arrivée
+  checkin: "เช็คอิน", // Check-in
+  programme_activite: "โปรแกรม", // Programme
+  heure_service: "เวลา", // Heure
+  type_tour: "แบบทัวร์", // Type de tour
+  parc: "ค่าอุทยาน", // Frais de parc
+  permis: "ใบขับขี่", // Permis
+  equipement: "อุปกรณ์", // Équipement
+  caution: "เงินมัดจำ", // Caution
+  conditions: "เงื่อนไข", // Conditions
+  remarques: "หมายเหตุ", // Remarques (celles de la Booking confirmation)
+  remarques_paiement: "หมายเหตุการจ่ายเงิน", // Remarques sur le paiement
+  service: "บริการ", // Service (libellé de la course)
+  ref: "เลขที่จอง", // Référence de la réservation
+  ref_partenaire: "เลขอ้างอิงของคุณ", // Votre référence
 };
+
+// ---- Détail de la course (migration 116) ------------------------------------------------------------------------------------------------
+// Les champs du voucher que le partenaire lit : tous ceux de CHAMPS_VOUCHER (operations-calc.mjs, cinq modèles) plus la zone de prise en
+// charge. Identique à partenaire_champs_details() de la migration 116 (verif-courses-partenaire-details.mjs compare les deux).
+export const CHAMPS_COURSE = [
+  "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement",
+  "hotel", "chambre", "type_tour", "bateau", "parc", "parc_texte", "programme", "heure_service",
+  "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions",
+  "de", "vers", "depart", "arrivee", "embarquement", "checkin", "pickup_zone",
+];
+// Ce qui reste interne et ne sort jamais (en plus des nets et des notes, qui ne sont pas dans `details`) : traces de l'outil.
+export const CHAMPS_INTERNES = ["lignes_ids", "envois", "voucher_fige", "prix_origine", "commission_demandee_le", "copie_de", "note", "personnes_du_dossier", "avis_demande_le", "pickup_annonce", "modele_voucher", "taxi_independant", "annule_avec_dossier", "jours", "enfant"];
+// Le formulaire de Mook (voucher-rapide-calc.mjs, CHAMPS) : la note interne ne sort pas.
+export const CHAMPS_MOOK_INTERNES = ["notes"];
+
+const TYPES_VEHICULE = { taxi: TH.v_taxi, minivan: TH.v_minivan, partage: TH.v_partage };
+// Le type de véhicule : celui posé sur la course, sinon déduit du libellé de la course, puis du groupe du tarif (règle de typeTransfert,
+// operations-calc.mjs, qui lit le libellé en premier pour un minivan).
+export function typeVehicule(c = {}) {
+  const pose = (c.details || {}).type_transfert;
+  if (pose && TYPES_VEHICULE[pose]) return pose;
+  const t = `${c.service || ""} ${c.libelle || ""}`;
+  if (/partag|shared|navette|join/i.test(t)) return "partage";
+  // Le libellé de la course dit le véhicule vendu (« Private minivan: … ») même dans un groupe de tarifs « Private Taxi ».
+  if (/minivan|\bvan\b|รถตู้/i.test(c.libelle || "")) return "minivan";
+  if (/taxi|berline|voiture|car\b/i.test(t)) return "taxi";
+  return "minivan";
+}
+export const vehiculeTh = (c = {}) => `${TYPES_VEHICULE[typeVehicule(c)]} ${Math.max(1, Number(c.vehicules) || 1)} ${TH.cnt_vehicules}`;
+
+// « 3 ใบ », « มี » pour un oui sans nombre, le texte saisi sinon ; rien quand il n'y a pas de bagages (comme bagagesBooking).
+export function bagagesTh(b) {
+  const t = String(b ?? "").trim();
+  if (!t || /^(0|no|non|none|aucun|-|—)$/i.test(t)) return "";
+  if (/^\d+$/.test(t)) return `${Number(t)} ${TH.cnt_bagages}`;
+  return /^(oui|yes|y|x|true)$/i.test(t) ? TH.oui : t;
+}
+
+// Le paiement, pour le chauffeur : ce qu'il encaisse en espèces, ou rien.
+export function paiementTh(c = {}, devise = "THB") {
+  const m = montantTh(c.a_encaisser ?? c.prix, devise);
+  if (c.paiement === "paye") return TH.p_paye;
+  if (c.paiement === "acompte") return TH.p_acompte.replace("{montant}", m);
+  if (c.paiement === "en_attente") return TH.p_en_attente;
+  return TH.p_sur_place.replace("{montant}", m);
+}
+
+// Hôtel et chambre : ceux de la course, sinon l'hôtel de la fiche du client (première ligne de son adresse, « Hotel X, Room 12 »).
+export function hebergementTh(c = {}) {
+  const dt = c.details || {};
+  const source = "hotel" in dt ? String(dt.hotel || "") : String(c.adresse_client || "");
+  const lu = separerChambreLigne(source);
+  return { hotel: lu.hotel, chambre: String(dt.chambre || "").trim() || lu.chambre };
+}
+
+const TYPES_TOUR = { prive: "ส่วนตัว", partage: "จอยน์" }; // Privé, partagé (joint)
+const PARC = { inclus: "รวมแล้ว", non: "ไม่รวม" }; // Inclus, non inclus
+const heureOu = (t) => String(t ?? "").trim();
+
+// Les lignes d'une course : l'essentiel (en gros) puis le reste, dans l'ordre de la Booking confirmation. Chaque ligne : { cle, libelle, valeur }.
+// Une ligne vide ne s'affiche pas. `cle` sert aux tests (aucun champ de la Booking confirmation ne manque).
+export function lignesCourse(c = {}, devise = "THB") {
+  const dt = c.details || {};
+  const l = (cle, libelle, valeur) => ({ cle, libelle, valeur: valeur === null || valeur === undefined ? "" : String(valeur).trim() });
+  const { hotel, chambre } = hebergementTh(c);
+  const pers = [personnesTh(c), Number(dt.sieges) > 0 ? `${TH.sieges} ${Number(dt.sieges)}` : ""].filter(Boolean).join(" · ");
+  const duree = Number(dt.duree_h) > 0 ? `${Number(dt.duree_h)} ${TH.heures}` : String(dt.duree_h || "").trim();
+  const essentiel = [
+    l("pickup", TH.pickup, [c.pickup, chambre && !hotel ? `${TH.chambre} ${chambre}` : ""].filter(Boolean).join(" · ")),
+    l("dropoff", TH.dropoff, destinationTh(c)),
+    c.retour ? l("duree", TH.duree, duree) : null,
+    l("vol", TH.vol, c.vol),
+    l("personnes", TH.personnes, pers),
+    l("bagages", TH.bagages, bagagesTh(dt.bagages)),
+    l("vehicule", TH.vehicule, vehiculeTh(c)),
+    l("paiement", TH.paiement, paiementTh(c, devise)),
+    l("prix", TH.prix, montantTh(c.prix, devise)),
+  ];
+  const details = [
+    l("hotel", TH.hotel, [hotel, chambre ? `${TH.chambre} ${chambre}` : ""].filter(Boolean).join(" · ")),
+    l("rendez_vous", TH.rendez_vous, dt.embarquement),
+    l("zone", TH.zone, dt.pickup_zone),
+    l("retour_date", TH.retour_date, dt.retour_date ? dateTh(dt.retour_date) : ""),
+    l("retour_heure", TH.retour_heure, heureOu(dt.retour_heure)),
+    l("retour_lieu", TH.retour_lieu, dt.retour_lieu),
+    c.retour ? null : l("duree", TH.duree, duree),
+    l("bateau", TH.bateau, dt.bateau),
+    l("de", TH.de, dt.de),
+    l("vers", TH.vers, dt.vers),
+    l("depart", TH.depart, heureOu(dt.depart)),
+    l("arrivee", TH.arrivee, heureOu(dt.arrivee)),
+    l("checkin", TH.checkin, dt.checkin),
+    l("programme_activite", TH.programme_activite, dt.programme),
+    l("heure_service", TH.heure_service, heureOu(dt.heure_service)),
+    l("type_tour", TH.type_tour, TYPES_TOUR[dt.type_tour] || dt.type_tour),
+    l("parc", TH.parc, [PARC[dt.parc] || "", dt.parc_texte].filter(Boolean).join(" · ")),
+    l("permis", TH.permis, dt.permis),
+    l("equipement", TH.equipement, dt.equipement),
+    l("caution", TH.caution, dt.caution),
+    l("conditions", TH.conditions, dt.conditions),
+    l("remarques", TH.remarques, dt.remarques),
+    l("remarques_paiement", TH.remarques_paiement, dt.remarques_paiement),
+    l("service", TH.service, c.libelle),
+    l("ref", TH.ref, c.ref),
+    l("ref_partenaire", TH.ref_partenaire, c.reference_partenaire),
+  ];
+  const garder = (x) => x && x.valeur;
+  return { essentiel: essentiel.filter(garder), details: details.filter(garder) };
+}
 
 const JOURS_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"];
 const MOIS_TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
@@ -177,6 +330,7 @@ export function coursesLocales(data, userId, aujourdhui) {
         client: `${c.prenom || ""} ${c.nom || ""}`.trim(), telephone: c.telephone || "", vol: details.vol || "",
         prix: r.montant_vente ?? null, commission: n.commission_prevue ?? null, commission_payee: n.commission_recue ?? null, reglee: !!n.commission_recue_le,
         par_moi: commissionDuPartenaire(n),
+        ...detailLocal(data, r, d, c, acces),
       };
       course.modifiable = !course.reglee && !Number(course.commission_payee || 0) && (course.commission === null || course.par_moi);
       const garde = (r.date_service >= aujourdhui && r.date_service <= limite) || (r.date_service < aujourdhui && !course.reglee && (course.commission === null || resteDu(course) > 0));
@@ -184,6 +338,25 @@ export function coursesLocales(data, userId, aujourdhui) {
     })
     .filter(Boolean)
     .sort((a, b) => a.date_service.localeCompare(b.date_service) || String(a.heure).localeCompare(String(b.heure)));
+}
+
+// Les colonnes de la migration 116, pour la démonstration : mêmes règles que partenaire_courses().
+function detailLocal(data, r, d, c, acces) {
+  const dt = r.details || {};
+  const p = (data.prestations || []).find((x) => x.id === r.prestation_id) || null;
+  const idsLignes = new Set([r.ligne_id, ...(dt.lignes_ids || [])].filter(Boolean));
+  const lignes = (data.documents || []).filter((x) => x.dossier_id === d.id).flatMap((x) => ((x.contenu || {}).lignes || []).filter((l) => idsLignes.has(l.id) && (l.par || (p && p.unite) || "") === "veh"));
+  const vehicules = lignes.length ? lignes.reduce((s, l) => s + (l.qte === null || l.qte === undefined || l.qte === "" ? 1 : Number(l.qte)), 0) : 1;
+  const recu = (data.paiements || []).filter((x) => x.dossier_id === d.id).reduce((s, x) => s + Number(x.montant || 0), 0);
+  const prix = r.montant_vente ?? null;
+  const paiement = r.paye_sur_place ? "sur_place" : prix > 0 && recu >= prix ? "paye" : recu > 0 ? "acompte" : "en_attente";
+  return {
+    ref: d.ref || "", reference_partenaire: r.partenaire_id === acces.partenaire.id ? r.reference_partenaire || "" : "",
+    libelle: r.libelle || "", service: (p && p.groupe) || "", vehicules,
+    adresse_client: c.entite_id === r.entite_id ? String(c.adresse || "").split("\n")[0] : "",
+    details: Object.fromEntries(Object.entries(dt).filter(([k]) => CHAMPS_COURSE.includes(k))),
+    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, Math.min(prix ?? 0, (prix ?? 0) - recu)) : prix,
+  };
 }
 
 // partenaire_saisir_commission : refuse ce que la base refuse, sinon rend les valeurs à écrire dans reservations_nets.
