@@ -108,6 +108,16 @@ test("point 2 : Taxi sans lieu saisi est signalé, jamais l'hôtel de la fiche",
   assert.equal(lieuPickup(resa({ lieu_pickup: "Hotel Sunset, Room 6" }), {}, "taxi"), "Hotel Sunset");
 });
 
+test("point 2 (précision de Jérémy) : Taxi, l'aller-retour depuis l'hôtel garde l'hôtel des deux côtés", async () => {
+  const client = { prenom: "Mia", adresse: "Lanta Sand Resort, Room 4", entite_id: "e-taxi" };
+  const modele = "Hello {prenom}, pickup{a_heure} at {hotel}, drop-off: {dropoff}.";
+  const allerRetour = await message(resa({ lieu_pickup: "", entite_id: "e-taxi", libelle: "Round trip from my place", details: { type_trajet: "retour_depart" } }), { client, mode: "taxi", modele });
+  assert.equal(allerRetour.texte, "Hello Mia, pickup at 09:30 at Lanta Sand Resort, drop-off: back to the pickup place.");
+  // L'arrivée sans lieu saisi (aéroport → hôtel) : « lieu à saisir », jamais l'hôtel comme prise en charge.
+  const arrivee = await message(resa({ lieu_pickup: "", entite_id: "e-taxi", libelle: "Private minivan: Krabi Airport → Koh Lanta", details: { drop_off: "Lanta Sand Resort" } }), { client, mode: "taxi", modele });
+  assert.deepEqual(arrivee, { texte: null, raison: "lieu" });
+});
+
 test("point 8 : retour au point de départ, la dépose dit « back to the pickup place »", async () => {
   const m = await message(resa({ details: { type_trajet: "retour_depart" } }), { client: { prenom: "Mia" }, mode: "taxi", modele: "Hello {prenom}, pickup{a_heure} at {hotel}, drop-off: {dropoff}." });
   assert.equal(m.texte, "Hello Mia, pickup at 09:30 at Pimalai Resort, drop-off: back to the pickup place.");

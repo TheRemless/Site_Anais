@@ -12,6 +12,7 @@ import { attenteClient, propositionCourante, lienWhatsApp, FENETRE_MS } from "./
 import { contactPersonnel } from "./agent-whatsapp-lecture.mjs";
 import { resteBloque } from "./agent-calc.mjs";
 import { e164 } from "./whatsapp-voucher-calc.mjs";
+import { estRetourDepart } from "./trajet-calc.mjs";
 import { estFraisDeParc, hotelEtChambre, separerChambreLigne, remplirGabarit, gabaritsPropose } from "./operations-calc.mjs";
 
 // ---- Heure ---------------------------------------------------------------------------------------------------------------------------
@@ -57,11 +58,14 @@ export function pickupsDuPoint(reservations = [], jours = [], { ecartes = new Se
 //   - celui saisi sur la réservation, sans la chambre ;
 //   - sinon, en mode excursions (Secret) seulement, l'hôtel de la fiche du client (hotelEtChambre : jamais l'adresse d'une fiche partagée
 //     par une autre entreprise) ;
-//   - sinon rien : chez Taxi, l'hôtel du client est souvent la dépose, et chez ZTP l'adresse est postale. Le service est signalé.
+//   - chez Taxi, seulement pour un aller-retour depuis l'hôtel (« Round trip from my place », type_trajet « retour_depart ») : le client part
+//     de son hôtel et y revient (précision de Jérémy, 22.11.2026) ;
+//   - sinon rien : à l'arrivée (aéroport → hôtel), l'hôtel du client est la dépose, pas la prise en charge ; chez ZTP l'adresse est postale.
+//     Le service est signalé, « lieu à saisir ».
 export function lieuPickup(reservation = {}, client = {}, mode = "excursions") {
   const saisi = String((reservation && reservation.lieu_pickup) || "").trim();
   if (saisi) return separerChambreLigne(saisi).hotel;
-  if (mode !== "excursions") return "";
+  if (mode !== "excursions" && !(mode === "taxi" && estRetourDepart(reservation))) return "";
   return String(hotelEtChambre(client || {}, { ...(reservation || {}), lieu_pickup: "" }).hotel || "").trim();
 }
 
