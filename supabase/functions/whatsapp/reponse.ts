@@ -101,8 +101,8 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
   const lu = await lireConversation(db, conversationId);
   if (!lu) return { erreur: "droit_manquant" };
   if (lu.conv.reponses === "jamais") return { erreur: "contact_personnel" };
-  // IA coupée par Nani pour cette conversation (migration 105) : rien chez Anthropic, même à la demande.
-  if ((lu.conv as Record<string, unknown>).ia_coupee === true) return { erreur: "ia_coupee" };
+  // IA coupée par Nani pour cette conversation (migration 105) : seul l'automatique est coupé (tri, résumé, réponse préparée d'office).
+  // « Préparer une réponse » touché par Nani reste permis (décision du 22.11.2026, seul le Contact personnel coupe tout).
   const dernier = lu.messages.filter((m) => !m.supprime_le).reduce((a: any, m: any) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
   if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
   const cle = Deno.env.get("ANTHROPIC_API_KEY");

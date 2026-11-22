@@ -70,15 +70,20 @@ export function blocEtapes(c, { lectureSeule = false, rafraichir = () => {} } = 
     { class: "wa-etapes-bloc", "data-pas-saisie": "" },
     etapes.length ? h("span", { class: "wa-etapes" }, etapes.map(pastille)) : h("span", { class: "wa-sans" }, tr("Pas encore d'étape")),
     lectureSeule ? null : h("button", { class: "lien", type: "button", onclick: () => choisirEtape(c, etapes, rafraichir) }, tr("Changer l'étape")),
-    c.ia_coupee ? h("span", { class: "wa-marque wa-ia-coupee" }, tr("IA coupée")) : null
+    c.ia_coupee ? h("span", { class: "wa-marque wa-ia-coupee" }, tr("IA coupée")) : null,
+    // Ce que fait le réglage (décision du 22.11.2026) : seul l'automatique est coupé, Nani garde l'IA à sa demande.
+    c.ia_coupee ? h("p", { class: "aide wa-ia-coupee-aide" }, tr(AIDE_IA_COUPEE)) : null
   );
 }
 
-// Couper ou rallumer l'IA pour cette conversation (migration 105) : plus de tri, de résumé, de réponse préparée ni d'Assistant pour elle.
+// Couper ou rallumer l'IA pour cette conversation (migration 105). Décision du 22.11.2026 : seul l'automatique est coupé (tri, résumé,
+// promesse, réponse préparée d'office, apprentissage). « Préparer une réponse », « Demander à l'assistant » et « Créer le dossier » restent
+// permis quand Nani les demande ; seul « Contact personnel » coupe toute IA (règle du 21.11.2026).
+export const AIDE_IA_COUPEE = N_("IA coupée pour cette conversation : plus de tri, de résumé ni de réponse préparée d'office. « Préparer une réponse » et l'Assistant restent possibles à votre demande.");
 export async function basculerIA(c, rafraichir = () => {}) {
   try {
     await modifier("whatsapp_conversations", c.id, { ia_coupee: !c.ia_coupee });
-    toast(c.ia_coupee ? tr("IA rallumée pour cette conversation.") : tr("IA coupée pour cette conversation : rien n'est plus envoyé à l'IA."));
+    toast(c.ia_coupee ? tr("IA rallumée pour cette conversation.") : tr(AIDE_IA_COUPEE));
     rafraichir();
   } catch (err) {
     toast(err.message, true);

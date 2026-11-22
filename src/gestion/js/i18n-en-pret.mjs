@@ -37,7 +37,7 @@ export const EN_PRET = {
   "Rallumer l'IA pour cette conversation": "Turn AI back on for this chat",
   "Couper l'IA pour cette conversation": "Turn AI off for this chat",
   "IA rallumée pour cette conversation.": "AI back on for this chat.",
-  "IA coupée pour cette conversation : rien n'est plus envoyé à l'IA.": "AI off for this chat: nothing is sent to the AI anymore.",
   "Contact qui n'est pas un client : pas de tri automatique": "Contact who is not a client: no automatic sorting",
   "IA coupée pour cette conversation : rien n'est envoyé à l'IA. Répondez depuis l'app.": "AI off for this chat: nothing is sent to the AI. Reply from the app.",
+  "IA coupée pour cette conversation : plus de tri, de résumé ni de réponse préparée d'office. « Préparer une réponse » et l'Assistant restent possibles à votre demande.": "AI off for this chat: no more automatic sorting, summary or prepared reply. “Prepare a reply” and the Assistant remain available when you ask.",
 };

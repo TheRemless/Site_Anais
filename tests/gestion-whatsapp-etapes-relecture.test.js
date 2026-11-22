@@ -54,11 +54,22 @@ test("n° 3 : iaPermise : tri si l'un des deux assistants est allumé ; IA coup�
   assert.equal(iaPermise({ receptionActive: true, conv: { entite_id: null, reponses: "auto", ia_coupee: true }, agents: { S: true, T: true } }), false);
   assert.equal(triSansAppel({ conv: { reponses: "auto", ia_coupee: true }, messages: [] }).motif, "ia_coupee");
   assert.equal(clientCommun({ reponses: "auto", ia_coupee: true }), true, "l'IA coupée ne fait pas un Contact personnel");
-  assert.match(lire("supabase/functions/whatsapp/reponse.ts"), /ia_coupee === true\) return \{ erreur: "ia_coupee" \}/, "« Préparer une réponse » refusé");
+  // Décision du 22.11.2026 : l'IA coupée ne coupe que l'automatique. Les gestes demandés par Nani restent permis (seul le Contact personnel
+  // coupe tout) : « Préparer une réponse » n'est plus refusé, les boutons restent affichés, l'aide le dit.
+  const rep = lire("supabase/functions/whatsapp/reponse.ts");
+  const demande = rep.slice(rep.indexOf("export async function preparerALaDemande"), rep.indexOf("const t0 = Date.now() + ATTENTE_MS"));
+  assert.ok(demande.includes('return { erreur: "contact_personnel" }'));
+  assert.ok(!/ia_coupee === true\) return \{ erreur: "ia_coupee" \}/.test(demande), "« Préparer une réponse » permis à la demande");
+  assert.match(rep, /if \(!decision && !\(await iaOuverte\(db, conv\)\)\) decision = \{ preparer: false, motif: "ia_coupee" \};/, "le tri automatique reste coupé");
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
-  assert.match(vue, /dernier\.sens === "entrant" && !c\.ia_coupee && etat\.store\.whatsappPreparer/, "bouton Préparer masqué");
-  assert.match(vue, /if \(!demandePermise\(c\) \|\| c\.ia_coupee\) return null;/, "« Demander à l'assistant » masqué");
-  assert.match(vue, /!lectureSeule && !c\.ia_coupee && \(clientCommun\(c\)/, "« Créer le dossier » de la carte masqué");
+  assert.match(vue, /dernier\.sens === "entrant" && etat\.store\.whatsappPreparer/, "bouton Préparer affiché");
+  assert.match(vue, /if \(!demandePermise\(c\)\) return null;/, "« Demander à l'assistant » affiché");
+  assert.match(vue, /!lectureSeule && \(clientCommun\(c\)/, "« Créer le dossier » de la carte affiché");
+  assert.ok(!/c\.ia_coupee\)? &&|!c\.ia_coupee/.test(vue), "aucun geste à la demande caché par l'IA coupée");
+  const etapes = lire("src/gestion/js/views/whatsapp-etapes.mjs");
+  assert.match(etapes, /c\.ia_coupee \? h\("p", \{ class: "aide wa-ia-coupee-aide" \}, tr\(AIDE_IA_COUPEE\)\)/);
+  assert.match(etapes, /toast\(c\.ia_coupee \? tr\("IA rallumée pour cette conversation\."\) : tr\(AIDE_IA_COUPEE\)\)/);
+  assert.match(etapes, /plus de tri, de résumé ni de réponse préparée d'office\. « Préparer une réponse » et l'Assistant restent possibles à votre demande\./);
   assert.match(lire("docs/gestion/migration-105-whatsapp-etapes.sql"), /add column if not exists ia_coupee boolean not null default false/);
 });
 
