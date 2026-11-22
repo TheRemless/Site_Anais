@@ -30,6 +30,7 @@ import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
+import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -406,7 +407,9 @@ function blocFaits(c, prop) {
       : client
         ? h("span", { class: "wa-sans" }, tr("{nom}, aucun dossier", { nom: nomClient(client) }))
         : h("span", { class: "wa-sans" }, tr("Aucun dossier relié")),
-    actions
+    actions,
+    // « Proposer une excursion » (composant à part, views/proposer-excursion.mjs) : séjour de plusieurs jours après un transfert.
+    dossier ? boutonProposerExcursion({ dossier, conversation: c }) : null
   );
   if (!lignes.length) return h("section", { class: "wa-faits", "aria-label": tr("Faits du client") }, tete);
   const valeurDe = (l) => (l.cle === "reste" && l.paye ? tr("Payé") : l.aFixer ? `${l.valeur}, ${tr("heure à fixer")}` : l.valeur);
