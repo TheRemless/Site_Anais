@@ -28,7 +28,46 @@ export function offreDepuisBase(ref, pax, { prestations = [], trajets = [], nomP
 
 // Les offres retenues par l'assistant, recalculées pour les personnes actuelles : une correction du nombre d'adultes refait le prix comme
 // dans la lecture par règles.
-export const offresRecalculees = (offres, d, contexte) => (offres || []).map((o) => offreDepuisBase({ genre: o.genre, id: o.id }, paxDe(d), contexte)).filter(Boolean);
+// Une offre au prix de la carte (prixCarte, Jérémy, 22.11.2026) garde ce prix tant que les personnes sont celles de la carte ; le prix du
+// catalogue recalculé reste à côté (totalCatalogue). Le nombre de personnes change : le prix repart du catalogue, avec un avertissement
+// (revue de la PR 307).
+const memesPersonnes = (a, b) => !!a && !!b && a.adultes === b.adultes && a.enfants === b.enfants;
+export const offresRecalculees = (offres, d, contexte) =>
+  (offres || [])
+    .map((o) => {
+      const base = offreDepuisBase({ genre: o.genre, id: o.id }, paxDe(d), contexte);
+      if (!o || o.prixCarte === undefined || !base) return base;
+      if (!memesPersonnes(paxDe(d), o.prixCartePax)) return { ...base, avertissement: "prix_carte_personnes" };
+      return auPrixCarte(base, o.prixCarte, { pax: o.prixCartePax, origine: o.prixOrigine });
+    })
+    .filter(Boolean);
+// L'offre au prix de la conversation : total = le prix de la carte, totalCatalogue = le prix du catalogue (affiché s'il diffère).
+// `pax` : les personnes de la carte ; `origine` : « saisi » ou « client_non_corrige » (posée sur la réservation, details.prix_origine).
+export function auPrixCarte(offre, prix, { pax = null, origine = null } = {}) {
+  if (!offre || prix === null || prix === undefined || !(Number(prix) > 0)) return offre;
+  return { ...offre, prixCarte: Number(prix), prixCartePax: pax, prixOrigine: origine, totalCatalogue: offre.totalCatalogue ?? offre.total, total: Number(prix) };
+}
+// Les lignes du catalogue d'une offre au prix de la carte : les prix unitaires sont mis à l'échelle pour que le total soit le prix de la
+// carte (nets, partenaires et quantités gardés). Une seule ligne facturable prend tout le prix. Sans ligne facturable (prestation payée
+// sur place), rien ne change.
+const arrondi2 = (x) => Math.round(x * 100) / 100;
+// Une ligne au prix de la carte n'est plus « offerte ».
+const payee = ({ offert, ...l }) => l;
+export function lignesAuPrixCarte(lignes = [], prix) {
+  if (prix === null || prix === undefined || !(Number(prix) > 0)) return lignes;
+  const facturables = lignes.filter((l) => l && l.kind === "ligne" && l.unite !== null && l.unite !== undefined && Number(l.qte) > 0);
+  if (!facturables.length) return lignes;
+  const total = facturables.reduce((t, l) => t + Number(l.unite) * Number(l.qte), 0);
+  const dernier = facturables[facturables.length - 1];
+  let deja = 0;
+  return lignes.map((l) => {
+    if (!facturables.includes(l)) return l;
+    if (l === dernier) return { ...payee(l), unite: arrondi2((Number(prix) - deja) / Number(l.qte)) };
+    const unite = total > 0 ? arrondi2((Number(l.unite) * Number(prix)) / total) : 0;
+    deja += unite * Number(l.qte);
+    return { ...payee(l), unite };
+  });
+}
 
 // La proposition de l'assistant (déjà contrôlée par la fonction) en demande à vérifier : `d` a la forme de la lecture libre, `services` celle
 // du découpage en services (une phrase, sa date, son heure, ses personnes, ses offres). Une référence qui n'est plus dans la base est ignorée.
@@ -42,8 +81,9 @@ export function propositionVersDemande(p, contexte) {
     const lieu = s.lieu_pickup ? { hotelDepart: s.lieu_pickup } : {};
     // Le numéro de vol de la carte (21.11.2026) : il rejoint le bloc du voucher du service, modifiable.
     const vol = s.vol ? { vol: s.vol } : {};
-    if (s.hors_catalogue) return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, confiance: s.confiance || "moyenne", ...vol };
-    const offres = [s.offre, ...(s.alternatives || [])].map((r) => offreDepuisBase(r, pax, contexte)).filter(Boolean);
+    if (s.hors_catalogue) return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol };
+    // La première offre garde le prix de la carte quand il vient de la conversation (prix_carte) ; les autres restent au catalogue.
+    const offres = [s.offre, ...(s.alternatives || [])].map((r, i) => (i === 0 ? auPrixCarte(offreDepuisBase(r, pax, contexte), s.prix_carte, { pax, origine: s.prix_origine || null }) : offreDepuisBase(r, pax, contexte))).filter(Boolean);
     return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu, ...vol };
   });
   const premier = services[0] || {};

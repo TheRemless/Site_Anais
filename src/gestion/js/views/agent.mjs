@@ -96,6 +96,11 @@ const AVERTISSEMENTS = {
   nom_prestataire: N_("Le message cite un partenaire : à retirer avant d'envoyer."),
   prenom_equipe: N_("Le message nomme quelqu'un de l'équipe : à retirer, la réponse ne signe pas."),
   prix_non_tape: N_("Un prix proposé ne venait ni du catalogue ni de vous : il a été laissé vide."),
+  // 22.11.2026 : le prix écrit par le client, que Nani n'a pas corrigé ensuite. Repère seulement, rien n'est bloqué.
+  prix_client_non_corrige: N_("Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider."),
+  prix_egal_net: N_("Un prix proposé est égal à un net interne : il a été laissé vide."),
+  prix_client_sans_net: N_("Le prix écrit par le client n'a pas pu être comparé au net : il a été laissé vide."),
+  prix_sous_net: N_("Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant »."),
   reference_inconnue: N_("Un service proposé n'existe pas au catalogue : choisissez-le à la main."),
   date_illisible: N_("Une date n'a pas pu être lue."),
   // Espace unifié Secret et Taxi (migration 63).
@@ -741,7 +746,7 @@ export async function vueAgent(idOuvert = "") {
   const devise = () => reglages().devise || "THB";
   const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : "");
   // Les prix comme partout dans Gestion (formatMontant, design n° 15) : « THB 2'300 ».
-  const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, formatMontant(Number(s.prix), devise()), h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : tr("catalogue"))));
+  const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, formatMontant(Number(s.prix), devise()), h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : s.origine_prix === "client_non_corrige" ? [tr("prix du client, non corrigé par Nani"), s.prix_catalogue !== undefined && s.prix_catalogue !== null ? ` · ${tr("catalogue : {prix}", { prix: formatMontant(Number(s.prix_catalogue), devise()) })}` : ""].join("") : tr("catalogue"))));
   // L'heure de pickup manque : dit sur la carte, comme « Prix à fixer », avant de créer le dossier (design n° 5).
   const pickupTexte = (s) => (s.heure_pickup ? tr("pickup {h}", { h: s.heure_pickup }) : h("span", { class: "agent-a-fixer" }, tr("heure de pickup à fixer")));
 
@@ -1125,6 +1130,8 @@ export async function vueAgent(idOuvert = "") {
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
     try {
       if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
+      // Un prix du client sous le net (revue de la PR 307) : jamais validé d'un geste.
+      else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };

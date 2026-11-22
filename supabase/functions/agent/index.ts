@@ -37,7 +37,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule, entite_id",
     // `vol` : seulement le numéro de vol de la réservation (details->>vol), pas le reste de `details`.
-    reservations: "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id, vol:details->>vol",
+    reservations: "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id, vol:details->>vol, prix_origine:details->>prix_origine",
     // Le net et la commission d'un service (migrations 11, 18 et 57). Sans la migration 57, repli sur les colonnes d'avant (NETS_RES_AVANT_57).
     reservations_nets: "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le, commission_recue_moyen, commission_partielle_le, commission_ecart_motif, commission_ecart_note",
   };
@@ -906,6 +906,13 @@ Deno.serve(async (req) => {
   if (!CONTACTS_NOMMES.includes(typeLu) && waLue && waLue.partenaire_id && waLue.nom) ajouterNoms(memo, [{ conversation: waLue.id, nom: String(waLue.nom) }]);
   // Les lectures de la boîte des échanges précédents (montants internes et noms lus), avant leur retrait pour Claude.
   retenirLectures(gardes, memo);
+  // Le prix du client non corrigé par Nani (revue de la PR 307) : calculé ici, à chaque échange, sur les 60 derniers messages de la
+  // conversation WhatsApp liée, lus en base avec la session, dans l'ordre d'envoi. Jamais du bloc joint ni de lire_conversation : une
+  // correction faite ensuite dans WhatsApp retire le prix au prochain échange. Une lecture en échec ne valide rien.
+  if (waLue && clientConfirme(waLue)) {
+    const lusWa = await sb.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
+    if (!lusWa.error) memo.clientValides = prixClientValides([...(lusWa.data || [])].reverse(), waLue);
+  }
   // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte
   // (whatsapp/reponse.ts) : seulement pour le contrôle de la réponse. Ceux des services de la demande en cours (rendus par un outil de la
   // conversation, ou du dossier relié) bloquent (montant_interne) ; ceux des autres services avertissent (montant_egal_net, faux blocage du

@@ -255,7 +255,8 @@ export async function dupliquerService(r, apres) {
         personnes: { ...(r.personnes || {}), adultes: attendu.personnes.adultes, enfants: attendu.personnes.enfants },
         statut: "confirme", reference_partenaire: "", montant_vente: attendu.montant_vente ?? r.montant_vente ?? null, notes: "", paye_sur_place: !!r.paye_sur_place,
         // Un retour au point de départ dupliqué reste un retour au point de départ, avec son programme et sa durée.
-        details: { ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
+        // L'origine d'un prix repris du client sans correction de Nani suit la copie (revue de la PR 307) : le contrôle ne lève jamais un net avec.
+        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
       });
       try {
         await modifier("documents", doc.id, { contenu: copie.contenu, updated_at: new Date().toISOString() });

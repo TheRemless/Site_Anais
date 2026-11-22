@@ -18,7 +18,7 @@ import { tr, N_, pluriel } from "../i18n.mjs";
 import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
-import { offresRecalculees } from "../assistant-calc.mjs";
+import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal } from "../demandes-site-calc.mjs";
@@ -39,6 +39,8 @@ const AVERTISSEMENTS = {
   enfant_non_compte: N_("Tarif par adulte sans prix enfant : les enfants ne sont pas comptés."),
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
+  // Revue de la PR 307 : le prix de la carte valait pour d'autres personnes.
+  prix_carte_personnes: N_("Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation."),
 };
 
 // Quantité d'une prestation selon son unité (les bébés ne comptent pas).
@@ -141,7 +143,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     return { offre: choisie(sv, offres), offres };
   }
   // Lignes prises à la main : la date corrigée sur la ligne du service passe aux lignes (elle date la réservation), sauf si le service n'a pas de date.
-  const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, ...(l.kind !== "texte" && sv.date ? { date_service: sv.date } : {}) })) : offre ? lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise) : []);
+  // Une offre au prix de la carte (prix venu de la conversation) : ses lignes prennent ce prix (assistant-calc.mjs, lignesAuPrixCarte).
+  const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, ...(l.kind !== "texte" && sv.date ? { date_service: sv.date } : {}) })) : offre ? lignesAuPrixCarte(lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise), offre.prixCarte) : []);
   // Le partenaire du service : celui de l'offre, ou de la première ligne prise dans la base. Sa grille de pickup donne les zones.
   const partenaireDeOffre = (sv, offre) => (sv.lignesCustom ? (sv.lignesCustom.find((l) => l.partenaire_id) || {}).partenaire_id : offre && offre.source && offre.source.partenaire_id) || "";
   const partenaireDuService = (sv) => partenaireDeOffre(sv, sv.lignesCustom ? null : etatDe(sv).offre);
@@ -159,6 +162,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const v = sv.saisie || saisieVide();
     // Un numéro de vol ne reste que sur un transfert : une offre changée pour une excursion ne le garde pas caché.
     const details = nonVides(v.details);
+    // Un prix repris du client sans correction de Nani (revue de la PR 307) : la réservation le garde (details.prix_origine), le contrôle ne
+    // s'en sert jamais pour lever un net.
+    if ((offre && offre.prixCarte !== undefined && offre.prixOrigine === "client_non_corrige") || (sv.transfertLibre && sv.prixOrigine === "client_non_corrige")) details.prix_origine = "client_non_corrige";
     if (details.vol && !modeTaxi() && !sv.transfertLibre && !sv.retourDepart && offre && !estTransfert(offre)) delete details.vol;
     return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details, zonePickup: sv.zonePickup || null };
   }
@@ -193,6 +199,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     }
     if (sv.confiance) n.titre.append(badgeConfiance(sv.confiance));
     n.prix.textContent = offre && offre.total !== null && offre.total !== undefined ? formatMontant(offre.total, devise) : "-";
+    // Le prix de la conversation l'emporte ; celui du catalogue s'affiche à côté quand il diffère (Jérémy, 22.11.2026).
+    if (offre && offre.prixCarte !== undefined && offre.totalCatalogue !== null && offre.totalCatalogue !== undefined && offre.totalCatalogue !== offre.total) n.prix.append(h("small", { class: "dsv-catalogue" }, ` ${tr("catalogue : {prix}", { prix: formatMontant(offre.totalCatalogue, devise) })}`));
     const alertes = [];
     if (!sv.date) alertes.push(tr("Date à préciser."));
     else if (sv.date < aujourdhui()) alertes.push(tr("La date du service est passée."));
@@ -646,7 +654,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }
