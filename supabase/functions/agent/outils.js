@@ -587,7 +587,9 @@ const motsDe = (q) =>
 // nomme Koh Lanta et si TOUS ses autres mots (hors véhicule) sont dans le libellé de la zone : « Krabi Town » donne Krabi Town, jamais
 // Krabi Airport ; « Krabi » seul rend les deux et c'est le lieu de l'hôtel (situer_hotels) qui tranche. Rien n'est deviné d'un hôtel.
 export const GROUPES_ZONE_LANTA = ["private taxi"];
-const MOTS_HORS_ZONE = ["lanta", "private", "prive", "privee", "taxi", "taxis", "minivan", "minivans", "van", "vans", "minibus", "car", "cars", "voiture", "sedan", "transfer", "transfers", "transfert", "transferts", "vip", "pickup", "drop", "off", "from", "depuis", "vers"];
+// Les mots qui ne disent pas un lieu : véhicules (ils restent lus pour la règle du véhicule, VEHICULES_ZONE), liaisons, « pax » et les nombres.
+const MOTS_HORS_ZONE = ["lanta", "private", "prive", "privee", "taxi", "taxis", "minivan", "minivans", "van", "vans", "minibus", "car", "cars", "voiture", "voitures", "sedan", "berline", "suv", "transfer", "transfers", "transfert", "transferts", "vip", "pickup", "drop", "off", "from", "depuis", "vers", "by", "for", "pax"];
+const horsZone = (m) => MOTS_HORS_ZONE.includes(m) || /^\d+$/.test(m);
 export const ligneDeZoneLanta = (p) => !!p && p.famille === "transfert" && GROUPES_ZONE_LANTA.includes(sansAccents(String(p.groupe || "")).trim());
 // Relecture de la PR 318 : des mots entiers (« ao » ne trouve pas « Khao »), et le véhicule demandé respecté (une voiture ne rend jamais
 // « Minivan to … », un minivan jamais « Car to … ») ; un libellé qui ne nomme aucun véhicule vaut pour tous.
@@ -596,7 +598,7 @@ const motsEntiers = (t) => sansAccents(String(t || "")).replace(/[^a-z0-9]+/g, "
 const vehiculesDe = (mots) => Object.keys(VEHICULES_ZONE).filter((g) => mots.some((m) => VEHICULES_ZONE[g].includes(m)));
 export function zonesLanta(prestations = [], mots = []) {
   if (!mots.includes("lanta")) return [];
-  const restes = mots.filter((m) => !MOTS_HORS_ZONE.includes(m));
+  const restes = mots.filter((m) => !horsZone(m));
   if (!restes.length) return [];
   const demandes = vehiculesDe(mots);
   return (prestations || []).filter((p) => {

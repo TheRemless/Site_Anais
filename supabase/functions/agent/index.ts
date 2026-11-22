@@ -303,9 +303,12 @@ Deno.serve(async (req) => {
   }
   // Une discussion liée qui se remplit (relecture de la PR 318, discussion-pleine.js) : 20 pièces ou 30 Mo, ou un historique qui perdrait son
   // début. Elle est archivée et une nouvelle, liée à la même conversation WhatsApp, la remplace, ouverte par un court résumé (client,
-  // dossiers, dernier prix de vente accepté). Seulement quand la personne écrit encore dans cette conversation WhatsApp (waLiee).
+  // dossiers, dernier prix de vente accepté). Dès que la personne lit encore cette conversation WhatsApp (waLue), même sans le droit d'y
+  // écrire (relecture finale de la PR 318) : une lecture seule obtient aussi une discussion neuve, jamais « conversation_pleine ». La nouvelle
+  // garde le lien de l'ancienne (la base l'accepte pour qui lit la conversation, agent_whatsapp_lisible, migration 67) ; sans droit
+  // d'écrire, elle reste sans carte, comme l'ancienne.
   let remplace: string | null = null;
-  if (conversationId && conv && conv.whatsapp_conversation_id && waLiee && waLiee.id === conv.whatsapp_conversation_id) {
+  if (conversationId && conv && conv.whatsapp_conversation_id && waLue && waLue.id === conv.whatsapp_conversation_id) {
     const [nb, fx] = await Promise.all([
       sb.from("agent_messages").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id),
       sb.from("agent_fichiers").select("taille").eq("conversation_id", conv.id).limit(100),
@@ -313,9 +316,9 @@ Deno.serve(async (req) => {
     const gardes = fx.error ? [] : fx.data || [];
     const plein = nb.error ? "" : discussionPleine({ messages: nb.count || 0, fichiers: { nombre: gardes.length, taille: gardes.reduce((s: number, f: any) => s + (Number(f.taille) || 0), 0) }, nouveaux: Array.isArray(demande.fichiers) ? demande.fichiers : [] });
     if (plein) {
-      const idsDossiers = [...new Set([waLiee.dossier_id, conv.dossier_id].filter((x) => typeof x === "string" && UUID.test(x)))];
+      const idsDossiers = [...new Set([waLue.dossier_id, conv.dossier_id].filter((x) => typeof x === "string" && UUID.test(x)))];
       const [cl, ds, ct] = await Promise.all([
-        waLiee.client_id ? sb.from("clients").select("prenom, nom").eq("id", waLiee.client_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+        waLue.client_id ? sb.from("clients").select("prenom, nom").eq("id", waLue.client_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
         idsDossiers.length ? sb.from("dossiers").select("ref").in("id", idsDossiers) : Promise.resolve({ data: [], error: null }),
         sb.from("agent_cartes").select("genre, statut, donnees, cree_le, decide_le").eq("conversation_id", conv.id).eq("statut", "validee").order("cree_le", { ascending: false }).limit(20),
       ]);

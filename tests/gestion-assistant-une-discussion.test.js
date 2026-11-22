@@ -341,6 +341,13 @@ test("constat 8 : zones Private Taxi en mots entiers, véhicule demandé respect
   assert.deepEqual(await libelles("taxi Koh Lanta ao"), ["Minivan to Ao Nang"], "« ao » ne trouve pas « Khao »");
   assert.deepEqual(await libelles("taxi Koh Lanta Khao Lak"), ["Khao Lak"]);
   assert.deepEqual(zonesLanta(prestations, ["lanta", "kra"]), [], "un morceau de mot ne suffit pas");
+  // Relecture finale : « suv », « berline », « voitures », « by », « for », « pax » et les nombres ne sont pas des lieux ; le véhicule reste lu.
+  assert.deepEqual(await libelles("Koh Lanta to Krabi Town by SUV"), ["Krabi Town"]);
+  assert.deepEqual(await libelles("Koh Lanta to Ao Nang by SUV"), [], "un SUV ne rend jamais « Minivan to … »");
+  assert.deepEqual(await libelles("berline Koh Lanta Ao Nang"), []);
+  assert.deepEqual(await libelles("2 voitures Koh Lanta Ao Nang"), []);
+  assert.deepEqual(await libelles("taxi for 4 pax Koh Lanta to Krabi Town 25"), ["Krabi Town"]);
+  assert.deepEqual(await libelles("minivan for 6 pax Koh Lanta Ao Nang"), ["Minivan to Ao Nang"]);
 });
 
 test("constat 4 : une discussion liée pleine est archivée et remplacée, avec un court résumé", () => {
@@ -373,7 +380,10 @@ test("constat 4 : une discussion liée pleine est archivée et remplacée, avec 
   assert.deepEqual(separerResume("Bonjour"), { resume: "", reste: "Bonjour" });
   // La fonction : seulement une discussion liée où la personne écrit encore ; archivée, remplacée, rouverte si l'échange échoue.
   const f = lire("supabase/functions/agent/index.ts");
-  assert.match(f, /if \(conversationId && conv && conv\.whatsapp_conversation_id && waLiee && waLiee\.id === conv\.whatsapp_conversation_id\) \{/);
+  // Relecture finale : dès que la personne lit la conversation WhatsApp (waLue), même sans droit d'y écrire.
+  assert.match(f, /if \(conversationId && conv && conv\.whatsapp_conversation_id && waLue && waLue\.id === conv\.whatsapp_conversation_id\) \{/);
+  const rotation = f.slice(f.indexOf("let remplace"), f.indexOf("message = message ? `${resume}"));
+  assert.doesNotMatch(rotation, /waLiee|waEcrit/, "le droit d'écrire n'est pas exigé");
   assert.match(f, /update\(\{ statut: "archivee" \}\)\.eq\("id", ancien\.id\)/);
   assert.match(f, /insert\(\{ entite_id: entiteId, titre: ancien\.titre, dossier_id: ancien\.dossier_id, whatsapp_conversation_id: ancien\.whatsapp_conversation_id \}\)/);
   assert.match(f, /message = message \? `\$\{resume\}\\n\\n\$\{message\}` : resume;/);
