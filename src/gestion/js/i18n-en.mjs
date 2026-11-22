@@ -4644,3 +4644,7 @@ for (const [k, v] of Object.entries(EN_TYPE)) if (!(k in EN)) EN[k] = v;
 // Commission saisie par le partenaire chauffeur (migration 115) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_PARTENAIRE } from "./i18n-en-partenaire.mjs";
 for (const [k, v] of Object.entries(EN_PARTENAIRE)) if (!(k in EN)) EN[k] = v;
+
+// Demandes venues d'une page du carnet de ZTP : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_CARNET } from "./i18n-en-carnet.mjs";
+for (const [k, v] of Object.entries(EN_CARNET)) if (!(k in EN)) EN[k] = v;

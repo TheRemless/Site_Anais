@@ -5,6 +5,7 @@ import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSu
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
+import { PRODUITS_CARNET } from "./carnet-produits.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -48,7 +49,7 @@ const heureDe = (v) => {
 const BOUT_SANS_HOTEL = /\b(?:airport|pier|ferry|bus|terminal|KBV|HKT|port)\b/i;
 
 // « 2 adults, 1 child (age 7) », « 2 adults, 3 children (ages under 1, 3 and 10) » : adultes, enfants (3 ans et plus), bébés (moins de 3 ans) et âges.
-function lireInvites(v) {
+export function lireInvites(v) {
   const adultes = Number((/(\d+)\s+adults?/i.exec(v) || [])[1] || 0);
   const m = /(\d+)\s+child(?:ren)?(?:\s*\(ages?\s*([^)]*)\))?/i.exec(v);
   let ages = [];
@@ -956,14 +957,42 @@ const trancheGroupe = (ligne) => {
 // Ce qui distingue une ligne d'une autre une fois l'âge retiré : « Adult rider » et « Child rider, 6 to 12 » donnent « rider ».
 const fondLigne = (l) => cleTexte(l).replace(/\b(?:adults?|child(?:ren)?|from|age|to|and|per|person|\d+)\b/g, " ").replace(/\s+/g, " ").trim();
 
+// Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire (décision de Jérémy, 22.11.2026 : de 10 à 14 ans, l'entrée du parc d'Ang Thong
+// reste au tarif enfant, c'est le voucher qui la dit). Le message du site compte comme « enfant » tout âge de 3 ans et plus : ces enfants-là passent adultes
+// avant de choisir le tarif, de calculer le prix et de préparer les lignes. `d.plusGrands` dit combien, `d.plusGrandsMax` le barème. Sans effet pour une sortie
+// sans barème (bateau privé : un prix par bateau) ou sans âges. Se rejoue sans effet.
+export function ajusterAgesCarnet(d) {
+  const produit = d && d.carnet && d.carnet.produit ? PRODUITS_CARNET.find((p) => p.id === d.carnet.produit) : null;
+  const bareme = produit && produit.enfant;
+  if (!bareme || d.plusGrands !== undefined || !(d.ages || []).length) return d;
+  const plus = Math.min(d.enfants || 0, d.ages.filter((a) => a > bareme.max).length);
+  return plus ? { ...d, adultes: (d.adultes || 0) + plus, enfants: (d.enfants || 0) - plus, plusGrands: plus, plusGrandsMax: bareme.max } : { ...d, plusGrands: 0 };
+}
+
+// La sortie d'une page du carnet (carnet-produits.mjs) citée par `d.carnet` ({ produit, option } : product_id et option de la demande du site).
+// L'option se retrouve par son titre écrit dans le message (« Modifier » le change), puis par son identifiant ; une sortie à une seule option n'en demande pas.
+function optionDuCarnet(d) {
+  const c = d.carnet;
+  const produit = c && c.produit ? PRODUITS_CARNET.find((p) => p.id === c.produit) : null;
+  if (!produit) return null;
+  const titre = cleTexte(d.option);
+  const option = (titre ? produit.options.find((o) => cleTexte(o.titre) === titre) : null) || produit.options.find((o) => c.option && o.id === c.option) || (produit.options.length === 1 ? produit.options[0] : null);
+  return option ? { produit, option } : null;
+}
+
 // L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus du site).
 // Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
 export function optionDuSite(d) {
-  if (!d || !d.site || d.libre || !d.prestation) return null;
+  if (!d || !d.site || d.libre) return null;
+  // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : pas besoin de retrouver le nom écrit dans le message.
+  const carnet = optionDuCarnet(d);
+  if (carnet) return carnet;
+  if (!d.prestation) return null;
   const location = d.type === "location";
   if (!location && d.type !== "tour") return null;
   const nom = cleTexte(d.prestation);
-  const produits = location ? PRODUITS_SITE.filter((p) => p.section === "rental") : PRODUITS_SITE.filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
+  // Les sorties du carnet se retrouvent aussi par leur nom, pour un message collé sans identifiant.
+  const produits = location ? PRODUITS_SITE.filter((p) => p.section === "rental") : [...PRODUITS_SITE, ...PRODUITS_CARNET].filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
   const titre = location ? nom : cleTexte(d.option);
   for (const produit of produits) {
     if (!titre && produit.options.length === 1) return { produit, option: produit.options[0] };
@@ -1017,6 +1046,13 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
       o.avertissement = o.avertissement || "groupe_hors_tranche";
       if (groupe > o.tranche[1]) o.score += o.tranche[1] / 1000;
     }
+  }
+  // Sortie du carnet : l'âge d'un enfant est jugé d'après la règle de chaque sortie (celle du partenaire, `enfant` dans carnet-produits.mjs), pas d'après
+  // le seuil unique du site. Au-dessus du barème, l'enfant a déjà été compté adulte (ajusterAgesCarnet) ; en dessous, aucun tarif n'est publié :
+  // l'offre le signale, Nani vérifie avec le partenaire.
+  const bareme = trouve.produit.enfant;
+  if (bareme && (d.ages || []).some((a) => a < bareme.min && !(bareme.gratuit_sous !== undefined && a < bareme.gratuit_sous))) {
+    for (const o of offres) (o.avertissement = o.avertissement || "age_enfant"), (o.bareme = bareme);
   }
   return offres.sort((a, b) => b.score - a.score);
 }

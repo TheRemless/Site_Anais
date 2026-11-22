@@ -5,18 +5,19 @@
 // écrite (lien wa.me, Anaïs relit et envoie elle-même), et « Il n'a pas écrit » prépare un mot quand son message n'est jamais arrivé.
 // Sans numéro (demande plus ancienne), la réponse se copie et la référence en grand sert à retrouver la conversation.
 // Rien ne part tout seul, ni au client ni au prestataire (règle du 14.11.2026). Module « Demandes du site » ; chaque entreprise ne voit que ses demandes.
-import { etat, modifier, peut, modeTaxi, naviguer, recharger, moduleActif, entiteActive, appliquerLignes } from "../etat.mjs";
+import { etat, modifier, peut, modeTaxi, naviguer, recharger, moduleActif, entiteActive, appliquerLignes, clientsProposes, nomClient, etiquetteClient } from "../etat.mjs";
 import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { ouvrirDemande } from "./demande.mjs";
+import { clientsProches } from "../demande-calc.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
   STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
+  estCarnet, titreCarnet, champsCarnet, autresSorties, produitSite,
 } from "../demandes-site-calc.mjs";
-import { PRODUITS_SITE } from "../site-produits.mjs";
 import { boutonMessageClient } from "./message-client.mjs";
 import { relierConversationApresDemande, avertissementDossier, accordSecondDossier, boutonDelier } from "./demandes-whatsapp.mjs";
 
@@ -114,6 +115,8 @@ async function confirmer_(d, modifs = {}) {
     texte: texteDemande(d, modifs),
     telephone: numeroWhatsApp(d),
     prixImpose: modifs.prix ?? null,
+    // Demande d'une page du carnet : la sortie et l'option de la page donnent le tarif de Gestion (carnet-produits.mjs).
+    carnet: estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null,
     // Juste avant d'écrire le dossier : la demande est-elle toujours à traiter ? Une autre demande du même client a-t-elle déjà son dossier
     // (moins de 30 jours) ? Rend le motif d'arrêt, ou null pour créer (pas de second dossier sans l'accord de Nani).
     avantCreer: async () => {
@@ -202,8 +205,8 @@ function ouvrirRefus(d) {
   const majApercu = () => ((apercu.value = reponseRefus(d, etatRefus, { aujourdhui: aujourdhui() })), majLien());
   const motifs = puces({ libelle: tr("Motif"), valeur: etatRefus.motif, options: Object.entries(MOTIFS_REFUS).map(([valeur, l]) => ({ valeur, libelle: tr(l) })), onchange: (v) => ((etatRefus.motif = v), majApercu()) });
   const autreDate = h("input", { type: "date", min: aujourdhui(), onchange: (e) => ((etatRefus.alternative.date = e.target.value || undefined), majApercu()) });
-  // Autres sorties de la même marque (la liste des produits du site ne connaît que celles de Zwald : vide pour une autre marque).
-  const autres = PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
+  // Autres sorties de la même marque (la liste des produits du site ne connaît que celles de Zwald : vide pour une autre marque) ; celles du même guide pour une demande du carnet.
+  const autres = autresSorties(d);
   const autreSortie = h("select", { onchange: (e) => ((etatRefus.alternative.produit_id = e.target.value || undefined), majApercu()) }, h("option", { value: "" }, tr("Aucune")), autres.map((p) => h("option", { value: p.id }, p.nom)));
   majApercu();
   let fermer;
@@ -293,8 +296,37 @@ function revoirReponse(d) {
 }
 
 // ---- Carte ---------------------------------------------------------------------------------------------------------------
+// Fiche d'une demande venue d'une page du carnet : tout ce que le client a envoyé, une ligne par champ (date, personnes et âges, hôtel, nom, WhatsApp, total estimé).
+function champsDuCarnet(d) {
+  const c = champsCarnet(d);
+  const ligne = (libelle, valeur) => (valeur ? h("div", { class: "dsite-champ" }, h("dt", null, libelle), h("dd", null, valeur)) : null);
+  const enfants = c.enfants ? `${c.enfants}${c.ages.length ? ` (${tr("âges : {ages}", { ages: c.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") })})` : ""}` : "";
+  return h(
+    "dl",
+    { class: "dsite-champs" },
+    ligne(tr("Prestation"), c.prestation),
+    ligne(tr("Date"), [jourCourt(c.date), c.heure].filter(Boolean).join(" · ")),
+    ligne(tr("Adultes"), c.adultes ? String(c.adultes) : ""),
+    ligne(tr("Enfants"), enfants),
+    ligne(tr("Hôtel"), c.hotel),
+    ligne(tr("Nom"), c.nom),
+    ligne(tr("WhatsApp"), c.whatsapp ? numeroAffiche(c.whatsapp) : ""),
+    ligne(tr("Total estimé"), c.total !== null ? formatMontant(c.total, c.devise) : "")
+  );
+}
+// Le client est-il déjà connu par son numéro WhatsApp ? Une fiche de ZTP (partagée avec Secret pour les administrateurs) est retrouvée comme une fiche d'ici ;
+// « Créer le dossier » la reprend sans créer de doublon (la fenêtre de création fait la même recherche).
+function ficheConnue(d) {
+  const numero = numeroWhatsApp(d);
+  if (!numero) return null;
+  const trouve = clientsProches({ telephone: numero, nom: "" }, clientsProposes()).find((x) => x.raison === "telephone");
+  return trouve ? trouve.client : null;
+}
+
 function carte(d) {
   const ecrit = peut("dossiers.ecrire");
+  const carnet = estCarnet(d);
+  const connue = carnet && d.statut === "nouvelle" ? ficheConnue(d) : null;
   const option = titreOption(d);
   const dossier = d.dossier_id ? etat.db.dossiers.find((x) => x.id === d.dossier_id) : null;
   const quand = [jourCourt(d.date_service), d.heure].filter(Boolean).join(" · ");
@@ -302,12 +334,17 @@ function carte(d) {
   return h(
     "li",
     { class: `dsite-carte s-${d.statut}`, "data-id": d.id },
-    h("div", { class: "dsite-tete" }, blocReference(d), h("span", { class: "dsite-recue" }, recue(d.created_at))),
+    h("div", { class: "dsite-tete" }, blocReference(d), h("span", { class: "dsite-recue" }, carnet ? h("span", { class: "tag dsite-source" }, tr("Carnet ZTP")) : null, recue(d.created_at))),
     h("h3", { class: "dsite-produit" }, titreDemande(d), option ? h("span", null, option) : null),
-    h("p", { class: "dsite-quand" }, [quand || tr("Date à préciser"), personnes(d)].filter(Boolean).join(" · ")),
-    h("p", { class: "dsite-client" }, [d.nom, d.pickup].filter(Boolean).join(" · ") || tr("Nom non donné")),
-    d.total_estime ? h("p", { class: "dsite-detail" }, tr("Prix indiqué sur le site : {prix}", { prix: formatMontant(d.total_estime, d.devise || "THB") })) : null,
-    d.page_url ? h("p", { class: "dsite-detail" }, tr("Page : {page}", { page: cheminPage(d.page_url) })) : null,
+    // Une demande du carnet montre tous ses champs dans la liste ci-dessous : pas de doublon en tête de carte.
+    carnet ? null : h("p", { class: "dsite-quand" }, [quand || tr("Date à préciser"), personnes(d)].filter(Boolean).join(" · ")),
+    carnet ? null : h("p", { class: "dsite-client" }, [d.nom, d.pickup].filter(Boolean).join(" · ") || tr("Nom non donné")),
+    carnet ? champsDuCarnet(d) : null,
+    connue ? h("p", { class: "dsite-detail dsite-fiche" }, tr("Fiche retrouvée par son numéro : {nom}", { nom: nomClient(connue) }), etiquetteClient(connue) ? ` (${etiquetteClient(connue)})` : "") : null,
+    !carnet && d.total_estime ? h("p", { class: "dsite-detail" }, tr("Prix indiqué sur le site : {prix}", { prix: formatMontant(d.total_estime, d.devise || "THB") })) : null,
+    d.page_url ? h("p", { class: "dsite-detail" }, tr("Page : {page}", { page: carnet ? titreCarnet(d) : cheminPage(d.page_url) })) : null,
+    // Carnet : Nani valide d'abord avec le partenaire, en dehors de l'outil ; la demande reste une demande tant que le dossier n'est pas créé.
+    carnet && d.statut === "nouvelle" ? h("p", { class: "aide dsite-carnet-aide" }, tr("Validez d'abord avec le partenaire, en dehors de l'outil. La demande reste à traiter tant que le dossier n'est pas créé.")) : null,
     // Sur chaque carte, traitée ou non : le message du client tel qu'il l'a envoyé (Jérémy, 19.11.2026).
     h("p", { class: "dsite-voir-message" }, boutonMessageClient(d)),
     d.statut !== "nouvelle"
@@ -327,7 +364,7 @@ function carte(d) {
       ? h(
           "div",
           { class: "dsite-actions" },
-          h("button", { class: "principal", type: "button", onclick: () => confirmer_(d) }, tr("Confirmer")),
+          h("button", { class: "principal", type: "button", onclick: () => confirmer_(d) }, carnet ? tr("Créer le dossier") : tr("Confirmer")),
           h("button", { class: "secondaire", type: "button", onclick: () => ouvrirModifier(d) }, tr("Modifier")),
           h("button", { class: "secondaire", type: "button", onclick: () => ouvrirRefus(d) }, tr("Refuser")),
           numeroWhatsApp(d) ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirSansMessage(d) }, icone("whatsapp", 16), tr("Il n'a pas écrit")) : null,
