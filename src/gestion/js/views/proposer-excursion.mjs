@@ -3,7 +3,7 @@
 // travaillés par une autre session). Logique dans excursion-proposee-calc.mjs.
 // Rien ne part tout seul : Nani coche une ou deux excursions, relit le message, puis le copie, l'ouvre dans WhatsApp (wa.me) ou l'envoie
 // dans la conversation du client si le client a écrit il y a moins de 24 h (whatsapp-envoi, avec ses contrôles des nets et des noms).
-import { etat, entitesAccessibles, organisationActiveId, reglagesDe, nomClient } from "../etat.mjs";
+import { etat, entitesAccessibles, organisationActiveId, reglagesDe, nomClient, permissionsDe } from "../etat.mjs";
 import { h, icone, modal, toast } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { aujourdhui } from "../calc.mjs";
@@ -11,19 +11,22 @@ import { exempleDe } from "../exemples.mjs";
 import { resteBloque } from "../agent-calc.mjs";
 import { marqueEntite, lienWhatsApp, fenetre, ERREURS_ENVOI, envoiIncertain, aConfirmerEnvoi } from "../whatsapp-calc.mjs";
 import { conversationDuVoucher, contactVoucher } from "../whatsapp-voucher-calc.mjs";
-import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, reservationsDuDossierLie, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
+import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, lieuxExterieurs, reservationsDuDossierLie, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
 import { adminsWhatsApp } from "./voucher-whatsapp.mjs";
 
 const MAX = 2;
 const entite = (id) => (etat.brut.entites || []).find((e) => e.id === id) || null;
-const secretAccessible = () => entitesAccessibles().find((e) => marqueEntite(e) === "secret") || null;
+const parMarque = (m) => entitesAccessibles().find((e) => marqueEntite(e) === m) || null;
 
-// Tout ce qu'il faut pour proposer, ou null : le bouton ne s'affiche pas (ZTP, pas de transfert, séjour trop court ou fini, rien au catalogue).
+// Tout ce qu'il faut pour proposer, ou null : le bouton ne s'affiche pas (ZTP, pas de transfert, séjour trop court ou fini, rien au catalogue,
+// pas le droit d'écrire dans WhatsApp pour l'entreprise du dossier : jamais Mook, jamais un accès WhatsApp en lecture seule).
 export function contexteProposition(dossier) {
   if (!etat.brut || !dossier || dossier.annule) return null;
   const marque = marqueEntite(entite(dossier.entite_id));
-  const secret = secretAccessible();
+  const secret = parMarque("secret");
   if (!marque || !secret) return null;
+  if (!adminsWhatsApp().includes(dossier.entite_id)) return null;
+  const taxiE = parMarque("taxi");
   const prestations = etat.brut.prestations || [];
   const trajets = etat.brut.trajets || [];
   const reservations = (etat.brut.reservations || []).filter((r) => r.dossier_id === dossier.id && r.statut !== "annule");
@@ -33,7 +36,10 @@ export function contexteProposition(dossier) {
   const ile = exempleDe("lieu", organisationActiveId());
   const ajd = aujourdhui();
   // Le sens de chaque transfert (arrivée sur l'île, départ) : un départ seul n'ouvre plus un séjour qui commence ce jour-là.
-  const s = sejour(transferts, { ile, ajd, sens: (r) => sensTransfert(r, { prestation: prestationDe(r), trajet: trajetDe(r), ile }) });
+  // Les lieux hors de l'île : liste connue et zones du catalogue Taxi (« Krabi Airport », « Ao Nang »).
+  const zones = taxiE ? prestations.filter((p) => p.entite_id === taxiE.id && p.famille === "transfert").map((p) => p.libelle_en || p.libelle).filter((t) => !/→|->/.test(t || "")) : [];
+  const exterieurs = lieuxExterieurs(zones);
+  const s = sejour(transferts, { ile, ajd, sens: (r) => sensTransfert(r, { prestation: prestationDe(r), trajet: trajetDe(r), ile, exterieurs }) });
   if (!s) return null;
   // Les sorties déjà réservées : celles du dossier et du dossier lié de l'autre entreprise (Secret et Taxi d'une même demande, jamais ZTP).
   const lie = reservationsDuDossierLie(dossier, { dossiers: etat.brut.dossiers || [], reservations: etat.brut.reservations || [], marqueDe: (id) => marqueEntite(entite(id)) });
@@ -44,11 +50,20 @@ export function contexteProposition(dossier) {
   const enfants = Math.max(0, ...avecLie.map((r) => Number((r.personnes || {}).enfants) || 0));
   const dejaP = avecLie.map(prestationDe).filter((p) => p && p.entite_id === secret.id);
   const deja = { prestations: new Set(dejaP.map((p) => p.id)), familles: new Set(dejaP.filter((p) => p.famille !== "transfert").map(familleDe)) };
-  const noms = nomsInterdits({ partenaires: etat.brut.partenaires, conversations: etat.brut.whatsapp_conversations });
+  const client = (etat.brut.clients || []).find((c) => c.id === dossier.client_id) || null;
+  const noms = nomsInterdits({ partenaires: etat.brut.partenaires, conversations: etat.brut.whatsapp_conversations, client });
+  // Les noms de Secret et de Taxi ne sont contrôlables que si leurs fiches partenaires et les conversations sont chargées : sinon la copie
+  // et le lien wa.me restent éteints (l'envoi depuis Gestion, contrôlé par le serveur, reste possible).
+  const charges = nomsCharges({ secret, taxi: taxiE });
   const liste = possibilites(prestations.filter((p) => p.entite_id === secret.id), { noms, deja, enfants, jours: libres });
   if (!liste.length) return null;
-  const client = (etat.brut.clients || []).find((c) => c.id === dossier.client_id) || null;
-  return { dossier, client, liste, noms, sejour: s, libres, taxi: marque === "taxi", devise: reglagesDe(secret.id).devise || "THB" };
+  return { dossier, client, liste, noms, charges, sejour: s, libres, taxi: marque === "taxi", devise: reglagesDe(secret.id).devise || "THB" };
+}
+
+// Fiches partenaires de Secret et de Taxi lisibles (partenaires.lire) et conversations WhatsApp chargées.
+export function nomsCharges({ secret = null, taxi = null } = {}) {
+  if (!etat.brut || !Array.isArray(etat.brut.partenaires) || !Array.isArray(etat.brut.whatsapp_conversations)) return false;
+  return !!secret && !!taxi && [secret, taxi].every((e) => permissionsDe(e.id).includes("partenaires.lire"));
 }
 
 export function boutonProposerExcursion({ dossier, conversation = null, classe = "secondaire petit" } = {}) {
@@ -58,7 +73,7 @@ export function boutonProposerExcursion({ dossier, conversation = null, classe =
 }
 
 function ouvrirProposition(ctx, conversationDonnee) {
-  const { dossier, client, liste, noms, taxi, devise } = ctx;
+  const { dossier, client, liste, noms, charges, taxi, devise } = ctx;
   let choisis = choixParDefaut(liste, MAX);
   let modifie = false;
   const prenom = (client && (client.prenom || client.nom)) || "";
@@ -82,16 +97,25 @@ function ouvrirProposition(ctx, conversationDonnee) {
   const envoyer = conversation ? h("button", { class: "principal", type: "button", disabled: true }, icone("whatsapp", 18), tr("Envoyer dans la conversation")) : null;
   let fenetreOk = false;
   let bloque = false;
+  // Le texte refusé par whatsapp-envoi (contenu_interne) : ni copie, ni lien, ni envoi tant qu'il n'a pas changé.
+  let refuse = null;
 
   // Le texte est relu à chaque frappe : un nom de partenaire ou de contact typé bloque la copie, le lien et l'envoi.
   const maj = () => {
     const texte = zone.value.trim();
     const noms_ = resteBloque(texte, { noms });
-    alerte.hidden = !noms_.length;
-    alerte.textContent = noms_.length ? tr("À retirer du message : {liste}.", { liste: noms_.join(", ") }) : "";
-    const ok = !!texte && !noms_.length;
-    copier.disabled = !ok;
-    const lien = ok ? lienWhatsApp(telephone, texte) : null;
+    const aRefaire = refuse !== null && texte === refuse;
+    alerte.textContent = noms_.length
+      ? tr("À retirer du message : {liste}.", { liste: noms_.join(", ") })
+      : aRefaire
+        ? tr("Le texte contient un net, une commission ou un nom de partenaire : corrigez-le avant de le copier ou de l'envoyer.")
+        : !charges
+          ? tr("Les fiches partenaires ou les contacts WhatsApp de Secret et de Taxi ne sont pas tous chargés : le texte ne peut pas être contrôlé ici. Copie et lien WhatsApp éteints ; l'envoi dans la conversation reste contrôlé par le serveur.")
+          : "";
+    alerte.hidden = !alerte.textContent;
+    const ok = !!texte && !noms_.length && !aRefaire;
+    copier.disabled = !ok || !charges;
+    const lien = ok && charges ? lienWhatsApp(telephone, texte) : null;
     if (lien) ouvrir.setAttribute("href", lien);
     else ouvrir.removeAttribute("href");
     ouvrir.classList.toggle("desactive", !lien);
@@ -130,6 +154,7 @@ function ouvrirProposition(ctx, conversationDonnee) {
   const listeCases = h("ul", { class: "excursion-choix" }, cases);
 
   copier.addEventListener("click", async () => {
+    if (copier.disabled) return;
     try {
       await navigator.clipboard.writeText(zone.value.trim());
       toast(tr("Message copié."));
@@ -172,7 +197,10 @@ function ouvrirProposition(ctx, conversationDonnee) {
         etatEnvoi.hidden = false;
         return maj();
       }
-      if (envoiIncertain(code) || ["contenu_interne", "droit_manquant", "fenetre_fermee"].includes(code)) bloque = true;
+      // Refus contenu_interne (net, commission ou nom trouvé par le serveur) : la copie et le lien s'éteignent aussi, jusqu'à ce que le texte
+      // change (revue de la PR 310). Les autres refus sûrs ou un résultat incertain éteignent l'envoi.
+      if (code === "contenu_interne") refuse = texte;
+      else if (envoiIncertain(code) || ["droit_manquant", "fenetre_fermee"].includes(code)) bloque = true;
       dire(tr(ERREURS_ENVOI[code] || ERREURS_ENVOI.verifier_whatsapp));
       maj();
     };

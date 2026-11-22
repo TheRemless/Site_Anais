@@ -20,7 +20,7 @@ export const FAMILLES_EXCURSION = ["iles", "elephants", "cuisine", "radeau", "qu
 // La page du site d'une prestation (son identifiant y est relié par docs/gestion/regenerer-produits-site.mjs) : la source la plus sûre.
 const PAGE_DE = (() => {
   const m = new Map();
-  for (const p of PRODUITS_SITE) if (p.marque === "secret") for (const o of p.options || []) for (const t of o.tarifs || []) if (t.prestation) m.set(t.prestation, { ...p, option: o.titre || "" });
+  for (const p of PRODUITS_SITE) if (p.marque === "secret") for (const o of p.options || []) for (const t of o.tarifs || []) if (t.prestation) m.set(t.prestation, { ...p, option: o.titre || "", optionId: o.id });
   return m;
 })();
 const FAMILLE_DE_PAGE = {
@@ -80,8 +80,13 @@ export const ligneEnfant = (p, prestations = []) => {
   const e = prestationEnfant(p, prestations);
   return e && Number(e.prix_vente) > 0 ? e : null;
 };
-const agesDe = (x) => {
-  const m = /(\d{1,2})\s*(?:-|to|à)\s*(\d{1,2})/i.exec(String((x && (x.libelle_en || x.libelle)) || ""));
+// Les âges du prix enfant, lus seulement dans la ligne enfant elle-même (« …, child (4-11) ») : un prix enfant tiré du champ « Prix enfant »
+// de la prestation adulte (enfant_de) n'a pas d'âges, et un nombre du libellé adulte (« 1 hr 30 min to 2 hours ») n'en est pas un.
+// Sans âges sûrs : « per child ».
+export const agesDe = (x) => {
+  if (!x || x.enfant_de) return "";
+  const t = String(x.libelle_en || x.libelle || "");
+  const m = /\b(?:child(?:ren)?|kids?|enfants?)\b[^0-9]{0,12}(\d{1,2})\s*(?:-|to|à)\s*(\d{1,2})/i.exec(t);
   return m ? `${m[1]} to ${m[2]}` : "";
 };
 
@@ -135,34 +140,69 @@ export const estTransfert = (r, { prestation = null, taxi = false } = {}) => !!r
 // Une course de zone (« Krabi Airport » chez Taxi : l'île et la zone) se lit par le lieu de prise en charge : à la zone, à un aéroport ou à
 // une jetée, c'est une arrivée ; ailleurs (l'hôtel), un départ ; sans lieu de prise en charge, le lieu de dépose décide.
 const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-const POINT_EXTERIEUR = /\b(airport|aeroport|pier|jetee|station|bus|terminal)\b/;
-export function sensTransfert(r, { prestation = null, trajet = null, ile = "" } = {}) {
+// « Ko Lanta », « Koh Lanta », « Koh-Lanta » : une seule forme.
+const lieuPlat = (t) => ` ${sansAccents(t).replace(/[^a-z0-9]+/g, " ").replace(/\bko\b/g, "koh").trim()} `;
+// Ce qui n'est jamais sur l'île : un aéroport, un quai, une gare, et les villes du continent et autres îles connues des trajets de Taxi et de
+// Secret (registre : grille de VIP Taxi Lanta, horaires des speedboats). Les zones du catalogue Taxi s'y ajoutent (lieuxExterieurs).
+const POINT_EXTERIEUR = /\b(airport|aeroport|pier|jetty|jetee|port|station|bus|terminal)\b/;
+export const LIEUX_CONTINENT = [
+  "krabi", "ao nang", "railay", "phuket", "patong", "kata", "karon", "khao lak", "khao sok", "cheow lan", "surat thani", "donsak", "pak bara",
+  "pakbara", "trang", "hat yai", "hatyai", "bangkok", "hua hin", "satun", "koh phi phi", "phi phi", "koh lipe", "lipe", "koh yao", "langkawi",
+  "koh mook", "koh ngai", "koh kradan", "koh samui", "koh phangan", "koh tao",
+];
+// Les lieux hors de l'île : la liste ci-dessus et le nom de chaque zone du catalogue Taxi (« Krabi Airport », « Phuket Airport and town »),
+// sans les mots qui ne désignent pas un lieu.
+export function lieuxExterieurs(zones = []) {
+  const vides = new Set(["airport", "and", "the", "town", "pier", "private", "taxi", "minivan", "transfer", "from", "to", "station", "airport and town"]);
+  const extra = (zones || []).flatMap((z) => sansAccents(z).replace(/\([^)]*\)/g, " ").split(/[,/]|\band\b/).map((x) => x.replace(/[^a-z0-9]+/g, " ").replace(/\b(airport|town|pier|station|private|taxi|minivan|transfer)\b/g, " ").replace(/\s+/g, " ").trim()));
+  return [...new Set([...LIEUX_CONTINENT, ...extra.filter((x) => x.length > 2 && !vides.has(x))])];
+}
+// Un lieu sur l'île : il nomme l'île, ou il n'est ni un aéroport, ni un quai, ni un lieu connu hors de l'île (un hôtel, une plage, Saladan).
+// Vide : on ne sait pas (null).
+export function surIle(t, { ile = "", exterieurs = LIEUX_CONTINENT } = {}) {
+  const x = lieuPlat(t);
+  if (!x.trim()) return null;
+  const nom = lieuPlat(ile).trim();
+  if (nom && x.includes(` ${nom} `)) return true;
+  if (POINT_EXTERIEUR.test(x)) return false;
+  return !(exterieurs || []).some((l) => x.includes(` ${lieuPlat(l).trim()} `));
+}
+// Le sens d'un transfert : « arrivee » (vers l'île), « depart » (depuis l'île) ou null (trajet sans l'île, course sur l'île, journée,
+// aller-retour). Un trajet du catalogue ou un libellé « A → B » (aussi « A -> B », « A to B », « A vers B ») donnent les deux bouts. Une course
+// de zone (« Krabi Airport » chez Taxi : l'île et la zone) se lit par le lieu de prise en charge : sur l'île (l'hôtel), c'est un départ ;
+// ailleurs (la zone, un aéroport), une arrivée ; sans lieu de prise en charge, le lieu de dépose décide. Une zone sur l'île est une course
+// locale. `ile` : le nom de l'île de l'organisation (exempleDe("lieu")), `exterieurs` : lieuxExterieurs(zones du catalogue Taxi).
+export function sensTransfert(r, { prestation = null, trajet = null, ile = "", exterieurs = LIEUX_CONTINENT } = {}) {
   if (!r) return null;
-  const nom = sansAccents(ile).trim();
-  const surIle = (t) => !!nom && sansAccents(t).includes(nom);
+  const o = { ile, exterieurs };
   const libelle = (prestation && (prestation.libelle_en || prestation.libelle)) || r.libelle || "";
   const dt = r.details || {};
   if (/\b(day trip|round trip)\b/i.test(`${libelle} ${r.libelle || ""}`) || dt.type_trajet === "retour_depart") return null;
-  let bouts = trajet ? [trajet.de || "", trajet.vers || ""] : libelle.replace(/^[^:→]*:\s*/, "").split(/\s*(?:→|->|\bto\b)\s*/i).map((x) => x.trim()).filter(Boolean);
-  if (bouts.length === 2) {
-    const [de, vers] = bouts;
-    if (surIle(vers) && !surIle(de)) return "arrivee";
-    if (surIle(de) && !surIle(vers)) return "depart";
+  // Le libellé de la réservation (saisie rapide : « Krabi Airport → Hotel Sunset ») passe avant celui du tarif de zone.
+  const coupe = (t) => String(t || "").replace(/^[^:→]*:\s*/, "").split(/\s*(?:→|->|\bto\b|\bvers\b)\s*/i).map((x) => x.trim()).filter(Boolean);
+  const bouts = trajet ? [trajet.de || "", trajet.vers || ""] : coupe(r.libelle).length === 2 ? coupe(r.libelle) : coupe(libelle);
+  const sens = (de, vers) => {
+    const a = surIle(de, o);
+    const b = surIle(vers, o);
+    if (b === true && a === false) return "arrivee";
+    if (a === true && b === false) return "depart";
     return null;
-  }
+  };
+  if (bouts.length === 2) return sens(bouts[0], bouts[1]);
+  const zone = bouts[0] || libelle;
+  if (surIle(zone, o) !== false) return null;
   const pickup = r.lieu_pickup || "";
   const dropoff = dt.drop_off || "";
-  const zone = sansAccents(libelle).split(/[^a-z0-9]+/).filter((m) => m.length > 2 && !["airport", "and", "the", "town", "pier"].includes(m));
-  const exterieur = (t) => !!t && (POINT_EXTERIEUR.test(sansAccents(t)) || zone.some((m) => sansAccents(t).split(/[^a-z0-9]+/).includes(m)));
-  if (surIle(pickup)) return "depart";
-  if (exterieur(pickup)) return "arrivee";
-  if (pickup.trim()) return "depart";
-  if (exterieur(dropoff)) return "depart";
-  if (surIle(dropoff)) return "arrivee";
+  const p = surIle(pickup, o);
+  if (p === true) return "depart";
+  if (p === false) return "arrivee";
+  const d = surIle(dropoff, o);
+  if (d === true) return "arrivee";
+  if (d === false) return "depart";
   return null;
 }
 
-// Le séjour du client sur l'île d'après ses transferts. Au moins un transfert doit nommer l'île (`ile`, « Koh Lanta » pour l'organisation
+// Le séjour du client sur l'île d'après ses transferts. Sans `sens`, au moins un transfert doit nommer l'île (`ile`, « Koh Lanta » pour l'organisation
 // d'Anaïs : exempleDe("lieu")). L'arrivée est le premier transfert vers l'île, le départ le premier transfert depuis l'île après elle ;
 // un départ sans arrivée connue (le client est déjà sur l'île) ouvre un séjour au début inconnu (`arrivee` null). `sens(r)` : le sens de
 // chaque transfert (sensTransfert) ; sans lui, le premier transfert est l'arrivée et le dernier le départ (règle d'avant, gardée pour les
@@ -177,7 +217,9 @@ export function sejour(transferts = [], { ile = "", ajd = "", sens = null } = {}
   const liste = (transferts || []).filter((r) => r && /^\d{4}-\d{2}-\d{2}$/.test(r.date_service || "")).sort((a, b) => a.date_service.localeCompare(b.date_service));
   if (!liste.length) return null;
   const nom = String(ile || "").trim().toLowerCase();
-  if (nom && !liste.some((r) => texteTransfert(r).toLowerCase().includes(nom))) return null;
+  // Sans le sens, un transfert doit nommer l'île. Avec le sens (sensTransfert), c'est lui qui dit l'île : « Krabi Airport → Hotel Sunset »
+  // est une arrivée sans écrire « Koh Lanta » (revue de la PR 310).
+  if (nom && !sens && !liste.some((r) => texteTransfert(r).toLowerCase().includes(nom))) return null;
   const sejours = [];
   if (sens) {
     // Chaque arrivée et le premier départ après elle ; un départ sans arrivée avant lui.
@@ -207,8 +249,9 @@ export function sejour(transferts = [], { ile = "", ajd = "", sens = null } = {}
     .filter((x) => !(ajd && x.depart && x.depart <= ajd))
     // Sans départ connu, une arrivée de plus de deux semaines ne dit plus rien du séjour.
     .filter((x) => !(ajd && !x.depart && x.arrivee && jours(x.arrivee, ajd) > JOURS_SANS_DEPART));
-  // Le séjour en cours d'abord, sinon le prochain.
-  return valables.find((x) => !ajd || !x.arrivee || x.arrivee <= ajd) || valables[0] || null;
+  // Un séjour qui a une arrivée d'abord (en cours, sinon le prochain), puis un départ seul.
+  const avecArrivee = valables.filter((x) => x.arrivee);
+  return avecArrivee.find((x) => !ajd || x.arrivee <= ajd) || avecArrivee[0] || valables[0] || null;
 }
 
 // Les services du dossier lié de l'autre entreprise (même demande), pour les sorties déjà réservées et leurs jours. Lu seulement si ce
@@ -227,7 +270,8 @@ export function joursLibres(s, { ajd, occupes = [] } = {}) {
   if (!s || !ajd) return [];
   const pris = new Set(occupes || []);
   const demain = plusJours(ajd, 1);
-  const lendemain = s.arrivee ? plusJours(s.arrivee, 1) : demain;
+  // Le jour d'arrivée n'est jamais libre. Départ seul : au plus 14 jours avant le départ.
+  const lendemain = s.arrivee ? plusJours(s.arrivee, 1) : s.depart ? plusJours(s.depart, -JOURS_SANS_DEPART) : demain;
   const premier = lendemain > demain ? lendemain : demain;
   const dernier = s.depart ? plusJours(s.depart, -1) : s.arrivee ? plusJours(s.arrivee, JOURS_SANS_DEPART) : plusJours(ajd, JOURS_SANS_DEPART);
   const out = [];
@@ -279,22 +323,45 @@ export function nomService(p, page = pageDe(p)) {
 }
 export const lienPage = (x) => (x && x.page && x.page.url ? `${SITE_SECRET}${x.page.url}` : "");
 
+// La phrase de la famille, seulement pour un produit relié à une page du site de cette famille, et dont l'option est celle que la phrase
+// décrit (revue de la PR 310 : une famille devinée d'après le libellé, « Dinner class, Single Chef » en cuisine, ou le programme D des
+// éléphants, absent du registre, ne reçoit aucune phrase : le service, le prix et le lien seulement).
+export const OPTIONS_SANS_PHRASE = { "elephant-sanctuary": ["programme-d"] };
+export function phraseDe(x) {
+  if (!x || !x.page || FAMILLE_DE_PAGE[x.page.id] !== x.famille) return "";
+  if ((OPTIONS_SANS_PHRASE[x.page.id] || []).includes(x.page.optionId)) return "";
+  return MODELES.familles[x.famille] || "";
+}
+
 // Le message complet. `choisis` : les possibilités retenues (une ou deux). `taxi` : le dossier est chez Taxi.
 export function messageExcursions(choisis = [], { prenom = "", devise = "THB", taxi = false } = {}) {
   if (!choisis.length) return "";
   const cle = `${taxi ? "taxi_" : ""}${choisis.length > 1 ? "deux" : "un"}`;
   const tete = MODELES.intro[cle].replace("Hello {prenom},", prenom ? `Hello ${prenom},` : "Hello,").replace("{site}", SITE_SECRET.replace(/^https:\/\//, ""));
-  const blocs = choisis.map((x) => [`*${nomService(x.prestation, x.page)}*`, prixTexte(x, devise), MODELES.familles[x.famille] || "", lienPage(x)].filter(Boolean).join("\n"));
+  const blocs = choisis.map((x) => [`*${nomService(x.prestation, x.page)}*`, prixTexte(x, devise), phraseDe(x), lienPage(x)].filter(Boolean).join("\n"));
   return [tete, ...blocs, MODELES.fin[choisis.length > 1 ? "deux" : "un"]].join("\n\n");
 }
 
 // Les noms qui ne partent jamais vers un client : fiches partenaires (plus de deux lettres, comme nomsABloquer de la fonction agent) et
-// conversations WhatsApp typées autrement que « client » ou reliées à une fiche partenaire (comme nomsContactsTypes de whatsapp-envoi).
-// Le lien wa.me et la copie ne passent par aucun contrôle du serveur : l'écran les vérifie lui-même.
-export function nomsInterdits({ partenaires = [], conversations = [] } = {}) {
-  const noms = [
+// conversations WhatsApp nommées (partenaire, chauffeur, hôtel, apporteur) ou reliées à une fiche partenaire, comme nomsContactsTypes de
+// whatsapp-envoi. Jamais un contact « personnel » ni un client, ni le nom du client à qui l'on écrit (`client` : sa fiche). Chaque nom vient
+// aussi sans « co, ltd, company, the, tour, tours, travel, koh, lanta » quand il garde quatre lettres, comme partenairesCites du serveur
+// (« Blue Ocean Co., Ltd » bloque « Blue Ocean »). Le lien wa.me et la copie ne passent par aucun contrôle du serveur : l'écran les vérifie.
+export const CONTACTS_NOMMES = ["partenaire", "chauffeur", "hotel", "apporteur"];
+const MOTS_SOCIETE = new Set(["co", "ltd", "company", "the", "tour", "tours", "travel", "koh", "lanta"]);
+export const nomCourt = (n) => sansAccents(n).replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w && !MOTS_SOCIETE.has(w)).join(" ");
+export function nomsInterdits({ partenaires = [], conversations = [], client = null } = {}) {
+  const brut = [
     ...(partenaires || []).map((p) => p && p.nom),
-    ...(conversations || []).filter((c) => c && ((c.type_contact && c.type_contact !== "client") || c.partenaire_id)).map((c) => c.nom),
-  ];
-  return [...new Set(noms.map((n) => String(n || "").trim()).filter((n) => n.length > 2))];
+    ...(conversations || []).filter((c) => c && (CONTACTS_NOMMES.includes(c.type_contact) || (c.partenaire_id && c.type_contact !== "client" && c.type_contact !== "personnel"))).map((c) => c.nom),
+  ].map((n) => String(n || "").trim()).filter((n) => n.length > 2);
+  const siens = new Set([client && client.prenom, client && client.nom, client && [client.prenom, client.nom].filter(Boolean).join(" ")].map((n) => sansAccents(n).trim()).filter(Boolean));
+  const out = [];
+  for (const n of brut) {
+    if (siens.has(sansAccents(n).trim())) continue;
+    out.push(n);
+    const c = nomCourt(n);
+    if (c.length >= 4 && c !== sansAccents(n).replace(/[^a-z0-9]+/g, " ").trim() && !siens.has(c)) out.push(c);
+  }
+  return [...new Set(out)];
 }

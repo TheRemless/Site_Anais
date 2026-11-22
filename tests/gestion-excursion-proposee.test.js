@@ -173,9 +173,9 @@ test("transfert : trajet, prestation transfert, ou toute course de Taxi ; jamais
   assert.equal(estTransfert({ statut: "annule" }, { taxi: true }), false);
 });
 
-test("message : anglais, prénom, service, prix, modèle de la famille, page du site ; aucune signature", async () => {
-  const { possibilites, messageExcursions, MODELES } = await load();
-  // Sans page du site : le libellé du catalogue, sans lien.
+test("message : anglais, prénom, service, prix, page du site ; famille devinée sans phrase ; aucune signature", async () => {
+  const { possibilites, messageExcursions } = await load();
+  // Sans page du site : le libellé du catalogue, sans lien, et aucune phrase (famille devinée d'après le libellé : fait non sourcé).
   const P = [presta("cd-x", { libelle: "Elephant sanctuary, half day", famille: "activite", prix_vente: 2500 })];
   const [x] = possibilites(P);
   const texte = messageExcursions([x], { prenom: "Mark" });
@@ -183,7 +183,7 @@ test("message : anglais, prénom, service, prix, modèle de la famille, page du 
     texte,
     [
       "Hello Mark, since you're staying a few days, here is an idea for a day out.",
-      `*Elephant sanctuary, half day*\n2,500 THB per person\n${MODELES.familles.elephants}`,
+      "*Elephant sanctuary, half day*\n2,500 THB per person",
       "If it tempts you, tell me which day and how many people, and I'll check availability 😊",
     ].join("\n\n")
   );
@@ -217,6 +217,134 @@ test("modèles : chaque famille en a un, sans tiret d'incise, sans fait hors reg
   assert.doesNotMatch(tous, /stunning|breathtaking|unforgettable|paradise|hidden gem|must-see/i);
 });
 
+test("revue n° 1 : whatsapp-envoi contrôle Secret et Taxi ensemble pour une conversation de l'une ou de l'autre", async () => {
+  const { entitesControlees } = await import("../supabase/functions/whatsapp-envoi/calc.js");
+  const paire = [{ id: "e-secret", slug: "secret" }, { id: "e-taxi", slug: "taxi" }];
+  assert.deepEqual(entitesControlees({ entite_id: "e-taxi" }, paire), ["e-secret", "e-taxi"]);
+  assert.deepEqual(entitesControlees({ entite_id: "e-secret" }, paire), ["e-secret", "e-taxi"]);
+  assert.deepEqual(entitesControlees({ entite_id: null }, paire), ["e-secret", "e-taxi"]);
+  assert.deepEqual(entitesControlees({ entite_id: "e-autre" }, paire), ["e-autre"]);
+  assert.deepEqual(entitesControlees({ entite_id: "e-taxi" }, [{ id: "x", slug: "ztp" }, ...paire]), ["e-secret", "e-taxi"]);
+  const idx = fs.readFileSync("supabase/functions/whatsapp-envoi/index.ts", "utf8");
+  assert.match(idx, /const ids: string\[\] = entitesControlees\(conv, paire \|\| \[\]\);/);
+  assert.match(idx, /if \(errE\) return ferme;/, "liste illisible : rien ne part");
+  assert.doesNotMatch(idx, /conv\.entite_id \? \[conv\.entite_id\] : \[\]/);
+});
+
+test("revue n° 2 : après un refus contenu_interne, copie, lien et envoi éteints jusqu'à ce que le texte change", () => {
+  const vue = lire("views/proposer-excursion.mjs");
+  assert.match(vue, /if \(code === "contenu_interne"\) refuse = texte;/);
+  assert.match(vue, /const aRefaire = refuse !== null && texte === refuse;/);
+  assert.match(vue, /const ok = !!texte && !noms_\.length && !aRefaire;/);
+  assert.match(vue, /copier\.disabled = !ok \|\| !charges;/);
+  assert.match(vue, /const lien = ok && charges \? lienWhatsApp\(telephone, texte\) : null;/);
+});
+
+test("revue n° 3 : saisie rapide et zones Taxi, « vers », « Ko Lanta », lieux hors de l'île", async () => {
+  const { sensTransfert, surIle, lieuxExterieurs } = await load();
+  const ile = "Koh Lanta";
+  const exterieurs = lieuxExterieurs(["Krabi Airport", "Ao Nang", "Phuket Airport and town", "Trang (town, airport, station)", "Hatyai (town and airport)"]);
+  const o = { ile, exterieurs };
+  assert.equal(sensTransfert({ libelle: "Krabi Airport → Hotel Sunset" }, o), "arrivee");
+  assert.equal(sensTransfert({ libelle: "Hotel Sunset -> Phuket Airport" }, o), "depart");
+  assert.equal(sensTransfert({ libelle: "Krabi Airport vers Ko Lanta" }, o), "arrivee");
+  assert.equal(sensTransfert({ libelle: "Hotel Palm to Trang" }, o), "depart");
+  // Zone Taxi : l'hôtel en prise en charge, c'est un départ ; l'aéroport, une arrivée ; sinon le lieu de dépose.
+  assert.equal(sensTransfert({ libelle: "Krabi Airport", lieu_pickup: "Hotel Sunset, Klong Dao" }, o), "depart");
+  assert.equal(sensTransfert({ libelle: "Krabi Airport", lieu_pickup: "Krabi Airport, arrivals" }, o), "arrivee");
+  assert.equal(sensTransfert({ libelle: "Ao Nang", details: { drop_off: "Hotel Sunset" } }, o), "arrivee");
+  assert.equal(sensTransfert({ libelle: "x" }, { ...o, prestation: { libelle: "Hatyai (town and airport)" } }), null, "ni prise en charge ni dépose");
+  // Le libellé de la réservation (saisie rapide) passe avant le tarif de zone.
+  assert.equal(sensTransfert({ libelle: "Krabi Airport → Hotel Sunset" }, { ...o, prestation: { libelle: "Krabi Airport" } }), "arrivee");
+  assert.equal(surIle("Saladan", o), true);
+  assert.equal(surIle("Koh Lanta Pier", o), true);
+  assert.equal(surIle("Ao Nang", o), false);
+  assert.equal(surIle("Rassada Pier", o), false);
+  assert.equal(surIle("Koh Phi Phi", o), false);
+  assert.equal(surIle("", o), null);
+});
+
+test("revue n° 4 : course sur l'île ignorée, séjour avec arrivée d'abord, jour d'arrivée pris, départ seul plafonné, saison sur les vrais jours libres", async () => {
+  const { sejour, sensTransfert, joursLibres, possibilites } = await load();
+  const ile = "Koh Lanta";
+  const o = { ile, ajd: "2026-11-22", sens: (r) => sensTransfert(r, { ile }) };
+  const t = (date, libelle) => ({ date_service: date, libelle });
+  assert.equal(sensTransfert({ libelle: "Old Town → Saladan" }, { ile }), null);
+  // Une course sur l'île entre l'arrivée et le départ ne coupe rien.
+  assert.deepEqual(sejour([t("2026-11-23", "Krabi Airport → Hotel Sunset"), t("2026-11-25", "Old Town → Saladan"), t("2026-11-28", "Hotel Sunset → Krabi Airport")], o), { arrivee: "2026-11-23", depart: "2026-11-28", nuits: 5 });
+  // Un départ seul puis une arrivée plus tard : le séjour qui a une arrivée passe d'abord.
+  assert.deepEqual(sejour([t("2026-11-24", "Hotel Sunset → Krabi Airport"), t("2026-11-30", "Krabi Airport → Hotel Palm")], o), { arrivee: "2026-11-30", depart: null, nuits: null });
+  // Le jour d'arrivée n'est jamais libre ; un départ seul : au plus 14 jours avant lui.
+  assert.equal(joursLibres({ arrivee: "2026-11-25", depart: "2026-11-29" }, { ajd: "2026-11-22" })[0], "2026-11-26");
+  const loin = joursLibres({ arrivee: null, depart: "2026-12-30" }, { ajd: "2026-11-22" });
+  assert.equal(loin[0], "2026-12-16");
+  assert.equal(loin.length, 14);
+  // Saison jugée sur les jours libres réels : un séjour d'avril qui finit le 30 sans jour libre en avril n'a pas Koh Rok.
+  const rok = [presta("Koh Rok + Koh Haa day trip")];
+  const libres = joursLibres({ arrivee: "2027-04-30", depart: "2027-05-05" }, { ajd: "2027-04-20" });
+  assert.equal(libres[0], "2027-05-01");
+  assert.deepEqual(possibilites(rok, { jours: libres }), []);
+  assert.equal(possibilites(rok, { jours: joursLibres({ arrivee: "2027-04-27", depart: "2027-05-05" }, { ajd: "2027-04-20" }) }).length, 1);
+});
+
+test("revue n° 5 : une phrase seulement pour un produit relié à une page du site, jamais pour le programme D des éléphants", async () => {
+  const { possibilites, messageExcursions, MODELES, phraseDe } = await load();
+  const { PRODUITS_SITE } = await import("../src/gestion/js/site-produits.mjs");
+  const page = PRODUITS_SITE.find((p) => p.id === "elephant-sanctuary");
+  const ligne = (opt) => page.options.find((o) => o.id === opt).tarifs[0];
+  const a = ligne("programme-a");
+  const d = ligne("programme-d");
+  const [xa] = possibilites([presta(a.prestation, { libelle: a.libelle, famille: "activite" })]);
+  const [xd] = possibilites([presta(d.prestation, { libelle: d.libelle, famille: "activite" })]);
+  assert.equal(phraseDe(xa), MODELES.familles.elephants);
+  assert.equal(phraseDe(xd), "");
+  assert.doesNotMatch(messageExcursions([xd], { prenom: "Lea" }), /no riding/);
+  // Cours de cuisine deviné d'après le libellé, sans page : pas de phrase.
+  const [xc] = possibilites([presta("cuisine-x", { libelle: "Dinner class, Single Chef", famille: "activite" })]);
+  assert.equal(xc.famille, "cuisine");
+  assert.equal(phraseDe(xc), "");
+});
+
+test("revue n° 6 : noms sans « co, ltd, tour, travel », jamais le client ni un contact personnel ; copie éteinte si les noms ne sont pas chargés", async () => {
+  const { nomsInterdits } = await load();
+  const { resteBloque } = await import("../src/gestion/js/agent-calc.mjs");
+  const noms = nomsInterdits({
+    partenaires: [{ nom: "Blue Ocean Co., Ltd" }, { nom: "Sunny Travel" }],
+    conversations: [{ nom: "Mr Brown", type_contact: "chauffeur" }, { nom: "Lea", type_contact: "personnel" }, { nom: "Paul", type_contact: "client" }, { nom: "Jade", type_contact: "apporteur" }],
+    client: { prenom: "Jade", nom: "Moreau" },
+  });
+  assert.ok(noms.includes("blue ocean"));
+  assert.ok(noms.includes("sunny"));
+  assert.deepEqual(resteBloque("Our boat with Blue Ocean leaves at 8", { noms }), ["blue ocean"]);
+  assert.ok(!noms.includes("Lea"), "contact personnel");
+  assert.ok(!noms.includes("Paul"), "client");
+  assert.ok(!noms.includes("Jade"), "le client à qui l'on écrit, même s'il est aussi apporteur");
+  assert.deepEqual(resteBloque("Hello Jade, here is an idea", { noms }), []);
+  const vue = lire("views/proposer-excursion.mjs");
+  assert.match(vue, /nomsInterdits\(\{ partenaires: etat\.brut\.partenaires, conversations: etat\.brut\.whatsapp_conversations, client \}\)/);
+  assert.match(vue, /\[secret, taxi\]\.every\(\(e\) => permissionsDe\(e\.id\)\.includes\("partenaires\.lire"\)\)/);
+  assert.match(vue, /!Array\.isArray\(etat\.brut\.partenaires\) \|\| !Array\.isArray\(etat\.brut\.whatsapp_conversations\)/);
+});
+
+test("revue n° 7 : âges du prix enfant lus dans la ligne enfant seulement", async () => {
+  const { possibilites, prixTexte, agesDe } = await load();
+  // Prix enfant du champ « Prix enfant » : le libellé adulte n'a pas d'âges d'enfant, même avec des nombres.
+  const [x] = possibilites([presta("Program A, 1 hr 30 min to 2 hours", { prix_vente: 1800, details: { enfant: 900 } })], { enfants: 1 });
+  assert.equal(prixTexte(x), "1,800 THB per adult, 900 THB per child");
+  // Ligne enfant séparée sans âges : « per child ».
+  const [y] = possibilites([presta("Mangrove trip", { prix_vente: 1200 }), presta("Mangrove trip, child", { unite: "ch", prix_vente: 800 })], { enfants: 1 });
+  assert.equal(prixTexte(y), "1,200 THB per adult, 800 THB per child");
+  assert.equal(agesDe({ libelle: "Mangrove trip, child (4-11)" }), "4 to 11");
+  assert.equal(agesDe({ libelle: "Trip 2 to 3 hours", enfant_de: "p" }), "");
+});
+
+test("revue n° 8 : bouton seulement pour qui écrit dans WhatsApp, jamais Mook ni la lecture seule", () => {
+  const vue = lire("views/proposer-excursion.mjs");
+  assert.match(vue, /if \(!adminsWhatsApp\(\)\.includes\(dossier\.entite_id\)\) return null;/);
+  // adminsWhatsApp : administrateur de Secret ou de Taxi (reglages.ecrire et toute l'entreprise), jamais vouchers.seul.
+  assert.match(lire("views/voucher-whatsapp.mjs"), /lecteurWhatsApp\(\{ entite: e, superAdmin: estSuperAdmin\(\), permissions: permissionsDe\(e\.id\), voitTout: voitToutDans\(e\.id\), voucherSeul: permissionsDe\(e\.id\)\.includes\("vouchers\.seul"\) \}\)/);
+});
+
 test("noms interdits : partenaires et contacts WhatsApp typés, jamais un client", async () => {
   const { nomsInterdits } = await load();
   assert.deepEqual(nomsInterdits({ partenaires: [{ nom: "Rattana" }, { nom: "AB" }], conversations: [{ nom: "Mr Brown", type_contact: "chauffeur" }, { nom: "Lea", type_contact: "client" }, { nom: "Desk", partenaire_id: "p" }] }), ["Rattana", "Mr Brown", "Desk"]);
@@ -225,7 +353,8 @@ test("noms interdits : partenaires et contacts WhatsApp typés, jamais un client
 test("écran : bouton sur la fiche du dossier et sur la carte WhatsApp, rien n'est envoyé sans geste, aucun net lu", () => {
   const vue = lire("views/proposer-excursion.mjs");
   assert.match(lire("views/dossier.mjs"), /boutonProposerExcursion\(\{ dossier: d, classe: "secondaire" \}\)/);
-  assert.match(lire("views/whatsapp.mjs"), /dossier \? boutonProposerExcursion\(\{ dossier, conversation: c \}\) : null/);
+  // Jamais en lecture seule (revue de la PR 310, n° 8).
+  assert.match(lire("views/whatsapp.mjs"), /dossier && !lectureSeule \? boutonProposerExcursion\(\{ dossier, conversation: c \}\) : null/);
   assert.match(vue, /tr\("Proposer une excursion"\)/);
   // L'envoi part seulement du clic sur « Envoyer dans la conversation », par whatsapp-envoi.
   assert.match(vue, /envoyer\.addEventListener\("click", \(\) => partir\(\)\)/);

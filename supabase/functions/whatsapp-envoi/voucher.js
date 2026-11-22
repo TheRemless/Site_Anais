@@ -107,8 +107,8 @@ export async function envoyerVoucherImage(ctx, demande) {
   if (msgs.error) return rep(500, { erreur: "base" });
   if (!fenetreOuverte(msgs.data || [], ctx.maintenant())) return rep(409, { erreur: "fenetre_fermee" });
 
-  // 5. La légende passe le même contrôle que le texte. contenuInterne lit l'entreprise de la conversation (celle de la réservation, étape 2)
-  //    ou, conversation à trier (entite_id vide), Secret et Taxi ensemble.
+  // 5. La légende passe le même contrôle que le texte. contenuInterne lit Secret et Taxi ensemble (entitesControlees : conversation de
+  //    l'une, de l'autre ou à trier).
   //    Le dossier contrôlé est celui de la réservation (étape 3 : la conversation est reliée à ce dossier ou à aucun). Un montant égal au net
   //    d'un autre service du catalogue : 409 « montant_a_confirmer », l'écran renvoie la même liste (refusEnvoi).
   if (demande.legende) {

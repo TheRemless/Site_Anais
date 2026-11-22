@@ -408,8 +408,9 @@ function blocFaits(c, prop) {
         ? h("span", { class: "wa-sans" }, tr("{nom}, aucun dossier", { nom: nomClient(client) }))
         : h("span", { class: "wa-sans" }, tr("Aucun dossier relié")),
     actions,
-    // « Proposer une excursion » (composant à part, views/proposer-excursion.mjs) : séjour de plusieurs jours après un transfert.
-    dossier ? boutonProposerExcursion({ dossier, conversation: c }) : null
+    // « Proposer une excursion » (composant à part, views/proposer-excursion.mjs) : séjour de plusieurs jours après un transfert ; jamais en
+    // lecture seule.
+    dossier && !lectureSeule ? boutonProposerExcursion({ dossier, conversation: c }) : null
   );
   if (!lignes.length) return h("section", { class: "wa-faits", "aria-label": tr("Faits du client") }, tete);
   const valeurDe = (l) => (l.cle === "reste" && l.paye ? tr("Payé") : l.aFixer ? `${l.valeur}, ${tr("heure à fixer")}` : l.valeur);

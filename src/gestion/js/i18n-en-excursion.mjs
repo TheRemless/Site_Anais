@@ -11,4 +11,6 @@ export const EN_EXCURSION = {
   "Pour {nom}. Cochez une ou deux excursions, relisez le message : rien ne part sans vous.": "For {nom}. Tick one or two day trips and read the message: nothing is sent without you.",
   "Cochez une ou deux excursions, relisez le message : rien ne part sans vous.": "Tick one or two day trips and read the message: nothing is sent without you.",
   "Message au client (anglais)": "Message to the client (English)",
+  "Le texte contient un net, une commission ou un nom de partenaire : corrigez-le avant de le copier ou de l'envoyer.": "The text contains a net, a commission or a partner name: correct it before copying or sending it.",
+  "Les fiches partenaires ou les contacts WhatsApp de Secret et de Taxi ne sont pas tous chargés : le texte ne peut pas être contrôlé ici. Copie et lien WhatsApp éteints ; l'envoi dans la conversation reste contrôlé par le serveur.": "The partner records or WhatsApp contacts of Secret and Taxi are not all loaded: the text cannot be checked here. Copy and WhatsApp link are off; sending in the conversation is still checked by the server.",
 };
