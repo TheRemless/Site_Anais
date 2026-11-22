@@ -1,0 +1,8 @@
+{
+  "layout": "carnet-layout.njk",
+  "eleventyExcludeFromCollections": true,
+  "sitemap": false,
+  "privatePage": true,
+  "active": "",
+  "navLight": false
+}

@@ -1,0 +1,82 @@
+{#- Gabarit « page de carnet » : un guide que le client ouvre depuis le PDF de son carnet de voyage (lien posé dans Canva).
+
+    Accès « clients seulement », décision par défaut du 22.11.2026 : pas de mot de passe (le lien vit dans un PDF), page non listée et non indexée.
+    - Adresse /carnet/<sujet>-<code>/ : code de 6 caractères aléatoires (openssl rand), permalink écrit à la main dans la page.
+    - noindex dans la page (ci-dessous) et X-Robots-Tag dans netlify.toml pour /carnet/*. Aucun Disallow dans robots.txt : il révélerait l'adresse.
+    - Hors collections (src/carnet/carnet.json) : ni blog, ni sitemap.xml, ni articles liés, ni nav, ni pied de page. llms.txt est un fichier à la main : n'y rien ajouter.
+    - privatePage: true (src/carnet/carnet.json) : base.njk ne charge ni consent.js, ni l'amorce gtag, ni currency.js (il appelle un CDN tiers), ni le bouton WhatsApp flottant ; header.njk retire les sélecteurs de devise
+      et de langue ; footer.njk n'affiche pas le lien « Cookies ». Tous les prix sont en THB. L'adresse secrète ne part vers aucun service tiers.
+    - Aucun lien depuis une page publique, pas de langAlt ni de hreflang (français seul), pas de JSON-LD (privatePage coupe aussi le fil d'Ariane de schema-breadcrumb.njk), pas de og:image.
+    - Un nouveau guide : un fichier src/carnet/<sujet>.njk avec le front matter ci-dessous, puis son HTML avec les composants .cg-* de pages.css.
+
+    Front matter lu par ce gabarit :
+      title        titre de l'onglet et du fil d'Ariane (obligatoire)
+      description  méta description (obligatoire)
+      h1Lead       début du h1 en serif (sinon title entier)
+      h1Script     fin du h1 en manuscrit, signature du site (facultatif)
+      kicker       sous-titre sous le h1
+      toc          sommaire discret : [{ label, href }], numéroté 1, 2, 3 dans l'ordre
+      heroImage    photo de tête (/images/...), heroAlt son alt, heroPosition son object-position (défaut « 50% 40% »)
+      waText       message prérempli du bouton WhatsApp de fin de page
+      carnetConfig (données du guide, voir src/carnet/<guide>.11tydata.js) : si présent, la feuille de réservation (carnet-booking.njk) et js/carnet-booking.js sont ajoutés.
+                   Le corps du guide vient alors de carnet-guide.njk ({% raw %}{% include "carnet-guide.njk" %}{% endraw %} dans la page).
+    Composants .cg-* (voir pages.css, bloc « Carnet, pages de guide ») : .cg-intro, .cg-resume avec .cg-compare, .cg-exc (une excursion ou un thème : .cg-exc-head, .cg-photos, .cg-exc-body),
+    .cg-sub, .cg-opt avec .cg-rows, .cg-row, .cg-price, .cg-tips, .cg-link (lien sortant). -#}
+{% extends "base.njk" %}
+
+{% block head %}
+<title>{{ title | escape }} | Zwald</title>
+<meta name="description" content="{{ description | escape }}">
+<link rel="canonical" href="https://zwaldtravelplanner.com{{ page.url }}">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+{% endblock %}
+
+{% block content %}
+<article class="cg-page">
+<header class="article-hero cg-hero">
+  <div class="container">
+    <nav class="crumbs" aria-label="Fil d'Ariane">
+      <span>Carnet de voyage</span>
+      <span aria-hidden="true">›</span>
+      <span aria-current="page">{{ title }}</span>
+    </nav>
+    {%- if h1Script %}
+    <h1 class="sig-title sig-title-h1">{{ h1Lead }} <span class="sig-script">{{ h1Script }}</span></h1>
+    {%- else %}
+    <h1>{{ h1Lead or title }}</h1>
+    {%- endif %}
+    {%- if kicker %}
+    <p class="standfirst">{{ kicker }}</p>
+    {%- endif %}
+    {%- if toc %}
+    <nav class="cg-toc" aria-label="Sommaire">
+      {%- for item in toc %}
+      <a href="{{ item.href }}"><span class="sig-num" aria-hidden="true">{{ loop.index }}</span><span>{{ item.label }}</span></a>
+      {%- endfor %}
+    </nav>
+    {%- endif %}
+  </div>
+  {%- if heroImage %}
+  <div class="container"><div class="article-cover"><img fetchpriority="high" sizes="100vw" src="{{ heroImage }}" alt="{{ heroAlt | escape }}" style="object-position: {{ heroPosition or '50% 40%' }}"></div></div>
+  {%- endif %}
+</header>
+
+{{ content | safe }}
+
+<section class="cg-end" aria-labelledby="cg-end-title">
+  <div class="container">
+    <h2 id="cg-end-title">Une question sur ce guide ?</h2>
+    <a class="btn btn-teal" href="https://wa.me/{{ business.telephone | replace('+', '') }}{% if waText %}?text={{ waText | urlencode }}{% endif %}" target="_blank" rel="noopener"><span>Écrire à Anaïs sur WhatsApp</span></a>
+  </div>
+</section>
+</article>
+{%- if carnetConfig %}
+{% include "carnet-booking.njk" %}
+<script type="application/json" id="cg-data">{{ carnetConfigJson | safe }}</script>
+{%- endif %}
+{% endblock %}
+
+{% block scripts %}
+{%- if carnetConfig %}<script src="/js/carnet-booking.js?v={{ build.v }}" defer></script>{% endif %}
+{% endblock %}

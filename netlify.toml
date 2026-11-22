@@ -22,6 +22,14 @@
     Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lkxqcmzeidlyssoqmqkh.supabase.co; font-src 'self'; connect-src 'self' https://lkxqcmzeidlyssoqmqkh.supabase.co wss://lkxqcmzeidlyssoqmqkh.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
 
+# Pages de carnet : guides réservés aux clients, ouverts depuis le PDF du carnet. Jamais indexées ni archivées, adresse jamais transmise en référent.
+# Aucun Disallow dans robots.txt (il révélerait l'adresse) : noindex ici et dans la page.
+[[headers]]
+  for = "/carnet/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Referrer-Policy = "no-referrer"
+
 # Cache navigateur. Les images générées dans /img/ portent un hash dans leur nom :
 # elles ne changent jamais, cache d'un an. Les sources (/images/), polices, CSS et JS
 # gardent un nom stable : une semaine, revalidation en arrière-plan.

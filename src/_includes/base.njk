@@ -2,12 +2,16 @@
 <html lang="{{ lang }}">
 <head>
 <script>(function(d){d.classList.add("js");setTimeout(function(){if(!d.classList.contains("reveal-ready"))d.classList.remove("js")},3000)})(document.documentElement)</script>
+{#- Pages privées (privatePage: true, ex. /carnet/) : ni Google Analytics, ni consent.js, ni bannière de cookies, ni bouton WhatsApp flottant.
+    L'adresse secrète de la page ne doit pas partir vers un service tiers (décision du 22.11.2026). -#}
+{%- if not privatePage %}
 <!-- Google Analytics, Consent Mode de base : gtag.js n'est chargé qu'après « Accepter » (consent.js, identifiant dans data-ga-id).
      Avant le choix ou après un refus, rien n'est envoyé à Google et site.js ne met aucun événement en attente. -->
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
 </script>
+{%- endif %}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" sizes="48x48" href="/images/favicon-48x48.png">
@@ -32,7 +36,7 @@
 {% block content %}{% endblock %}
 </main>
 {% include "footer.njk" %}
-{% if active != "/contact/" and active != "/en/contact/" %}
+{% if active != "/contact/" and active != "/en/contact/" and not privatePage %}
 <a class="wa-fab" href="https://wa.me/66958683846" target="_blank" rel="noopener">
   <span class="wa-fab-avatar">
     <img eleventy:ignore src="/images/wa-avatar.webp" alt="" width="40" height="40" loading="lazy">
@@ -50,8 +54,8 @@
 </a>
 {% endif %}
 <script src="/js/site.js?v={{ build.v }}"></script>
-<script src="/js/currency.js?v={{ build.v }}"></script>
-<script src="/js/consent.js?v={{ build.v }}" data-ga-id="G-LPTG5LLGPT"></script>
+{% if not privatePage %}<script src="/js/currency.js?v={{ build.v }}"></script>{% endif %}
+{% if not privatePage %}<script src="/js/consent.js?v={{ build.v }}" data-ga-id="G-LPTG5LLGPT"></script>{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

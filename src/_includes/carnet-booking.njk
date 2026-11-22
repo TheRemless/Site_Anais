@@ -1,0 +1,111 @@
+{#- Feuille de réservation d'un guide de carnet (élément <dialog> natif : focus piégé, fermeture à Échap, retour du focus sur le bouton).
+    Les champs sont remplis par js/carnet-booking.js selon l'offre choisie (data-cg="…"). Une demande, pas une réservation confirmée. -#}
+<dialog class="cg-sheet" id="cg-sheet" aria-labelledby="cg-sheet-title">
+  <div class="cg-sheet-in">
+    <header class="cg-sheet-head">
+      <h2 id="cg-sheet-title" tabindex="-1" data-cg="title"></h2>
+      <button type="button" class="cg-sheet-close" data-cg-close aria-label="Fermer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </header>
+
+    <form class="cg-form" data-cg="form" novalidate>
+      <p class="cg-form-intro">Vous envoyez une demande. Anaïs vous confirme votre réservation après avoir vérifié la disponibilité. Rien n’est payé en ligne : le règlement se fait sur place.</p>
+      <p class="cg-err cg-err--general" data-cg="general-error" role="alert" hidden></p>
+      <p class="cg-note" data-cg="ang-note" hidden></p>
+
+      <fieldset class="cg-field" data-cg="variantes" hidden>
+        <legend>Formule</legend>
+        <div data-cg="variantes-list"></div>
+        <p class="cg-err" id="cg-err-variante" hidden></p>
+      </fieldset>
+
+      <div class="cg-field">
+        <label for="cg-date">Date souhaitée</label>
+        <input id="cg-date" data-cg="date" name="date" type="date" required aria-describedby="cg-date-hint cg-err-date">
+        <p class="cg-hint" id="cg-date-hint" data-cg="date-hint" hidden></p>
+        <p class="cg-err" id="cg-err-date" hidden></p>
+      </div>
+
+      <fieldset class="cg-field" data-cg="creneaux" hidden>
+        <legend>Créneau</legend>
+        <div data-cg="creneaux-list"></div>
+        <p class="cg-err" id="cg-err-creneau" hidden></p>
+      </fieldset>
+      <p class="cg-field cg-fixed" data-cg="creneau-unique" hidden></p>
+
+      <div class="cg-field">
+        <label for="cg-adults">Adultes</label>
+        <div class="cg-stepper">
+          <button type="button" data-cg-step="-1" data-cg-for="adults" aria-label="Un adulte de moins">−</button>
+          <input id="cg-adults" data-cg="adults" name="adults" type="number" inputmode="numeric" min="1" max="40" value="2" aria-describedby="cg-err-adults">
+          <button type="button" data-cg-step="1" data-cg-for="adults" aria-label="Un adulte de plus">+</button>
+        </div>
+        <p class="cg-err" id="cg-err-adults" hidden></p>
+      </div>
+
+      <div class="cg-field">
+        <label for="cg-children">Enfants</label>
+        <div class="cg-stepper">
+          <button type="button" data-cg-step="-1" data-cg-for="children" aria-label="Un enfant de moins">−</button>
+          <input id="cg-children" data-cg="children" name="children" type="number" inputmode="numeric" min="0" max="12" value="0" aria-describedby="cg-age-rule">
+          <button type="button" data-cg-step="1" data-cg-for="children" aria-label="Un enfant de plus">+</button>
+        </div>
+        <p class="cg-hint" id="cg-age-rule" data-cg="age-rule" hidden></p>
+      </div>
+      <div class="cg-ages" data-cg="ages"></div>
+
+      <div class="cg-field">
+        <label for="cg-pickup" data-cg="pickup-label">Hôtel ou lieu de prise en charge</label>
+        <input id="cg-pickup" data-cg="pickup" name="pickup" type="text" maxlength="200" autocomplete="off" aria-describedby="cg-err-pickup">
+        <p class="cg-err" id="cg-err-pickup" hidden></p>
+      </div>
+      <div class="cg-field" data-cg="transfert-field" hidden>
+        <label class="cg-choice"><input type="checkbox" data-cg="transfert" name="transfert"><span data-cg="transfert-label"></span></label>
+      </div>
+
+      <div class="cg-field">
+        <label for="cg-name">Nom complet</label>
+        <input id="cg-name" data-cg="name" name="name" type="text" maxlength="120" autocomplete="name" aria-describedby="cg-err-name">
+        <p class="cg-err" id="cg-err-name" hidden></p>
+      </div>
+      <div class="cg-field">
+        <label for="cg-whatsapp">Numéro WhatsApp</label>
+        <input id="cg-whatsapp" data-cg="whatsapp" name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+41 79 123 45 67" aria-describedby="cg-whatsapp-hint cg-err-whatsapp">
+        <p class="cg-hint" id="cg-whatsapp-hint">Avec l’indicatif du pays, le numéro que vous utilisez sur WhatsApp.</p>
+        <p class="cg-err" id="cg-err-whatsapp" hidden></p>
+      </div>
+      <div class="cg-field">
+        <label for="cg-message">Message <span class="cg-opt-note">(facultatif)</span></label>
+        <textarea id="cg-message" data-cg="message" name="message" rows="3" maxlength="500" aria-describedby="cg-err-message"></textarea>
+        <p class="cg-err" id="cg-err-message" hidden></p>
+      </div>
+      <div class="cg-hp" aria-hidden="true">
+        <label for="cg-website">Site web</label>
+        <input id="cg-website" data-cg="website" name="website" type="text" tabindex="-1" autocomplete="off">
+      </div>
+
+      <div class="cg-estimate" data-cg="estimate" aria-live="polite">
+        <p class="cg-estimate-head"><span data-cg="estimate-label">Estimation</span> <strong class="cg-price" data-cg="estimate-total"></strong></p>
+        <ul class="cg-estimate-lines" data-cg="estimate-lines"></ul>
+        <div class="cg-estimate-notes" data-cg="estimate-notes"></div>
+        <p class="cg-estimate-foot">Estimation, à payer sur place après confirmation.</p>
+        <p class="cg-estimate-foot cg-estimate-parc" data-cg="parc-line" hidden></p>
+        <p class="cg-estimate-foot" data-cg="droits-note" hidden>Les droits d’entrée se règlent aussi sur place, hors estimation.</p>
+      </div>
+
+      <button type="submit" class="btn btn-teal cg-submit"><span>Envoyer ma demande</span></button>
+    </form>
+
+    <div class="cg-done" data-cg="done" hidden>
+      <h2 id="cg-done-title" tabindex="-1" data-cg="done-title">Demande envoyée</h2>
+      <p>Référence <strong class="cg-ref" data-cg="done-ref"></strong></p>
+      <p>Anaïs vérifie la disponibilité, puis vous confirme votre réservation sur WhatsApp. Rien n’est payé en ligne : le règlement se fait sur place.</p>
+      <pre class="cg-recap" data-cg="done-recap"></pre>
+      <p class="cg-info" data-cg="done-warning" role="status" hidden>Votre message WhatsApp contient tout le détail de votre demande ; Anaïs vous répond dessus. Gardez la référence ci-dessus.</p>
+      <p class="cg-warn" data-cg="done-popup" role="status" hidden>WhatsApp ne s’est pas ouvert. Touchez le bouton ci-dessous pour envoyer votre message.</p>
+      <div class="cg-done-actions">
+        <a class="btn btn-teal" data-cg="done-wa" href="#" target="_blank" rel="noopener"><span>Ouvrir WhatsApp avec ma demande</span></a>
+        <button type="button" class="btn btn-ghost" data-cg-close><span>Fermer</span></button>
+      </div>
+    </div>
+  </div>
+</dialog>
