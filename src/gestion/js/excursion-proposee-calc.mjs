@@ -12,6 +12,7 @@ import { PRODUITS_SITE } from "./site-produits.mjs";
 import { resteBloque } from "./agent-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { prestationEnfant } from "./demande-calc.mjs";
+import { nomsInterdits as nomsCommuns, nomCourt } from "./noms-interdits-calc.mjs";
 
 // ---- Familles ------------------------------------------------------------------------------------------------------------------------
 // Une famille par grande sorte d'excursion, chacune avec son modèle. L'ordre est celui de la proposition : les îles d'abord.
@@ -394,20 +395,7 @@ export function messageExcursions(choisis = [], { prenom = "", devise = "THB", t
 // aussi sans « co, ltd, company, the, tour, tours, travel, koh, lanta » quand il garde quatre lettres, comme partenairesCites du serveur
 // (« Blue Ocean Co., Ltd » bloque « Blue Ocean »). Le lien wa.me et la copie ne passent par aucun contrôle du serveur : l'écran les vérifie.
 export const CONTACTS_NOMMES = ["partenaire", "chauffeur", "hotel", "apporteur"];
-const MOTS_SOCIETE = new Set(["co", "ltd", "company", "the", "tour", "tours", "travel", "koh", "lanta"]);
-export const nomCourt = (n) => sansAccents(n).replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w && !MOTS_SOCIETE.has(w)).join(" ");
-export function nomsInterdits({ partenaires = [], conversations = [], client = null } = {}) {
-  const brut = [
-    ...(partenaires || []).map((p) => p && p.nom),
-    ...(conversations || []).filter((c) => c && (CONTACTS_NOMMES.includes(c.type_contact) || (c.partenaire_id && c.type_contact !== "client" && c.type_contact !== "personnel"))).map((c) => c.nom),
-  ].map((n) => String(n || "").trim()).filter((n) => n.length > 2);
-  const siens = new Set([client && client.prenom, client && client.nom, client && [client.prenom, client.nom].filter(Boolean).join(" ")].map((n) => sansAccents(n).trim()).filter(Boolean));
-  const out = [];
-  for (const n of brut) {
-    if (siens.has(sansAccents(n).trim())) continue;
-    out.push(n);
-    const c = nomCourt(n);
-    if (c.length >= 4 && c !== sansAccents(n).replace(/[^a-z0-9]+/g, " ").trim() && !siens.has(c)) out.push(c);
-  }
-  return [...new Set(out)];
-}
+// Fonction commune avec le point du soir (noms-interdits-calc.mjs) ; ici avec les noms courts et la fiche du client.
+export { nomCourt };
+const contactNomme = (c) => CONTACTS_NOMMES.includes(c.type_contact) || (c.partenaire_id && c.type_contact !== "client" && c.type_contact !== "personnel");
+export const nomsInterdits = ({ partenaires = [], conversations = [], client = null } = {}) => nomsCommuns({ partenaires, conversations, client, contactInterdit: contactNomme, nomsCourts: true });

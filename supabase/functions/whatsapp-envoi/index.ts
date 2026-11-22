@@ -144,7 +144,9 @@ Deno.serve(async (req) => {
   const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
   if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
   // Le texte envoyé diffère de la proposition : l'écart devient un apprentissage de l'Assistant, en fond (agent/apprendre-whatsapp.js).
-  apprendreEnFond(admin, conv.id, messageId, { auteur: qui.user.id });
+  // Seulement pour l'envoi d'une proposition (branche d'intégration du 22.11.2026) : un message du point du soir ou de « Proposer une
+  // excursion » est un modèle, pas une réponse de Nani, et ne doit rien apprendre même si une proposition attend dans la conversation.
+  if (demande.proposition_id) apprendreEnFond(admin, conv.id, messageId, { auteur: qui.user.id });
   return json({ ok: true, message_id: messageId, complet: complete });
 });
 

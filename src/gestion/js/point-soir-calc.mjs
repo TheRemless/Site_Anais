@@ -13,6 +13,7 @@ import { contactPersonnel } from "./agent-whatsapp-lecture.mjs";
 import { resteBloque } from "./agent-calc.mjs";
 import { e164 } from "./whatsapp-voucher-calc.mjs";
 import { estRetourDepart } from "./trajet-calc.mjs";
+import { nomsInterdits as nomsCommuns } from "./noms-interdits-calc.mjs";
 import { estFraisDeParc, hotelEtChambre, separerChambreLigne, remplirGabarit, gabaritsPropose } from "./operations-calc.mjs";
 
 // ---- Heure ---------------------------------------------------------------------------------------------------------------------------
@@ -176,7 +177,5 @@ export const estContactPartenaire = (c) => !!c && ((!!c.type_contact && c.type_c
 
 // Les noms qui ne partent jamais vers un client : fiches partenaires (plus de deux lettres, comme nomsABloquer de la fonction agent) et
 // conversations de partenaires (comme nomsContactsTypes de whatsapp-envoi). Le lien wa.me ne passe par aucun contrôle du serveur.
-export function nomsInterdits({ partenaires = [], conversations = [] } = {}) {
-  const noms = [...(partenaires || []).map((p) => p && p.nom), ...(conversations || []).filter(estContactPartenaire).map((c) => c.nom)];
-  return [...new Set(noms.map((n) => String(n || "").trim()).filter((n) => n.length > 2))];
-}
+// Fonction commune avec « Proposer une excursion » (noms-interdits-calc.mjs) ; ici sans noms courts ni fiche du client.
+export const nomsInterdits = ({ partenaires = [], conversations = [] } = {}) => nomsCommuns({ partenaires, conversations, contactInterdit: estContactPartenaire });
