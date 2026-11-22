@@ -60,7 +60,7 @@ const conv = (id) => un("select avancee, etape_manuelle from whatsapp_conversati
 const FAITS = { v: 1, client: true, premier_client_le: "2026-11-21T01:00:00Z", dernier_client_le: "2026-11-21T02:00:00Z", demande_le: "2026-11-21T01:00:00Z", prix: { secret: null, taxi: "2026-11-21T01:30:00Z", inconnu: null }, pret: null, voucher_le: null, refus_le: null, calcule_le: "2026-11-22T00:00:00Z" };
 
 // ---- Structure --------------------------------------------------------------------------------------------------------------------
-for (const col of ["avancee", "etape_manuelle"]) ok(!!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name = $1", [col])), `la colonne ${col} existe`);
+for (const col of ["avancee", "etape_manuelle", "ia_coupee"]) ok(!!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name = $1", [col])), `la colonne ${col} existe`);
 const droit = async (col) => (await db.query("select privilege_type from information_schema.column_privileges where table_name = 'whatsapp_conversations' and column_name = $1 and grantee = 'authenticated' and privilege_type = 'UPDATE'", [col])).rows.length > 0;
 ok(await droit("etape_manuelle"), "authenticated peut écrire etape_manuelle (grant de colonne)");
 ok(!(await droit("avancee")), "personne ne peut écrire avancee depuis l'outil");
@@ -85,8 +85,13 @@ ok(r.ok && r.n === 1, "Nani choisit « Réservé » chez Taxi" + (r.ok ? "" : ` 
 const le1 = r.ok ? Date.parse(r.rows[0].etape_manuelle.taxi.le) : 0;
 ok(le1 > Date.now() - 60_000, "… à l'heure de la base, pas à la date envoyée par l'écran");
 ok(r.ok && r.rows[0].avancee && r.rows[0].avancee.prix.taxi, "… les faits de la fonction restent");
-r = await essaie(u.nani, "update whatsapp_conversations set etape_manuelle = $1::jsonb where id = $2 returning etape_manuelle", [JSON.stringify({ taxi: { etape: "reserve", le: "2030-01-01T00:00:00Z" }, secret: { etape: "prix_envoye" } }), lena]);
-ok(r.ok && Date.parse(r.rows[0].etape_manuelle.taxi.le) === le1 && r.rows[0].etape_manuelle.secret.etape === "prix_envoye", "un choix inchangé garde son heure ; une autre entreprise s'ajoute");
+const leBrut = r.ok ? r.rows[0].etape_manuelle.taxi.le : null;
+r = await essaie(u.nani, "update whatsapp_conversations set etape_manuelle = $1::jsonb where id = $2 returning etape_manuelle", [JSON.stringify({ taxi: { etape: "reserve", le: leBrut }, secret: { etape: "prix_envoye" } }), lena]);
+ok(r.ok && Date.parse(r.rows[0].etape_manuelle.taxi.le) === le1 && r.rows[0].etape_manuelle.secret.etape === "prix_envoye", "un choix renvoyé tel quel garde son heure ; une autre entreprise s'ajoute");
+r = await essaie(u.nani, "update whatsapp_conversations set etape_manuelle = $1::jsonb where id = $2 returning etape_manuelle", [JSON.stringify({ taxi: { etape: "reserve", le: "2030-01-01T00:00:00Z" } }), lena]);
+ok(r.ok && Date.parse(r.rows[0].etape_manuelle.taxi.le) < Date.parse("2030-01-01T00:00:00Z") && Date.parse(r.rows[0].etape_manuelle.taxi.le) > Date.now() - 60_000, "jamais une heure choisie par l'écran");
+r = await essaie(u.nani, "update whatsapp_conversations set etape_manuelle = $1::jsonb where id = $2 returning etape_manuelle", [JSON.stringify({ taxi: { etape: "reserve", le: null } }), lena]);
+ok(r.ok && r.rows[0].etape_manuelle.taxi.etape === "reserve" && r.rows[0].etape_manuelle.taxi.le, "rechoisir la même étape (heure vide) reprend l'heure du moment");
 for (const [nom, valeur] of [["une entreprise inconnue", { ztp: { etape: "reserve" } }], ["une étape inconnue", { taxi: { etape: "paye" } }], ["une valeur qui n'est pas un objet", { taxi: "reserve" }], ["un tableau", [1]]]) {
   r = await essaie(u.nani, "update whatsapp_conversations set etape_manuelle = $1::jsonb where id = $2", [JSON.stringify(valeur), lena]);
   ok(!r.ok, `refusé : ${nom}`);
@@ -104,6 +109,17 @@ ok(c.avancee.calcule_le === "2026-11-22T01:00:00Z", "… mais met bien les faits
 r = await essaie(u.nani, "update whatsapp_conversations set reponses = 'auto' where id = $1 returning etape_manuelle", [lena]);
 ok(r.ok && r.rows[0].etape_manuelle.taxi.etape === "termine", "changer un autre réglage ne touche pas au choix");
 
+// ---- IA coupée pour une conversation ------------------------------------------------------------------------------------------------
+ok((await un("select ia_coupee from whatsapp_conversations where id = $1", [lena])).ia_coupee === false, "IA permise par défaut");
+r = await essaie(u.nani, "update whatsapp_conversations set ia_coupee = true where id = $1 returning ia_coupee, reponses", [lena]);
+ok(r.ok && r.rows[0].ia_coupee === true && r.rows[0].reponses === "auto", "Nani coupe l'IA sans classer le contact en Contact personnel");
+await db.query("update whatsapp_conversations set ia_coupee = false where id = $1", [lena]);
+ok((await un("select ia_coupee from whatsapp_conversations where id = $1", [lena])).ia_coupee === true, "la clé de service ne rallume jamais l'IA");
+r = await essaie(u.mook, "update whatsapp_conversations set ia_coupee = false where id = $1", [lena]);
+ok(r.ok ? r.n === 0 : true, "Mook ne touche pas à l'IA d'une conversation");
+r = await essaie(u.nani, "update whatsapp_conversations set ia_coupee = false where id = $1 returning ia_coupee", [lena]);
+ok(r.ok && r.rows[0].ia_coupee === false, "Nani rallume l'IA");
+
 // ---- Lecteur seul et Mook -------------------------------------------------------------------------------------------------------------
 await essaie(u.nani, "update whatsapp_conversations set entite_id = $1 where id = $2", [ent.secret, tom]);
 r = await essaie(u.adminTaxi, "update whatsapp_conversations set etape_manuelle = $1::jsonb where id = $2", [JSON.stringify({ secret: { etape: "reserve" } }), tom]);
@@ -120,7 +136,7 @@ ok((await photo()) === p1, "la migration 105 se rejoue sans effet (aucune ligne 
 
 // ---- Retour en arrière --------------------------------------------------------------------------------------------------------------
 await db.exec(lire("retour-105-whatsapp-etapes.sql"));
-ok(!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name in ('avancee', 'etape_manuelle')")), "retour : les deux colonnes sont parties");
+ok(!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name in ('avancee', 'etape_manuelle', 'ia_coupee')")), "retour : les trois colonnes sont parties");
 ok(!(await un("select 1 x from pg_proc where proname = 'whatsapp_etape_outil'")), "retour : le déclencheur est parti");
 ok(!!(await un("select 1 x from information_schema.columns where table_name = 'whatsapp_conversations' and column_name = 'pret_reserver'")), "retour : la migration 85 reste en place");
 r = await essaie(u.nani, "update whatsapp_conversations set pret_retire_le = now() where id = $1 returning pret_retire_le", [lena]);

@@ -2526,3 +2526,4 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .wa-etapes-bloc .lien { min-height: 40px; padding: 0; }
 .wa-choix-etapes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
 .wa-choix-entreprise { justify-content: flex-start; }
+.wa-marque.wa-ia-coupee { background: var(--surface-2); color: var(--texte-2); }

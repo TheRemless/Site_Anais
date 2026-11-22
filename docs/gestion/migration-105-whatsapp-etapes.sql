@@ -13,8 +13,11 @@
 --      { "etape", "le" } }. Elle l'emporte jusqu'au prochain événement qui fait avancer. « le » est posé par la base (heure du choix), jamais
 --      par l'écran. Une clé ou une étape inconnue est refusée. Même politique que le reste du classement (« ranger une conversation
 --      WhatsApp », migration 63) : un administrateur de l'entreprise de la conversation, ou d'une des deux pour une conversation à trier.
---   3. whatsapp_etape_outil (déclencheur) : une personne ne réécrit jamais avancee ; la fonction (clé de service) ne touche jamais
---      etape_manuelle. Les fonctions de déclencheur ne s'exécutent pas en direct : execute retiré à public, anon et authenticated.
+--   3. whatsapp_conversations.ia_coupee (booléen, faux par défaut) : Nani coupe l'IA pour cette conversation sans la classer en Contact
+--      personnel. Plus de tri, de résumé, de promesse ni de réponse préparée chez Anthropic pour elle (iaPermise, proposer.js) ; l'écran
+--      n'ouvre plus l'Assistant depuis elle. Les étapes, calculées sans IA, continuent. Écrite seulement depuis l'outil (même politique).
+--   4. whatsapp_etape_outil (déclencheur) : une personne ne réécrit jamais avancee ; la fonction (clé de service) ne touche jamais
+--      etape_manuelle ni ia_coupee. Un choix d'étape est daté par la base : rechoisi (même étape), il reprend l'heure du moment. Les fonctions de déclencheur ne s'exécutent pas en direct : execute retiré à public, anon et authenticated.
 -- L'Assistant ne lit pas ces colonnes. Rien sur les nets, les commissions ni l'argent ici (un prix est une date, jamais un montant).
 --
 -- Se rejoue sans effet. Ne modifie aucune donnée existante : les conversations déjà là sont calculées par la reprise de la fonction
@@ -36,6 +39,7 @@ end $$;
 
 alter table whatsapp_conversations add column if not exists avancee jsonb;
 alter table whatsapp_conversations add column if not exists etape_manuelle jsonb;
+alter table whatsapp_conversations add column if not exists ia_coupee boolean not null default false;
 do $$
 begin
   if not exists (select 1 from pg_constraint where conrelid = 'public.whatsapp_conversations'::regclass and conname = 'whatsapp_conversations_avancee_check') then
@@ -48,8 +52,8 @@ begin
   end if;
 end $$;
 
--- Depuis l'outil, seulement le choix de l'étape. avancee n'a aucun droit d'écriture pour authenticated.
-grant update (etape_manuelle) on whatsapp_conversations to authenticated;
+-- Depuis l'outil, seulement le choix de l'étape et la coupure de l'IA. avancee n'a aucun droit d'écriture pour authenticated.
+grant update (etape_manuelle, ia_coupee) on whatsapp_conversations to authenticated;
 
 create or replace function whatsapp_etape_outil() returns trigger language plpgsql security definer set search_path = public as $$
 declare
@@ -60,6 +64,7 @@ begin
   if auth.uid() is null then
     -- La fonction « whatsapp » (clé de service) ne défait jamais un choix de Nani.
     new.etape_manuelle := old.etape_manuelle;
+    new.ia_coupee := old.ia_coupee;
     return new;
   end if;
   -- Une personne ne réécrit pas les faits de la fonction.
@@ -76,10 +81,13 @@ begin
         or coalesce(valeur->>'etape', '') not in ('nouvelle', 'prix_envoye', 'a_relancer', 'pret', 'reserve', 'voucher_envoye', 'termine') then
         raise exception 'Étape manuelle inconnue.' using errcode = '22023';
       end if;
-      -- L'heure du choix est celle de la base ; un choix inchangé garde son heure.
+      -- L'heure du choix est celle de la base. Une entrée renvoyée telle quelle (même étape, même heure) garde son heure ; une étape choisie
+      -- de nouveau (heure vide envoyée par l'écran) ou changée prend l'heure du moment.
       propre := propre || jsonb_build_object(cle, jsonb_build_object(
         'etape', valeur->>'etape',
-        'le', case when old.etape_manuelle is not null and old.etape_manuelle->cle->>'etape' = valeur->>'etape' then old.etape_manuelle->cle->'le' else to_jsonb(now()) end
+        'le', case when old.etape_manuelle is not null and old.etape_manuelle->cle->>'etape' = valeur->>'etape'
+                    and valeur->>'le' is not null and old.etape_manuelle->cle->>'le' = valeur->>'le'
+                  then old.etape_manuelle->cle->'le' else to_jsonb(now()) end
       ));
     end loop;
     new.etape_manuelle := nullif(propre, '{}'::jsonb);

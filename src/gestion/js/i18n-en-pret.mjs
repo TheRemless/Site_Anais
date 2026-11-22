@@ -36,4 +36,12 @@ export const EN_PRET = {
   "Étape de la conversation": "Conversation stage",
   "Aucune conversation à cette étape.": "No conversation at this stage.",
   "Ce client est commun à Secret et à Taxi : le dossier appartient à l'entreprise choisie, la conversation reste aux deux.": "This client is shared by Secret and Taxi: the file belongs to the company you choose, the chat stays with both.",
+  "Sans étape": "No stage",
+  "IA coupée": "AI off",
+  "Rallumer l'IA pour cette conversation": "Turn AI back on for this chat",
+  "Couper l'IA pour cette conversation": "Turn AI off for this chat",
+  "IA rallumée pour cette conversation.": "AI back on for this chat.",
+  "IA coupée pour cette conversation : rien n'est plus envoyé à l'IA.": "AI off for this chat: nothing is sent to the AI anymore.",
+  "Contact qui n'est pas un client : pas de tri automatique": "Contact who is not a client: no automatic sorting",
+  "IA coupée pour cette conversation : rien n'est envoyé à l'IA. Répondez depuis l'app.": "AI off for this chat: nothing is sent to the AI. Reply from the app.",
 };

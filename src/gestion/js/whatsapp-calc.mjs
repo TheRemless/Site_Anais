@@ -139,6 +139,7 @@ export const MOTIFS_TRI = {
   limite: N_("Limite du jour des réponses atteinte"),
   tri_illisible: N_("Message non trié"),
   ia_coupee: N_("Assistant éteint ou réception suspendue : message non trié"),
+  non_client: N_("Contact qui n'est pas un client : pas de tri automatique"),
   autre: N_("Rien à répondre"),
 };
 // Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.
@@ -354,6 +355,7 @@ export const ERREURS_PREPARER = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas de préparer une réponse pour cette conversation."),
   contact_personnel: N_("Contact personnel : rien n'est envoyé à l'IA. Répondez depuis l'app."),
+  ia_coupee: N_("IA coupée pour cette conversation : rien n'est envoyé à l'IA. Répondez depuis l'app."),
   rien_a_repondre: N_("Le dernier message n'est pas du client. Rien à préparer."),
   limite: N_("Limite atteinte (plafond du mois ou limite du jour). Répondez depuis l'app."),
   agent_eteint: N_("L'assistant est éteint pour cette entreprise. Allumez-le dans les Réglages."),

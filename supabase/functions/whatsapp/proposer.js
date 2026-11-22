@@ -109,15 +109,30 @@ export function demandeAgent({ messages = [], nomProfil = "", nomSource = null, 
 // Le type du contact ne coupe pas l'IA (migration 69) : l'Assistant reste ouvert à la demande pour tous, sauf un Contact personnel. Mais
 // depuis le 22.11.2026, partenaire, chauffeur, hôtel, apporteur et fiche partenaire reliée ne passent plus par le tri automatique
 // (contactNonClient) : le motif « partenaire » est posé sans appel. Haiku peut encore le donner pour un contact non typé.
-export const MOTIFS = ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "tri_illisible", "ia_coupee", "autre"];
+// « non_client » (22.11.2026) : posé sans appel pour un contact typé non client ; à la différence de « partenaire » (donné par Haiku), l'écran
+// ne s'en sert pas pour écarter la conversation : il juge sur le type du moment (un contact remis en Client est repris tout de suite).
+export const MOTIFS = ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "tri_illisible", "ia_coupee", "non_client", "autre"];
 export const MOTIFS_A_PREPARER = ["demande_client", "suivi_reservation"];
 
 // Audit sécurité n° 1 (20.11.2026) : rien ne part chez Anthropic, même pour le tri, si la réception est suspendue, si le contact est réglé
 // sur « jamais » ou si l'assistant est éteint. Le type du contact ne compte pas (migration 69). Conversation rangée : l'assistant de son entreprise. À trier : au moins celui de Secret ou
 // de Taxi. `agents` : { entite_id: true | false } lus dans reglages.valeur.agent_ia ; une valeur absente ou illisible ferme.
+// Règle retenue le 22.11.2026 (relecture) : un client appartient à Secret et à Taxi, son tri est permis si au moins un des deux assistants
+// est allumé, même si la conversation est rangée. Un autre contact rangé : l'assistant de son entreprise. Nani coupe l'IA pour une
+// conversation précise sans la classer en Contact personnel (ia_coupee, migration 105) : plus rien chez Anthropic pour elle. La réponse
+// préparée demande en plus l'assistant de l'entreprise de la demande (preparer, reponse.ts).
+// L'entreprise d'une réponse préparée (relecture du 22.11.2026) : pour un client, celle de la demande en cours (le tri), puis celle de la
+// conversation ; pour un autre contact, celle de la conversation, puis la demande. `defaut` : l'entreprise de départ de l'espace unifié.
+export function entrepriseReponse({ conv, ents = [], suggestion = null, defaut = null }) {
+  const rangee = (conv && ents.find((e) => e.id === conv.entite_id)) || null;
+  const demande = suggestion ? ents.find((e) => e.slug === suggestion) || null : null;
+  const choisie = clientCommun(conv) ? demande || rangee : rangee || demande;
+  return choisie || (defaut ? ents.find((e) => e.slug === defaut) || null : null);
+}
+export const clientCommun = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
 export function iaPermise({ receptionActive, conv, agents = {} }) {
-  if (receptionActive !== true || !conv || conv.reponses === "jamais") return false;
-  if (conv.entite_id) return agents[conv.entite_id] === true;
+  if (receptionActive !== true || !conv || conv.reponses === "jamais" || conv.ia_coupee === true) return false;
+  if (conv.entite_id && !clientCommun(conv)) return agents[conv.entite_id] === true;
   return Object.values(agents).some((v) => v === true);
 }
 
@@ -131,7 +146,8 @@ export const contactNonClient = (conv) => !!conv && (TYPES_NON_CLIENTS.includes(
 // Ce que l'on sait sans appeler Claude : null si le message mérite le tri par Haiku.
 export function triSansAppel({ conv, messages }) {
   if (conv && conv.reponses === "jamais") return { preparer: false, motif: "contact_jamais" };
-  if (contactNonClient(conv)) return { preparer: false, motif: "partenaire" };
+  if (conv && conv.ia_coupee === true) return { preparer: false, motif: "ia_coupee" };
+  if (contactNonClient(conv)) return { preparer: false, motif: "non_client" };
   const dernier = dernierClient(messages);
   if (!dernier) return { preparer: false, motif: "autre" };
   const t = String(dernier.texte || "").trim();

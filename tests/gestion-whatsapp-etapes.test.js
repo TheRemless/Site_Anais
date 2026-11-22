@@ -27,7 +27,7 @@ const H = 60;
 
 // ---- Messages seuls ---------------------------------------------------------------------------------------------------------------
 test("modèle C21 : une demande sans prix : Nouvelle demande (chez l'entreprise du tri si elle est connue)", () => {
-  assert.deepEqual(etapes(conv([["entrant", "Hello, we plan a trip in April, could you help us with tours and prices?", 5 * H]])), ["?:nouvelle"]);
+  assert.deepEqual(etapes(conv([["entrant", "Hello, we plan our holiday in April, could you help us?", 5 * H]])), ["?:nouvelle"]);
   assert.deepEqual(etapes(conv([["entrant", "Hello, how much for a boat tour on Monday?", 5 * H]], { tri: { motif: "demande_client", entreprise: "secret" } })), ["secret:nouvelle"]);
 });
 
@@ -80,7 +80,7 @@ test("modèle C38 : dossier Taxi confirmé, voucher pas encore envoyé partout :
 test("modèles C7, C36 : voucher noté sur chaque réservation, ou confirmation envoyée depuis le téléphone après le dossier : Voucher envoyé", () => {
   const c = conv([["entrant", "Yes please book", 30 * H]]);
   assert.deepEqual(etapes(c, { clients: [client], dossiers: [dossier()], reservations: [resa({ details: { envois: { client: "2026-11-21" } } })] }), ["taxi:voucher_envoye"]);
-  const tel = conv([["entrant", "Yes please book", 26 * H], ["sortant", "All set ✨ You can find the attached confirmation, keep it for the driver.", 24 * H]]);
+  const tel = conv([["entrant", "Yes please book", 26 * H], ["sortant", "", 24 * H, "image"], ["sortant", "All set ✨ You can find the attached confirmation, keep it for the driver.", 24 * H - 1]]);
   assert.deepEqual(etapes(tel, { clients: [client], dossiers: [dossier({ created_at: new Date(MAINTENANT - 24 * 3600000 - 2 * 60000).toISOString() })], reservations: [resa()] }), ["taxi:voucher_envoye"]);
 });
 
@@ -128,7 +128,7 @@ test("modèles C2, C11, C13, C31, C34 : Contact personnel, partenaire, chauffeur
 });
 
 test("modèle C1 (cas douteux) : un bateau non typé qui propose un prix ressemble à une demande : Nani le type en partenaire et il sort", () => {
-  const lignes = [["sortant", "Is your boat free on Tuesday?", 5 * H], ["entrant", "Yes, I can propose a price of 9000 for the day", 4 * H]];
+  const lignes = [["sortant", "Is your boat free on Tuesday?", 5 * H], ["entrant", "Yes, I can propose a price of 9000 for the day, ok for you?", 4 * H]];
   assert.deepEqual(etapes(conv(lignes, { tri: { motif: "remerciement", entreprise: "inconnu" } })), ["?:nouvelle"]);
   assert.deepEqual(etapes(conv(lignes, { type_contact: "partenaire" })), []);
 });
@@ -151,13 +151,14 @@ test("choix manuel : l'emporte jusqu'au prochain événement qui fait avancer, p
 test("démonstration : même contrôle que la base pour le choix manuel", () => {
   const a = etapeManuelleLocale(null, { taxi: { etape: "reserve", le: "2001-01-01T00:00:00Z" } });
   assert.ok(Date.parse(a.taxi.le) > Date.now() - 60000, "heure du moment");
-  const b = etapeManuelleLocale(a, { taxi: { etape: "reserve", le: "2030-01-01T00:00:00Z" } });
-  assert.equal(b.taxi.le, a.taxi.le, "un choix inchangé garde son heure");
+  const b = etapeManuelleLocale(a, { taxi: { etape: "reserve", le: a.taxi.le } });
+  assert.equal(b.taxi.le, a.taxi.le, "renvoyé tel quel : garde son heure");
+  assert.notEqual(etapeManuelleLocale(a, { taxi: { etape: "reserve", le: "2030-01-01T00:00:00Z" } }).taxi.le, "2030-01-01T00:00:00Z", "jamais une heure choisie par l'écran");
   assert.equal(etapeManuelleLocale(a, {}), null);
   assert.throws(() => etapeManuelleLocale(null, { ztp: { etape: "reserve" } }));
   assert.throws(() => etapeManuelleLocale(null, { taxi: { etape: "paye" } }));
   const f = faitsDemo({ id: "c", tri: null }, [{ conversation_id: "c", sens: "entrant", texte: "Price?", envoye_le: "2026-11-21T01:00:00Z" }, { conversation_id: "c", sens: "sortant", texte: "It is 400 THB", envoye_le: "2026-11-21T02:00:00Z" }], "taxi");
-  assert.equal(f.prix.taxi, "2026-11-21T02:00:00Z");
+  assert.equal(f.par.taxi.prix_le, "2026-11-21T02:00:00Z");
 });
 
 // ---- Faits ------------------------------------------------------------------------------------------------------------------------
@@ -166,9 +167,9 @@ test("faits : des dates et des entreprises seulement, jamais un texte ; dans la 
   const s = JSON.stringify(c.avancee);
   assert.ok(!/Paul|Hotel|1,900|0000000/.test(s), s);
   assert.ok(s.length <= 2000);
-  assert.equal(c.avancee.prix.taxi, new Date(MAINTENANT - H * 60000).toISOString(), "le récapitulatif porte aussi le prix : le dernier compte");
-  assert.ok(c.avancee.voucher_le);
-  assert.deepEqual(faitsAvancee({ reponses: "jamais" }, []).client, false, "Contact personnel : aucun fait lu");
+  assert.equal(c.avancee.par.taxi.prix_le, new Date(MAINTENANT - H * 60000).toISOString(), "le récapitulatif porte aussi le prix : le dernier compte");
+  assert.deepEqual(c.avancee.vouchers, [], "un récapitulatif écrit n'est pas un voucher (relecture n° 4)");
+  assert.deepEqual(Object.keys(faitsAvancee({ reponses: "jamais" }, [{ sens: "entrant", texte: "Price?", envoye_le: "2026-11-21T01:00:00Z" }])).sort(), ["calcule_le", "jamais", "v"], "Contact personnel : aucun fait lu");
 });
 
 // ---- Branchements -----------------------------------------------------------------------------------------------------------------
@@ -182,7 +183,7 @@ test("branchements : fonction, écran, stores, CI ; aucun appel à l'IA ; index.
   assert.match(vue, /etapesDisponibles\(\) && conversationClient\(c\) \? pastillesEtapes\(c\)/);
   assert.match(vue, /blocEtapes\(c, \{ lectureSeule, rafraichir \}\)/);
   assert.match(lire("src/gestion/js/store-supabase.mjs"), /whatsapp_etapes_disponible: conversations !== null && pretDisponible && etapesDisponible/);
-  assert.match(lire("src/gestion/js/store-local.mjs"), /"pret_retire_le", "etape_manuelle"\]\.includes\(k\)/);
+  assert.match(lire("src/gestion/js/store-local.mjs"), /"pret_retire_le", "etape_manuelle", "ia_coupee"\]\.includes\(k\)/);
   assert.match(lire(".github/workflows/ci.yml"), /verif-whatsapp-etapes/);
   const agent = fs.readdirSync(new URL("../supabase/functions/agent/", import.meta.url)).map((f) => lire(`supabase/functions/agent/${f}`)).join("\n");
   assert.doesNotMatch(agent, /avancee|etape_manuelle/, "l'Assistant ne lit pas ces colonnes");

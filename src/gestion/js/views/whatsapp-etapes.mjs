@@ -4,7 +4,7 @@
 // entreprise, plus « Nouvelle demande » tant que l'entreprise n'est pas connue. Rien ne part au client ni au prestataire.
 import { etat, modifier } from "../etat.mjs";
 import { h, toast, modal } from "../ui.mjs";
-import { tr } from "../i18n.mjs";
+import { tr, N_ } from "../i18n.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { marqueEntite } from "../whatsapp-calc.mjs";
 import { ETAPES, libelleEtape, etapesConversation, conversationClient, aEtape, patchEtapeManuelle } from "../whatsapp-etapes-calc.mjs";
@@ -14,15 +14,31 @@ const marqueDe = (id) => marqueEntite(entiteDe(id));
 // Le filtre et les pastilles n'arrivent qu'avec la migration 105 (colonnes relues par store-supabase.mjs).
 export const etapesDisponibles = () => !!(etat.brut && etat.brut.whatsapp_etapes_disponible);
 export { conversationClient };
-export const etapesDe = (c) =>
-  etapesConversation(c, { dossiers: etat.brut.dossiers || [], clients: etat.brut.clients || [], reservations: etat.brut.reservations || [], marqueDe, aujourdhui: aujourdhui() });
+// Une fois par rendu (relecture n° 8) : les étapes sont gardées par conversation tant que les données de l'écran (etat.brut) ne changent pas.
+let cache = { brut: null, jour: "", etapes: new WeakMap() };
+export function etapesDe(c) {
+  const jour = aujourdhui();
+  if (cache.brut !== etat.brut || cache.jour !== jour) cache = { brut: etat.brut, jour, etapes: new WeakMap() };
+  let e = cache.etapes.get(c);
+  if (!e) {
+    e = etapesConversation(c, { dossiers: etat.brut.dossiers || [], clients: etat.brut.clients || [], reservations: etat.brut.reservations || [], marqueDe, aujourdhui: jour });
+    cache.etapes.set(c, e);
+  }
+  return e;
+}
 
-// Les filtres d'étape (« etape:pret »…), dans l'ordre des étapes ; seulement ceux qui ont des conversations, et celui qui est choisi.
+// Les filtres d'étape (« etape:pret »…), dans l'ordre des étapes, puis « Sans étape » (client sans étape, ou contact qui n'est pas un
+// client) : une conversation reste toujours visible ailleurs que dans « Toutes ». Seulement ceux qui ont des conversations, et celui choisi.
 export const PREFIXE = "etape:";
+const SANS_ETAPE = { valeur: "aucune", libelle: N_("Sans étape") };
 export function filtresEtapes(conversations, choisi) {
   const nombres = {};
-  for (const c of conversations) for (const e of new Set(etapesDe(c).map((x) => x.etape))) nombres[e] = (nombres[e] || 0) + 1;
-  return ETAPES.filter((e) => nombres[e.valeur] || choisi === PREFIXE + e.valeur).map((e) => ({ valeur: PREFIXE + e.valeur, libelle: e.libelle, nombre: nombres[e.valeur] || 0 }));
+  for (const c of conversations) {
+    const etapes = etapesDe(c);
+    if (!etapes.length) nombres.aucune = (nombres.aucune || 0) + 1;
+    for (const e of new Set(etapes.map((x) => x.etape))) nombres[e] = (nombres[e] || 0) + 1;
+  }
+  return [...ETAPES, SANS_ETAPE].filter((e) => nombres[e.valeur] || choisi === PREFIXE + e.valeur).map((e) => ({ valeur: PREFIXE + e.valeur, libelle: e.libelle, nombre: nombres[e.valeur] || 0 }));
 }
 export const estFiltreEtape = (f) => typeof f === "string" && f.startsWith(PREFIXE);
 export const filtrerParEtape = (liste, f) => liste.filter((c) => aEtape(etapesDe(c), f.slice(PREFIXE.length)));
@@ -46,15 +62,27 @@ export function pastillesEtapes(c) {
   return etapes.length ? h("span", { class: "wa-etapes" }, etapes.map(pastille)) : null;
 }
 
-// Dans l'en-tête de la conversation : les étapes et « Changer l'étape » (sauf en lecture seule).
+// Dans l'en-tête de la conversation : les étapes et « Changer l'étape » (sauf en lecture seule), et l'IA coupée s'il y a lieu.
 export function blocEtapes(c, { lectureSeule = false, rafraichir = () => {} } = {}) {
   const etapes = etapesDe(c);
   return h(
     "div",
     { class: "wa-etapes-bloc", "data-pas-saisie": "" },
     etapes.length ? h("span", { class: "wa-etapes" }, etapes.map(pastille)) : h("span", { class: "wa-sans" }, tr("Pas encore d'étape")),
-    lectureSeule ? null : h("button", { class: "lien", type: "button", onclick: () => choisirEtape(c, etapes, rafraichir) }, tr("Changer l'étape"))
+    lectureSeule ? null : h("button", { class: "lien", type: "button", onclick: () => choisirEtape(c, etapes, rafraichir) }, tr("Changer l'étape")),
+    c.ia_coupee ? h("span", { class: "wa-marque wa-ia-coupee" }, tr("IA coupée")) : null
   );
+}
+
+// Couper ou rallumer l'IA pour cette conversation (migration 105) : plus de tri, de résumé, de réponse préparée ni d'Assistant pour elle.
+export async function basculerIA(c, rafraichir = () => {}) {
+  try {
+    await modifier("whatsapp_conversations", c.id, { ia_coupee: !c.ia_coupee });
+    toast(c.ia_coupee ? tr("IA rallumée pour cette conversation.") : tr("IA coupée pour cette conversation : rien n'est plus envoyé à l'IA."));
+    rafraichir();
+  } catch (err) {
+    toast(err.message, true);
+  }
 }
 
 // Nani force une étape pour une entreprise ; « Calcul automatique » efface son choix. Son choix l'emporte jusqu'au prochain événement.

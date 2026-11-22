@@ -200,7 +200,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     let pretDisponible = true;
     // avancee, etape_manuelle (migration 105, étapes des clients) : ajoutées à toutes les lectures ; absentes, on relit sans elles et l'écran
     // garde l'ancienne liste.
-    const ETAPES = "avancee, etape_manuelle";
+    const ETAPES = "avancee, etape_manuelle, ia_coupee";
     let etapesDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select([colonnes, pretDisponible ? PRET : "", pretDisponible && etapesDisponible ? ETAPES : ""].filter(Boolean).join(", ")).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);

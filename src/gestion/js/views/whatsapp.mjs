@@ -34,7 +34,7 @@ import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 import { clientCommun } from "../whatsapp-pret-calc.mjs";
 import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
 // Étapes des conversations de clients (migration 105), à part dans whatsapp-etapes.mjs.
-import { etapesDisponibles, conversationClient, filtresEtapes, estFiltreEtape, filtrerParEtape, dansEntreprise, aTrierNonClient, pastillesEtapes, blocEtapes } from "./whatsapp-etapes.mjs";
+import { etapesDisponibles, conversationClient, filtresEtapes, estFiltreEtape, filtrerParEtape, dansEntreprise, aTrierNonClient, pastillesEtapes, blocEtapes, basculerIA } from "./whatsapp-etapes.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -100,7 +100,7 @@ function ligneConversation(c, prop, ouverte) {
           nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null
         )
       ),
-      filtre === FILTRE_PRET.valeur ? resumeLignePret(c) : null
+      filtre === FILTRE_PRET.valeur || filtre === "etape:pret" ? resumeLignePret(c) : null
     )
   );
 }
@@ -205,6 +205,8 @@ function menuConversation(c) {
       ici && !lectureSeule ? item(client ? tr("Changer le client relié") : tr("Relier un client"), () => ouvrirRelier(c)) : null,
       client ? item(tr("Ouvrir la fiche du client"), () => naviguer(`#/client/${client.id}`)) : null,
       etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Contact personnel : rien envoyé à l'IA"), () => basculerReponses(c)) : null,
+      // IA coupée pour cette conversation (migration 105), sans la classer en Contact personnel.
+      etapesDisponibles() && !lectureSeule && reponsesDe(c) !== "jamais" ? item(c.ia_coupee ? tr("Rallumer l'IA pour cette conversation") : tr("Couper l'IA pour cette conversation"), () => basculerIA(c, rafraichir)) : null,
       wa ? h("a", { class: "bouton secondaire", href: wa, target: "_blank", rel: "noopener", onclick: () => fermer() }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null
     ),
     { feuille: true, protege: false }
@@ -550,7 +552,7 @@ async function versAssistant(c, prop) {
 // la conversation, sinon celle proposée par le tri. Une conversation de l'Assistant déjà liée est rouverte. Rien ne part avant que la
 // personne tape ou choisisse sa question ; la fonction joint alors les derniers messages. Jamais pour un contact personnel.
 function boutonDemander(c, prop) {
-  if (!demandePermise(c)) return null;
+  if (!demandePermise(c) || c.ia_coupee) return null;
   const possible = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
   return possible ? h("button", { type: "button", class: "secondaire petit wa-demander", onclick: () => demanderAssistant(c, prop) }, icone("assistant", 16), tr("Demander à l'assistant")) : null;
 }
@@ -600,7 +602,7 @@ async function envoyerVoucherDuDossier(dossierId) {
 // « Prêt à réserver » (migration 85) : le même « Créer le dossier » que la fiche des faits, ou null.
 // Pour un client, l'entreprise est demandée à chaque fois (versAssistant) : il suffit qu'un des deux Assistants soit permis.
 const creerPret = (c, prop) =>
-  !lectureSeule && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
+  !lectureSeule && !c.ia_coupee && (clientCommun(c) ? entitesWhatsApp().some((e) => assistantDans(e.id)) : (!c.entite_id || c.entite_id === etat.entiteId) && (c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id)))) ? () => versAssistant(c, prop) : null;
 // `dossier` : celui de la fiche des faits (relié, ou trouvé par le client). « Mettre à jour » demande un dossier relié (l'Assistant ne lit que
 // lui) ; le voucher se fait dans l'entreprise ouverte.
 function actionsDossier(c, prop, dossier = null) {
@@ -610,7 +612,8 @@ function actionsDossier(c, prop, dossier = null) {
   const commun = clientCommun(c);
   const ici = commun || !c.entite_id || c.entite_id === etat.entiteId;
   const relie = c.entite_id === etat.entiteId ? dossierDe(c) : null;
-  const assistant = commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id);
+  // IA coupée pour cette conversation (migration 105) : l'Assistant ne s'ouvre plus depuis elle.
+  const assistant = !c.ia_coupee && (commun || !c.entite_id ? entitesWhatsApp().some((e) => assistantDans(e.id)) : assistantDans(c.entite_id));
   const voucherDe = dossier && dossier.entite_id === etat.entiteId ? dossier : null;
   const boutons = [
     assistant && ici ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), relie ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,
@@ -902,7 +905,7 @@ function carteVerifier(c, doute) {
 // au-dessus, en petit. Jamais pour un Contact personnel : rien de lui n'est envoyé à l'IA (revue de sécurité de la PR 299).
 function ligneSansReponse(c, messages) {
   const dernier = messages.length ? messages[messages.length - 1] : null;
-  const bouton = !lectureSeule && reponsesDe(c) !== "jamais" && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "principal wa-preparer", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, icone("assistant", 20), tr("Préparer une réponse")) : null;
+  const bouton = !lectureSeule && reponsesDe(c) !== "jamais" && dernier && dernier.sens === "entrant" && !c.ia_coupee && etat.store.whatsappPreparer ? h("button", { class: "principal wa-preparer", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, icone("assistant", 20), tr("Préparer une réponse")) : null;
   const raison = raisonSansReponse(c, messages);
   if (!bouton && !raison) return null;
   return h("div", { class: `wa-sans-reponse${bouton ? " avec-bouton" : ""}` }, raison ? h("p", { class: "wa-note" }, tr(raison)) : null, bouton);
