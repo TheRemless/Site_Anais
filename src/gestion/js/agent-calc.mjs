@@ -123,6 +123,8 @@ export function propositionDepuisCarte(donnees = {}) {
       prix_carte: s.offre && ["saisi", "client_non_corrige"].includes(s.origine_prix) && Number(s.prix) > 0 ? Number(s.prix) : null,
       // L'origine du prix, gardée jusqu'à la réservation (details.prix_origine) : un prix du client non corrigé ne lève jamais un net.
       prix_origine: ["saisi", "client_non_corrige"].includes(s.origine_prix) ? s.origine_prix : null,
+      // Le nombre de véhicules du devis calculé par Nani (devis-calc.mjs, appliquerDevis) : le dossier reprend le devis.
+      vehicules: Number.isInteger(Number(s.vehicules)) && Number(s.vehicules) > 1 ? Number(s.vehicules) : null,
       lieu_pickup: s.lieu_pickup || "",
       // Le numéro de vol lu par l'agent (contrôlé par la fonction) : posé sur la réservation du transfert, modifiable dans la fenêtre.
       vol: s.vol || "",

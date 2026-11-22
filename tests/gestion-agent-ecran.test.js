@@ -84,7 +84,8 @@ test("Assistant seule entrée : validation d'un geste par le code habituel, Tout
   const { readFileSync } = await import("node:fs");
   const lire = (f) => readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
   const agent = lire("views/agent.mjs");
-  assert.match(agent, /ouvrirDemande\(null, preparation\(c\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\} \}\)/, "dossier : la fiche de création, cachée");
+  // Le devis calculé sur la carte passe par donneesCarte (« Calculer le devis », 22.11.2026).
+  assert.match(agent, /ouvrirDemande\(null, preparation\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\} \}\)/, "dossier : la fiche de création, cachée");
   assert.match(agent, /formulaireReservation\(valeurs, /, "service et modification : le formulaire de réservation habituel");
   assert.match(agent, /function toutValider\(btn\)/);
   assert.match(agent, /envoyerVoucher\(x\)/, "voucher et WhatsApp après validation");
