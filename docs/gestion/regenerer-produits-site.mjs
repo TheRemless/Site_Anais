@@ -3,6 +3,7 @@
 // choisir le tarif d'une demande collée (demande-calc.mjs, tarifsDuSite) : l'option cochée sur le site donne le tarif, sans deviner.
 // Lecture seule du dépôt du site : rien n'y est écrit. À relancer quand une page produit, une option ou un prix est ajouté, renommé ou retiré :
 //   node docs/gestion/regenerer-produits-site.mjs ~/Desktop/Secrettravelandtour
+// Écrit aussi docs/gestion/prix-site-publies.sql (tarifs publiés par le site, liste blanche de prix_publics_site, voir prix-site-publies.mjs).
 // Par défaut le script lit la branche origin/main (ce qui est en ligne), pas la copie de travail.
 //
 // Chaque option porte :
@@ -17,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ecrirePublies } from "./prix-site-publies.mjs";
 
 const depot = path.resolve(process.argv[2] || "");
 if (!process.argv[2]) throw new Error("Donnez le chemin du dépôt du site (Secrettravelandtour).");
@@ -141,3 +143,6 @@ for (const k of Object.keys(cles).filter((k) => k.startsWith("taxi|"))) {
   else if (cles[k].prestation && !(page.tarifs || []).some((t) => t.ligne === ligne)) console.warn(`${k} : ligne de prix absente de la page.`);
 }
 console.log(`${produits.length} produits et ${n} lignes de prix reliées à Gestion écrits dans ${path.relative(process.cwd(), sortie)}`);
+// Liste blanche des prix publics (migration 117) : les tarifs que le site affiche, dans docs/gestion/prix-site-publies.sql, à exécuter après le oui.
+const publies = ecrirePublies(depot, ref);
+console.log(`${publies.ids.length} tarifs publiés par le site écrits dans ${path.relative(process.cwd(), publies.sortie)} (SQL à exécuter après le oui de Jérémy)`);
