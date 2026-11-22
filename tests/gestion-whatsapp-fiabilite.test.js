@@ -134,7 +134,8 @@ test("fonction whatsapp : reprise par le cron, essai compté à la réservation,
   assert.match(src, /await memeSecret\(jeton, secret\)/, "comparaison en temps constant");
   assert.match(src, /db\.rpc\("whatsapp_reserver_evenement", \{ p_id: id \}\)/, "réservation par la base, l'essai compté tout de suite");
   assert.doesNotMatch(src, /essais: Math\.min/, "plus d'incrément après coup");
-  assert.match(src, /interpreterStatut\(ev\) \|\| interpreter\(ev\)/);
+  // Migration 100 : le webhook du compte WhatsApp passe entre les statuts et les messages du profil.
+  assert.match(src, /interpreterStatut\(ev\) \|\| interpreterWaba\(ev\) \|\| interpreter\(ev\)/);
   assert.match(src, /\.eq\("statut_envoi", "envoi"\)\.lt\("envoye_le", limiteEnvoi\(\)\)/, "envois sans confirmation passés en échec après 5 minutes");
   assert.match(src, /if \(!conv\) throw new CibleAbsente\("original_introuvable"\);/, "I5 : conversation absente, repris");
   assert.match(src, /if \(!cible \|\| !cible\.length\) throw new CibleAbsente\("original_introuvable"\);/, "I5 : 0 ligne touchée, repris");

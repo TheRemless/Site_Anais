@@ -30,6 +30,8 @@ import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
+// Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
+import { estNonTransmis, repereManque, conversationManque, TEXTE_NON_TRANSMIS, LIBELLE_MANQUE } from "../whatsapp-calc.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -94,7 +96,9 @@ function ligneConversation(c, prop, ouverte) {
           att ? h("span", { class: `wa-attente${att.urgent ? " urgente" : ""}`, title: tr("Le client attend depuis {duree}", { duree: att.texte }), "aria-label": tr("Le client attend depuis {duree}", { duree: att.texte }) }, icone("horloge", 14), att.texte) : null,
           nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null
         )
-      )
+      ),
+      // Repère discret (migration 100) : effacé au prochain message du client.
+      conversationManque(c) ? h("span", { class: "wa-conv-manque" }, tr(LIBELLE_MANQUE)) : null
     )
   );
 }
@@ -690,6 +694,14 @@ function blocMedia(media) {
 }
 
 function bulle(m) {
+  // Repère discret avant une réponse de Nani : un message du client semble manquer avant elle (migration 100).
+  const repere = repereManque(m) ? h("p", { class: "wa-repere-manque" }, tr(LIBELLE_MANQUE)) : null;
+  // WhatsApp n'a pas transmis ce message du client : une ligne qui renvoie au téléphone, à la place de la bulle.
+  if (estNonTransmis(m)) return h("p", { class: "wa-bulle entrant wa-non-transmis", "data-message": m.id, role: "note" }, icone("alerte", 16), tr(TEXTE_NON_TRANSMIS, { heure: heureBangkok(m.envoye_le) }));
+  return repere ? [repere, bulleMessage(m)] : bulleMessage(m);
+}
+
+function bulleMessage(m) {
   const medias = Array.isArray(m.medias) ? m.medias : [];
   const texte = m.texte && !(medias.length && medias.some((x) => x.legende === m.texte)) ? m.texte : "";
   // Statut d'envoi (migration 64) : envoyé, remis, lu, ou non remis avec la raison de WhatsApp. Discret, à la suite de l'heure.

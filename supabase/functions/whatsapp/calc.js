@@ -1,6 +1,7 @@
 // Fonction « whatsapp » : la logique pure (signature Telnyx, lecture des événements, messages à ranger, médias à copier).
 // Aucune dépendance : le même fichier sert à la fonction Supabase et aux tests (tests/gestion-whatsapp.test.js).
-// Doc : docs/gestion/whatsapp.md. Événements Telnyx (coexistence) : message.received, message.echo, whatsapp.account.update.
+// Doc : docs/gestion/whatsapp.md. Événements Telnyx (coexistence) : message.received, message.echo, whatsapp.account.update ; webhook du compte
+// WhatsApp (whatsapp.messages, migration 100) : ./manquants.js.
 
 export const TAILLE_MAX = 1_000_000; // octets d'un événement ; un message WhatsApp en fait quelques milliers
 export const TOLERANCE_S = 300; // Telnyx : refuser un horodatage de plus de 5 minutes
@@ -61,11 +62,16 @@ export async function verifierSignature({ subtle, cle, signature, horodatage, co
 // Lit l'enveloppe d'un événement : { id, type, survenu_le, payload }. Lève « invalide » si ce n'est pas un événement Telnyx.
 export function lireEnveloppe(corps) {
   let j;
+  const texte = typeof corps === "string" ? corps : decoder.decode(corps);
   try {
-    j = JSON.parse(typeof corps === "string" ? corps : decoder.decode(corps));
+    j = JSON.parse(texte);
   } catch {
     throw erreur("json");
   }
+  // Webhook du compte WhatsApp (WABA) relayé tel quel au format Meta, sans enveloppe Telnyx (forme non documentée chez Telnyx : on accepte
+  // les deux). Id stable tiré du corps : un même envoi rejoué par Meta n'est gardé qu'une fois.
+  const meta = enveloppeMeta(j, texte);
+  if (meta) return meta;
   const d = j && typeof j === "object" ? j.data : null;
   if (!d || typeof d !== "object") throw erreur("invalide");
   const id = typeof d.id === "string" ? d.id : "";
@@ -73,6 +79,19 @@ export function lireEnveloppe(corps) {
   if (!/^[A-Za-z0-9._:-]{1,100}$/.test(id) || !/^[a-z0-9._]{1,60}$/i.test(type)) throw erreur("invalide");
   const survenu = dateIso(d.occurred_at);
   return { id, type, survenu_le: survenu, payload: d.payload && typeof d.payload === "object" ? d.payload : {}, brut: j };
+}
+
+// Corps Meta « { object: "whatsapp_business_account", entry: [...] } » : rendu comme un événement « whatsapp.messages ».
+function enveloppeMeta(j, texte) {
+  if (!j || typeof j !== "object" || j.object !== "whatsapp_business_account" || !Array.isArray(j.entry)) return null;
+  return { id: `meta-${empreinte(texte)}`, type: "whatsapp.messages", survenu_le: null, payload: j, brut: { data: { id: null, event_type: "whatsapp.messages", payload: j }, meta_brut: true } };
+}
+// FNV-1a sur 64 bits, en hexadécimal : un identifiant, pas une protection (la signature Telnyx a déjà été vérifiée).
+export function empreinte(texte) {
+  let h = 0xcbf29ce484222325n;
+  const octets = encoder.encode(String(texte));
+  for (const o of octets) h = BigInt.asUintN(64, (h ^ BigInt(o)) * 0x100000001b3n);
+  return h.toString(16).padStart(16, "0");
 }
 
 function erreur(code) {
@@ -109,6 +128,30 @@ export function texteSur(v, max = TEXTE_MAX) {
   const s = v.replace(CONTROLE, "").replace(/\r\n?/g, "\n");
   if (!s.trim()) return null;
   return Array.from(s).slice(0, max).join("");
+}
+
+// Identifiant WhatsApp du client propre à l'entreprise (BSUID, Meta, avril 2026) : « CH.1234… », ou « CH.ENT.1234… » pour un compte parent.
+// Présent dans tous les messages (body.from_user_id, body.to_user_id pour un écho, contacts[].user_id chez Meta), même quand le numéro manque.
+export function bsuidSur(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return /^[A-Z]{2}(\.ENT)?\.[A-Za-z0-9]{1,128}$/.test(s) ? s : null;
+}
+
+// Un message que WhatsApp n'a pas transmis : type « unsupported », ou erreur 131060 (message indisponible, cas de la coexistence) ou 131051
+// (type inconnu). Doc Meta, webhooks, référence « unsupported » (lue le 22.11.2026).
+export const CODES_NON_TRANSMIS = [131051, 131060];
+export function nonTransmis(body) {
+  if (!body || typeof body !== "object") return false;
+  if (body.type === "unsupported") return true;
+  const erreurs = Array.isArray(body.errors) ? body.errors : [];
+  return erreurs.some((e) => e && CODES_NON_TRANSMIS.includes(Number(e.code)));
+}
+// Le texte de la ligne gardée dans la conversation (heure de Bangkok, le fuseau de Nani). L'écran l'affiche traduit, à partir de l'heure.
+export function texteNonTransmis(iso) {
+  const t = Date.parse(iso || "");
+  const heure = Number.isFinite(t) ? new Date(t + 7 * 3600000).toISOString().slice(11, 16) : "?";
+  return `Message du client non transmis par WhatsApp, ${heure}. Ouvre WhatsApp sur le téléphone pour le lire.`;
 }
 
 const nomSur = (v) => (typeof v === "string" ? texteSur(v, 100)?.replace(/\s+/g, " ").trim() || null : null);
@@ -171,10 +214,11 @@ export function texteDe(body) {
   }
 }
 
-const typeSur = (t) => (typeof t === "string" && /^[a-z_]{1,30}$/.test(t) ? t : "inconnu");
+export const typeSur = (t) => (typeof t === "string" && /^[a-z_]{1,30}$/.test(t) ? t : "inconnu");
 
 // Ce qu'il faut faire d'un événement. Rend l'une de :
-//   { action: "message", telephone, entreprise, nom, message }    nouveau message entrant ou sortant à ranger
+//   { action: "message", telephone, bsuid, entreprise, nom, message }  nouveau message entrant ou sortant à ranger (numéro ou BSUID)
+//   { action: "non_transmis", … comme message }                   message du client que WhatsApp n'a pas transmis : ligne visible
 //   { action: "modifier", original, texte, quand }                 le client a modifié un message (15 minutes chez Meta)
 //   { action: "supprimer", original, quand }                       le client a supprimé un message pour tous
 //   { action: "compte", etat }                                     whatsapp.account.update
@@ -193,23 +237,28 @@ export function interpreter(ev) {
   const destinataire = Array.isArray(p.to) ? p.to[0] : p.to;
   const client = e164(echo ? destinataire : p.from) || (!echo ? e164(body.from) : null);
   const entreprise = e164(echo ? p.from : destinataire);
-  if (!client) return { action: "ignorer", raison: "numero" };
+  // Un client sans numéro (nom d'utilisateur WhatsApp, numéro masqué) reste reconnu par son BSUID.
+  const bsuid = bsuidSur(echo ? body.to_user_id : body.from_user_id);
+  if (!client && !bsuid) return { action: "ignorer", raison: "numero" };
   const quand = dateMessage(body, ev.survenu_le);
   if (body.type === "edit") {
     const original = body.edit?.original_message_id;
     if (typeof original !== "string" || !original) return { action: "ignorer", raison: "edit" };
-    return { action: "modifier", telephone: client, original: original.slice(0, 200), texte: texteSur(body.edit?.message?.text?.body), quand };
+    return { action: "modifier", telephone: client, bsuid, original: original.slice(0, 200), texte: texteSur(body.edit?.message?.text?.body), quand };
   }
   if (body.type === "revoke") {
     const original = body.revoke?.original_message_id;
     if (typeof original !== "string" || !original) return { action: "ignorer", raison: "revoke" };
-    return { action: "supprimer", telephone: client, original: original.slice(0, 200), quand };
+    return { action: "supprimer", telephone: client, bsuid, original: original.slice(0, 200), quand };
   }
   const telnyxId = typeof p.id === "string" ? p.id.slice(0, 100) : null;
   const metaId = typeof body.foreign_id === "string" ? body.foreign_id.slice(0, 200) : typeof body.id === "string" && body.id.startsWith("wamid.") ? body.id.slice(0, 200) : null;
+  // Message que WhatsApp n'a pas transmis à Telnyx (sans son texte) : une ligne visible, Nani le lit sur le téléphone.
+  const manque = !echo && nonTransmis(body);
   return {
-    action: "message",
+    action: manque ? "non_transmis" : "message",
     telephone: client,
+    bsuid,
     entreprise,
     nom: echo ? null : nomProfil(p),
     message: {
@@ -218,9 +267,9 @@ export function interpreter(ev) {
       meta_id: metaId,
       sens: echo ? "sortant" : "entrant",
       origine: echo ? "app" : "client",
-      type: typeSur(body.type),
-      texte: texteDe(body),
-      medias: mediasDe(body),
+      type: manque ? "non_transmis" : typeSur(body.type),
+      texte: manque ? texteNonTransmis(quand) : texteDe(body),
+      medias: manque ? [] : mediasDe(body),
       envoye_le: quand,
       repond_a: typeof body.context?.id === "string" ? body.context.id.slice(0, 200) : null,
     },

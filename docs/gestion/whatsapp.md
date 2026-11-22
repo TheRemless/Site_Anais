@@ -9,6 +9,7 @@ Le numéro WhatsApp de Secret Travel & Tour et VIP Taxi Lanta est relié à Teln
 | `message.received` | un client écrit, modifie ou supprime un message | `whatsapp_messages`, sens « entrant » |
 | `message.echo` | Nani répond depuis l'app WhatsApp Business | `whatsapp_messages`, sens « sortant », origine « app » |
 | `whatsapp.account.update` | compte déconnecté, reconnecté ou retiré | `whatsapp_reglages.etat_compte` |
+| `whatsapp.messages` | webhook du compte WhatsApp (WABA), copie de Meta | rattrapage d'un message que le profil n'a pas reçu, ou ligne « non transmis » (migration 100) |
 
 L'historique de 6 mois et les contacts ne sont pas transmis. Telnyx les consomme lui-même et ne les envoie à aucun webhook (doc Telnyx « Coexistence Webhooks », section des événements internes). Aucune API Telnyx ne permet de les relire. Gestion commence donc au premier message reçu après le branchement.
 
@@ -184,6 +185,20 @@ Demande de Jérémy : l'image du voucher part par Telnyx dans la conversation Wh
 - **Risque accepté : l'image n'est pas liée au voucher.** La fonction vérifie que la personne peut envoyer le voucher de cette réservation dans la conversation de ce client, mais pas que l'image reçue est bien ce voucher. Une personne qui a ces droits (administratrice de Secret ou de Taxi) pourrait envoyer une autre image au client par ce bouton. Elle le peut déjà depuis l'app de son téléphone ; la légende reste contrôlée.
 - **Fonctions à redéployer** : `whatsapp-envoi` et `whatsapp`. Contrôle : `verif-whatsapp-voucher.mjs`. Retour : `retour-73-whatsapp-voucher.sql`.
 
+## Messages de clients non transmis (migration 100, 22.11.2026)
+
+Constat du 22.11 : des messages de clients visibles dans l'app de Nani n'arrivent jamais à la fonction, sans aucune tentative dans le journal « Webhook Deliveries » de Telnyx. Causes probables selon la doc Meta : erreur 131060 en coexistence (message indisponible, typique du premier message d'un client) qui ne donne qu'un webhook `unsupported` sans texte, ou un appareil compagnon que Meta ne relaie pas (Telnyx : « best-effort conversation visibility, not a complete message archive »). Il n'existe pas d'API d'historique : Gestion récupère ce que Meta envoie encore et signale le reste.
+
+- **Webhook du compte WhatsApp.** Branché le 22.11 sur la même fonction, événements « Messages » et « Account Updates ». Telnyx y relaie les messages sous `whatsapp.messages`, forme non documentée : `manquants.js` cherche l'objet `value` de Meta dans l'enveloppe Telnyx, et `calc.js` (`enveloppeMeta`) accepte aussi le corps Meta relayé tel quel (id `meta-<empreinte du corps>`). Une enveloppe inconnue est refusée (400) avec ses seules clés de premier niveau dans les journaux de la fonction.
+  - Même wamid déjà reçu par `message.received` : rien.
+  - Message reçu seulement ici : rattrapage, rangé comme un message normal. Il attend 2 minutes que `message.received` arrive le premier (cet essai ne compte pas) : l'id Telnyx sert aux modifications et suppressions. S'il arrive après le rattrapage, `whatsapp_ranger` note son id Telnyx.
+  - Modification ou suppression : appliquée comme par `message.received`, jamais rangée comme un nouveau message.
+  - Statuts d'envoi : ignorés (déjà reçus par `message.finalized`).
+- **Ligne « non transmis ».** Un `unsupported`, ou l'erreur 131060 ou 131051, par l'un ou l'autre webhook, range une ligne (type `non_transmis`) : « Message du client non transmis par WhatsApp, {heure}. Ouvre WhatsApp sur le téléphone pour le lire. » Elle compte un non-lu et apparaît dans la liste, sans réponse préparée, sans suivi, sans notification. Si le vrai message arrive ensuite avec le même wamid, il la remplace.
+- **Client sans numéro.** Meta omet le numéro d'un client qui a un nom d'utilisateur et n'a pas écrit depuis 30 jours ; le BSUID (`from_user_id`, `to_user_id` pour un écho, forme `CH.1234…`) est toujours là. La conversation garde son BSUID (`whatsapp_conversations.bsuid`), le numéro devient facultatif, et elle est retrouvée par lui quand le numéro manque. Un envoi depuis Gestion vers une conversation sans numéro est refusé par `whatsapp_ranger` avant tout appel à Telnyx. Limite connue : si le client écrit d'abord sans numéro alors qu'une ancienne conversation porte déjà son numéro sans BSUID, les deux conversations restent séparées (le remplissage du BSUID par la migration rend ce cas rare).
+- **Repérage sans webhook.** Quand Nani répond depuis l'app alors que le message d'avant était déjà à elle et date de plus de 6 heures, ou qu'elle cite un message inconnu de Gestion, sa réponse porte le repère « Un message du client semble manquer » (`whatsapp_messages.repere`) et la carte aussi (`whatsapp_conversations.manque_le`, effacé au prochain message du client). Aucune IA, aucune notification. Sur les messages du 20 au 22.11, la règle des 6 heures s'est déclenchée 6 fois sur 298 réponses de Nani, dont les 2 pertes connues du même client (21.11 et 22.11).
+- **Fonction à redéployer** : `whatsapp`. Contrôle : `verif-whatsapp-manquants.mjs`. Retour : `retour-100-whatsapp-manquants.sql`.
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature
@@ -208,7 +223,7 @@ Portail Telnyx, Messaging, Messaging Profiles : ouvrir le profil du numéro What
 
 ### 4. Webhook sur le compte WhatsApp (WABA)
 
-Portail Telnyx, WhatsApp, le compte de Nani, Settings : même adresse dans Webhook URL. Événements : cocher `account_update` seulement. Ne pas cocher `messages`, sinon chaque message arrive deux fois.
+Portail Telnyx, WhatsApp, le compte de Nani, Settings : même adresse dans Webhook URL. Événements : `account_update` et `messages` (branché le 22.11.2026). Chaque message arrive alors deux fois, une fois par webhook : la fonction ne garde que le premier (même wamid) et range celui que seul le compte a reçu (migration 100).
 
 ### 5. Essai
 

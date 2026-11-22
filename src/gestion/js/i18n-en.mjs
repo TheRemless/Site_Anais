@@ -274,6 +274,10 @@ export const EN = {
   "Photo envoyée par le client": "Photo sent by the client",
   "modifié": "edited",
   "Supprimé par le client": "Deleted by the client",
+  // Messages manquants (migration 100).
+  "Message du client non transmis par WhatsApp, {heure}. Ouvre WhatsApp sur le téléphone pour le lire.": "Client message not passed on by WhatsApp, {heure}. Open WhatsApp on the phone to read it.",
+  "Un message du client semble manquer": "A client message seems to be missing",
+  "Message non transmis": "Message not passed on",
   "Réaction": "Reaction",
   "Copié": "Copied",
   "Réponse copiée. Collez-la dans WhatsApp.": "Reply copied. Paste it into WhatsApp.",
