@@ -538,7 +538,7 @@ test("fichier supprimé : au statut « remis », « lu » ou « échec », par l
   const wa = lire("supabase/functions/whatsapp/index.ts");
   assert.match(wa, /if \(statutLibereFichier\(a\.statut\)\) for \(const m of msgs\) await effacerSortant\(db, m\.id, m\.medias \|\| \[\]\);/);
   assert.match(wa, /const chemins = cheminsSortants\(medias, ORGANISATION\);/);
-  assert.match(wa, /select\("id, statut_envoi, medias"\)/);
+  assert.match(wa, /select\("id, statut_envoi, medias(?:, meta_id)?"\)/);
   assert.match(wa, /await purgerSortants\(db\)\.catch/, "à chaque passage de la reprise (toutes les 5 minutes)");
   assert.ok(wa.indexOf("await purgerSortants(db)") < wa.indexOf("await purger(db)"), "pas seulement une fois par heure");
 });

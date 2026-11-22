@@ -60,7 +60,8 @@ export const morceauxReponse = (texte) => String(texte || "").split(/\n\s*\n/).m
 // sinon le numéro. Même ordre que l'Assistant (agent-whatsapp-lecture.mjs, nomContact), qui n'envoie jamais le numéro.
 export { nomSaisi };
 export function nomConversation(conv, client = null) {
-  return nomContact(conv, client) || numeroAffiche((conv && conv.telephone) || "");
+  // Client sans numéro (migration 100) : son BSUID, faute de mieux (le nom du profil WhatsApp arrive presque toujours avec).
+  return nomContact(conv, client) || numeroAffiche((conv && conv.telephone) || "") || ((conv && conv.bsuid) || "");
 }
 // Le nom tel que la base le garde (déclencheur whatsapp_nom_manuel, migration 70) : caractères invisibles (U+200B à U+200F, U+202A à U+202E,
 // U+2060 à U+2069, U+FEFF) retirés, espaces et caractères de contrôle réduits à une espace, 60 caractères au plus. Vide : null (le nom
@@ -285,7 +286,20 @@ export const LIBELLES_TYPE = {
   location: N_("Position"),
   contacts: N_("Contact"),
   inconnu: N_("Message que Gestion ne sait pas afficher"),
+  non_transmis: N_("Message non transmis"),
 };
+
+// Messages manquants (migration 100). Ligne gardée quand WhatsApp n'a pas transmis le message du client (type non_transmis), et repère
+// discret sur une réponse de Nani avant laquelle un message du client semble manquer (repere) ou sur la carte (manque_le). Sans IA.
+export const TEXTE_NON_TRANSMIS = N_("Message du client non transmis par WhatsApp, {heure}. Ouvre WhatsApp sur le téléphone pour le lire.");
+export const LIBELLE_MANQUE = N_("Un message du client semble manquer");
+export const estNonTransmis = (m) => !!m && m.type === "non_transmis";
+export const repereManque = (m) => !!m && m.repere === "semble_manquer";
+export const conversationManque = (c) => !!c && !!c.manque_le;
+// Même client (même BSUID) qui écrit depuis un autre numéro : la conversation de l'ancien numéro (migration 100). Jamais de changement de
+// numéro automatique : Nani décide.
+export const LIBELLE_NOUVEAU_NUMERO = N_("Nouveau numéro pour ce client");
+export const ancienneConversation = (c, conversations = []) => (c && c.meme_client_que ? conversations.find((x) => x.id === c.meme_client_que) || null : null);
 export const libelleType = (type) => LIBELLES_TYPE[type] || LIBELLES_TYPE.inconnu;
 export const ORIGINES = { app: N_("depuis l'app"), gestion: N_("depuis Gestion") };
 

@@ -196,7 +196,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     let nomDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
+      // manque_le, bsuid, meme_client_que (migration 100, message du client qui semble manquer, nouveau numéro) : relues sans elles tant que
+      // la migration n'est pas appliquée.
+      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source, manque_le, bsuid, meme_client_que`);
+      if (r.error && ["manque_le", "bsuid", "meme_client_que"].some((c) => colonneAbsente(r.error, c))) r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
       if (r.error && colonneAbsente(r.error, "nom_source")) {
         nomDisponible = false;
         r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);
@@ -397,9 +400,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // lui (FENETRE_MESSAGE avant et après), ajoutée aux 500 derniers. Aussi ancien soit-il, il est trouvé.
     async whatsappMessages(conversationId, { inclure = "" } = {}) {
       const base = "id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le";
-      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`;
+      // repere (migration 100) : relu sans lui tant que la migration n'est pas appliquée.
+      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere`;
       const requete = (cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId);
       let r = await requete(colonnes).order("envoye_le", { ascending: false }).limit(500);
+      if (colonneAbsente(r.error, "repere")) r = await requete((colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`)).order("envoye_le", { ascending: false }).limit(500);
       if (colonneAbsente(r.error, "statut_envoi")) r = await requete((colonnes = base)).order("envoye_le", { ascending: false }).limit(500);
       const lus = verifie(r).reverse();
       if (!inclure || lus.length < 500 || lus.some((m) => m.id === inclure)) return lus;
