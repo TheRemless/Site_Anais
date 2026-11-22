@@ -35,7 +35,8 @@ const donnees = {
   dossiers: [{ id: DOS, ref: "2026-0002", client_id: "c2000000-0000-4000-8000-000000000002", annule: false }],
   reservations: [{ id: RES, dossier_id: DOS, libelle: "Transfer Lanta → Krabi Airport", date_service: "2026-12-03", heure_pickup: "09:00", lieu_pickup: "Hotel Exemple", personnes: { adultes: 2, enfants: 1 }, statut: "confirme", sieges: "1", bagages: "2", remarques_voucher: "Call on arrival" }],
 };
-const ctx = (extra = {}) => ({ charger: async (n) => donnees[n] || [], reglages: {}, simule: tempsSimule, ...extra });
+// Secret par défaut (fonctionnement « excursions ») : les sièges se demandent pour un transfert.
+const ctx = (extra = {}) => ({ charger: async (n) => donnees[n] || [], reglages: { fonctionnement: "excursions" }, simule: tempsSimule, ...extra });
 const memo = (extra = {}) => ({ prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer: false, prestataires: ["Navette Exemple"], entreprise: "Test", textes: ["Flight FD3217 tomorrow"], ...extra });
 // Le service d'une course de l'exemple du 22.11.2026 (rendu fictif) : 2 bagages, ferry inclus, espèces au chauffeur, heure d'arrivée.
 const REMARQUE = "Ferry included. Cash payment to the driver. Expected arrival 13:26 (latest 13:36).";
@@ -207,4 +208,111 @@ test("carte de l'Assistant : les deux colonnes « Sur le voucher » et « Intern
   assert.match(agent, /h\("strong", null, tr\("Interne"\)\)/);
   assert.match(agent, /siegesTexte\(s, d\), bagagesTexte\(s\)/);
   assert.match(agent, /sieges_a_choisir: N_\(/);
+});
+
+// ---- Relecture « pas prêt » de la PR 327 : un test par constat ------------------------------------------------------------------------
+test("relecture 1 : un net collé à son mot (net1200, NET900THB, marge300, commission300, comm 300, Netto 900, เน็ต 900) reste en note interne", async () => {
+  for (const t of ["net1200", "NET900THB", "marge300", "commission300", "comm 300", "Netto 900", "เน็ต 900"]) {
+    assert.equal(remarqueInterne(t, memo()), true, t);
+    const carte = await executer("proposer_dossier", dossierCarte([service({ sans_siege: true, remarque_voucher: `Driver ${t}` })]), ctx(), memo());
+    assert.equal(carte.carte.donnees.services[0].remarque_voucher, "", `${t} : jamais sur le voucher`);
+    assert.match(carte.carte.donnees.services[0].note_interne, new RegExp(t.replace(/\s/, "\\s")), `${t} : en note interne`);
+  }
+  // Un net collé compte aussi près du mot pour le contrôle des montants (montantsPresDuNet, MOT_COUT).
+  const { montantsPresDuNet } = await import("../supabase/functions/agent/outils.js");
+  assert.ok(montantsPresDuNet("net 1200").has(1200));
+  assert.equal(remarqueInterne("Internet at the hotel", memo()), false, "« Internet » n'est pas un net");
+});
+
+test("relecture 2 : un mot distinctif d'un nom de partenaire suffit (« Brown's van » pour « Mr Brown »), jamais un mot commun", async () => {
+  const { partenairesCitesParMot } = await import("../supabase/functions/agent/outils.js");
+  assert.deepEqual(partenairesCitesParMot("Brown's van picks you up", ["Mr Brown"]), ["Mr Brown"]);
+  assert.deepEqual(partenairesCitesParMot("BROWN will wait", ["Mr Brown"]), ["Mr Brown"], "casse ignorée");
+  assert.deepEqual(partenairesCitesParMot("Mr Smith will wait", ["Mr Brown"]), [], "« Mr » ne désigne personne");
+  assert.deepEqual(partenairesCitesParMot("Tour included", ["Lanta Sun Tour Co"]), [], "« Tour » ni « Co »");
+  assert.deepEqual(partenairesCitesParMot("Browne road", ["Mr Brown"]), [], "mot entier");
+  assert.equal(remarqueInterne("Brown's van, cash to the driver", memo({ prestataires: ["Mr Brown"] })), true);
+});
+
+test("relecture 3 : écran de Mook, le choix des sièges n'est exigé que pour une nouvelle course, des enfants changés ou un choix effacé", async () => {
+  const { erreursVoucher } = await import("../src/gestion/js/voucher-rapide-calc.mjs");
+  const v = { nom: "Exemple Client", date: "2026-12-03", pickup: "Hotel Exemple", heure: "09:00", dropoff: "Krabi Airport", adultes: "2", enfants: "1", prix: "2500" };
+  const avant = { personnes: { adultes: 2, enfants: 1 }, details: {} };
+  assert.equal(erreursVoucher(v).sieges, "e_sieges_choix", "nouvelle course");
+  assert.equal(erreursVoucher(v, { avant }).sieges, undefined, "course d'avant corrigée sans toucher aux enfants");
+  assert.equal(erreursVoucher({ ...v, enfants: "2" }, { avant }).sieges, "e_sieges_choix", "enfants changés");
+  assert.equal(erreursVoucher(v, { avant: { ...avant, details: { sieges: 1 } } }).sieges, "e_sieges_choix", "choix effacé");
+  assert.match(lire("src/gestion/js/views/voucher-rapide.mjs"), /erreursVoucher\(v, \{ avant: cible \? cible\.reservation : null \}\)/);
+});
+
+test("relecture 4 : la création complète contrôle les sièges (10 au plus, choix avec un enfant)", async () => {
+  const { avecSiegesRequis } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  const transfert = { type: "transfert", personnes: { adultes: 2, enfants: 1 } };
+  const tour = { type: "activite", personnes: { adultes: 2, enfants: 1 } };
+  const p = avecSiegesRequis([transfert, tour], [{ ligneIds: ["l1"], sieges: 0, personnes: null, details: {} }, { ligneIds: ["l2"], sieges: 0, personnes: null, details: {} }]);
+  assert.deepEqual(p.map((x) => x.siegesRequis), [true, false]);
+  assert.deepEqual(siegesIncomplets(p), { index: 0, ligneIds: ["l1"], champ: "sieges", code: "e_sieges_choix" });
+  assert.equal(siegesIncomplets([{ ...p[0], details: { sans_siege: true } }, p[1]]), null);
+  assert.equal(siegesIncomplets([{ ...p[0], sieges: 6, details: { sieges_bebe: 5 } }]).code, "e_sieges_max");
+  assert.equal(avecSiegesRequis([tour], [{ ligneIds: ["l3"], details: {} }], { taxi: true })[0].siegesRequis, true, "chez Taxi, toute course");
+  assert.match(lire("src/gestion/js/views/nouveau-excursions.mjs"), /trajetIncomplet\(parService\) \|\| siegesIncomplets\(parService\)/);
+});
+
+test("relecture 5 : demande collée et formulaire du site, « Baby seat needed » et « Child seat needed » donnent un siège, les bagages vont sur le voucher", async () => {
+  const { siegesDemande, notesDemande } = await import("../src/gestion/js/demande-calc.mjs");
+  assert.deepEqual(siegesDemande({ siegeBebe: true }), { sieges: 0, sieges_bebe: 1 });
+  assert.deepEqual(siegesDemande({ siegeEnfant: true }), { sieges: 1, sieges_bebe: 0 });
+  assert.deepEqual(siegesDemande({ siegeEnfant: true, sieges: 2 }), { sieges: 2, sieges_bebe: 0 }, "un nombre donné l'emporte");
+  const d = { heure: "14:30", siegeEnfant: true, siegeBebe: true, bagages: 3 };
+  const notes = notesDemande(d, { surLeVoucher: true });
+  assert.doesNotMatch(notes, /Bags|Child seat|Baby seat/, "plus dans les notes chez Secret et Taxi");
+  assert.match(notes, /Pickup time: 14:30/);
+  assert.match(notesDemande(d), /Bags: 3/, "ZTP (pas de voucher pour cela) : notes comme avant");
+  const demande = lire("src/gestion/js/views/demande.mjs");
+  assert.match(demande, /const sd = siegesDemande\(d\);/);
+  assert.match(demande, /nonVides\(\{ bagages: d\.bagages \? String\(d\.bagages\) : "", sieges_bebe: carteSieges \? 0 : sd\.sieges_bebe \}\)/);
+  assert.match(demande, /notesDemande\(plusieurs \? \{ \.\.\.d, heure: "" \} : d, \{ surLeVoucher: modeExcursions\(\) \}\)/);
+});
+
+test("relecture 6 : sieges_requis, la fonction et l'écran d'accord (Taxi hors espace unifié, Secret, ZTP)", async () => {
+  const { siegesRequisDuService, fonctionnementDuService } = await import("../supabase/functions/agent/outils.js");
+  const transfert = { famille: "transfert" };
+  const tour = { famille: "excursion" };
+  assert.equal(siegesRequisDuService({ p: tour, fonctionnement: "taxi" }), true, "Taxi : toute course, comme champsCreation({ taxi })");
+  assert.equal(siegesRequisDuService({ p: transfert, fonctionnement: "excursions" }), true);
+  assert.equal(siegesRequisDuService({ p: tour, fonctionnement: "excursions" }), false);
+  assert.equal(siegesRequisDuService({ p: null, fonctionnement: "excursions" }), true, "hors catalogue : un transfert privé");
+  assert.equal(siegesRequisDuService({ p: transfert, fonctionnement: "sur_mesure" }), false, "ZTP : pas de sièges imprimés");
+  assert.equal(fonctionnementDuService({ reglages: { fonctionnement: "taxi" } }), "taxi");
+  assert.equal(fonctionnementDuService({ reglages: {} }), "sur_mesure");
+  // De bout en bout : chez Taxi (hors espace unifié), une prestation du catalogue avec un enfant demande les sièges.
+  const taxi = await executer("proposer_dossier", dossierCarte([service({ ref: refDe("P", donnees.prestations[1].id), vol: "" })]), ctx({ reglages: { fonctionnement: "taxi" } }), memo());
+  assert.ok(taxi.carte.avertissements.includes("sieges_a_choisir"));
+  assert.equal(siegesAChoisir(taxi.carte), true);
+  const ztp = await executer("proposer_dossier", dossierCarte([service()]), ctx({ reglages: { fonctionnement: "sur_mesure" } }), memo());
+  assert.equal(siegesAChoisir(ztp.carte), false);
+});
+
+test("relecture 7 : « 1 infant car seat » est un siège bébé, « 1 booster » un siège enfant, « child seat not needed » vaut aucun siège", async () => {
+  const { lirePassagers } = await import("../src/gestion/js/confirmation-calc.mjs");
+  const lu = (t) => { const p = lirePassagers(t); return [p.enfants, p.sieges, p.sieges_bebe, p.sans_siege]; };
+  assert.deepEqual(lu("2 adults, 1 child, 1 infant car seat"), ["1", "", "1", ""], "l'infant seat ne compte pas un enfant de plus");
+  assert.deepEqual(lu("2 adults, 1 child, 1 booster"), ["1", "1", "", ""]);
+  assert.deepEqual(lu("2 adults, 1 child, child seat not needed"), ["1", "", "", "oui"]);
+  assert.deepEqual(lu("2 adults, 1 child, car seat: no"), ["1", "", "", "oui"]);
+  assert.deepEqual(lu("2 adults + 1 kid + luggage"), ["1", "", "", ""], "« 1 kid » n'est pas un siège");
+});
+
+test("relecture 8 : après le rebase, les alertes d'âge de la PR 324 restent dans majAlertes, EN_CARNET et EN_VOUCHER restent fusionnés", () => {
+  const demande = lire("src/gestion/js/views/demande.mjs");
+  const debut = demande.indexOf("function majAlertes(");
+  const corps = demande.slice(debut, demande.indexOf("\n  }\n", debut));
+  for (const code of ["ages_manquants", "age_enfant_sans_tarif", "age_enfant"]) assert.match(corps, new RegExp(`offre\\.avertissement === "${code}"`), code);
+  assert.match(corps, /Âges des enfants manquants/);
+  assert.match(corps, /Enfant ou bébé : choisissez child seat, baby seat ou aucun siège\./);
+  // majService ne garde plus sa propre liste d'alertes : une seule source, redite à chaque frappe.
+  assert.equal((demande.match(/const alertes = \[\];/g) || []).length, 1);
+  const en = lire("src/gestion/js/i18n-en.mjs");
+  assert.match(en, /import \{ EN_CARNET \} from "\.\/i18n-en-carnet\.mjs";/);
+  assert.match(en, /import \{ EN_VOUCHER \} from "\.\/i18n-en-voucher\.mjs";/);
 });

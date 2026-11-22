@@ -5,7 +5,7 @@
 import { RETOUR_DEPART, lireDuree, dureeInvalide, libelleRetourDepart } from "./trajet-calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { prestataires } from "./apporteurs-calc.mjs";
-import { siegesLus } from "./sieges-calc.mjs";
+import { siegesLus, siegesChoisis } from "./sieges-calc.mjs";
 
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
@@ -148,7 +148,9 @@ export const telephoneValide = (t) => {
 };
 
 // Contrôle avant l'aperçu : { champ: code d'erreur } (codes de TH, « e_… »). Vide = tout est bon.
-export function erreursVoucher(v) {
+// `avant` : la réservation d'une course déjà créée que l'on corrige (null pour une nouvelle course). Le choix des sièges n'y est exigé que si
+// les enfants changent ou si un choix déjà posé est effacé, comme siegesExiges de la fiche de réservation (relecture de la PR 327).
+export function erreursVoucher(v, { avant = null } = {}) {
   const e = {};
   // Retour au point de départ : pas de drop-off, mais un programme obligatoire (en anglais, il s'imprime) et une durée lisible si elle est donnée.
   for (const c of ["nom", "pickup", estRetour(v) ? "programme" : "dropoff"]) {
@@ -172,11 +174,18 @@ export function erreursVoucher(v) {
   if (Number.isNaN(s)) e.sieges = "e_nombre";
   else if (Number.isNaN(sb)) e.sieges_bebe = "e_nombre";
   else if (s + sb > 0 && !Number.isNaN(enf) && s + sb > enf) e.sieges = "e_sieges";
-  else if (!Number.isNaN(enf) && enf > 0 && s + sb === 0 && v.sans_siege !== "oui") e.sieges = "e_sieges_choix";
+  else if (!Number.isNaN(enf) && enf > 0 && s + sb === 0 && v.sans_siege !== "oui" && siegesExigesCourse(avant, enf)) e.sieges = "e_sieges_choix";
   if (prixSaisi(v.prix) === null) e.prix = "e_prix";
   if (!telephoneValide(v.telephone)) e.telephone = "e_tel";
   if (estRetour(v) && dureeInvalide(v.duree)) e.duree = "e_duree";
   return e;
+}
+
+// Une nouvelle course exige le choix des sièges ; une course corrigée, seulement si ses enfants changent ou si un choix posé est effacé.
+export function siegesExigesCourse(avant, enfants) {
+  if (!avant) return true;
+  const p = avant.personnes || {};
+  return (Number(enfants) || 0) !== (Number(p.enfants) || 0) + (Number(p.bebes) || 0) || siegesChoisis(siegesLus(avant.details || {}));
 }
 
 // Le libellé d'une course : son trajet, tel que le voucher, la facture et la fiche le disent.

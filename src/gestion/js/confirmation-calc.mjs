@@ -124,11 +124,16 @@ export function lirePassagers(texte) {
     return vu ? n : null;
   };
   // Par type (22.11.2026) : « child / car / booster seat » pour un enfant, « baby / infant seat » pour un bébé ; « no child seat » : aucun.
-  const sieges = somme(new RegExp(`\\b${N}\\s*(?:child|car|booster)\\s*seats?\\b`, "g"));
-  const siegesBebe = somme(new RegExp(`\\b${N}\\s*(?:baby|infant)\\s*seats?\\b`, "g"));
-  const sansSiege = /\b(?:no|without)\s+(?:child|car|baby|booster|infant)?\s*seats?\b|\bno\s+seat\s+needed\b/.test(t);
+  // « 1 infant car seat » est un siège bébé ; « 1 booster » un siège enfant (relecture de la PR 327).
+  const SIEGE_BEBE = `\\b${N}\\s*(?:baby|infant)\\s*(?:car\\s*)?seats?\\b`;
+  const SIEGE_ENFANT = `\\b${N}\\s*(?:(?:child|kids?|toddler)\\s*(?:car\\s*)?seats?|car\\s*seats?|booster(?:\\s*seats?)?)\\b`;
+  const sieges = somme(new RegExp(SIEGE_ENFANT, "g"));
+  const siegesBebe = somme(new RegExp(SIEGE_BEBE, "g"));
+  // « no child seat », « without car seat », « child seat not needed », « no seat needed ».
+  const AUCUN = /\b(?:no|without)\s+(?:child|car|baby|booster|infant)?\s*(?:car\s*)?seats?(?:\s+needed)?\b|\b(?:child|car|baby|booster|infant)\s*(?:car\s*)?seats?:?\s+(?:not\s+(?:needed|required)|no|none)\b/g;
+  const sansSiege = new RegExp(AUCUN.source).test(t);
   // Les sièges retirés, pour que « 1 child seat » ne compte pas un enfant de plus.
-  const sansSieges = t.replace(new RegExp(`\\b${N}\\s*(?:child|car|baby|booster|infant)\\s*seats?\\b`, "g"), " ").replace(/\b(?:no|without)\s+(?:child|car|baby|booster|infant)?\s*seats?(?:\s+needed)?\b/g, " ");
+  const sansSieges = t.replace(new RegExp(SIEGE_BEBE, "g"), " ").replace(new RegExp(SIEGE_ENFANT, "g"), " ").replace(AUCUN, " ");
   const compte = (re) => {
     let n = 0;
     let vu = false;

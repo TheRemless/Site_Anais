@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, adresseEstHotel } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -265,7 +265,11 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const site = d.type === "transfer";
     // Les sièges du service (carte de l'Assistant, 22.11.2026) passent avant ceux du formulaire du site.
     // Jamais chez ZTP : ses vouchers n'impriment pas de sièges (relecture de la PR 315).
-    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: modeExcursions() ? Number(sv.sieges) || (site ? Number(d.sieges) || 0 : 0) : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
+    // Formulaire du site et message collé (relecture de la PR 327) : « Child seat needed » ou « Baby seat needed » sans nombre donnent un
+    // siège ; les bagages vont dans details.bagages, plus dans les notes du dossier (notesDemande, surLeVoucher).
+    const sd = siegesDemande(d);
+    const carteSieges = Number(sv.sieges) > 0 || !!(sv.voucherCarte && (sv.voucherCarte.sieges_bebe || sv.voucherCarte.sans_siege));
+    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: modeExcursions() ? Number(sv.sieges) || (carteSieges ? 0 : sd.sieges) : 0, details: { ...(site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "" }) : {}), ...(modeExcursions() ? nonVides({ bagages: d.bagages ? String(d.bagages) : "", sieges_bebe: carteSieges ? 0 : sd.sieges_bebe }) : site ? nonVides({ bagages: d.bagages ? String(d.bagages) : "" }) : {}) } };
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
     // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
     if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
@@ -515,7 +519,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const plusieurs = parService.length > 1;
     // Prix convenu dans « Modifier » (un seul service) : la facture prend ce total, l'écart va sur la première ligne.
     const finales = prixImpose !== null && !plusieurs ? imposerTotal(lignes, prixImpose) : lignes;
-    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: [notesDemande(plusieurs ? { ...d, heure: "" } : d), d.remarquesIA].filter(Boolean).join("\n"), lignes: finales, parService, reservation: parService[0] || {} };
+    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: [notesDemande(plusieurs ? { ...d, heure: "" } : d, { surLeVoucher: modeExcursions() }), d.remarquesIA].filter(Boolean).join("\n"), lignes: finales, parService, reservation: parService[0] || {} };
   }
 
   // Un retour au point de départ sans programme (ou à durée illisible) : le bloc du service se déplie et le champ prend le focus.

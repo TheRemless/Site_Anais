@@ -164,7 +164,7 @@ export function vueVoucherRapide() {
 
     function verifier() {
       const v = { ...Object.fromEntries(CHAMPS.map((c) => [c, champs[c].type === "checkbox" ? (champs[c].checked ? "oui" : "") : champs[c].value])), client_id: clientId, entite_id: etat.entiteId };
-      const e = erreursVoucher(v);
+      const e = erreursVoucher(v, { avant: cible ? cible.reservation : null });
       for (const c of CHAMPS) {
         erreurs[c].hidden = !e[c];
         erreurs[c].textContent = e[c] ? TH[e[c]] : "";

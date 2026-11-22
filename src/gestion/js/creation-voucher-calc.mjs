@@ -125,6 +125,14 @@ export function siegesIncomplets(parService = []) {
   }
   return null;
 }
+// La création complète (nouveau-excursions.mjs) : chaque service dont la fiche montre les sièges (transfert de Secret, toute course de Taxi)
+// les exige avec un enfant ou un bébé ; ses personnes sont celles de la saisie, sinon celles des lignes du service.
+export function avecSiegesRequis(services = [], parService = [], { taxi = false } = {}) {
+  return parService.map((x, i) => {
+    const sv = services[i] || {};
+    return { ...x, personnes: x.personnes || sv.personnes || null, siegesRequis: champsCreation(sv, { taxi }).includes("sieges") };
+  });
+}
 // Plus de sièges que d'enfants et de bébés : à vérifier (le nombre d'enfants peut être inconnu), jamais refusé.
 export const siegesEnTrop = ({ sieges = 0, enfants = 0, bebes = 0 } = {}) => (Number(sieges) || 0) > (Number(enfants) || 0) + (Number(bebes) || 0);
 export function trajetIncomplet(parService = []) {

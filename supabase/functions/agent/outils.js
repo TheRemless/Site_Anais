@@ -1344,7 +1344,8 @@ export function montantsDeNani(blocs = []) {
 // qui parle de « net », « nett », « cost », « coût », « commission », « marge », « margin », « prix d'achat », « agent rate », « contract
 // rate », « B2B », « tarif agence » ou « prix agence » est interne : « Rattana net 1,000/pax », « Rattana tour 1,000 THB (net rate) »
 // (revue de sécurité de la PR 306).
-const MOT_COUT = /(?<![a-z0-9])(?:nets?|nett|costs?|couts?|commissions?|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat)(?![a-z0-9])/;
+// Le mot s'arrête devant un chiffre (relecture de la PR 327) : « net1200 », « NET900THB », « marge300 » sont des nets collés à leur mot.
+const MOT_COUT = /(?<![a-z])(?:nets?|nett|netto|costs?|couts?|commissions?|comm|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat|เน็ต)(?![a-z])/;
 export function montantsPresDuNet(t) {
   const out = new Set();
   for (const phrase of String(t || "").split(/\n+|(?<=[.!?;])\s+/)) if (MOT_COUT.test(sansAccents(phrase))) for (const n of montantsDuTexte(phrase)) if (n > 0) out.add(n);
@@ -1517,8 +1518,9 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     // Les sièges par type (22.11.2026, sieges-calc.mjs) : enfant (details.sieges), bébé (details.sieges_bebe), ou « aucun siège »
     // (details.sans_siege), imprimés sur le voucher, la Booking confirmation et l'écran du chauffeur. « Aucun » ne vaut qu'en l'absence de siège.
     ...siegesDuService(s),
-    // Un transfert (catalogue ou hors catalogue) : avec un enfant ou un bébé, le choix des sièges est fait avant de valider la carte.
-    ...(!t && (!p || p.famille === "transfert" || entreprise.entreprise === "taxi") ? { sieges_requis: true } : {}),
+    // Un transfert (catalogue ou hors catalogue) : avec un enfant ou un bébé, le choix des sièges est fait avant de valider la carte. Même
+    // règle que l'écran (champsCreation) : toute course chez Taxi, un transfert chez Secret, jamais ailleurs (ZTP n'imprime pas de sièges).
+    ...(siegesRequisDuService({ p, t, fonctionnement: fonctionnementDuService(ctx, entreprise) }) ? { sieges_requis: true } : {}),
     // Les bagages : un nombre, dans details.bagages, que le voucher imprime déjà.
     bagages: entier(s.bagages, 99),
     prix,
@@ -1537,6 +1539,20 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
 // sinon ceux du dossier quand le service ne donne personne ; les bébés du dossier. Même règle que l'écran (agent-calc.mjs, siegesAChoisir).
 export function siegesAChoisirServices(services = [], { enfants = 0, bebes = 0 } = {}) {
   return services.some((s) => s && s.sieges_requis && !(s.sieges || s.sieges_bebe || s.sans_siege) && (Number(s.enfants) || (Number(s.adultes) ? 0 : Number(enfants) || 0)) + (Number(bebes) || 0) > 0);
+}
+// Le fonctionnement de l'entreprise du service : en espace unifié, celle choisie pour le service (« taxi », « secret ») ; sinon celui des
+// réglages de la conversation (« taxi », « excursions » pour Secret, « sur_mesure » pour ZTP). "" quand l'entreprise reste à choisir.
+export function fonctionnementDuService(ctx = {}, entreprise = {}) {
+  if (estUnifie(ctx)) return entreprise.entreprise === "taxi" ? "taxi" : entreprise.entreprise === "secret" ? "excursions" : "";
+  return (ctx.reglages && typeof ctx.reglages.fonctionnement === "string" && ctx.reglages.fonctionnement) || "sur_mesure";
+}
+// Les sièges se demandent là où l'écran les montre (relecture de la PR 327) : toute course de Taxi (hors billet de bateau d'un trajet), un
+// transfert chez Secret (prestation « transfert » ou hors catalogue). Entreprise encore à choisir : un transfert, comme Secret.
+export function siegesRequisDuService({ p = null, t = null, fonctionnement = "" } = {}) {
+  if (t) return false;
+  if (fonctionnement === "taxi") return true;
+  if (fonctionnement === "excursions" || fonctionnement === "") return !p || p.famille === "transfert";
+  return false;
 }
 // Les sièges d'un service de carte : { sieges, sieges_bebe, sans_siege }. Un nombre illisible compte 0 ; « aucun » seulement sans siège.
 export function siegesDuService(s = {}) {
@@ -1559,9 +1575,17 @@ export function remarqueInterne(t, memo = {}) {
   if (MOT_INTERNE.test(sansAccents(m)) || montantsPresDuNet(m).size) return true;
   if (montants.some((x) => internes.has(x) || nets.bloquants.has(x) || nets.autres.has(x))) return true;
   if (memo.controleImpossible === true && montants.length) return true;
-  return partenairesCites(m, memo.prestataires || []).length > 0;
+  return partenairesCites(m, memo.prestataires || []).length > 0 || partenairesCitesParMot(m, memo.prestataires || []).length > 0;
 }
-const MOT_INTERNE = /(?<![a-z0-9])(?:nett?|commissions?|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat)(?![a-z0-9])/;
+// Un mot qui ne peut être qu'interne, même collé à un chiffre (« net1200 », « commission300 », « comm 300 », « Netto 900 », « เน็ต 900 »).
+const MOT_INTERNE = /(?<![a-z])(?:nets?|nett|netto|commissions?|comm|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat|เน็ต)(?![a-z])/;
+// Les mots d'un nom de partenaire qui ne le désignent pas seuls : titres, formes de société, métiers et lieux courants.
+const MOTS_COMMUNS_NOM = new Set(["mr", "mrs", "ms", "miss", "mister", "khun", "co", "ltd", "limited", "company", "group", "the", "and", "of", "by", "tour", "tours", "travel", "trip", "trips", "taxi", "taxis", "van", "vans", "minivan", "car", "cars", "rent", "rental", "boat", "boats", "speedboat", "ferry", "transfer", "transfers", "service", "services", "private", "express", "shop", "pier", "airport", "hotel", "resort", "island", "islands", "beach", "koh", "lanta", "krabi", "phuket", "thailand", "dive", "diving"]);
+// Un nom de partenaire cité par l'un de ses mots distinctifs, en mot entier, casse et accents ignorés : « Brown's van » cite « Mr Brown ».
+export function partenairesCitesParMot(t, noms = []) {
+  const plat = ` ${sansAccents(t).replace(/[^a-z0-9\u0e00-\u0e7f]+/g, " ")} `;
+  return noms.filter((n) => sansAccents(n).replace(/[^a-z0-9\u0e00-\u0e7f]+/g, " ").split(" ").some((w) => w.length >= 3 && !MOTS_COMMUNS_NOM.has(w) && !/^\d+$/.test(w) && plat.includes(` ${w} `)));
+}
 // Rend { remarque_voucher, note_interne } ; une ancienne carte (« remarque » seule) reste une note interne, comme avant.
 export function remarquesDuService(s = {}, memo = {}, avert = []) {
   const voucher = texte(s.remarque_voucher, 300);

@@ -81,7 +81,8 @@ test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusq
   assert.deepEqual(services.map((s) => s.sieges), [2, undefined]);
   // Fiche de création (views/demande.mjs) : le service garde ses sièges dans sa saisie, posée sur la réservation (creation-excursions.mjs).
   const demande = lire("src/gestion/js/views/demande.mjs");
-  assert.match(demande, /sieges: modeExcursions\(\) \? Number\(sv\.sieges\) \|\| \(site \? Number\(d\.sieges\) \|\| 0 : 0\) : 0/, "plus seulement pour une demande du site");
+  // Les sièges de la carte passent avant ceux de la demande (formulaire du site ou message collé, siegesDemande), jamais chez ZTP.
+  assert.match(demande, /sieges: modeExcursions\(\) \? Number\(sv\.sieges\) \|\| \(carteSieges \? 0 : sd\.sieges\) : 0/, "plus seulement pour une demande du site");
   assert.match(demande, /vol: t\.vol \|\| "", sieges: Number\(t\.sieges\) \|\| 0,/, "le service de l'Assistant porte ses sièges");
   assert.match(demande, /sieges: v\.sieges, details/, "la réservation reçoit la saisie");
   assert.match(lire("src/gestion/js/views/creation-excursions.mjs"), /\.\.\.\(sieges \? \{ sieges: Number\(sieges\) \} : \{\}\)/);
