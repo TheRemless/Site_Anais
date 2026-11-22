@@ -47,21 +47,21 @@ test("heure du message : 9:30 en anglais, 9h30 en français", async () => {
 
 test("message de Secret : anglais, heure et lieu, sans signature ni prix", async () => {
   const { messagePickup } = await load();
-  const { texte } = messagePickup({ reservation: resa({ montant_vente: 1200 }), client: { prenom: "Mark" }, langue: "en", mode: "excursions" });
-  assert.equal(texte, "Hello Mark, see you tomorrow for 4 Islands by longtail, full day. Pickup at 9:30 at Pimalai Resort.");
+  const { texte } = messagePickup({ reservation: resa({ montant_vente: 1200 }), client: { prenom: "Noah" }, langue: "en", mode: "excursions" });
+  assert.equal(texte, "Hello Noah, see you tomorrow for 4 Islands by longtail, full day. Pickup at 9:30 at Pimalai Resort.");
   assert.doesNotMatch(texte, /1200|1,200|Nani|Secret|Travel/);
 });
 
 test("message de Taxi : le transfert, le pickup et la dépose", async () => {
   const { messagePickup } = await load();
-  const { texte } = messagePickup({ reservation: resa({ libelle: "Transfer Koh Lanta - Krabi Airport", details: { drop_off: "Krabi Airport" } }), client: { prenom: "Lena" }, langue: "en", mode: "taxi" });
-  assert.equal(texte, "Hello Lena, your transfer tomorrow: pickup at 9:30 at Pimalai Resort, drop-off at Krabi Airport.");
+  const { texte } = messagePickup({ reservation: resa({ libelle: "Transfer Koh Lanta - Krabi Airport", details: { drop_off: "Krabi Airport" } }), client: { prenom: "Mia" }, langue: "en", mode: "taxi" });
+  assert.equal(texte, "Hello Mia, your transfer tomorrow: pickup at 9:30 at Pimalai Resort, drop-off at Krabi Airport.");
 });
 
 test("message de ZTP : en français, au vouvoiement de la fiche de voix, sans signature", async () => {
   const { messagePickup } = await load();
-  const { texte } = messagePickup({ reservation: resa({ libelle: "Transfert vers Krabi" }), client: { prenom: "Claire" }, langue: "fr", mode: "voyages" });
-  assert.equal(texte, "Bonjour Claire, demain, Transfert vers Krabi : prise en charge à 9h30 à Pimalai Resort.");
+  const { texte } = messagePickup({ reservation: resa({ libelle: "Transfert vers Krabi" }), client: { prenom: "Sofia" }, langue: "fr", mode: "voyages" });
+  assert.equal(texte, "Bonjour Sofia, demain, Transfert vers Krabi : prise en charge à 9h30 à Pimalai Resort.");
 });
 
 test("sans heure ou sans lieu : aucun message, le service est signalé", async () => {
@@ -72,18 +72,18 @@ test("sans heure ou sans lieu : aucun message, le service est signalé", async (
 
 test("sans lieu sur la réservation, l'hôtel de la fiche du client (sans la chambre)", async () => {
   const { messagePickup } = await load();
-  const { texte } = messagePickup({ reservation: resa({ lieu_pickup: "" }), client: { prenom: "Mark", adresse: "Lanta Sand Resort, Room 12", entite_id: "e-secret" }, langue: "en" });
+  const { texte } = messagePickup({ reservation: resa({ lieu_pickup: "" }), client: { prenom: "Noah", adresse: "Lanta Sand Resort, Room 12", entite_id: "e-secret" }, langue: "en" });
   assert.match(texte, /at Lanta Sand Resort\.$/);
   assert.doesNotMatch(texte, /Room 12/);
 });
 
 test("aucun nom de partenaire vers le client : lieu bloqué, libellé retiré, dépose retirée", async () => {
   const { messagePickup } = await load();
-  const noms = ["Rattana", "Mr. Brown"];
-  assert.deepEqual(messagePickup({ reservation: resa({ lieu_pickup: "Rattana Pier" }), noms }), { texte: null, raison: "lieu_partenaire" });
-  const t1 = messagePickup({ reservation: resa({ libelle: "Transfert par Mr. Brown" }), client: { prenom: "Mark" }, noms }).texte;
-  assert.equal(t1, "Hello Mark, see you tomorrow. Pickup at 9:30 at Pimalai Resort.");
-  const t2 = messagePickup({ reservation: resa({ details: { drop_off: "Rattana Pier" } }), client: {}, mode: "taxi", noms }).texte;
+  const noms = ["Sea Star", "Driver Somchai"];
+  assert.deepEqual(messagePickup({ reservation: resa({ lieu_pickup: "Sea Star Pier" }), noms }), { texte: null, raison: "lieu_partenaire" });
+  const t1 = messagePickup({ reservation: resa({ libelle: "Transfert par Driver Somchai" }), client: { prenom: "Noah" }, noms }).texte;
+  assert.equal(t1, "Hello Noah, see you tomorrow. Pickup at 9:30 at Pimalai Resort.");
+  const t2 = messagePickup({ reservation: resa({ details: { drop_off: "Sea Star Pier" } }), client: {}, mode: "taxi", noms }).texte;
   assert.equal(t2, "Hello, your transfer tomorrow: pickup at 9:30 at Pimalai Resort.");
 });
 
@@ -91,7 +91,7 @@ test("envoi d'un geste : direct dans la fenêtre de 24 h, sinon wa.me, sinon rie
   const { moyenEnvoi } = await load();
   const conv = { id: "c1", telephone: "+66812345678" };
   assert.deepEqual(moyenEnvoi({ conversation: conv, fenetre: { ouverte: true }, texte: "Hello" }), { genre: "direct", conversation_id: "c1" });
-  assert.deepEqual(moyenEnvoi({ conversation: conv, fenetre: { ouverte: false }, texte: "Hello Mark" }), { genre: "lien", lien: "https://wa.me/66812345678?text=Hello%20Mark" });
+  assert.deepEqual(moyenEnvoi({ conversation: conv, fenetre: { ouverte: false }, texte: "Hello Noah" }), { genre: "lien", lien: "https://wa.me/66812345678?text=Hello%20Noah" });
   assert.deepEqual(moyenEnvoi({ conversation: null, telephone: "+41 79 123 45 67", texte: "Hi" }), { genre: "lien", lien: "https://wa.me/41791234567?text=Hi" });
   assert.equal(moyenEnvoi({ conversation: null, telephone: "", texte: "Hi" }), null);
   assert.equal(moyenEnvoi({ conversation: conv, fenetre: { ouverte: true }, texte: "  " }), null);
@@ -175,10 +175,10 @@ test("la fonction « rappels » (18h et H-1) n'est pas touchée par le point du 
 test("noms interdits : partenaires et contacts WhatsApp typés, jamais un client", async () => {
   const { nomsInterdits, messagePickup } = await load();
   const noms = nomsInterdits({
-    partenaires: [{ nom: "Rattana" }, { nom: "AB" }],
-    conversations: [{ nom: "Pimalai front desk", type_contact: "hotel" }, { nom: "Lea", type_contact: "client" }, { nom: "Mr Brown", partenaire_id: "p1" }, { nom: "Tom" }],
+    partenaires: [{ nom: "Sea Star" }, { nom: "AB" }],
+    conversations: [{ nom: "Pimalai front desk", type_contact: "hotel" }, { nom: "Ava", type_contact: "client" }, { nom: "Driver Somchai", partenaire_id: "p1" }, { nom: "Tom" }],
   });
-  assert.deepEqual(noms, ["Rattana", "Pimalai front desk", "Mr Brown"]);
+  assert.deepEqual(noms, ["Sea Star", "Pimalai front desk", "Driver Somchai"]);
   assert.equal(messagePickup({ reservation: resa({ lieu_pickup: "Pimalai front desk" }), noms }).raison, "lieu_partenaire");
 });
 
