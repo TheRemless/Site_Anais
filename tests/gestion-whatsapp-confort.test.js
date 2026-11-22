@@ -77,7 +77,8 @@ test("à trier ne bloque plus : l'Assistant s'ouvre dans l'entreprise suggérée
   assert.equal(entreprisePourAssistant({ conv: { entite_id: null }, choix: [], activeId: "x" }), null, "aucun Assistant allumé : on demande");
   const vue = source("src/gestion/js/views/whatsapp.mjs");
   const vers = vue.slice(vue.indexOf("async function versAssistant"), vue.indexOf("// Le voucher du dossier relié"));
-  assert.doesNotMatch(vers, /modifier\("whatsapp_conversations"/, "plus de rangement avant l'Assistant");
+  // Jamais rangée avant l'Assistant ; un client rangé dans l'autre entreprise redevient seulement commun (entite_id vide, 22.11.2026).
+  assert.doesNotMatch(vers, /modifier\("whatsapp_conversations", c\.id, \{ entite_id: (?!null)/, "plus de rangement avant l'Assistant");
   assert.doesNotMatch(vue, /Rangez la conversation pour la relier/);
 });
 

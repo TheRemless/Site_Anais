@@ -13,6 +13,9 @@
 --      l'entreprise de la conversation, ou d'une des deux pour une conversation à trier. En lecture seule et pour Mook : aucune ligne.
 --   3. whatsapp_pret_outil (déclencheur) : une personne connectée ne réécrit jamais pret_reserver ; la fonction (clé de service) ne touche
 --      jamais pret_retire_le. Les fonctions de déclencheur ne s'exécutent pas en direct : execute retiré à public, anon et authenticated.
+-- 4. whatsapp_reclasser : un client (non typé ou « client », sans fiche partenaire) peut être relié à une fiche et à un dossier de Secret
+--    comme de Taxi sans être rangé (relier ne range jamais la conversation d'un client dans une seule entreprise). Jamais ZTP. Depuis l'outil,
+--    seulement dans une entreprise que la personne administre.
 -- Le dossier relié fait sortir la conversation du filtre à l'écran. Un dossier du même client créé depuis le prix donné mais pas relié la
 -- laisse dans le filtre avec « Relier au dossier » (une seule écriture : entite_id, client_id, dossier_id, contrôlés par whatsapp_reclasser).
 -- L'Assistant ne lit pas ces colonnes (outils de supabase/functions/agent inchangés). Rien sur les nets, les commissions ni l'argent ici.
@@ -49,7 +52,7 @@ end $$;
 -- Depuis l'outil, seulement le retrait (pret_retire_le). pret_reserver n'a aucun droit d'écriture pour authenticated.
 grant update (pret_retire_le) on whatsapp_conversations to authenticated;
 
--- 3. Qui écrit quoi.
+-- 3. Qui écrit quoi (décision et retrait).
 create or replace function whatsapp_pret_outil() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if auth.uid() is not null then
@@ -69,5 +72,64 @@ $$;
 revoke all on function whatsapp_pret_outil() from public, anon, authenticated;
 drop trigger if exists whatsapp_pret_outil on whatsapp_conversations;
 create trigger whatsapp_pret_outil before update on whatsapp_conversations for each row execute function whatsapp_pret_outil();
+
+-- 4. Un client appartient à Secret et à Taxi (relecture du 22.11.2026) : relier un dossier ne range jamais la conversation d'un client
+--    dans une seule entreprise. whatsapp_reclasser (dernière version : migration 72) accepte, pour un client, la fiche et le dossier de
+--    Secret comme de Taxi, que la conversation soit à trier ou rangée. Le reste est inchangé (non-lus, source du classement, propositions
+--    remplacées, recherche du client au changement d'entreprise).
+create or replace function whatsapp_reclasser() returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  trouve record;
+  commun boolean;
+begin
+  if auth.uid() is not null then
+    if new.non_lus > old.non_lus then new.non_lus := old.non_lus; end if;
+    if new.entite_id is distinct from old.entite_id then
+      new.entite_source := case when coalesce(current_setting('gestion.rangement_client', true), '') = new.id::text then 'client' else 'manuel' end;
+    elsif new.entite_source is distinct from old.entite_source and new.entite_source <> 'manuel' then
+      new.entite_source := old.entite_source;
+    end if;
+  end if;
+  -- Migration 85 : un client (contact non typé ou « client », sans fiche partenaire) appartient à Secret et à Taxi. Sa fiche et son dossier
+  -- peuvent être de l'une ou de l'autre, même si la conversation est à trier ou rangée dans l'autre : jamais de ZTP ni d'une autre
+  -- organisation. Depuis l'outil, seulement une fiche ou un dossier d'une entreprise que la personne administre (whatsapp_admin), sauf si
+  -- le lien ne change pas. Un autre contact garde la règle d'avant : la fiche et le dossier de l'entreprise de la conversation.
+  -- Lu par to_jsonb : la fonction reste valable si une colonne de la migration 68 manque (contrôle du retour de la 68).
+  commun := coalesce(to_jsonb(new)->>'type_contact', 'client') = 'client' and to_jsonb(new)->>'partenaire_id' is null and (to_jsonb(new)->>'reponses') is distinct from 'jamais';
+  if new.client_id is not null and not (
+    (new.entite_id is not null and exists (select 1 from clients where id = new.client_id and entite_id = new.entite_id))
+    or (commun and exists (
+      select 1 from clients k join entites x on x.id = k.entite_id
+      where k.id = new.client_id and x.organisation_id = new.organisation_id and x.slug in ('secret', 'taxi')
+        and (auth.uid() is null or whatsapp_admin(x.id) or new.client_id is not distinct from old.client_id)
+    ))
+  ) then
+    new.client_id := null;
+  end if;
+  if new.dossier_id is not null and not (
+    (new.entite_id is not null and exists (select 1 from dossiers where id = new.dossier_id and entite_id = new.entite_id and (new.client_id is null or client_id = new.client_id)))
+    or (commun and exists (
+      select 1 from dossiers d join entites x on x.id = d.entite_id
+      where d.id = new.dossier_id and x.organisation_id = new.organisation_id and x.slug in ('secret', 'taxi')
+        and (new.client_id is null or d.client_id = new.client_id)
+        and (auth.uid() is null or whatsapp_admin(x.id) or new.dossier_id is not distinct from old.dossier_id)
+    ))
+  ) then
+    new.dossier_id := null;
+  end if;
+  -- Changement d'entreprise : la réponse préparée avec les données de l'autre entreprise n'est plus proposée.
+  if new.entite_id is distinct from old.entite_id then
+    update whatsapp_propositions set statut = 'remplacee'
+    where conversation_id = new.id and statut in ('a_faire', 'en_cours') and entite_id is distinct from new.entite_id;
+  end if;
+  if new.entite_id is distinct from old.entite_id and new.entite_id is not null and new.client_id is null then
+    select t.client_id, t.dossier_id into trouve from whatsapp_trouver_client(new.organisation_id, new.telephone) t where t.entite_id = new.entite_id;
+    new.client_id := trouve.client_id;
+    new.dossier_id := coalesce(new.dossier_id, trouve.dossier_id);
+  end if;
+  return new;
+end
+$$;
+revoke all on function whatsapp_reclasser() from public, anon;
 
 commit;

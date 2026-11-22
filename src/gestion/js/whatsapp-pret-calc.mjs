@@ -21,42 +21,62 @@ export function decisionPret(c) {
   return p;
 }
 
+// Les dossiers qui comptent : seulement ceux de Secret ou de Taxi (`marqueDe(entite_id)` rend « secret », « taxi » ou null). ZTP ne se mélange
+// jamais : un dossier ZTP n'est ni proposé à la liaison, ni pris pour le dossier de cette réservation.
+const dansBoite = (d, marqueDe) => !!d && !d.annule && ["secret", "taxi"].includes(marqueDe(d.entite_id));
+// Les fiches du même client : la fiche reliée et celles du même numéro.
+function fichesDuClient(c, clients = []) {
+  const siens = new Set(clients.filter((x) => x && ((c.client_id && x.id === c.client_id) || memeNumero(x.telephone, c.telephone))).map((x) => x.id));
+  if (c.client_id) siens.add(c.client_id);
+  return siens;
+}
+const depuisDe = (p) => {
+  const le = Date.parse(p.le);
+  return Number.isNaN(Date.parse(p.depuis || "")) ? le : Date.parse(p.depuis);
+};
+
 // La conversation est-elle à montrer dans « Prêt à réserver » ? Rend la décision, ou null.
+// Elle sort quand le dossier de CETTE réservation est relié : le dossier relié a été créé depuis le prix donné. Un dossier relié plus ancien
+// (client qui revient, arrivée puis transfert retour) ne l'exclut pas. Sans les dossiers chargés, un dossier relié compte comme celui-ci.
 // `retrait` à false : sans compter le retrait de Nani (pour lui proposer « Remettre »).
-export function pretAReserver(c, { retrait = true } = {}) {
+export function pretAReserver(c, { dossiers = null, marqueDe = () => null, retrait = true } = {}) {
   const p = decisionPret(c);
   if (!p) return null;
   if (c.reponses === "jamais" || c.partenaire_id || TYPES_EXCLUS.includes(String(c.type_contact || ""))) return null;
   if (c.tri && typeof c.tri === "object" && MOTIFS_TRI_EXCLUS.includes(c.tri.motif)) return null;
-  if (c.dossier_id) return null;
   const le = Date.parse(p.le);
   const retire = c.pret_retire_le ? Date.parse(c.pret_retire_le) : NaN;
   if (retrait && !Number.isNaN(retire) && retire >= le) return null;
+  if (c.dossier_id) {
+    if (!dossiers) return null;
+    const relie = dossiers.find((d) => d && d.id === c.dossier_id);
+    if (relie && dansBoite(relie, marqueDe) && Date.parse(relie.created_at || "") >= depuisDe(p)) return null;
+  }
   return p;
 }
 
-// Le dossier déjà créé pour cette réservation mais pas relié à la conversation, ou null. Nani crée souvent le dossier avant d'envoyer la
-// confirmation (deux minutes avant, cas réel C36) : un dossier non annulé du client (fiche reliée ou même numéro) créé depuis le prix donné.
-// Le plus récent. `dossiers` et `clients` : ceux des entreprises de la boîte (Secret et Taxi).
-export function dossierARelier(c, { dossiers = [], clients = [] } = {}) {
+// Le dossier déjà créé pour cette réservation mais pas relié à la conversation, ou null : un dossier de Secret ou de Taxi, non annulé, du
+// même client (fiche reliée ou même numéro), créé depuis le prix donné, autre que le dossier déjà relié. Nani crée souvent le dossier avant
+// d'envoyer la confirmation (deux minutes avant, cas réel C36). Le plus récent.
+export function dossierARelier(c, { dossiers = [], clients = [], marqueDe = () => null } = {}) {
   const p = decisionPret(c);
-  if (!p || c.dossier_id) return null;
-  const le = Date.parse(p.le);
-  const depuis = Number.isNaN(Date.parse(p.depuis || "")) ? le : Date.parse(p.depuis);
-  const siens = new Set(clients.filter((x) => x && ((c.client_id && x.id === c.client_id) || memeNumero(x.telephone, c.telephone))).map((x) => x.id));
-  if (c.client_id) siens.add(c.client_id);
-  const trouves = dossiers.filter((d) => d && !d.annule && siens.has(d.client_id) && Date.parse(d.created_at || "") >= depuis);
+  if (!p) return null;
+  const depuis = depuisDe(p);
+  const siens = fichesDuClient(c, clients);
+  const trouves = dossiers.filter((d) => dansBoite(d, marqueDe) && d.id !== c.dossier_id && siens.has(d.client_id) && Date.parse(d.created_at || "") >= depuis);
   return trouves.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
 }
-// Le patch qui relie : une conversation à trier est rangée dans l'entreprise du dossier en même temps (whatsapp_reclasser, migration 59,
-// garde la fiche et le dossier seulement s'ils sont de cette entreprise). Une conversation rangée ailleurs n'est pas déplacée : null.
+// La conversation d'un client appartient à Secret et à Taxi : relier un dossier ne la range jamais dans une seule entreprise. Le lien vaut
+// pour un dossier de Secret comme de Taxi (whatsapp_reclasser, migration 85) ; une conversation déjà rangée dans l'autre entreprise redevient
+// commune. Pour un contact qui n'est pas un client, rien (le filtre ne le montre pas).
+export const clientCommun = (c) => !!c && (!c.type_contact || c.type_contact === "client") && !c.partenaire_id && c.reponses !== "jamais";
 export function patchRelier(c, d) {
-  if (!c || !d || (c.entite_id && c.entite_id !== d.entite_id)) return null;
-  return { ...(c.entite_id ? {} : { entite_id: d.entite_id }), client_id: d.client_id, dossier_id: d.id };
+  if (!c || !d || !clientCommun(c)) return null;
+  return { ...(c.entite_id && c.entite_id !== d.entite_id ? { entite_id: null } : {}), client_id: d.client_id, dossier_id: d.id };
 }
-export const conversationsPretes = (conversations = []) => conversations.filter((c) => pretAReserver(c));
+export const conversationsPretes = (conversations = [], ctx = {}) => conversations.filter((c) => pretAReserver(c, ctx));
 // Retirée par Nani, et sinon toujours prête : la conversation ouverte propose « Remettre ».
-export const pretRetire = (c) => !pretAReserver(c) && !!pretAReserver(c, { retrait: false });
+export const pretRetire = (c, ctx = {}) => !pretAReserver(c, ctx) && !!pretAReserver(c, { ...ctx, retrait: false });
 
 // La carte pré-remplie, dans l'ordre d'une fiche de réservation. Seulement des textes courts écrits dans la conversation.
 export const CHAMPS_CARTE = [

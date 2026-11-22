@@ -19,8 +19,9 @@
 //     (« Transfer request: », « Customer: ») ni un rappel d'un service déjà réservé (« the driver is confirmed »).
 //   Sort : une annulation du client après le signal (« cancel », « no longer need », « changed our plans »), ou une
 //   annulation écrite par Nani (« I have cancelled »). Le dossier créé et le retrait par Nani se lisent à l'écran.
-//   Exclu d'office : Contact personnel (réponses « jamais »), partenaire, chauffeur, hôtel, apporteur, fiche partenaire reliée, et un tri
-//   « personnel », « partenaire » ou « publicite » (supabase/functions/whatsapp/proposer.js).
+//   Exclu d'office ici : le Contact personnel (réponses « jamais ») seulement, dont rien n'est lu. Partenaire, chauffeur, hôtel, apporteur,
+//   fiche partenaire reliée et tri « personnel », « partenaire » ou « publicite » sont écartés à l'écran (whatsapp-pret-calc.mjs), sur leur
+//   valeur du moment : un contact remis en Client est repris tout de suite, sans attendre un nouveau message (relecture du 22.11.2026).
 
 export const TYPES_EXCLUS = ["partenaire", "chauffeur", "hotel", "apporteur"];
 export const MOTIFS_TRI_EXCLUS = ["personnel", "partenaire", "publicite", "contact_jamais"];
@@ -179,12 +180,9 @@ const vivants = (messages = []) =>
     .filter((m) => m && !m.supprime_le && m.type !== "reaction")
     .sort((a, b) => String(a.envoye_le).localeCompare(String(b.envoye_le)));
 
-// La conversation peut-elle entrer ? Jamais un contact personnel, un partenaire ou un tri qui dit « pas un client ».
+// La conversation est-elle lue ? Jamais un Contact personnel. Le type du contact et le tri sont jugés à l'écran, sur leur valeur du moment.
 export function conversationPossible(conv) {
-  if (!conv || conv.reponses === "jamais" || conv.partenaire_id) return false;
-  if (TYPES_EXCLUS.includes(String(conv.type_contact || ""))) return false;
-  const motif = conv.tri && typeof conv.tri === "object" ? conv.tri.motif : null;
-  return !MOTIFS_TRI_EXCLUS.includes(motif);
+  return !!conv && conv.reponses !== "jamais";
 }
 
 // Le signal porté par un message, ou null. `avant` : les messages vivants qui le précèdent (du plus ancien au plus récent).

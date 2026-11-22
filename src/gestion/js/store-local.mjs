@@ -373,9 +373,13 @@ export function creer() {
       if (apres.entite_id && !adminWhatsApp(apres.entite_id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
       patch.entite_source = "manuel";
     }
-    const client = apres.client_id ? data.clients.find((c) => c.id === apres.client_id && c.entite_id === apres.entite_id) : null;
+    // Comme whatsapp_reclasser (migration 85) : un client appartient à Secret et à Taxi, sa fiche et son dossier peuvent être de l'une ou de
+    // l'autre (que la personne administre), même dans une conversation à trier ; ailleurs, seulement de l'entreprise de la conversation.
+    const commun = (!apres.type_contact || apres.type_contact === "client") && !apres.partenaire_id && apres.reponses !== "jamais";
+    const entiteOk = (id) => (commun ? !!id && (id === apres.entite_id || adminWhatsApp(id)) : id === apres.entite_id);
+    const client = apres.client_id ? data.clients.find((c) => c.id === apres.client_id && entiteOk(c.entite_id)) : null;
     if (apres.client_id && !client) patch.client_id = null;
-    const dossierOk = apres.dossier_id && data.dossiers.some((d) => d.id === apres.dossier_id && d.entite_id === apres.entite_id && (!client || d.client_id === client.id));
+    const dossierOk = apres.dossier_id && data.dossiers.some((d) => d.id === apres.dossier_id && entiteOk(d.entite_id) && (!client || d.client_id === client.id));
     if (apres.dossier_id && !dossierOk) patch.dossier_id = null;
     // Comme la base (migration 59) : les propositions encore ouvertes, préparées pour une autre entreprise, sont remplacées.
     if (patch.entite_source === "manuel") for (const p of data.whatsapp_propositions) if (p.conversation_id === ligne.id && ["a_faire", "en_cours"].includes(p.statut) && p.entite_id !== apres.entite_id) p.statut = "remplacee";

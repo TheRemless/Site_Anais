@@ -19,4 +19,5 @@ export const EN_PRET = {
   "Le dossier {ref} existe déjà pour ce client, créé après le prix donné. Il n'est pas relié à cette conversation.": "File {ref} already exists for this client, created after the price was given. It is not linked to this conversation.",
   "Rien à reprendre automatiquement : l'Assistant lira l'échange.": "Nothing to fill in automatically: the Assistant will read the exchange.",
   "Aucune conversation prête à réserver. Une conversation arrive ici quand le client dit oui après un prix ou quand vous envoyez la confirmation, et repart dès que le dossier est relié.": "No conversation ready to book. A conversation comes here when the client says yes after a price or when you send the confirmation, and leaves as soon as the file is linked.",
+  "Ce client est commun à Secret et à Taxi : le dossier appartient à l'entreprise choisie, la conversation reste aux deux.": "This client is shared by Secret and Taxi: the file belongs to the company you choose, the chat stays with both.",
 };

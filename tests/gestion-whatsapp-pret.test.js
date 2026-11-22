@@ -8,6 +8,7 @@ import { etatPret, carteDe, prixDonne, champsDe, contientPrix, questionReservati
 import * as E from "../src/gestion/js/whatsapp-pret-calc.mjs";
 import { conversationPret } from "../src/gestion/js/demo-pret.mjs";
 
+const lire = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 // Une conversation : [sens, texte] dans l'ordre, une minute d'écart.
 let n = 0;
 const conv = (lignes, extra = {}) => {
@@ -179,22 +180,39 @@ test("modèle C44 : une question de confirmation, sans prix", () => {
   assert.equal(decide([["entrant", "Bonsoir, c'est toujours bon pour le rendez-vous de demain ?"]]).pret, false);
 });
 
-test("modèles C13, C11 : partenaire (récapitulatif envoyé au chauffeur, « go ahead » d'une partenaire) : exclu", () => {
+test("modèles C13, C11 : partenaire (récapitulatif envoyé au chauffeur, « go ahead » d'une partenaire) : exclu à l'écran, sur le type du moment", () => {
   const recap = [["sortant", "Customer:\nHow much for a return trip to the old town?"], ["entrant", "Around 600 baht return"], ["sortant", "New booking\nName: Lena\nDate: Friday\nPick-up time: 12pm\nPick-up location: Pier\nDrop-off location: Hotel C\nPrice: 400 THB"]];
-  assert.equal(decide(recap, { type_contact: "partenaire" }).pret, false);
-  assert.equal(decide(recap, { type_contact: "partenaire" }).motif, "exclue");
-  for (const type of ["chauffeur", "hotel", "apporteur"]) assert.equal(decide(recap, { type_contact: type }).motif, "exclue", type);
-  assert.equal(decide(recap, { partenaire_id: "p1" }).motif, "exclue", "une fiche partenaire reliée");
-  assert.equal(decide([["sortant", "The ticket is 1500 THB"], ["entrant", "Please go ahead"]], { type_contact: "partenaire" }).pret, false);
+  // La fonction calcule pour tout contact sauf un Contact personnel ; l'écran écarte le contact typé tant qu'il l'est.
+  for (const extra of [{ type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "hotel" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }]) {
+    const d = decide(recap, extra);
+    assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", ...extra }), null, JSON.stringify(extra));
+  }
+  assert.equal(E.pretAReserver({ pret_reserver: decide([["sortant", "The ticket is 1500 THB"], ["entrant", "Please go ahead"]], { type_contact: "partenaire" }), type_contact: "partenaire" }), null);
 });
 
-test("modèle C34 : un « Yes » d'un bateau sur l'itinéraire (tri « partenaire ») : exclu", () => {
-  assert.equal(decide([["sortant", "Do you stop at the snorkeling spot on the Sunday trip?"], ["entrant", "Yes"]], { tri: { motif: "partenaire" } }).motif, "exclue");
+test("relecture n° 9 : un contact remis en Client est repris tout de suite, sans attendre un nouveau message", () => {
+  const lignes = [["sortant", "A songthaew from the pier costs 400 THB. Shall I book it for you?"], ["entrant", "Great, we'll take it!"]];
+  const d = decide(lignes, { type_contact: "chauffeur" });
+  assert.equal(d.pret, true, "la décision est déjà calculée pendant que le contact est typé « chauffeur »");
+  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "chauffeur" }), null);
+  assert.ok(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "client" }), "remis en Client : dans le filtre aussitôt");
+  // Un Contact personnel n'est jamais lu ; remis en « auto », la reprise le recalcule (FILTRE_RATTRAPAGE).
+  assert.equal(decide(lignes, { reponses: "jamais" }).motif, "exclue");
+  assert.match(lire("supabase/functions/whatsapp/pret.ts"), /FILTRE_RATTRAPAGE = "pret_reserver\.is\.null,and\(pret_reserver->>motif\.eq\.exclue,reponses\.neq\.jamais\)"/);
 });
 
-test("modèles C2, C3, C10 : Contact personnel : exclu sans même lire les messages", () => {
+test("préparation de la #314 : les messages « non transmis » ne sont pas lus", () => {
+  assert.match(lire("supabase/functions/whatsapp/pret.ts"), /\.neq\("type", "non_transmis"\)/);
+});
+
+test("modèle C34 : un « Yes » d'un bateau sur l'itinéraire (tri « partenaire ») : exclu à l'écran", () => {
+  const d = decide([["sortant", "Do you stop at the snorkeling spot on the Sunday trip?"], ["entrant", "Yes"]], { tri: { motif: "partenaire" } });
+  assert.equal(E.pretAReserver({ pret_reserver: d, tri: { motif: "partenaire" } }), null);
+});
+
+test("modèles C2, C3, C10 : Contact personnel : exclu sans même lire les messages ; tri personnel ou publicité : exclu à l'écran", () => {
   assert.equal(decide([["sortant", "Ok pour 14h, 500 THB la séance"], ["entrant", "Oui parfait merci !"]], { reponses: "jamais" }).motif, "exclue");
-  for (const motif of ["personnel", "publicite"]) assert.equal(decide([["sortant", "500 THB"], ["entrant", "we take it"]], { tri: { motif } }).motif, "exclue", motif);
+  for (const motif of ["personnel", "publicite"]) assert.equal(E.pretAReserver({ pret_reserver: decide([["sortant", "500 THB"], ["entrant", "we take it"]], { tri: { motif } }), tri: { motif } }), null, motif);
 });
 
 test("une demande de client recopiée par Nani pour un chauffeur non typé n'est pas un récapitulatif", () => {
@@ -277,23 +295,57 @@ test("écran : sort au retrait de Nani, revient sur un signal plus récent que l
   assert.deepEqual(E.patchRemettre(), { pret_retire_le: null });
 });
 
+const MARQUES = { taxi: "taxi", secret: "secret", ztp: null };
+const marqueDe = (id) => MARQUES[id] || null;
 test("écran, modèle C36 : dossier créé deux minutes avant la confirmation mais pas relié : reste dans le filtre avec « Relier au dossier »", () => {
   const clients = [{ id: "k1", telephone: "+10000000001", entite_id: "taxi" }];
   const dossier = (o) => ({ id: "d", ref: "2026-0001", entite_id: "taxi", client_id: "k1", annule: false, created_at: "2026-11-21T02:14:00.000Z", ...o });
-  assert.ok(E.pretAReserver(C()), "toujours dans le filtre tant que la conversation n'est pas reliée");
-  assert.equal(E.dossierARelier(C(), { clients, dossiers: [dossier()] }).id, "d", "même numéro, dossier créé après le prix donné");
-  assert.equal(E.dossierARelier(C(), { clients, dossiers: [dossier({ created_at: "2026-10-28T10:00:00.000Z" })] }), null, "un ancien dossier du client n'est pas proposé");
-  assert.equal(E.dossierARelier(C(), { clients, dossiers: [dossier({ annule: true })] }), null, "un dossier annulé non plus");
-  assert.equal(E.dossierARelier(C(), { clients: [{ id: "k1", telephone: "+20 999 999 999" }], dossiers: [dossier()] }), null, "un autre client");
-  assert.equal(E.dossierARelier(C({ client_id: "k9" }), { clients: [], dossiers: [dossier({ client_id: "k9" })] }).id, "d", "la fiche reliée suffit");
-  assert.equal(E.dossierARelier(C(), { clients, dossiers: [dossier(), dossier({ id: "d2", created_at: "2026-11-21T03:00:00.000Z" })] }).id, "d2", "le plus récent");
-  // Relier : une conversation à trier est rangée dans l'entreprise du dossier ; rangée ailleurs, elle n'est pas déplacée.
-  assert.deepEqual(E.patchRelier(C(), dossier()), { entite_id: "taxi", client_id: "k1", dossier_id: "d" });
-  assert.deepEqual(E.patchRelier(C({ entite_id: "taxi" }), dossier()), { client_id: "k1", dossier_id: "d" });
-  assert.equal(E.patchRelier(C({ entite_id: "secret" }), dossier()), null);
-  // Une fois reliée, elle sort.
-  assert.equal(E.pretAReserver(C({ entite_id: "taxi", client_id: "k1", dossier_id: "d" })), null);
-  assert.equal(E.conversationsPretes([C(), C({ id: "c2", dossier_id: "x" })]).length, 1);
+  const ctx = (o = {}) => ({ clients, dossiers: [dossier()], marqueDe, ...o });
+  assert.ok(E.pretAReserver(C(), ctx()), "toujours dans le filtre tant que la conversation n'est pas reliée");
+  assert.equal(E.dossierARelier(C(), ctx()).id, "d", "même numéro, dossier créé après le prix donné");
+  assert.equal(E.dossierARelier(C(), ctx({ dossiers: [dossier({ created_at: "2026-10-28T10:00:00.000Z" })] })), null, "un ancien dossier du client n'est pas proposé");
+  assert.equal(E.dossierARelier(C(), ctx({ dossiers: [dossier({ annule: true })] })), null, "un dossier annulé non plus");
+  assert.equal(E.dossierARelier(C(), ctx({ clients: [{ id: "k1", telephone: "+20 999 999 999" }] })), null, "un autre client");
+  assert.equal(E.dossierARelier(C({ client_id: "k9" }), ctx({ clients: [], dossiers: [dossier({ client_id: "k9" })] })).id, "d", "la fiche reliée suffit");
+  assert.equal(E.dossierARelier(C(), ctx({ dossiers: [dossier(), dossier({ id: "d2", created_at: "2026-11-21T03:00:00.000Z" })] })).id, "d2", "le plus récent");
+  // Une fois reliée à ce dossier (créé depuis le prix), elle sort.
+  assert.equal(E.pretAReserver(C({ client_id: "k1", dossier_id: "d" }), ctx()), null);
+  assert.equal(E.conversationsPretes([C(), C({ id: "c2", dossier_id: "d" })], ctx()).length, 1);
+});
+
+test("relecture n° 2 : ZTP ne se mélange jamais : un dossier ZTP n'est ni proposé à la liaison, ni pris pour celui de la réservation", () => {
+  const clients = [{ id: "kz", telephone: "+10000000001", entite_id: "ztp" }];
+  const ztp = { id: "dz", ref: "ZTP-1", entite_id: "ztp", client_id: "kz", annule: false, created_at: "2026-11-21T02:14:00.000Z" };
+  assert.equal(E.dossierARelier(C(), { clients, dossiers: [ztp], marqueDe }), null);
+  assert.ok(E.pretAReserver(C({ dossier_id: "dz" }), { dossiers: [ztp], marqueDe }), "un dossier ZTP relié ne fait pas sortir");
+  assert.equal(E.dossierARelier(C(), { clients, dossiers: [ztp] }), null, "sans marqueDe, aucun dossier ne compte");
+  // « Créer le dossier » n'est jamais masqué par un dossier déjà là (peut-être de l'autre entreprise).
+  const vue = lire("src/gestion/js/views/whatsapp-pret.mjs");
+  assert.match(vue, /creerDossier \? h\("button", \{ class: patch \? "secondaire petit" : "principal petit"/);
+  assert.match(vue, /const contexte = \(\) => \(\{ dossiers: .*marqueDe \}\)/);
+});
+
+test("relecture n° 6 : un client qui revient (arrivée puis transfert retour) : un dossier relié plus ancien n'exclut pas la nouvelle demande", () => {
+  const ancien = { id: "d0", entite_id: "taxi", client_id: "k1", annule: false, created_at: "2026-11-10T02:00:00.000Z" };
+  assert.ok(E.pretAReserver(C({ dossier_id: "d0" }), { dossiers: [ancien], marqueDe }), "dossier de l'arrivée, antérieur au prix du retour");
+  const nouveau = { ...ancien, id: "d1", created_at: "2026-11-21T03:00:00.000Z" };
+  assert.equal(E.dossierARelier(C({ dossier_id: "d0" }), { clients: [{ id: "k1", telephone: "+10000000001" }], dossiers: [ancien, nouveau], marqueDe }).id, "d1", "le dossier du retour est proposé, pas celui déjà relié");
+  assert.equal(E.pretAReserver(C({ dossier_id: "d1" }), { dossiers: [ancien, nouveau], marqueDe }), null, "relié au dossier du retour : sort");
+  assert.equal(E.pretAReserver(C({ dossier_id: "d0" })), null, "sans les dossiers chargés, un dossier relié compte comme celui-ci (prudent)");
+});
+
+test("relecture n° 1 : relier ne range jamais la conversation d'un client ; un dossier Secret ou Taxi se relie pareil", () => {
+  const dT = { id: "dt", entite_id: "taxi", client_id: "kt" };
+  const dS = { id: "ds", entite_id: "secret", client_id: "ks" };
+  assert.deepEqual(E.patchRelier(C(), dT), { client_id: "kt", dossier_id: "dt" }, "à trier : reliée, pas rangée");
+  assert.deepEqual(E.patchRelier(C(), dS), { client_id: "ks", dossier_id: "ds" });
+  assert.deepEqual(E.patchRelier(C({ entite_id: "taxi" }), dT), { client_id: "kt", dossier_id: "dt" }, "déjà chez Taxi, dossier Taxi : rien ne change d'entreprise");
+  assert.deepEqual(E.patchRelier(C({ entite_id: "taxi" }), dS), { entite_id: null, client_id: "ks", dossier_id: "ds" }, "rangée chez Taxi, dossier Secret : redevient commune");
+  assert.equal(E.patchRelier(C({ type_contact: "hotel" }), dT), null, "pas pour un contact qui n'est pas un client");
+  // « Créer le dossier » demande toujours l'entreprise pour un client, la suggestion présélectionnée.
+  const vue = lire("src/gestion/js/views/whatsapp.mjs");
+  assert.match(vue, /const entreprise = commun \? await choisirEntreprise\(c, prop, suggeree\)/);
+  assert.match(vue, /if \(commun && c\.entite_id && c\.entite_id !== entiteId\)/);
 });
 
 test("écran : carte et ligne de la liste", () => {
@@ -319,7 +371,6 @@ test("démonstration : la décision posée est celle que rend la fonction sur se
 });
 
 // ---- Branchements et dépôt public -----------------------------------------------------------------------------------------------------
-const lire = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 test("branchements : fonction, reprise, écran, stores, CI", () => {
   const index = lire("supabase/functions/whatsapp/index.ts");
   assert.match(index, /enFond\(pretApresMessage\(db, data\.conversation_id\)\)/, "après chaque nouveau message");
@@ -342,7 +393,7 @@ test("branchements : fonction, reprise, écran, stores, CI", () => {
 test("dépôt public : aucun numéro de téléphone plausible dans les fichiers de « Prêt à réserver »", () => {
   const fichiers = ["tests/gestion-whatsapp-pret.test.js", "docs/gestion/whatsapp-pret-a-reserver.md", "src/gestion/js/demo-pret.mjs", "supabase/functions/whatsapp/pret.js", "docs/gestion/verif-whatsapp-pret.mjs"];
   for (const f of fichiers) {
-    const numeros = (lire(f).match(/\+\d[\d ]{8,}\d/g) || []).filter((x) => !/^\+1\s?0{2}|^\+10|^\+20 9|^\+447700900/.test(x));
+    const numeros = (lire(f).match(/\+\d[\d ]{8,}\d/g) || []).filter((x) => !/^\+1\s?0{2}|^\+10|^\+20 9|^\+447700900/.test(x.replace(/ (?=\d)/g, "")) && !/^\+20 9/.test(x));
     assert.deepEqual(numeros, [], `${f} : seulement des numéros fictifs (+10…, +447700900…)`);
   }
 });

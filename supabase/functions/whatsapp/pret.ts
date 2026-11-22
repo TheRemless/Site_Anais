@@ -1,7 +1,7 @@
 // Boîte WhatsApp, « Prêt à réserver » (migration 85, 22.11.2026), lancé par index.ts :
 //   - après chaque nouveau message (client ou Nani), modifié ou supprimé : la décision est refaite sur les 60 derniers messages ;
-//   - à la reprise (pg_cron, toutes les 5 minutes) : 20 conversations jamais calculées, les plus récentes d'abord. Les conversations déjà
-//     là avant la migration entrent ainsi dans le filtre sans attendre leur prochain message, sans aucune écriture à la main.
+//   - à la reprise (pg_cron, toutes les 5 minutes) : 20 conversations jamais calculées (ou sorties de « Contact personnel »), les plus
+//     récentes d'abord. Les conversations déjà là avant la migration entrent ainsi dans le filtre sans attendre leur prochain message.
 // Aucun appel à l'IA : la règle est dans pret.js (expressions sur le texte). Rien ne part chez Anthropic, ni au client, ni au prestataire.
 // Seule la colonne pret_reserver est écrite, et seulement quand la décision change. Ne lève jamais ; chaque échec va dans la console.
 // Sans la migration 85, la colonne manque : rien n'est écrit, rien ne casse.
@@ -19,7 +19,8 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
       return;
     }
     if (!conv) return;
-    const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, type, texte, medias, envoye_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
+    // Les messages « non transmis » (repérés par la #314) n'ont pas de texte du client : ils ne comptent pas.
+    const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, type, texte, medias, envoye_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
     if (errM) return console.error("whatsapp : prêt à réserver, messages illisibles", errM.message);
     const decision = etatPret(conv, [...(msgs || [])].reverse());
     if (!pretChange(conv.pret_reserver, decision)) return;
@@ -30,8 +31,10 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
   }
 }
 
+// Jamais calculées, ou calculées comme Contact personnel puis remises en « auto » (rien n'avait été lu d'elles).
+export const FILTRE_RATTRAPAGE = "pret_reserver.is.null,and(pret_reserver->>motif.eq.exclue,reponses.neq.jamais)";
 export async function rattraperPret(db: SupabaseClient, organisation: string) {
-  const { data, error } = await db.from("whatsapp_conversations").select("id").eq("organisation_id", organisation).is("pret_reserver", null).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(RATTRAPAGE_MAX);
+  const { data, error } = await db.from("whatsapp_conversations").select("id").eq("organisation_id", organisation).or(FILTRE_RATTRAPAGE).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(RATTRAPAGE_MAX);
   if (error) {
     if (!absente(error)) console.error("whatsapp : rattrapage prêt à réserver", error.message);
     return 0;
