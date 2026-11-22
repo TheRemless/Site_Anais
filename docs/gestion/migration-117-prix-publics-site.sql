@@ -1,28 +1,196 @@
 -- Gestion : migration 117 (22.11.2026), les prix de vente de Secret et de Taxi lus par le site secrettravelandtour.com au build.
--- À exécuter une seule fois, APRÈS la migration 116. Idempotente. Ne modifie aucune donnée existante (crée une table d'une ligne, vide).
+-- À exécuter une seule fois, APRÈS la migration 116. Idempotente. Ne modifie aucune donnée existante (crée deux tables : la liste des tarifs
+-- publiés et une note d'une ligne).
 -- Retour en arrière : docs/gestion/retour-117-prix-publics-site.sql
 -- Contrôle : docs/gestion/verif-prix-publics-site.mjs (PGlite, en CI)
 -- Tâche planifiée et secret : docs/gestion/cron-prix-site.sql (à lancer après celle-ci, une fois le build hook posé dans Vault).
 --
 -- But : Jérémy (22.11.2026) veut qu'un prix de vente changé dans Gestion se retrouve tout seul sur le site.
---   1. prix_publics_site(p_ids) : ouverte à la clé publique (anon). Elle rend, pour les seuls identifiants demandés par le site
---      (src/_data/gestion-keys.json), l'identifiant et le prix de vente des tarifs ACTIFS de Secret et de Taxi qui ont un prix.
---      Rien d'autre : ni net (prestations_nets n'est pas lue), ni commission, ni partenaire, ni libellé, ni note, ni unité, ni tarif de ZTP.
---      Sans identifiant, elle ne rend rien : on ne peut pas parcourir le catalogue.
---   2. Un déclencheur sur prestations note « prix du site à revoir » quand un prix de vente, l'état actif ou la liste des tarifs de Secret
---      ou de Taxi change (prix_site_attente, une seule ligne, aucun accès hors des fonctions).
+--   1. prix_site_publies : la liste blanche des tarifs que le site AFFICHE (une ligne de prix reliée par src/_data/gestion-keys.json, sans
+--      « auto »: false), remplie ici puis tenue par docs/gestion/prix-site-publies.sql (généré par prix-site-publies.mjs, relancé par
+--      regenerer-produits-site.mjs). On ne se fie pas au secret des identifiants : ils sont déterministes et en partie publiés
+--      (cles-options-site.json, site-produits.mjs). Un tarif sans prix sur le site (longtails privés, retirés le 18.11.2026) n'y est pas.
+--   2. prix_publics_site(p_ids) : ouverte à la clé publique (anon). Elle rend, pour les identifiants demandés ET publiés, l'identifiant et
+--      le prix de vente des tarifs ACTIFS avec un prix, de Secret et de Taxi, dans l'organisation de Jérémy (00000000-0000-0000-0000-00000000a000).
+--      Rien d'autre : ni net (prestations_nets n'est pas lue), ni commission, ni partenaire, ni libellé, ni note, ni unité, ni tarif de ZTP
+--      ou d'une autre organisation. Sans identifiant, elle ne rend rien : on ne peut pas parcourir le catalogue.
+--   2 bis. Un déclencheur sur prestations note « prix du site à revoir » quand le prix de vente ou l'état actif d'un tarif PUBLIÉ change
+--      (prix_site_attente, une seule ligne, aucun accès hors des fonctions). Un tarif non publié ne relance aucun build.
 --   3. prix_site_relancer(), appelée par pg_cron toutes les 30 minutes : s'il y a eu un changement, que le dernier date d'au moins
 --      10 minutes (un lot de saisies part en un seul build) et que le dernier build demandé date d'au moins 55 minutes, elle appelle le
 --      build hook Netlify du site (secret Vault « netlify_build_hook_stt », jamais écrit ici), puis efface la note. Au plus un build par heure.
 
 begin;
 
+-- La liste blanche : un identifiant de tarif par ligne. Pas de clé étrangère : un tarif supprimé reste noté (le déclencheur le voit encore).
+create table if not exists prix_site_publies (
+  prestation_id uuid primary key
+);
+alter table prix_site_publies enable row level security;
+revoke all on prix_site_publies from public, anon, authenticated;
+
+-- Les 146 tarifs publiés par le site au 22.11.2026 (origin/main de TheRemless/Secrettravelandtour), seulement s'ils existent.
+insert into prix_site_publies (prestation_id)
+select p.id from prestations p join entites e on e.id = p.entite_id
+where e.organisation_id = '00000000-0000-0000-0000-00000000a000' and e.slug in ('secret', 'taxi')
+  and p.id in (select v.id::uuid from (values
+  ('01704696-843c-5792-a245-aaae1ee0a9f5'),
+  ('0235c011-57cb-5903-a857-c9f214f45104'),
+  ('0483bab2-ff24-5e1b-a05b-ef53e0ee29e5'),
+  ('05422c26-6d60-5868-a76b-5a8162e82aa3'),
+  ('05efe596-6e4c-5753-aa3a-9ca55e18fbba'),
+  ('067f78bb-df8b-5151-a6d1-3cad04ccd1ed'),
+  ('0a1ddfc8-6206-5a15-accd-180901575376'),
+  ('0af08f17-b1fd-512e-a414-d914e0cc7abf'),
+  ('0f82f3ab-b489-58d3-a610-5eefa274bb47'),
+  ('133fe67c-74c4-4b4b-a8a9-a1e7aa927d1e'),
+  ('14523fda-9848-5243-a6f9-49e78a426b9e'),
+  ('15af440d-25ee-515c-aaf0-4dd66b5ce145'),
+  ('18f859f2-a0e6-53c9-a022-717e3fef4e65'),
+  ('1bc3dd06-98bd-5445-ae6d-3a4d09c8e571'),
+  ('1fd677dc-1985-50bc-a6b3-8caccdd4da37'),
+  ('23ba14c5-126f-5652-a7f4-9b82ed707992'),
+  ('26429feb-5290-5032-aae8-107c77f49137'),
+  ('264bc47b-67a7-5261-ad0f-275187939068'),
+  ('27eff8cc-79d2-59e1-ad77-d3d316d80b13'),
+  ('2d5e7b44-47b2-5482-a65c-ac4f3479deb2'),
+  ('2f0d23fb-d650-5670-a0d4-5053f0615e20'),
+  ('34cdcbc5-dc5a-5e34-af84-1439d8a16ad2'),
+  ('34e877a6-830b-4da5-add6-6f8528c4281b'),
+  ('3c852d49-b0b7-5e2d-a9d1-6d5a1f29e610'),
+  ('423ac437-5ee2-46f5-878a-d04c49a8a76a'),
+  ('4241fb37-7518-5f33-a232-e3264de7bc40'),
+  ('437c5bb2-dbb0-5beb-ab43-6fdfaf363dad'),
+  ('470fd427-99da-54ef-a452-02672bb28e0e'),
+  ('47d59d72-1777-51f0-a19b-14c2e39f51a5'),
+  ('482235fd-65a7-4daa-b506-c7ff1f68a267'),
+  ('494841cb-8693-46c4-8dcc-1a7ba51a4b1e'),
+  ('4d574b84-559c-5ecb-ab7f-96255e3a7d26'),
+  ('4eb24d5d-8261-5e1f-a4bf-ca215987d2ce'),
+  ('549e2aae-2dd0-5dde-a4f9-bdf545234036'),
+  ('5527eb20-1b91-477c-9812-31f41c1d8f16'),
+  ('5816cec2-9bf7-5283-aac3-da915cf5c03b'),
+  ('58252c98-7e6c-57b5-ae50-bb8c566a06e5'),
+  ('5a1dac4e-b12a-52bc-a224-af3ee21ea080'),
+  ('5a86b51b-c878-547a-ac7b-5dfe6720bcd8'),
+  ('5a90e9ef-a6c4-4dd3-9ca4-59a68df5716a'),
+  ('5b9dbcfa-4640-5949-aa1b-1657e57b5855'),
+  ('5e2f4296-a012-562c-a9ce-6fa0ca877fd7'),
+  ('5fb2332a-3778-49fb-8aef-af0f4657128e'),
+  ('608e200b-bfdd-5120-a118-d64d46ee0c3a'),
+  ('62cadde5-52a2-54f2-a63b-90a23a70f63e'),
+  ('6465384e-3709-584b-ac05-901a3d74d703'),
+  ('656886ad-0402-40c0-9142-7a785165a99e'),
+  ('65a7e434-fe13-5f92-a982-d7eddad78109'),
+  ('696bcf75-5279-42bc-90ed-bdadcea573ac'),
+  ('6c3a97f6-ef15-5281-a2ab-c1996896a2a0'),
+  ('6d52c104-e022-5ea8-ab9a-920bc8837da5'),
+  ('6e11b321-8c84-5371-ad33-9b7f72b86b3a'),
+  ('7489a04d-bc68-54e6-ab9e-fa13c458c373'),
+  ('74a7cce0-a9f7-5c64-ad7b-5ea1b7d66daa'),
+  ('762abdf2-2c38-5689-a838-ad8fa1b49fba'),
+  ('7941f991-12fd-5d02-a376-32b9db20cb3d'),
+  ('795909b5-cb85-50f7-a688-a0b199caef73'),
+  ('7e52dac4-06ce-54de-a822-54c49512f37d'),
+  ('8283627d-c415-4629-a1f7-9c76f1285b94'),
+  ('83b63ee1-3ec4-58a1-af9c-1a92415e7585'),
+  ('8518f7b6-00d1-5dc6-aa9f-b893831e72a7'),
+  ('86d5ed6c-4939-50a8-a52e-1ff9f4b21218'),
+  ('87819757-945f-5061-a3e0-da5cda326b9a'),
+  ('89756dda-6910-56c4-a290-71788ee9b990'),
+  ('8dd08629-e895-5f93-a3b0-2bceb8608aaa'),
+  ('8e01d0c8-356d-55d5-a9d7-ae57b29a8b27'),
+  ('8f168f53-c60d-5e81-a1a6-28f191187120'),
+  ('8fc7d9ec-8131-5788-ae85-4b767093a142'),
+  ('900fbc80-7c19-582d-a1f1-69ac9a0fce3b'),
+  ('9087bd2c-40ab-53ea-a393-93df1ad1ee73'),
+  ('92cbf486-61c0-58a8-ac91-077c936d5b6e'),
+  ('94fef2b8-5389-57e0-a07a-38a52b84fcaf'),
+  ('9580f97f-3e61-5821-a420-2a12ce2936b0'),
+  ('9679b5c3-a1ce-5781-a1ef-9906bc3052d3'),
+  ('971339f0-28fc-5ce8-a9a8-4483b4c38b49'),
+  ('9854ddaf-1e9e-597c-a969-340f25f9dce8'),
+  ('9a5fb736-58fa-586e-a4eb-c32fa3c09993'),
+  ('9b98dad8-e05a-5cf6-af11-c215c6d1cb9b'),
+  ('9bb538f7-62ed-514a-a9fb-3259885f43c6'),
+  ('a07ef785-d3fb-59d1-ab8a-59219e24625b'),
+  ('a154c221-4abb-5c39-a97e-540a827a70be'),
+  ('a3e3ba75-0b57-5acb-ae24-f37507f277ea'),
+  ('a3f959f0-e598-5c91-a841-9136130fc652'),
+  ('a63d7c38-fa11-5ed6-ae9b-dcb3ba164937'),
+  ('a64e2400-a168-567e-a514-9af05aa87d0f'),
+  ('a8887874-b182-5a56-a4e8-04450c94f180'),
+  ('b0e9a373-a51c-56aa-ad31-a4612e277a8b'),
+  ('b0f21597-b9dc-5c1b-aa44-3d2399f5adc1'),
+  ('b17b79bd-5712-5e07-af0c-04187f23f9b4'),
+  ('b459be5f-29d0-5ab6-a2c7-ff2b2db93908'),
+  ('b51ea004-b5c9-5afc-a7ec-b9c3a11446bf'),
+  ('b54ccc84-99c3-58c1-a1fa-64321705e9fb'),
+  ('b5626027-3a7a-5588-af39-dd104c9d7701'),
+  ('b695f143-6b74-5f51-a30a-0caad1cd9949'),
+  ('b8418ad0-0eec-5345-ab63-73a0a1ddd5d6'),
+  ('ba18df70-b6b1-5e07-af87-69eb8c36288c'),
+  ('ba927b9a-576d-5b02-ace6-0ea41a4aea58'),
+  ('baae1758-a912-52dd-a177-89053dcc4d27'),
+  ('bb013c90-eb8f-5bf4-a392-a95253be9bfc'),
+  ('bcdf0c72-7a4a-5485-a4b0-2c98e1892f83'),
+  ('c17460d1-4bba-5b10-aa37-a7d9865b535e'),
+  ('c24588c9-617f-5c4b-a319-19dc9421dbee'),
+  ('c28d0776-3038-5516-aa44-b9c146351b3f'),
+  ('c31fd7a4-ebf2-5c04-ab00-976fbdddb83a'),
+  ('c333d922-ca6c-598f-aa3b-d1090a931a23'),
+  ('c5ea1f1e-e0a2-5ee9-a0ab-c2621229e49f'),
+  ('c5ec3b1b-914d-5fc6-adb9-0449835284ac'),
+  ('c626c2c3-7b79-5e2b-a241-c125371522b7'),
+  ('c8bfabc9-780f-5124-ab89-d14b646a5da6'),
+  ('ccdfd52f-c834-5f97-a72d-5862e7152068'),
+  ('cd19d60c-4c3a-5a27-a5a7-c56221169a1d'),
+  ('cda7b31d-d912-5245-a1e7-9ce821b35e03'),
+  ('ce5cd3b0-1805-5d8e-ae96-a95e6a53fd82'),
+  ('ce8219f2-a2d6-5ccd-a3b8-017f5202c345'),
+  ('cf7ed517-1fb7-5489-aefb-e1e394a4681b'),
+  ('d0e6ae78-4dc6-5119-acaf-9cafe2504d7b'),
+  ('d8368cba-a583-453b-9b64-3853f23822ba'),
+  ('d85c5c27-fc72-5fe9-aac3-8cd4d3274db8'),
+  ('dbaa7bdf-b073-5e6c-aff1-445057b5220b'),
+  ('dd321049-07d4-4016-bc6c-a571567dd860'),
+  ('dd60c7ad-3b4d-524b-a236-e7cc7947f944'),
+  ('e2cf8b3f-536c-5d16-acbf-8d8610cd91a2'),
+  ('e37bef36-05c3-533f-a3dc-66d582c210fd'),
+  ('e44f254f-730a-5954-acd2-0e1b7e113cf0'),
+  ('e54ec997-a2bf-5bb1-ac02-9531e46d1e25'),
+  ('e55d4dbf-c69d-5e2d-aeb9-2eaf07e15dbd'),
+  ('e5d29cd1-81a5-5ab7-a780-4e88cb1a1824'),
+  ('e5d47e79-6e3d-4034-a900-c3489cadc364'),
+  ('e749327d-5f4f-5621-a893-3adf20160c3a'),
+  ('eb1dedd3-c731-5c06-abcc-06a5c991f1a0'),
+  ('ed90dacf-cf27-58e1-ab10-1f681c3682b3'),
+  ('edd0bb41-48ee-57ca-a006-a782114e96b2'),
+  ('ef164c6d-7244-4f59-8c3e-59d8563e18d0'),
+  ('f306bce8-f87a-5e3a-ab4d-923abb0861ec'),
+  ('f4331c2f-edde-573e-a8bd-c78a5b1489a9'),
+  ('f4a2c29a-c4ca-5b8a-a98c-fc97dc68300c'),
+  ('f54dc944-fea2-5ee3-a382-8674cd705c2a'),
+  ('f5917520-6927-5cb0-a1c1-399cce1c301e'),
+  ('f6bb9c2f-86a0-4c48-8446-4004b9b50606'),
+  ('f6cd6aae-0f9e-5a7a-a005-488d7e68b4b2'),
+  ('f7a3e657-dcc7-567c-a79d-fb8ea9a1f15c'),
+  ('f7eef8a4-f3ac-53ae-a335-b8f48559ff45'),
+  ('f81dbd59-8777-56f6-a22f-bd3fdcb7bbbd'),
+  ('fc2d9ba8-f981-52ae-a776-bd26c8fc315e'),
+  ('fd313767-1967-5322-acdb-6f552f0d82b0'),
+  ('fe0698ce-d2f9-5b55-afc4-7f7541562d10')
+  ) v (id))
+on conflict (prestation_id) do nothing;
+
 create or replace function prix_publics_site(p_ids uuid[]) returns table (prestation uuid, prix_vente numeric)
 language sql stable security definer set search_path = public, pg_temp as $$
   select p.id, p.prix_vente
   from prestations p
+  join prix_site_publies w on w.prestation_id = p.id
   join entites e on e.id = p.entite_id
-  where e.slug in ('secret', 'taxi')
+  where e.organisation_id = '00000000-0000-0000-0000-00000000a000'
+    and e.slug in ('secret', 'taxi')
     and p.actif
     and p.prix_vente is not null and p.prix_vente > 0
     -- Au plus 1 000 identifiants par appel (le site en demande environ 120).
@@ -56,7 +224,12 @@ begin
     return null;
   end if;
   ent := case when tg_op = 'DELETE' then old.entite_id else new.entite_id end;
-  if not exists (select 1 from entites e where e.id in (ent, case when tg_op = 'UPDATE' then old.entite_id end) and e.slug in ('secret', 'taxi')) then
+  -- Seul un tarif publié par le site compte : un tarif sans page ne relance aucun build.
+  if not exists (select 1 from prix_site_publies w where w.prestation_id = case when tg_op = 'DELETE' then old.id else new.id end) then
+    return null;
+  end if;
+  if not exists (select 1 from entites e where e.id in (ent, case when tg_op = 'UPDATE' then old.entite_id end)
+                 and e.organisation_id = '00000000-0000-0000-0000-00000000a000' and e.slug in ('secret', 'taxi')) then
     return null;
   end if;
   begin

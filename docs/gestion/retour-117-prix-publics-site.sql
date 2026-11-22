@@ -12,4 +12,5 @@ drop function if exists prix_site_relancer();
 drop function if exists prix_site_noter();
 drop function if exists prix_publics_site(uuid[]);
 drop table if exists prix_site_attente;
+drop table if exists prix_site_publies;
 commit;

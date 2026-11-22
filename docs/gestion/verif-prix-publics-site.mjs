@@ -68,6 +68,18 @@ const tarif = async (e, prix, o = {}) => {
   return id;
 };
 const T = { a: await tarif("secret", 2000), inactif: await tarif("secret", 2500, { actif: false }), sansPrix: await tarif("secret", null), zero: await tarif("secret", 0), taxi: await tarif("taxi", 2300), ztp: await tarif("ztp", 9000), autre: await tarif("secret", 1500) };
+// Tous publiés (liste blanche), sauf deux : un tarif actif de Secret sans ligne de prix sur le site (longtail privé) et un de Taxi.
+const publier = (id) => db.query("insert into prix_site_publies (prestation_id) values ($1) on conflict do nothing", [id]);
+for (const id of Object.values(T)) await publier(id);
+T.prive = await tarif("secret", 4500);
+T.taxiSansPage = await tarif("taxi", 2800);
+// Une autre organisation (SaaS, migration 42) avec ses propres entités « secret » et « taxi » : jamais rendue, même publiée.
+const AUTRE_ORG = (await un("insert into organisations (nom) values ('Autre agence test') returning id")).id;
+ok(AUTRE_ORG !== "00000000-0000-0000-0000-00000000a000" && (await un("select organisation_id from entites where id = $1", [ent.secret])).organisation_id === "00000000-0000-0000-0000-00000000a000", "Secret et Taxi de Jérémy sont dans l'organisation 00000000-0000-0000-0000-00000000a000");
+for (const sl of ["secret", "taxi"]) ent["autre_" + sl] = (await un("insert into entites (slug, nom, organisation_id) values ($1, $2, $3) returning id", [sl, "Autre " + sl, AUTRE_ORG])).id;
+P.autre_secret = await partenaire(ent.autre_secret);
+T.autreOrg = await tarif("autre_secret", 1900);
+await publier(T.autreOrg);
 const tous = Object.values(T);
 const remiseAZero = () => db.exec("update prix_site_attente set a_publier = false, premier_changement = null, dernier_changement = null, changements = 0, dernier_appel = null, derniere_requete = null, dernier_resultat = '' where id");
 await remiseAZero();
@@ -80,7 +92,9 @@ ok(JSON.stringify(r.champs) === JSON.stringify(["prestation", "prix_vente"]), "d
 const rendus = new Map((r.rows || []).map((x) => [x.prestation, Number(x.prix_vente)]));
 ok(rendus.size === 3 && rendus.get(T.a) === 2000 && rendus.get(T.taxi) === 2300 && rendus.get(T.autre) === 1500, "les tarifs actifs avec prix de Secret et de Taxi, au prix de vente");
 ok(!rendus.has(T.inactif) && !rendus.has(T.sansPrix) && !rendus.has(T.zero), "ni tarif inactif, ni tarif sans prix, ni tarif à 0");
-ok(!rendus.has(T.ztp), "aucun tarif de ZTP");
+ok(!rendus.has(T.ztp), "aucun tarif de ZTP, même dans la liste");
+ok(!rendus.has(T.prive) && !rendus.has(T.taxiSansPage), "un tarif actif avec prix mais absent de la liste blanche (longtail privé sans prix sur le site) ne sort jamais, même demandé");
+ok(!rendus.has(T.autreOrg), "aucun tarif d'une autre organisation, même publié et nommé « secret »");
 const texte = JSON.stringify(r.rows);
 ok(!/77777|66666|NOTE|PARTENAIRE|LIBELLE|GROUPE|pp"/.test(texte), "aucun net, net enfant, note, partenaire, libellé, groupe ni unité dans la réponse");
 const seul = await comme("anon", "select * from prix_publics_site($1::uuid[])", [[T.a]]);
@@ -95,16 +109,17 @@ const def = await un("select p.prosecdef, p.proconfig, p.provolatile, pg_get_fun
 ok(def.prosecdef && String(def.proconfig).includes("search_path=public, pg_temp") && def.provolatile === "s", "security definer, search_path fixé, stable");
 ok(def.res === "TABLE(prestation uuid, prix_vente numeric)", "signature : " + def.res);
 const corps = (await un("select prosrc from pg_proc where proname = 'prix_publics_site'")).prosrc;
-ok(!/nets|commission|partenaire|libelle|note|details/i.test(corps), "le corps de la fonction ne lit ni nets, ni commissions, ni partenaires, ni libellés, ni notes");
+ok(/join prix_site_publies w on w\.prestation_id = p\.id/.test(corps) && /e\.organisation_id = '00000000-0000-0000-0000-00000000a000'/.test(corps), "liste blanche et organisation dans la fonction");
+ok(!/nets|commission|partenaire_|libelle|note|details/i.test(corps), "le corps de la fonction ne lit ni nets, ni commissions, ni partenaires, ni libellés, ni notes");
 
 // ---- 2. La clé publique ne lit rien d'autre ---------------------------------------------------------------------------------------------
 console.log("== droits");
-for (const sql of ["select * from prestations", "select * from prestations_nets", "select * from prix_site_attente", "select prix_site_relancer()", "select * from partenaires"]) {
+for (const sql of ["select * from prestations", "select * from prestations_nets", "select * from prix_site_attente", "select * from prix_site_publies", "insert into prix_site_publies values (gen_random_uuid())", "select prix_site_relancer()", "select * from partenaires"]) {
   const x = await comme("anon", sql);
   ok(!x.ok, `anon refusé : ${sql}`);
 }
 const u = (await un("insert into auth.users (email) values ('membre@test') returning id")).id;
-for (const sql of ["select * from prix_site_attente", "select prix_site_relancer()", "update prix_site_attente set a_publier = true"]) {
+for (const sql of ["select * from prix_site_attente", "select prix_site_relancer()", "update prix_site_attente set a_publier = true", "select * from prix_site_publies", `insert into prix_site_publies values ('${T.prive}')`]) {
   const x = await comme("authenticated", sql, [], u);
   ok(!x.ok, `utilisateur connecté refusé : ${sql}`);
 }
@@ -119,7 +134,13 @@ await db.query("update prestations set libelle = 'Autre libellé', ordre = 4, de
 await db.query("update prestations_nets set net = 1 where prestation_id = $1", [T.a]);
 ok(!(await etat()).a_publier, "libellé, ordre, détails ou net changés : pas de build");
 await db.query("update prestations set prix_vente = 9500 where id = $1", [T.ztp]);
-ok(!(await etat()).a_publier, "prix de ZTP changé : pas de build");
+ok(!(await etat()).a_publier, "prix de ZTP changé (même listé) : pas de build");
+await db.query("update prestations set prix_vente = 4900, actif = false where id = $1", [T.prive]);
+await db.query("update prestations set prix_vente = 3000 where id = $1", [T.taxiSansPage]);
+await db.query("delete from prestations where id = $1", [T.taxiSansPage]);
+ok(!(await etat()).a_publier, "tarif non publié (prix, état ou suppression) : aucun build");
+await db.query("update prestations set prix_vente = 2500 where id = $1", [T.autreOrg]);
+ok(!(await etat()).a_publier, "tarif d'une autre organisation, même publié : aucun build");
 await db.query("update prestations set prix_vente = 2100 where id = $1", [T.a]);
 let e = await etat();
 ok(e.a_publier && e.changements === 1 && e.premier_changement, "prix de vente de Secret changé : note posée");
@@ -129,10 +150,13 @@ e = await etat();
 ok(e.a_publier && e.changements === 3, "prix de Taxi et tarif désactivé : le lot compte 3 changements");
 await remiseAZero();
 const nouveau = await tarif("taxi", 1800);
-ok((await etat()).a_publier, "nouveau tarif de Taxi : note posée");
+ok(!(await etat()).a_publier, "nouveau tarif de Taxi, pas encore publié : pas de build");
+await publier(nouveau);
+await db.query("update prestations set prix_vente = 1900 where id = $1", [nouveau]);
+ok((await etat()).a_publier, "le même tarif une fois publié : note posée");
 await remiseAZero();
 await db.query("delete from prestations where id = $1", [nouveau]);
-ok((await etat()).a_publier, "tarif supprimé : note posée");
+ok((await etat()).a_publier, "tarif publié supprimé : note posée");
 await remiseAZero();
 await db.query("update prestations set prix_vente = prix_vente where id = $1", [T.a]);
 ok(!(await etat()).a_publier, "même prix réenregistré : pas de build");
@@ -181,6 +205,23 @@ a = await appels();
 await db.query("insert into net._http_response (id, status_code) values ($1, null)", [a[2].id]);
 ok((await relancer()) === "build demandé il y a moins d'une heure, attente" && (await etat()).a_publier, "pas de réponse (délai dépassé) : la note revient, essai au prochain créneau");
 
+// ---- 4 bis. SQL de la liste blanche généré (prix-site-publies.sql) -------------------------------------------------------------------
+console.log("== liste blanche générée");
+const { sqlPublies, insertionPublies } = await import(new URL("prix-site-publies.mjs", "file://" + fs.realpathSync(W) + "/").href);
+await db.exec(sqlPublies([T.a, T.taxi], "test"));
+const liste = (await db.query("select prestation_id from prix_site_publies order by 1")).rows.map((x) => x.prestation_id);
+ok(JSON.stringify(liste) === JSON.stringify([T.a, T.taxi].sort()), "le SQL généré remet la liste exacte (retire les autres, ajoute les nouveaux)");
+await db.exec(sqlPublies([T.a, T.taxi, T.ztp, T.autreOrg, "00000000-0000-4000-8000-00000000dead"], "test"));
+ok((await un("select count(*)::int n from prix_site_publies")).n === 2, "jamais un tarif de ZTP, d'une autre organisation ou inexistant dans la liste");
+const fichierListe = fs.readFileSync(W + "prix-site-publies.sql", "utf8");
+const idsFichier = [...new Set(fichierListe.match(/'[0-9a-f-]{36}'/g))].sort();
+const idsMigration = [...new Set(lire(MIG).match(/'[0-9a-f-]{36}'/g))].filter((x) => !x.includes("00000000a000")).sort();
+ok(idsFichier.length > 100 && JSON.stringify(idsFichier.filter((x) => !x.includes("00000000a000"))) === JSON.stringify(idsMigration), `la migration et prix-site-publies.sql portent la même liste (${idsMigration.length} tarifs)`);
+const options = JSON.parse(fs.readFileSync(W + "cles-options-site.json", "utf8"));
+const prives = Object.entries(options).filter(([k]) => /private longtail|privé|private/i.test(k)).flatMap(([, v]) => JSON.stringify(v).match(/[0-9a-f-]{36}/g) || []);
+ok(prives.length > 0 && prives.every((x) => !idsMigration.includes(`'${x}'`)), `aucun tarif des options sans prix du site (cles-options-site.json, ${prives.length} identifiants privés) dans la liste`);
+await db.exec(insertionPublies(Object.values(T).filter((id) => id !== T.prive)));
+
 // ---- 5. Rejouer, puis retour en arrière ------------------------------------------------------------------------------------------------
 console.log("== rejouer et retour");
 const sql117 = lire(MIG);
@@ -188,11 +229,12 @@ ok(/^-- Gestion : migration 117/.test(sql117) && /Retour en arrière : docs\/ges
 ok(!/build_hooks\/[A-Za-z0-9]/.test(sql117 + lire("cron-prix-site.sql")), "aucun build hook écrit dans la migration ni dans le fichier cron");
 await db.exec(sql117);
 ok((await un("select count(*)::int n from prix_site_attente")).n === 1 && (await etat()).a_publier, "rejouée : une seule ligne, la note gardée");
+ok((await un("select count(*)::int n from prix_site_publies where prestation_id = $1", [T.prive])).n === 0, "rejouée : la liste n'ajoute rien");
 ok((await un("select count(*)::int n from pg_trigger where tgname = 'prix_site_a_revoir'")).n === 1, "rejouée : un seul déclencheur");
 await db.exec("select cron.schedule('prix-site', '11,41 * * * *', 'select prix_site_relancer()')");
 await db.exec(lire("retour-117-prix-publics-site.sql"));
 ok((await un("select count(*)::int n from pg_proc where proname in ('prix_publics_site', 'prix_site_noter', 'prix_site_relancer')")).n === 0, "retour : les trois fonctions retirées");
-ok(!(await un("select to_regclass('public.prix_site_attente') t")).t && (await un("select count(*)::int n from pg_trigger where tgname = 'prix_site_a_revoir'")).n === 0, "retour : table et déclencheur retirés");
+ok(!(await un("select to_regclass('public.prix_site_publies') t")).t && !(await un("select to_regclass('public.prix_site_attente') t")).t && (await un("select count(*)::int n from pg_trigger where tgname = 'prix_site_a_revoir'")).n === 0, "retour : table et déclencheur retirés");
 ok((await un("select count(*)::int n from cron.job where jobname = 'prix-site'")).n === 0, "retour : le job prix-site retiré");
 ok((await un("select count(*)::int n from vault.secrets where name = 'netlify_build_hook_stt'")).n === 1, "retour : le secret n'est pas touché (à retirer à part)");
 await db.query("update prestations set prix_vente = 2000 where id = $1", [T.a]);
@@ -200,6 +242,7 @@ ok(Number((await un("select prix_vente from prestations where id = $1", [T.a])).
 const anonApres = await comme("anon", "select * from prix_publics_site($1::uuid[])", [[T.a]]);
 ok(!anonApres.ok, "après le retour, la clé publique n'a plus rien");
 await db.exec(sql117);
+await publier(T.a);
 ok((await comme("anon", "select * from prix_publics_site($1::uuid[])", [[T.a]])).rows?.length === 1, "la migration se rejoue après le retour");
 
 console.log(echecs ? `\n${echecs} ÉCHEC(S)` : "\nTout est bon.");
