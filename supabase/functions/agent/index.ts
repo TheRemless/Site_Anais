@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
   // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
   // pas typé, son nom est lu comme un nom de profil).
   const lireWa = async (id: string) => {
-    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri").eq("id", id).maybeSingle();
+    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee").eq("id", id).maybeSingle();
     if (r.error && r.error.code === "42703") r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
     return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
   };
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
     // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
     // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
     // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
-    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri").eq("id", waId).maybeSingle();
+    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source, tri, avancee").eq("id", waId).maybeSingle();
     if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
     if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", waId).maybeSingle();
     if (wc.error) return json({ erreur: "base" }, 500);
@@ -901,7 +901,9 @@ Deno.serve(async (req) => {
   // d'un client : les montants écrits par Nani y sont des prix de vente (conversationClient, 21.11.2026), jamais ceux du client. Un client
   // sans fiche que le tri range parmi les demandes de client compte aussi (clientProbable, 22.11.2026), ses prix marqués à vérifier.
   const typeLu = waLue && typeof waLue.type_contact === "string" ? waLue.type_contact : "";
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue), clientProbable: !clientConfirme(waLue) && clientProbable(waLue), conversationLiee: waLue ? waLue.id : null });
+  // Les entreprises où le dossier peut naître (l'active, les deux en espace unifié) : leurs étapes client comptent (clientProbable).
+  const slugsDossier = unifie ? unifie.entites.map((e) => e.slug) : [ent.data?.slug || ""];
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;

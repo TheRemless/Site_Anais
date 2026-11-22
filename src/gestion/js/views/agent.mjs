@@ -635,7 +635,7 @@ export async function vueAgent(idOuvert = "") {
         ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: question.whatsapp_conversation_id, whatsapp_mode: "question", whatsapp_pieces: [], texte }
         : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
     // Une exception (connexion coupée, écran qui lève) ne laisse jamais « L'assistant réfléchit » ni le bouton éteint (audit I7).
-    const r = await etat.store.agentEnvoyer(corps, (ev) => {
+    const surEvenement = (ev) => {
       if (ev.t === "conversation" && !conv) {
         conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString(), whatsapp_conversation_id: ev.whatsapp_conversation_id || null };
         conversations = [conv, ...(conversations || [])];
@@ -671,7 +671,17 @@ export async function vueAgent(idOuvert = "") {
         else etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur), ev.detail ? h("small", { class: "agent-erreur-detail" }, ev.detail) : null));
       }
       descendre();
-    }).catch(() => ({ erreur: "coupure" }));
+    };
+    let r = await etat.store.agentEnvoyer(corps, surEvenement).catch(() => ({ erreur: "coupure" }));
+    // Compatibilité avec une fonction agent pas encore redéployée (22.11.2026) : elle ne connaît la discussion liée que pour une question
+    // et répond « message_invalide » à un dossier envoyé dedans. L'écran retombe alors sur l'ancien chemin, une nouvelle discussion, sans
+    // erreur affichée. Rien n'a été gardé par la fonction : la demande repart une fois, sans conversation_id.
+    if (r && r.erreur === "message_invalide" && whatsapp && corps.conversation_id) {
+      const { conversation_id: _liee, ...sansLiee } = corps;
+      conv = null;
+      idOuvert = "";
+      r = await etat.store.agentEnvoyer(sansLiee, surEvenement).catch(() => ({ erreur: "coupure" }));
+    }
     etape.remove();
     if (r && r.erreur) {
       // Plafond ou crédit : l'assistant le dit dans le fil, comme une réponse, pour que ce soit clair et non une panne obscure.

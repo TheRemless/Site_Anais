@@ -9,9 +9,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as R from "../src/gestion/js/whatsapp-relie-calc.mjs";
 import { demandeAgent } from "../src/gestion/js/whatsapp-suivi-calc.mjs";
-import { chercherCatalogue, clientConfirme, clientProbable, clientPourPrixDeNani, executer, memoDepuis, refDe, zonesLanta, MOTIFS_CLIENT } from "../supabase/functions/agent/outils.js";
+import { chercherCatalogue, clientConfirme, clientProbable, clientPourPrixDeNani, etapeClient, executer, memoDepuis, refDe, zonesLanta, MOTIFS_CLIENT, MOTIFS_NON_CLIENT } from "../supabase/functions/agent/outils.js";
 import { MOTIFS_A_PREPARER } from "../supabase/functions/whatsapp/proposer.js";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
+import { faitsAvancee } from "../supabase/functions/whatsapp/etapes.js";
+import { MOTIFS_TRI_NON_CLIENT } from "../src/gestion/js/whatsapp-etapes-calc.mjs";
 
 const lire = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const W = "0f000000-0000-4000-8000-000000000001";
@@ -88,6 +90,20 @@ test("démonstration : « Créer le dossier » dans la discussion déjà liée n
   }
 });
 
+test("compatibilité : avec l'ancienne fonction agent, « Créer le dossier » retombe sur une nouvelle discussion, sans erreur", () => {
+  const vue = lire("src/gestion/js/views/agent.mjs");
+  // L'ancienne fonction (avant cette PR) n'acceptait la discussion liée que pour une question : un dossier y répondait message_invalide.
+  assert.match(vue, /let r = await etat\.store\.agentEnvoyer\(corps, surEvenement\)\.catch\(\(\) => \(\{ erreur: "coupure" \}\)\);/);
+  const repli = vue.slice(vue.indexOf('if (r && r.erreur === "message_invalide"'), vue.indexOf("    etape.remove();", vue.indexOf('if (r && r.erreur === "message_invalide"')));
+  assert.match(repli, /^if \(r && r\.erreur === "message_invalide" && whatsapp && corps\.conversation_id\) \{/, "seulement un dossier WhatsApp envoyé dans une discussion liée");
+  assert.match(repli, /const \{ conversation_id: _liee, \.\.\.sansLiee \} = corps;/);
+  assert.match(repli, /conv = null;\n\s+idOuvert = "";/, "la nouvelle discussion prend la place de l'ancienne à l'écran");
+  assert.match(repli, /r = await etat\.store\.agentEnvoyer\(sansLiee, surEvenement\)/, "une seule nouvelle tentative, avec le même suivi des événements");
+  assert.equal((repli.match(/agentEnvoyer/g) || []).length, 1, "jamais de boucle");
+  // L'erreur n'est montrée qu'après le repli : r est la réponse de la seconde tentative.
+  assert.ok(vue.indexOf("if (r && r.erreur) {") > vue.indexOf('r = await etat.store.agentEnvoyer(sansLiee, surEvenement)'));
+});
+
 // ---- 2. Le prix écrit par Nani à un nouveau client ---------------------------------------------------------------------------------
 const ENT = "22222222-2222-4222-8222-222222222222";
 const ZONE = "b1000000-0000-4000-8000-000000000001";
@@ -106,8 +122,9 @@ const MESSAGES = [
 ];
 const NOUVEAU = { id: W, telephone: "+447700900123", nom: "Ella Test", type_contact: null, client_id: null, dossier_id: null, partenaire_id: null, reponses: "auto", tri: { motif: "demande_client", preparer: true, entreprise: "taxi" } };
 const carte = (ref = "") => ({ titre: "Ella Test", client_nom: "Ella Test", client_telephone: "+447700900123", hotel: "Sunny Cove Resort", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [{ ref, texte: "Private minivan Sunny Cove Resort → Riverside Hotel", date: "2026-11-25", heure_pickup: "11:00", lieu_pickup: "Sunny Cove Resort", de: "", vers: "", adultes: 2, enfants: 0, prix_saisi: "2500", vol: "", remarque: "" }] });
-async function service(conv, ref = "") {
-  const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv, messages: MESSAGES }) }], { conversationClient: clientPourPrixDeNani(conv), clientProbable: !clientConfirme(conv) && clientProbable(conv), conversationLiee: conv.id });
+// Comme la fonction agent : les entreprises où le dossier peut naître (ici Taxi).
+async function service(conv, ref = "", entreprises = ["taxi"]) {
+  const memo = memoDepuis([{ role: "user", content: texteDepuisWhatsApp({ mode: "creer", conv, messages: MESSAGES }) }], { conversationClient: clientPourPrixDeNani(conv, entreprises), clientProbable: !clientConfirme(conv) && clientProbable(conv, entreprises), conversationLiee: conv.id });
   return (await executer("proposer_dossier", carte(ref), ctx, memo)).carte.donnees.services[0];
 }
 
@@ -148,16 +165,49 @@ test("le prix de Nani n'est jamais repris pour un contact non client, ni sans tr
   ];
   for (const o of exclus) {
     const c = { ...NOUVEAU, ...o };
-    assert.equal(clientPourPrixDeNani(c), false, JSON.stringify(o));
+    assert.equal(clientPourPrixDeNani(c, ["taxi"]), false, JSON.stringify(o));
     const s = await service(c);
     assert.equal(s.prix, null, JSON.stringify(o));
     assert.ok(s.avertissements.includes("prix_non_tape"), JSON.stringify(o));
   }
-  // La fonction lit le tri avec la conversation et passe les deux drapeaux à memoDepuis ; le prix du client non corrigé reste au client confirmé.
+  // La fonction lit le tri et les étapes avec la conversation, passe les deux drapeaux à memoDepuis ; le prix du client non corrigé reste au
+  // client confirmé.
   const f = lire("supabase/functions/agent/index.ts");
-  assert.match(f, /reponses, type_contact, partenaire_id, nom_source, tri"\)\.eq\("id", waId\)/);
-  assert.match(f, /conversationClient: clientPourPrixDeNani\(waLue\), clientProbable: !clientConfirme\(waLue\) && clientProbable\(waLue\)/);
+  assert.match(f, /reponses, type_contact, partenaire_id, nom_source, tri, avancee"\)\.eq\("id", waId\)/);
+  assert.match(f, /const slugsDossier = unifie \? unifie\.entites\.map\(\(e\) => e\.slug\) : \[ent\.data\?\.slug \|\| ""\];/);
+  assert.match(f, /conversationClient: clientPourPrixDeNani\(waLue, slugsDossier\), clientProbable: !clientConfirme\(waLue\) && clientProbable\(waLue, slugsDossier\)/);
   assert.match(f, /if \(waLue && clientConfirme\(waLue\)\) \{\n\s+const lusWa/);
+});
+
+test("une étape client (migration 105) suffit : la réservation qui finit sur « remerciement » reprend le prix de Nani", async () => {
+  // Les faits tels que la fonction « whatsapp » les garde (etapes.js), puis le client remercie : le tri dit « remerciement ».
+  const fin = [...MESSAGES, { sens: "sortant", texte: "Your driver is confirmed", envoye_le: minute(56) }, { sens: "entrant", texte: "Perfect, many thanks!", envoye_le: minute(58) }];
+  const avancee = faitsAvancee({ ...NOUVEAU, tri: { motif: "remerciement", entreprise: "taxi" } }, fin, "2026-11-22T05:00:00Z");
+  assert.ok(avancee.par.taxi.prix_le && avancee.par.taxi.demande_le, "prix et demande comptés chez Taxi");
+  const merci = { ...NOUVEAU, tri: { motif: "remerciement", preparer: false, entreprise: "taxi" }, avancee };
+  assert.equal(etapeClient(merci, ["taxi"]), true);
+  assert.equal(clientProbable(merci, ["taxi"]), true);
+  const s = await service(merci);
+  assert.deepEqual([s.prix, s.origine_prix], [2500, "saisi"]);
+  assert.ok(s.avertissements.includes("prix_nani_a_verifier"));
+  // Une étape d'une autre entreprise ne compte pas ; une étape encore sans entreprise compte.
+  const chezSecret = { ...merci, avancee: { v: 2, par: { secret: { prix_le: minute(43) } } } };
+  assert.equal(clientProbable(chezSecret, ["taxi"]), false);
+  assert.equal(clientProbable(chezSecret, ["secret", "taxi"]), true, "espace unifié : les deux entreprises");
+  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: { inconnu: { demande_le: minute(37) } } } }, ["taxi"]), true);
+  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: {}, pret: { le: minute(54), entreprise: "taxi" } } }, ["taxi"]), true, "Prêt à réserver chez Taxi");
+  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: {}, pret: { le: minute(54), entreprise: "ztp" } } }, ["taxi"]), false, "ZTP reste à part");
+  // Jamais sans étape (un partenaire n'en a pas), jamais pour un contact non client, même avec des faits.
+  assert.equal(clientProbable({ ...merci, avancee: null }, ["taxi"]), false);
+  assert.equal(clientProbable({ ...merci, avancee: { v: 2, par: {} } }, ["taxi"]), false);
+  assert.equal(clientProbable({ ...merci, avancee: { v: 2, jamais: true } }, ["taxi"]), false);
+  for (const o of [{ type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "hotel" }, { type_contact: "apporteur" }, { partenaire_id: "p1" }, { reponses: "jamais" }, { tri: { motif: "partenaire" } }, { tri: { motif: "personnel" } }, { tri: { motif: "publicite" } }, { tri: { motif: "non_client" } }]) {
+    const c = { ...merci, ...o };
+    assert.equal(clientPourPrixDeNani(c, ["taxi"]), false, JSON.stringify(o));
+    assert.equal((await service(c)).prix, null, JSON.stringify(o));
+  }
+  // Les motifs « pas un client » sont ceux de l'écran des étapes, plus « non_client ».
+  assert.deepEqual(MOTIFS_NON_CLIENT, [...MOTIFS_TRI_NON_CLIENT, "non_client"]);
 });
 
 test("un montant non sourcé égal au prix du catalogue du service garde le prix du catalogue", async () => {
