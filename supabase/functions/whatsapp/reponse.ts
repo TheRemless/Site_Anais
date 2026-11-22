@@ -41,7 +41,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     const lu = await lireConversation(db, conversationId);
     if (!lu || !aRepondre(lu.messages, messageId)) return;
     const { conv, messages } = lu;
-    // Partenaire, chauffeur, hôtel et apporteur sont triés comme un client (migration 69) : seul le Contact personnel coupe l'IA.
+    // Partenaire, chauffeur, hôtel, apporteur et fiche partenaire reliée : plus de tri automatique (22.11.2026, triSansAppel), l'Assistant
+    // reste à la demande. Seul le Contact personnel coupe toute IA.
     let decision = triSansAppel({ conv, messages });
     // Assistant éteint ou réception suspendue (audit sécurité n° 1) : pas même le tri chez Anthropic.
     if (!decision && !(await iaOuverte(db, conv))) decision = { preparer: false, motif: "ia_coupee" };

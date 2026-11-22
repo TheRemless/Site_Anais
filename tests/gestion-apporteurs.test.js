@@ -47,7 +47,9 @@ test("aucune fiche ne coupe l'IA : ni un apporteur ni un prestataire (migration 
   const P = await import("../supabase/functions/whatsapp/proposer.js");
   assert.equal(P.numerosPartenaires, undefined, "plus de liste de numéros à écarter");
   const question = [{ type: "text", texte: "Two clients for a snorkelling day on Friday?", envoye_le: "2026-11-21T08:00:00Z" }];
-  for (const type_contact of ["apporteur", "partenaire", null]) assert.equal(P.triSansAppel({ conv: { reponses: "auto", telephone: "+447700900611", type_contact }, messages: question }), null, `${type_contact} : le tri par Haiku a lieu`);
+  // 22.11.2026 : plus de tri automatique pour un contact typé non client (l'Assistant reste à la demande) ; un contact non typé est trié.
+  for (const type_contact of ["apporteur", "partenaire"]) assert.equal(P.triSansAppel({ conv: { reponses: "auto", telephone: "+447700900611", type_contact }, messages: question }).motif, "partenaire", `${type_contact} : pas de tri automatique`);
+  assert.equal(P.triSansAppel({ conv: { reponses: "auto", telephone: "+447700900611", type_contact: null }, messages: question }), null, "non typé : le tri par Haiku a lieu");
   // Plus aucune lecture des fiches partenaires pour le tri ni pour le suivi.
   assert.doesNotMatch(source("supabase/functions/whatsapp/reponse.ts"), /partenairesDe|from\("partenaires"\)\.select\("contact, categorie"\)/);
   assert.doesNotMatch(source("supabase/functions/whatsapp/suivi.ts"), /partenairesDe/);

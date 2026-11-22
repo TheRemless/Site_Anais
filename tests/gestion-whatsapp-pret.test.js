@@ -328,12 +328,12 @@ test("branchements : fonction, reprise, écran, stores, CI", () => {
   const ts = lire("supabase/functions/whatsapp/pret.ts");
   assert.doesNotMatch(ts, /@anthropic-ai|messages\.create/, "aucun appel à l'IA");
   assert.doesNotMatch(lire("supabase/functions/whatsapp/pret.js"), /^import/m, "la règle n'importe rien (pas de réseau, pas d'IA)");
-  assert.match(ts, /update\(\{ pret_reserver: decision \}\)/, "seule la colonne pret_reserver est écrite");
+  assert.match(ts, /patch\.pret_reserver = decision/, "pret_reserver écrite seulement si la décision change");
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(vue, /filtrePretDisponible\(\) \? \[FILTRE_PRET\]/);
   assert.match(vue, /cartePret\(c, \{ lectureSeule, creerDossier: creerPret\(c, prop\), peutRelierDans: \(id\) => entitesWhatsApp\(\)\.some\(\(e\) => e\.id === id\), rafraichir \}\)/);
   assert.match(lire("src/gestion/js/store-supabase.mjs"), /whatsapp_pret_disponible: conversations !== null && pretDisponible/);
-  assert.match(lire("src/gestion/js/store-local.mjs"), /"nom", "pret_retire_le"\]\.includes\(k\)/);
+  assert.match(lire("src/gestion/js/store-local.mjs"), /"nom", "pret_retire_le"[,\]]/);
   assert.match(lire(".github/workflows/ci.yml"), /verif-whatsapp-pret/);
   const agent = fs.readdirSync(new URL("../supabase/functions/agent/", import.meta.url)).map((f) => lire(`supabase/functions/agent/${f}`)).join("\n");
   assert.doesNotMatch(agent, /pret_reserver|pret_retire_le/, "l'Assistant ne lit pas ces colonnes");

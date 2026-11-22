@@ -106,9 +106,9 @@ export function demandeAgent({ messages = [], nomProfil = "", nomSource = null, 
 //   2. réaction, emoji seul, « ok », « merci », photo ou vocal sans texte : rien à préparer, sans appel à Claude ;
 //   3. budget ou limites du jour ;
 //   4. tri par Claude Haiku : demande de client ou non ; Secret ou Taxi pour une conversation à trier.
-// Partenaire, chauffeur, hôtel et apporteur passent le tri comme un client (demande de Jérémy du 21.11.2026, migration 69) : ni le type du
-// contact ni le numéro d'une fiche partenaire ne coupent plus l'IA. Le motif « partenaire » reste dans la liste : Haiku peut encore le
-// donner (un partenaire qui s'organise avec Nani n'attend pas de réponse préparée) et les anciennes lignes le portent.
+// Le type du contact ne coupe pas l'IA (migration 69) : l'Assistant reste ouvert à la demande pour tous, sauf un Contact personnel. Mais
+// depuis le 22.11.2026, partenaire, chauffeur, hôtel, apporteur et fiche partenaire reliée ne passent plus par le tri automatique
+// (contactNonClient) : le motif « partenaire » est posé sans appel. Haiku peut encore le donner pour un contact non typé.
 export const MOTIFS = ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "tri_illisible", "ia_coupee", "autre"];
 export const MOTIFS_A_PREPARER = ["demande_client", "suivi_reservation"];
 
@@ -121,9 +121,17 @@ export function iaPermise({ receptionActive, conv, agents = {} }) {
   return Object.values(agents).some((v) => v === true);
 }
 
+// Contacts qui ne sont pas des clients (demande de Jérémy du 22.11.2026) : chauffeur, partenaire, hôtel, apporteur, ou contact relié à une
+// fiche partenaire. Plus de tri automatique par Haiku pour eux : le tri sert à reconnaître un client. L'Assistant reste ouvert quand Nani
+// le demande (« Préparer une réponse », « Demander à l'assistant ») : seul « Contact personnel » coupe toute IA (règle du 21.11, inchangée).
+// Un contact non typé passe encore par le tri.
+export const TYPES_NON_CLIENTS = ["partenaire", "chauffeur", "hotel", "apporteur"];
+export const contactNonClient = (conv) => !!conv && (TYPES_NON_CLIENTS.includes(String(conv.type_contact || "")) || !!conv.partenaire_id);
+
 // Ce que l'on sait sans appeler Claude : null si le message mérite le tri par Haiku.
 export function triSansAppel({ conv, messages }) {
   if (conv && conv.reponses === "jamais") return { preparer: false, motif: "contact_jamais" };
+  if (contactNonClient(conv)) return { preparer: false, motif: "partenaire" };
   const dernier = dernierClient(messages);
   if (!dernier) return { preparer: false, motif: "autre" };
   const t = String(dernier.texte || "").trim();

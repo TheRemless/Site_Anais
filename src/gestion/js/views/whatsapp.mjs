@@ -22,7 +22,7 @@ import {
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, aConfirmerEnvoi, ficheAMettreAJour, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
-  apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX,
+  apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX, aTraiter,
 } from "../whatsapp-calc.mjs";
 import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
 import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-calc.mjs";
@@ -32,6 +32,8 @@ import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from 
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Filtre « Prêt à réserver » (migration 85), à part dans whatsapp-pret.mjs.
 import { FILTRE_PRET, filtrePretDisponible, filtrerPretes, nombrePretes, resumeLignePret, cartePret, videPret } from "./whatsapp-pret.mjs";
+// Étapes des conversations de clients (migration 105), à part dans whatsapp-etapes.mjs.
+import { etapesDisponibles, conversationClient, filtresEtapes, estFiltreEtape, filtrerParEtape, dansEntreprise, aTrierNonClient, pastillesEtapes, blocEtapes } from "./whatsapp-etapes.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -82,7 +84,7 @@ function ligneConversation(c, prop, ouverte) {
       h(
         "span",
         { class: "wa-conv-ligne" },
-        h("span", { class: "wa-conv-nom" }, h("strong", null, nomConversation(c, clientDe(c))), h("span", { class: `wa-marque${e ? ` ${marqueEntite(e) || ""}` : " a-trier"}` }, e ? e.nom : tr("À trier"))),
+        h("span", { class: "wa-conv-nom" }, h("strong", null, nomConversation(c, clientDe(c))), etapesDisponibles() && conversationClient(c) ? pastillesEtapes(c) : h("span", { class: `wa-marque${e ? ` ${marqueEntite(e) || ""}` : " a-trier"}` }, e ? e.nom : tr("À trier"))),
         c.dernier_message_le ? h("time", { datetime: c.dernier_message_le }, quand(c.dernier_message_le, { langue: langueActive() })) : null
       ),
       h(
@@ -112,7 +114,10 @@ function marquerTouchee(lien) {
 // Secret | VIP Taxi Lanta en un tap. « Proposé par l'agent » quand l'agent l'a rangée ; pour une conversation à trier, l'entreprise
 // que l'agent propose est marquée.
 function selecteurEntreprise(c, prop) {
-  if (lectureSeule) return h("p", { class: "wa-lecture-seule", role: "status" }, icone("alerte", 16), tr("Lecture seule : conversation de {entreprise}", { entreprise: nomEntrepriseConv(c) }));
+  const lecture = lectureSeule ? h("p", { class: "wa-lecture-seule", role: "status" }, icone("alerte", 16), tr("Lecture seule : conversation de {entreprise}", { entreprise: nomEntrepriseConv(c) })) : null;
+  // Un client appartient à Secret et à Taxi (migration 105) : ses étapes à la place du choix de l'entreprise, qui se décide par dossier.
+  if (etapesDisponibles() && conversationClient(c)) return [lecture, blocEtapes(c, { lectureSeule, rafraichir })];
+  if (lectureSeule) return lecture;
   const choix = entitesWhatsApp();
   // L'agent ne range plus la conversation : il propose une entreprise et prépare la réponse avec ses données (migration 59).
   const proposee = !c.entite_id ? entrepriseProposee(prop, choix) : null;
@@ -1100,7 +1105,17 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
-  const filtrer = (liste, f) => (f === FILTRE_PRET.valeur ? filtrerPretes(liste) : filtrerConversations(liste, f, marqueDe));
+  const etapes = etapesDisponibles();
+  const filtrer = (liste, f) =>
+    f === FILTRE_PRET.valeur
+      ? filtrerPretes(liste)
+      : estFiltreEtape(f)
+      ? filtrerParEtape(liste, f)
+      : etapes && (f === "secret" || f === "taxi")
+      ? liste.filter((c) => dansEntreprise(c, f))
+      : etapes && f === "a_trier"
+      ? liste.filter(aTrierNonClient)
+      : filtrerConversations(liste, f, marqueDe);
   if (filtre === null) filtre = filtreDeDepart(conversations);
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
   if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
@@ -1111,7 +1126,16 @@ export async function vueWhatsApp() {
   const aFaireBoite = aFaireDeLaBoite(entitesWhatsApp());
   nombres.a_faire = aFaireBoite.nombre;
   if (filtrePretDisponible()) nombres[FILTRE_PRET.valeur] = nombrePretes(conversations);
-  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...(filtrePretDisponible() ? [FILTRE_PRET] : []), ...FILTRES.slice(1)];
+  // Migration 105 : un filtre par étape (« Prêt à réserver » en devient un) ; Secret et Taxi comptent les clients qui ont une étape chez
+  // elles ; « À trier » ne garde que les contacts qui ne sont pas des clients, et disparaît s'il est vide.
+  const parEtape = etapes ? filtresEtapes(conversations, filtre) : [];
+  for (const f of parEtape) nombres[f.valeur] = f.nombre;
+  if (etapes) {
+    for (const m of ["secret", "taxi"]) nombres[m] = conversations.filter((c) => dansEntreprise(c, m) && aTraiter(c, courantes.get(c.id))).length;
+    nombres.a_trier = conversations.filter(aTrierNonClient).length;
+  }
+  const suite = FILTRES.slice(1).filter((f) => !etapes || f.valeur !== "a_trier" || nombres.a_trier || filtre === "a_trier");
+  const filtres = [FILTRES[0], { valeur: "a_faire", libelle: N_("À faire") }, ...(etapes ? parEtape : filtrePretDisponible() ? [FILTRE_PRET] : []), ...suite];
 
   const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: filtres.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
@@ -1134,6 +1158,8 @@ export async function vueWhatsApp() {
       ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
       : filtre === FILTRE_PRET.valeur
       ? videPret()
+      : estFiltreEtape(filtre)
+      ? h("p", { class: "aide wa-liste-vide" }, tr("Aucune conversation à cette étape."))
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
   racine.append(colonneListe);

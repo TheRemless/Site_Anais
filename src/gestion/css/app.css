@@ -2517,3 +2517,12 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .wa-pret-carte dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .wa-suivi-pret .principal.petit svg { margin-right: 6px; vertical-align: -3px; }
 .wa-suivi .wa-pret-dossier { margin-top: 8px; font-size: 0.9rem; color: var(--texte-2); }
+
+/* WhatsApp, étapes des clients (migration 105) : une pastille par entreprise dans la liste et l'en-tête, la fenêtre « Changer l'étape ». */
+.wa-etapes { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.wa-marque.wa-etape.aucune { background: var(--surface-2); color: var(--texte-2); }
+.wa-marque.wa-etape.manuelle { box-shadow: inset 0 0 0 1px currentColor; }
+.wa-etapes-bloc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.wa-etapes-bloc .lien { min-height: 40px; padding: 0; }
+.wa-choix-etapes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+.wa-choix-entreprise { justify-content: flex-start; }
