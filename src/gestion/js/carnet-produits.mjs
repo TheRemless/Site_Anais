@@ -8,6 +8,8 @@
 // Le chemin d'une page du carnet sur le site de ZTP. Copie de CHEMIN_CARNET de supabase/functions/demande-site/calc.js (une fonction Supabase n'importe pas
 // depuis src/) : tests/gestion-carnet-produits.test.js les tient égales.
 export const CHEMIN_CARNET = "/carnet/";
+// Les origines des pages du carnet (copie de ORIGINES_CARNET de la fonction) : une demande n'est « du carnet » que si sa page est sur l'une d'elles ET sous ce chemin.
+export const ORIGINES_CARNET = ["https://zwaldtravelplanner.com", "https://www.zwaldtravelplanner.com"];
 export const PRODUITS_CARNET = [
   {"id":"ang-thong-big-boat","nom":"Ang Thong Marine Park by big boat","marque":"secret","section":"carnet","guide":"koh-samui","enfant":{"min":4,"max":11},"options":[{"id":"with-kayak","titre":"With kayak","tarifs":[{"ligne":"Adult","cle":"ang-thong-big-boat|with-kayak|Adult","prestation":"56441dce-841f-f083-15c8-d94359b593c0","libelle":"Ang Thong Marine Park by big boat, full day, with kayak"}]},{"id":"without-kayak","titre":"Without kayak","tarifs":[{"ligne":"Adult","cle":"ang-thong-big-boat|without-kayak|Adult","prestation":"b11330fd-9cc0-c708-6a64-1728fa557dc6","libelle":"Ang Thong Marine Park by big boat, full day, without kayak"}]}]},
   {"id":"ang-thong-speedboat-groupe","nom":"Ang Thong Marine Park by speedboat","marque":"secret","section":"carnet","guide":"koh-samui","enfant":{"min":4,"max":10},"options":[{"id":"standard","titre":"Full day","tarifs":[{"ligne":"Adult","cle":"ang-thong-speedboat-groupe|standard|Adult","prestation":"a0099444-a063-eb2c-dc96-a8a9bbcea7a8","libelle":"Ang Thong Marine Park by speedboat, full day"}]}]},

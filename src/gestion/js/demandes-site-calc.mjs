@@ -2,8 +2,8 @@
 // Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET, CHEMIN_CARNET } from "./carnet-produits.mjs";
-import { lireInvites, ajusterAgesCarnet } from "./demande-calc.mjs";
+import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET } from "./carnet-produits.mjs";
+import { agesDuMessage, ajusterAgesCarnet } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
@@ -216,15 +216,23 @@ export function imposerTotal(lignes, total) {
 // ---- Demandes venues d'une page privée du carnet de ZTP ----------------------------------------------------------------------
 // Une page « /carnet/… » du site de ZTP envoie sa demande à la même fonction que le site Secret (brand « secret » : elle arrive dans Secret).
 // On la reconnaît à l'adresse de la page (page_url), jamais à un mot du texte : le client ne voit pas le nom de Secret sur ces pages.
-// La fonction ne garde page_url que si elle est sur l'origine de la requête, et refuse une requête du carnet sans page « /carnet/… » : le chemin suffit ici.
-export const estCarnet = (d) => !!d && cheminPage(d.page_url).startsWith(CHEMIN_CARNET);
-// La demande comme Gestion la tarife : un enfant d'une sortie du carnet plus âgé que le barème de la sortie compte adulte (ajusterAgesCarnet), d'après les âges
-// du message. Une seule règle pour tous les chemins qui comptent les personnes d'une demande (fenêtre de création, changements, réponse de confirmation).
+// Une demande est « du carnet » si sa page est sur l'origine d'un site de ZTP ET sous le chemin du carnet : le chemin seul ne suffit pas (une page /carnet/ du site
+// Secret n'est pas un carnet). La fonction ne garde d'ailleurs page_url que si elle est sur l'origine de la requête.
+export function estCarnet(d) {
+  try {
+    const u = new URL(d && d.page_url);
+    return ORIGINES_CARNET.includes(u.origin) && u.pathname.startsWith(CHEMIN_CARNET);
+  } catch {
+    return false;
+  }
+}
+// La demande comme Gestion la tarife : un enfant d'une sortie du carnet plus âgé que le barème de la sortie compte adulte (ajusterAgesCarnet). Les adultes, enfants et
+// bébés viennent du message (agesDuMessage), comme dans la fenêtre de création, et non du compteur de la table qui compte tous les enfants : une seule source
+// pour tous les chemins (fenêtre de création, changements, réponse de confirmation).
 export function demandeTarifee(d) {
   if (!estCarnet(d) || !PRODUITS_CARNET.some((p) => p.id === d.produit_id)) return d;
-  const invites = (/^Guests:\s*(.+)$/im.exec(d.message || "") || [])[1];
-  const ages = invites ? lireInvites(invites).ages : [];
-  return ajusterAgesCarnet({ ...d, ages, carnet: { produit: d.produit_id, option: d.option_id || "" } });
+  const invites = agesDuMessage(d.message);
+  return ajusterAgesCarnet({ ...d, ...(invites || {}), carnet: { produit: d.produit_id, option: d.option_id || "" } });
 }
 // Le titre de la page, tiré de son adresse : « /carnet/koh-samui-excursions-bateau-xc8do3/ » donne « Koh Samui Excursions Bateau ».
 // Le dernier morceau, mêlé de lettres et de chiffres, est le code de la page privée : il ne fait pas partie du titre.
@@ -245,8 +253,7 @@ export function autresSorties(d) {
 // Tout ce que la page a envoyé, pour la fiche de la demande : la sortie et son option, la date, les adultes, les enfants avec leurs âges (lus dans
 // la ligne « Guests: » du message, la fonction ne garde que leur nombre), l'hôtel (le lieu de prise en charge), le nom, le numéro WhatsApp et le total estimé.
 export function champsCarnet(d) {
-  const invites = (/^Guests:\s*(.+)$/im.exec(d.message || "") || [])[1];
-  const lu = invites ? lireInvites(invites) : null;
+  const lu = agesDuMessage(d.message);
   const option = titreOption(d);
   return {
     prestation: [nomProduit(d), option].filter(Boolean).join(" – "),

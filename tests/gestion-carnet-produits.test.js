@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { origineAdmise, originesAdmises, origineCarnet, estPageCarnet, CHEMIN_CARNET as CHEMIN_FONCTION, lireOrigines, ORIGINES_DEFAUT, ORIGINES_CARNET, ORGANISATION_ZWALD, lireDemande, notification, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
 import { PRODUITS_CARNET, CHEMIN_CARNET } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
-import { lireMessage, ajusterAgesCarnet, offresDuService, clientsProches, indexClientsParTelephone, clientParTelephone, optionDuSite } from "../src/gestion/js/demande-calc.mjs";
+import { lireMessage, ajusterAgesCarnet, offresDuService, clientsProches, indexClientsParTelephone, clientParTelephone, optionDuSite, notesDemande } from "../src/gestion/js/demande-calc.mjs";
 import { estCarnet, titreCarnet, champsCarnet, autresSorties, produitSite, texteDemande, nomProduit, titreOption, optionsProduit, demandeTarifee, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit, commissionPrevue, fraisDeParc } from "../src/gestion/js/operations-calc.mjs";
 
@@ -112,7 +112,7 @@ test("demande-site : depuis les origines de ZTP, seule une page /carnet/ de la r
   assert.ok(estPageCarnet(carnet) && !estPageCarnet("https://zwaldtravelplanner.com/secret/") && !estPageCarnet(null) && !estPageCarnet("pas une adresse"));
   // Le site Secret et la machine de développement n'ont pas cette exigence.
   assert.equal(lire({ page_url: null }, "https://secrettravelandtour.com").page_url, null);
-  assert.equal(lire({ page_url: "http://localhost:8080/carnet/x/" }, "http://localhost:8080").page_url, "http://localhost:8080/carnet/x/");
+  assert.equal(lire({ page_url: "http://localhost:8080/carnet/x/" }, "http://localhost:8080").page_url, "http://localhost:8080/carnet/x/", "la machine de développement garde sa page, sans être « du carnet »");
 });
 
 test("demande-site : la page d'une requête est comparée à l'origine de la requête, dans les deux sens", () => {
@@ -124,7 +124,8 @@ test("demande-site : la page d'une requête est comparée à l'origine de la req
   assert.doesNotMatch(notification(l, AJD, "Secret").corps, /Carnet/);
   assert.equal(estCarnet(l), false);
   assert.equal(lire({ page_url: secret }, "https://secrettravelandtour.com").page_url, secret, "sa propre page est gardée");
-  assert.equal(lire({ page_url: "https://www.secrettravelandtour.com/tours/x/" }, "https://secrettravelandtour.com").page_url, "https://www.secrettravelandtour.com/tours/x/", "www et sans www restent un même site");
+  // L'origine de la page est celle de la requête : une page de l'autre adresse du même site (www) est mise de côté comme une page inconnue.
+  assert.equal(lire({ page_url: "https://www.secrettravelandtour.com/tours/x/" }, "https://secrettravelandtour.com").page_url, null);
   // Une requête du carnet qui annonce une page du site Secret : refusée.
   assert.deepEqual(erreurDe(() => lire({ page_url: secret })), { code: "page", champ: "page_url" });
   // Même ajustement d'âge : sans page du carnet gardée, la demande n'est pas une demande du carnet.
@@ -296,7 +297,8 @@ test("tarif du carnet : un enfant plus âgé que le barème de la sortie paie le
   // Ce que dit la fenêtre : combien d'enfants sont comptés adultes, jusqu'à quel âge.
   const { d } = demandeCarnet({ produit: "ang-thong-big-boat", option: "with-kayak", adultes: 1, ages: [12, 5] });
   assert.deepEqual([d.adultes, d.enfants, d.plusGrands, d.plusGrandsMax], [2, 1, 1, 11]);
-  assert.deepEqual(d.ages, [12, 5], "les âges restent ceux du client (notes du dossier, voucher)");
+  assert.deepEqual(d.agesDeclares, [12, 5], "les âges dits par le client restent (notes du dossier)");
+  assert.deepEqual(d.ages, [5], "l'enfant compté adulte n'est plus un âge d'enfant");
   assert.equal(ajusterAgesCarnet(d), d, "se rejoue sans effet");
   // Un bateau privé n'a pas de barème d'âge : le groupe ne change pas.
   const prive = demandeCarnet({ produit: "pig-island-longtail-prive-4h", adultes: 2, ages: [12] }).d;
@@ -326,11 +328,17 @@ test("tarif du carnet : l'option changée dans « Modifier » (titre du message)
   assert.equal(o.id, md5uuid("carnet:ang-thong-big-boat|without-kayak|Adult"));
 });
 
-test("tarif du carnet : un message collé sans identifiant retrouve la sortie par son nom, une sortie inconnue ne propose rien de Koh Lanta", () => {
+test("tarif du carnet : un message collé sans identifiant ne reçoit jamais le tarif d'une sortie du carnet, une sortie inconnue non plus", () => {
   const sortie = PRODUITS_CARNET.find((p) => p.id === "pig-island-groupe");
   const texte = `Booking request: ${sortie.nom} – ${sortie.options[0].titre}\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nName: Anna`;
   const d = lireMessage(texte, AJD);
-  assert.equal(offresDuService(d, texte, { phrase: texte, date: d.date, adultes: 2, enfants: 0 }, contexte)[0].total, 3000);
+  // Un message Secret au nom identique : la recherche par le nom n'ouvre que le site Secret (PRODUITS_SITE), pas le carnet.
+  assert.equal(optionDuSite(d), null);
+  assert.ok(!offresDuService(d, texte, { phrase: texte, date: d.date, adultes: 2, enfants: 0 }, contexte).some((o) => o.ligneSite), "aucun tarif de Koh Samui");
+  // Une demande du carnet qui porte son identifiant, elle, retrouve sa sortie.
+  assert.equal(offresDuService({ ...d, carnet: { produit: "pig-island-groupe", option: "standard" } }, texte, { phrase: texte, date: d.date, adultes: 2, enfants: 0 }, contexte)[0].total, 3000);
+  // Identifiant du carnet inconnu : la recherche par le nom reste dans le carnet.
+  assert.equal(optionDuSite({ ...d, carnet: { produit: "n-existe-pas", option: "x" } }).produit, sortie);
   const inconnu = lireMessage("Booking request: Une autre sortie – Option\nGuests: 1 adult", AJD);
   inconnu.carnet = { produit: "n-existe-pas", option: "x" };
   assert.ok(!offresDuService(inconnu, "x", { phrase: "x", adultes: 1, enfants: 0 }, contexte).some((o) => o.ligneSite), "aucun tarif du carnet pour une sortie inconnue");
@@ -342,7 +350,7 @@ const D = { id: "d1", marque: "secret", statut: "nouvelle", ref: null, produit_i
 
 test("demandes du site : une demande du carnet se reconnaît à sa page, jamais au mot Secret", () => {
   assert.ok(estCarnet(D));
-  assert.ok(estCarnet({ page_url: "http://localhost:8080/carnet/essai-abc123/" }));
+  assert.equal(estCarnet({ page_url: "http://localhost:8080/carnet/essai-abc123/" }), false, "la machine de développement n'est pas ZTP");
   assert.equal(estCarnet({ page_url: "https://secrettravelandtour.com/tours/4-islands/" }), false);
   assert.equal(estCarnet({ page_url: null }), false);
   assert.equal(estCarnet({ page_url: "https://zwaldtravelplanner.com/secret/" }), false);
@@ -453,4 +461,104 @@ test("fiche d'une demande du carnet : une date ou un nom manquant se dit comme s
   assert.match(fiche, /tr\("Nom non donné"\)/);
   assert.equal(champsCarnet({ ...D, date_service: null, nom: null }).date, "");
   assert.equal(champsCarnet({ ...D, date_service: null, nom: null }).nom, "");
+});
+
+// ---- Deuxième tour de revue ---------------------------------------------------------------------------------------------------------------
+test("« du carnet » : l'origine de la page compte autant que son chemin, côté fonction et côté outil", () => {
+  const fauxSecret = "https://secrettravelandtour.com/carnet/x/";
+  // Site Secret + page /carnet/ inventée sur le site Secret : demande acceptée, mais ni étiquette, ni notification « Carnet ZTP », ni « du carnet ».
+  const l = lire({ page_url: fauxSecret }, "https://secrettravelandtour.com");
+  assert.equal(l.page_url, fauxSecret, "sa propre page est gardée");
+  assert.equal(estPageCarnet(l.page_url), false);
+  assert.doesNotMatch(notification(l, AJD, "Secret").corps, /Carnet/);
+  assert.equal(estCarnet({ ...D, page_url: fauxSecret }), false);
+  assert.equal(demandeTarifee({ ...D, page_url: fauxSecret, produit_id: "ang-thong-big-boat", message: "Booking request: x\nGuests: 1 adult, 1 child (age 12)" }).plusGrands, undefined, "pas d'ajustement d'âge");
+  // ZTP + page du site Secret : refusée (la page doit être celle de la requête).
+  assert.deepEqual(erreurDe(() => lire({ page_url: "https://secrettravelandtour.com/tours/4-islands/" })), { code: "page", champ: "page_url" });
+  // Autres adresses qui se ressemblent : jamais « du carnet ».
+  for (const page of ["http://zwaldtravelplanner.com/carnet/x/", "https://zwaldtravelplanner.com.evil.example/carnet/x/", "https://evil.example/carnet/x/", "https://zwaldtravelplanner.com:8443/carnet/x/", "https://sub.zwaldtravelplanner.com/carnet/x/", "http://localhost:8080/carnet/x/"]) {
+    assert.equal(estPageCarnet(page), false, page);
+    assert.equal(estCarnet({ page_url: page }), false, page);
+  }
+  // ZTP légitime : étiqueté, tarifé, proposé.
+  const ztp = lire({});
+  assert.ok(estPageCarnet(ztp.page_url));
+  assert.match(notification(ztp, AJD, "Secret").corps, /^Carnet ZTP, /);
+  assert.ok(estCarnet(D) && estCarnet({ ...D, page_url: "https://www.zwaldtravelplanner.com/carnet/essai-abc123/" }));
+  // Les adresses de ZTP de l'outil sont celles de la fonction.
+  return import("../src/gestion/js/carnet-produits.mjs").then((m) => assert.deepEqual(m.ORIGINES_CARNET, ORIGINES_CARNET));
+});
+
+test("âges : l'enfant compté adulte quitte la liste des âges (il n'est plus compté deux fois), ses âges déclarés restent dans les notes du dossier", () => {
+  const { d } = demandeCarnet({ produit: "ang-thong-big-boat", option: "with-kayak", adultes: 1, ages: [5, 12] });
+  assert.deepEqual([d.adultes, d.enfants], [2, 1]);
+  assert.deepEqual(d.ages, [5], "l'âge de 12 ans n'est plus un âge d'enfant");
+  assert.deepEqual(d.agesDeclares, [5, 12]);
+  assert.match(notesDemande(d), /Child ages: 5, 12/);
+  assert.equal(ajusterAgesCarnet(d), d, "se rejoue sans effet");
+  // Le groupe d'un tarif par paliers compte chaque personne une seule fois : adultes + enfants d'au moins 4 ans.
+  const total = d.adultes + d.ages.filter((a) => a >= 4).length;
+  assert.equal(total, 3);
+});
+
+test("une seule source du nombre d'enfants : bébé et enfant de 12 ans, même résultat dans la fenêtre, les changements et la réponse", () => {
+  const message = "Booking request: Ang Thong Marine Park by big boat – With kayak\nDate: Sun 20 Dec 2026\nGuests: 2 adults, 2 children (ages 1 and 12)\nPickup: Hotel Example\nName: Anna Keller";
+  // La ligne de la table compte 2 enfants (la page y met tous les enfants, bébé compris) ; le message en compte 1 de plus de 3 ans et 1 bébé.
+  const ligne = { ...D, produit_id: "ang-thong-big-boat", produit: "Ang Thong Marine Park by big boat", option_id: "with-kayak", option_titre: "With kayak", adultes: 2, enfants: 2, total_estime: null, message };
+  const fenetre = ajusterAgesCarnet({ ...lireMessage(message, AJD), carnet: { produit: "ang-thong-big-boat", option: "with-kayak" } });
+  const table = demandeTarifee(ligne);
+  assert.deepEqual([fenetre.adultes, fenetre.enfants, fenetre.bebes], [3, 0, 1]);
+  assert.deepEqual([table.adultes, table.enfants, table.bebes], [fenetre.adultes, fenetre.enfants, fenetre.bebes]);
+  assert.deepEqual(table.ages, fenetre.ages);
+  const offre = offresDuService(fenetre, message, { phrase: message, date: fenetre.date, adultes: fenetre.adultes, enfants: fenetre.enfants }, contexte)[0];
+  assert.equal(offre.total, 3 * 1850, "3 adultes, le bébé ne compte pas");
+  const final = { date: "2026-12-20", option_titre: "With kayak", adultes: fenetre.adultes, enfants: fenetre.enfants, total: offre.total, devise: "THB" };
+  assert.deepEqual(changements(ligne, final), [], "aucun changement de personnes inventé");
+  assert.doesNotMatch(reponseConfirmation(ligne, final, { aujourdhui: AJD }), /instead of/);
+  // Sans message : les chiffres de la ligne servent tels quels, sans ajustement.
+  assert.deepEqual([demandeTarifee({ ...ligne, message: "" }).adultes, demandeTarifee({ ...ligne, message: "" }).enfants], [2, 2]);
+});
+
+test("date manquante : le signalement se base sur la date, pas sur « date et heure »", () => {
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/demandes-site.mjs", import.meta.url), "utf8");
+  const fiche = vue.slice(vue.indexOf("function champsDuCarnet("), vue.indexOf("const ficheConnue"));
+  assert.match(fiche, /!c\.date/, "manque = pas de date");
+  assert.doesNotMatch(fiche, /!quand/);
+  // Une demande avec une heure mais sans date reste signalée.
+  const sansDate = champsCarnet({ ...D, date_service: null, heure: "09:00" });
+  assert.deepEqual([sansDate.date, sansDate.heure], ["", "09:00"]);
+});
+
+test("module partagé des âges : lireInvites et ajusterAgesCarnet, sans cycle avec demande-calc", async () => {
+  const ages = await import("../src/gestion/js/carnet-ages.mjs");
+  const calc = await import("../src/gestion/js/demande-calc.mjs");
+  assert.equal(typeof ages.lireInvites, "function");
+  assert.equal(typeof ages.agesDuMessage, "function");
+  assert.equal(calc.lireInvites, ages.lireInvites, "demande-calc ré-exporte");
+  assert.equal(calc.ajusterAgesCarnet, ages.ajusterAgesCarnet);
+  assert.deepEqual(ages.agesDuMessage("Booking request: x\nGuests: 2 adults, 2 children (ages 1 and 12)"), { adultes: 2, enfants: 1, bebes: 1, ages: [1, 12] });
+  assert.equal(ages.agesDuMessage("Booking request: x\nDate: y"), null);
+  const code = (f) => fs.readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert.doesNotMatch(code("demandes-site-calc.mjs"), /from "\.\/demande-calc\.mjs"/, "demandes-site-calc n'importe plus demande-calc");
+  assert.doesNotMatch(code("carnet-ages.mjs"), /from "\.\/(?!carnet-produits)/, "le module partagé n'importe que carnet-produits");
+  // La ligne « Guests: » du message se lit à un seul endroit (agesDuMessage), pas dans la liste des demandes.
+  assert.doesNotMatch(code("demandes-site-calc.mjs"), /\^Guests/);
+  assert.match(code("carnet-ages.mjs"), /\^Guests/);
+});
+
+test("âge sous le barème d'une sortie sans ligne enfant : l'enfant n'a aucun tarif propre, pas d'alerte pour un bébé gratuit", () => {
+  // Big boat sans prix enfant dans le catalogue (adulte seul) : le tarif se retrouve, l'enfant de 3 ans n'a aucun tarif propre.
+  const sansEnfant = prestations.map((p) => (p.details && p.details.enfant !== undefined && p.libelle.startsWith("ang-thong-big-boat") ? { ...p, details: {} } : p));
+  const ctx = { ...contexte, prestations: sansEnfant };
+  const o = (ages) => {
+    const { d, texte } = demandeCarnet({ produit: "ang-thong-big-boat", option: "with-kayak", adultes: 2, ages });
+    return offresDuService(d, texte, { phrase: texte, date: d.date, adultes: d.adultes, enfants: d.enfants }, ctx)[0];
+  };
+  assert.equal(o([3]).avertissement, "age_enfant_sans_tarif");
+  assert.equal(o([3]).bareme.min, 4);
+  assert.equal(o([1]).avertissement, "", "un bébé gratuit : aucune alerte");
+  assert.equal(o([0, 2]).avertissement, "");
+  // Avec une ligne enfant, c'est l'alerte « hors barème » d'avant.
+  const avec = demandeCarnet({ produit: "ang-thong-big-boat", option: "with-kayak", adultes: 2, ages: [3] });
+  assert.equal(offresDuService(avec.d, avec.texte, { phrase: avec.texte, date: avec.d.date, adultes: avec.d.adultes, enfants: avec.d.enfants }, contexte)[0].avertissement, "age_enfant");
 });

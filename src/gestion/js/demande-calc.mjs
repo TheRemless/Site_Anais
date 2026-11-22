@@ -6,6 +6,7 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET } from "./carnet-produits.mjs";
+import { lireInvites, ajusterAgesCarnet } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -48,15 +49,8 @@ const heureDe = (v) => {
 };
 const BOUT_SANS_HOTEL = /\b(?:airport|pier|ferry|bus|terminal|KBV|HKT|port)\b/i;
 
-// « 2 adults, 1 child (age 7) », « 2 adults, 3 children (ages under 1, 3 and 10) » : adultes, enfants (3 ans et plus), bébés (moins de 3 ans) et âges.
-export function lireInvites(v) {
-  const adultes = Number((/(\d+)\s+adults?/i.exec(v) || [])[1] || 0);
-  const m = /(\d+)\s+child(?:ren)?(?:\s*\(ages?\s*([^)]*)\))?/i.exec(v);
-  let ages = [];
-  if (m && m[2]) ages = m[2].split(/,|\band\b/).map((x) => x.trim()).filter(Boolean).map((x) => (/under\s*1/i.test(x) ? 0 : parseInt(x, 10))).filter((n) => Number.isFinite(n));
-  const enfants = ages.length ? ages.filter((a) => a >= 3).length : m ? Number(m[1]) : 0;
-  return { adultes, enfants, bebes: ages.filter((a) => a < 3).length, ages };
-}
+// Lecture des invités (« 2 adults, 1 child (age 7) ») : module partagé avec la liste des demandes (carnet-ages.mjs), ré-exportée ici.
+export { lireInvites, ajusterAgesCarnet };
 
 function trajetDe(texte) {
   const m = /^(.+?) to (.+)$/.exec(texte.trim());
@@ -968,18 +962,6 @@ const trancheGroupe = (ligne) => {
 // Ce qui distingue une ligne d'une autre une fois l'âge retiré : « Adult rider » et « Child rider, 6 to 12 » donnent « rider ».
 const fondLigne = (l) => cleTexte(l).replace(/\b(?:adults?|child(?:ren)?|from|age|to|and|per|person|\d+)\b/g, " ").replace(/\s+/g, " ").trim();
 
-// Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire (décision de Jérémy, 22.11.2026 : de 10 à 14 ans, l'entrée du parc d'Ang Thong
-// reste au tarif enfant, c'est le voucher qui la dit). Le message du site compte comme « enfant » tout âge de 3 ans et plus : ces enfants-là passent adultes
-// avant de choisir le tarif, de calculer le prix et de préparer les lignes. `d.plusGrands` dit combien, `d.plusGrandsMax` le barème. Sans effet pour une sortie
-// sans barème (bateau privé : un prix par bateau) ou sans âges. Se rejoue sans effet.
-export function ajusterAgesCarnet(d) {
-  const produit = d && d.carnet && d.carnet.produit ? PRODUITS_CARNET.find((p) => p.id === d.carnet.produit) : null;
-  const bareme = produit && produit.enfant;
-  if (!bareme || d.plusGrands !== undefined || !(d.ages || []).length) return d;
-  const plus = Math.min(d.enfants || 0, d.ages.filter((a) => a > bareme.max).length);
-  return plus ? { ...d, adultes: (d.adultes || 0) + plus, enfants: (d.enfants || 0) - plus, plusGrands: plus, plusGrandsMax: bareme.max } : { ...d, plusGrands: 0 };
-}
-
 // La sortie d'une page du carnet (carnet-produits.mjs) citée par `d.carnet` ({ produit, option } : product_id et option de la demande du site).
 // L'option se retrouve par son titre écrit dans le message (« Modifier » le change), puis par son identifiant ; une sortie à une seule option n'en demande pas.
 function optionDuCarnet(d) {
@@ -1000,7 +982,8 @@ export function optionDuSite(d) {
   // jamais parmi celles du site Secret (deux sorties peuvent porter le même nom).
   if (d.carnet && d.carnet.produit) return optionDuCarnet(d) || (PRODUITS_CARNET.some((p) => p.id === d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
   if (!d.prestation) return null;
-  return optionParNom(d, [...PRODUITS_SITE, ...PRODUITS_CARNET]);
+  // Un message qui n'a pas d'identifiant du carnet (collé, ou d'un autre site) ne cherche que parmi les sorties du site Secret : jamais le tarif d'une sortie du carnet.
+  return optionParNom(d, PRODUITS_SITE);
 }
 // Le produit et l'option d'un message qui les nomme (« Booking request: Produit – Option », « Rental request: Modèle »), parmi `catalogue`.
 function optionParNom(d, catalogue) {
@@ -1067,10 +1050,15 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   // Sortie du carnet : l'âge d'un enfant est jugé d'après la règle de chaque sortie (celle du partenaire, `enfant` dans carnet-produits.mjs), pas d'après
   // le seuil unique du site. Au-dessus du barème, l'enfant a déjà été compté adulte (ajusterAgesCarnet) ; en dessous, aucun tarif n'est publié :
   // l'offre le signale, Nani vérifie avec le partenaire.
-  // Les âges de moins de 3 ans sont des bébés (comptés à part par le message) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème l'est.
+  // Les âges de moins de 3 ans sont des bébés (comptés à part par le message, gratuits) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème
+  // l'est. Une sortie sans ligne enfant (adulte seul) le dit autrement : cet enfant n'a aucun tarif propre.
   const bareme = trouve.produit.enfant;
   if (bareme && (d.ages || []).some((a) => a >= 3 && a < bareme.min)) {
-    for (const o of offres) (o.avertissement = o.avertissement || "age_enfant"), (o.bareme = bareme);
+    for (const o of offres) {
+      const sansEnfant = !o.enfantSite && !prestationEnfant(o.source, prestations);
+      o.avertissement = o.avertissement || (sansEnfant ? "age_enfant_sans_tarif" : "age_enfant");
+      o.bareme = bareme;
+    }
   }
   return offres.sort((a, b) => b.score - a.score);
 }
@@ -1240,7 +1228,7 @@ export function notesDemande(d) {
     d.siegeEnfant ? "Child seat needed" : "",
     d.siegeBebe ? "Baby seat needed" : "",
     d.bebes ? `Babies (0-2): ${d.bebes}` : "",
-    d.ages && d.ages.length ? `Child ages: ${d.ages.map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
+    (d.agesDeclares || d.ages) && (d.agesDeclares || d.ages).length ? `Child ages: ${(d.agesDeclares || d.ages).map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
     d.bagages ? `Bags: ${d.bagages}` : "",
     d.extras ? `Extras: ${d.extras}` : "",
     d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",

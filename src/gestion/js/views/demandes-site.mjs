@@ -307,7 +307,7 @@ function champsDuCarnet(d) {
     { class: "dsite-champs" },
     ligne(tr("Prestation"), c.prestation),
     // Une demande sans date ou sans nom le dit, comme les autres demandes du site.
-    ligne(tr("Date"), quand || tr("Date à préciser"), !quand),
+    ligne(tr("Date"), c.date ? quand : [tr("Date à préciser"), c.heure].filter(Boolean).join(" · "), !c.date),
     ligne(tr("Adultes"), c.adultes ? String(c.adultes) : ""),
     ligne(tr("Enfants"), enfants),
     ligne(tr("Hôtel"), c.hotel),

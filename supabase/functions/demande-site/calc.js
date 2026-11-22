@@ -15,12 +15,14 @@ export const ORGANISATION_ZWALD = "00000000-0000-0000-0000-00000000a000";
 export const ORIGINES_CARNET = ["https://zwaldtravelplanner.com", "https://www.zwaldtravelplanner.com"];
 export const MARQUES_CARNET = ["secret"];
 export const origineCarnet = (origine) => ORIGINES_CARNET.includes(origine);
-// Une page du carnet : son chemin commence par « /carnet/ ». Seule définition (la fonction, la notification) ; l'outil en garde une copie, CHEMIN_CARNET de
-// src/gestion/js/carnet-produits.mjs, que tests/gestion-carnet-produits.test.js tient égale.
+// Une page du carnet : sur l'origine d'un site de ZTP ET sous le chemin « /carnet/ » (le chemin seul ne suffit pas : une page /carnet/ du site Secret n'en est pas une).
+// Seule définition (la fonction, la notification) ; l'outil en garde une copie, CHEMIN_CARNET et ORIGINES_CARNET de src/gestion/js/carnet-produits.mjs,
+// que tests/gestion-carnet-produits.test.js tient égales.
 export const CHEMIN_CARNET = "/carnet/";
 export const estPageCarnet = (url) => {
   try {
-    return new URL(String(url)).pathname.startsWith(CHEMIN_CARNET);
+    const u = new URL(String(url));
+    return ORIGINES_CARNET.includes(u.origin) && u.pathname.startsWith(CHEMIN_CARNET);
   } catch {
     return false;
   }
@@ -142,7 +144,8 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, ori
   // L'adresse de la page n'est gardée que si elle est sur le site (ou la machine de développement) : on n'enregistre pas un lien choisi par un tiers.
   const page = champ("page_url", () => texte(d.page_url, 300));
   const carnet = origineCarnet(origine);
-  const pageUrl = page && pageDuSite(page, carnet ? [origine] : origines) ? page : null;
+  // La page est gardée si elle est sur l'origine de la requête (les adresses du site pour une requête sans origine, comme les essais) ; sinon elle est mise de côté.
+  const pageUrl = page && pageDuSite(page, carnet ? [origine] : origines) && (!origine || memeOrigine(page, origine)) ? page : null;
   // Depuis le carnet, la page est obligatoire : une page « /carnet/… » de la requête elle-même, sinon refus (400 sur page_url).
   if (carnet && !(pageUrl && estPageCarnet(pageUrl) && new URL(pageUrl).origin === origine)) throw Object.assign(erreur("page"), { champ: "page_url" });
   return {
@@ -167,6 +170,13 @@ export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT, ori
 }
 
 // Adresse d'une page du site : une origine admise suivie d'un chemin (ou de rien), sans espace.
+const memeOrigine = (page, origine) => {
+  try {
+    return new URL(page).origin === origine;
+  } catch {
+    return false;
+  }
+};
 function pageDuSite(page, origines) {
   const m = /^(https?:\/\/[^/?#\s]+)([/?#][^\s]*)?$/.exec(page);
   return !!m && origineAdmise(m[1], origines);
