@@ -11,7 +11,8 @@ const TYPES = ["client", "partenaire", "apporteur", "personnel", "inconnu"];
 // Seule la décision type_contact du tri compte (relecture du 22.11.2026 : l'ancien motif « partenaire » ne compte plus).
 const decisionsDe = (conv) => (conv && conv.type_avis && Array.isArray(conv.type_avis.decisions) ? conv.type_avis.decisions.filter((x) => x && TYPES.includes(x.type)) : []);
 const derniereNette = (decisions) => [...decisions].reverse().find((d) => d.type !== "inconnu") || null;
-const signauxNets = (conv) => !!(conv && conv.type_signaux && conv.type_signaux.nets === true && !conv.type_signaux.jamais);
+// Jamais sans un repère venu du contact (relecture finale du 22.11.2026).
+const signauxNets = (conv) => !!(conv && conv.type_signaux && conv.type_signaux.nets === true && !conv.type_signaux.jamais && conv.type_signaux.du_contact > 0);
 
 export const partenaireDeduit = (conv) => !!conv && conv.type_contact === "partenaire" && conv.type_source === "deduit";
 export function partenaireProbable(conv) {

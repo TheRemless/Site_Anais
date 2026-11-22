@@ -28,7 +28,7 @@ const signaux = (lignes, conv) => S.signauxPartenaire(msgs(lignes), { conv, main
 let nD = 0;
 const D = (type, m = `msg${++nD}`) => ({ type, raison: "", m, le: "2026-11-21T00:00:00Z" });
 const C = (extra = {}) => ({ id: "c", reponses: "auto", type_contact: null, type_source: null, partenaire_id: null, tri: null, type_avis: null, type_signaux: null, ...extra });
-const NETS = { v: 1, codes: { dispo_demandee: 1, prix_du_contact: 1 }, score: 4, nets: true };
+const NETS = { v: 2, codes: { dispo_demandee: 1, prix_du_contact: 1 }, du_contact: 1, score: 4, nets: true };
 
 // ---- 1. Les vrais partenaires, reformulés ----------------------------------------------------------------------------------------------
 test("modèle C4 (chauffeur) : demande de client transférée, prix donné à Nani, prise en charge, clients à la 3e personne : repères nets", () => {
@@ -173,6 +173,26 @@ test("relecture n° 2 : des repères nets seuls ne changent jamais le traitement
   assert.doesNotMatch(rep, /partenaireProbable/, "partenaireProbable ne décide plus du traitement");
 });
 
+test("relecture finale n° 1 : deux phrases de Nani ne rendent jamais les repères nets ; il faut un repère venu du contact", () => {
+  const s = signaux([["<", "taxi from Lanta to Krabi airport for 2?"], [">", "2,500 THB. Are you free at 9am? Most of our customers take this time"]]);
+  assert.deepEqual(s.codes, { dispo_demandee: 1, clients_nani: 1 }, "deux repères de Nani, 4 points");
+  assert.equal(s.score, 4);
+  assert.equal(s.du_contact, 0);
+  assert.equal(s.nets, false, "aucun repère du contact : pas nets");
+  const c = C({ type_signaux: s });
+  assert.equal(S.partenaireProbable(c), false, "pas « Partenaire probable »");
+  assert.equal(F.partenaireProbable(c), false, "écran non plus");
+  assert.equal(F.partenaireSuggere(c), false);
+  assert.equal(S.prixDeVentePermis(c), true, "le prix de Nani reste un prix de vente (clientProbable de la #318 reste vrai)");
+  assert.equal(S.traiterEnPartenaire(c), false);
+  // Des repères gardés comme « nets » sans compte du contact (avant cette correction) ne comptent pas.
+  assert.equal(S.partenaireProbable(C({ type_signaux: { codes: { dispo_demandee: 1, clients_nani: 1 }, score: 4, nets: true } })), false);
+  // Un repère du contact suffit à compter (modèle C12 : il annonce son prix).
+  const c12 = signaux([[">", "Hi! Is your boat free on Wednesday?"], [">", "Ok, I will check with my customers"], ["<", "I can propose a price of 12,500 with lunch included."]]);
+  assert.equal(c12.du_contact, 1);
+  assert.equal(c12.nets, true);
+});
+
 test("faux positifs : un client seul ne fait jamais des repères nets (thaï d'un client, « I am at the pier », une question)", () => {
   const s = signaux([["<", "I am at the pier now, where is the driver?"], ["<", "สวัสดีครับ รถมาถึงหรือยังครับ ขอบคุณมากครับ"], ["<", "Is the price 700 baht?"]]);
   assert.equal(s.nets, false, JSON.stringify(s));
@@ -308,7 +328,13 @@ test("relecture n° 5 : consigne courte ; le début est celui de la conversation
   assert.ok(partie.length < 800, `${partie.length} caractères`);
   const rep = lire("supabase/functions/whatsapp/reponse.ts");
   assert.match(rep, /const debut = messages\.length >= 40 \? await premiersMessages\(db, conv\.id\) : null;/);
-  assert.match(rep, /\.order\("envoye_le", \{ ascending: true \}\)\.limit\(4\)/);
+  assert.match(rep, /\.neq\("type", "non_transmis"\)\.neq\("type", "reaction"\)\.is\("supprime_le", null\)\.order\("envoye_le", \{ ascending: true \}\)\.limit\(4\)/, "relecture finale n° 4 : ni supprimé ni réaction");
+  // Côté consigne aussi : un premier message supprimé ou une réaction ne part pas.
+  const avec = msgs([[">", "Customer:\nfirst real request"], ["<", "ok"]]);
+  avec.unshift({ ...avec[0], id: "r1", type: "reaction", texte: "👍" }, { ...avec[0], id: "s1", texte: "message effacé", supprime_le: "2026-11-21T00:00:00Z" });
+  const t2 = demandeTri(quarante, { debut: avec });
+  assert.match(t2, /Customer: first real request/);
+  assert.doesNotMatch(t2, /message effacé|👍/);
   assert.match(rep, /parametresTri\(messages, \{ aTrier: !conv\.entite_id \|\| clientCommun\(conv\), debut, signaux: conv\.type_signaux \|\| null \}\)/);
 });
 
@@ -320,6 +346,10 @@ test("tri : la décision lue (type, raison courte sans numéro), gardée sur la 
   assert.equal(triGarde(d, "2026-11-22T00:00:00Z").contact, "partenaire");
   assert.ok(JSON.stringify(triGarde(d)).length < 1000, "contrainte de la colonne tri");
   assert.equal(S.lireTypeDecision({ type_contact: "client", raison_type: "x".repeat(400) }).raison.length, 120);
+  // Relecture finale n° 2 : aucun montant dans la raison, quelle que soit sa longueur.
+  for (const [brut, propre] of [["gives net 1,800 THB", "gives net …"], ["asks 500 baht for 2 pax", "asks … for … pax"], ["price ฿900 each", "price … each"], ["net 2.5k per day", "net … per day"], ["quotes 12'500 thb", "quotes …"]]) {
+    assert.equal(S.lireTypeDecision({ type_contact: "partenaire", raison_type: brut }).raison, propre, brut);
+  }
   let avis = null;
   for (let i = 0; i < 7; i++) avis = S.avisApres(avis, { type: i % 2 ? "client" : "partenaire", raison: "r" }, `2026-11-2${i}T00:00:00Z`);
   assert.equal(avis.decisions.length, 5);

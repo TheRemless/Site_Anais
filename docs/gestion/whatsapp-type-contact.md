@@ -76,7 +76,7 @@ Un client ne peut presque pas atteindre des repères nets seul : « I am at the 
 
 « Guest », « passengers », un intitulé suivi de « : », « cost » et un prix en thaï ne comptent pas.
 
-**Nets** : 4 points au moins, sur 2 repères différents au moins. Les repères sont des codes et des nombres, jamais un texte.
+**Nets** : 4 points au moins, sur 2 repères différents au moins, **dont un venu du contact**. Deux phrases de Nani ne suffisent jamais (« 2,500 THB. Are you free at 9am? Most of our customers take this time » à un client). Les repères sont des codes et des nombres, jamais un texte.
 
 **Décision du tri** (même appel Haiku qu'avant, aucun de plus, consigne courte) : `type_contact` (client, partenaire, apporteur, personnel, inconnu) et `raison_type` (12 mots, sans nom, sans numéro, sans prix), décidés sur toute la conversation. Haiku reçoit :
 - les 8 derniers messages, comme avant ;
@@ -112,6 +112,15 @@ Un partenaire probable reste traité en client. La réponse préparée lui deman
 |---|---|---|
 | C12 | Repères nets : prix à fixer, toujours traité en client | « Partenaire » sur 2 messages : posé, marqué déduit |
 | C39 | Un repère : rien ne change | Idem |
+
+### Relecture finale du 22.11.2026
+
+| N° | Correction |
+|---|---|
+| 1 | « Nets » exige un repère venu du contact. Des repères de Nani seuls ne rendent ni « nets » ni « Partenaire probable » : le prix de Nani reste un prix de vente |
+| 2 | La raison du tri perd tout montant, quelle que soit sa longueur (« gives net 1,800 THB » devient « gives net … ») |
+| 3 | Le motif « partenaire » d'un seul tri ne sort plus une conversation des étapes ni du « Prêt à réserver » (`MOTIFS_TRI_NON_CLIENT`, `MOTIFS_TRI_EXCLUS` de l'écran et de la fonction). Seul un type posé par Nani ou déduit le fait |
+| 4 | Les premiers messages lus pour le tri écartent les messages supprimés et les réactions |
 
 ## 3. Chauffeur et hôtel retirés
 

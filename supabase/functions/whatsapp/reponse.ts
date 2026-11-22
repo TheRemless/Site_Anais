@@ -219,9 +219,10 @@ async function nommerConversation(db: SupabaseClient, conv: Conv, nom: string) {
   if (error && error.code !== "42703") console.error("whatsapp : nom du client non écrit", error.message);
 }
 
-// Les vrais premiers messages d'une conversation (pour le tri, quand la conversation dépasse les 40 lus). Jamais une ligne « non transmis ».
+// Les vrais premiers messages d'une conversation (pour le tri, quand la conversation dépasse les 40 lus). Jamais une ligne « non transmis »,
+// un message supprimé ni une réaction (relecture finale du 22.11.2026).
 async function premiersMessages(db: SupabaseClient, conversationId: string) {
-  const { data, error } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: true }).limit(4);
+  const { data, error } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").neq("type", "reaction").is("supprime_le", null).order("envoye_le", { ascending: true }).limit(4);
   return error ? null : ((data || []) as Record<string, any>[]);
 }
 

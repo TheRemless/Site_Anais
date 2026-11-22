@@ -18,7 +18,7 @@
 // fait avancer (prix, réponse du client, demande, refus, dossier créé ou accepté, service confirmé, voucher). « Sans entreprise » tombe dès
 // qu'une entreprise a une étape.
 // Jamais pour un Contact personnel, un partenaire (posé par Nani ou déduit, migration 110), un apporteur, une fiche partenaire reliée, ou un tri
-// « personnel », « partenaire » (donné par Haiku) ou « publicite », jugés sur leur valeur du moment.
+// « personnel », « publicite » ou « contact_jamais » (plus « partenaire » depuis la migration 110), jugés sur leur valeur du moment.
 //
 // Performance (relecture n° 8) : clients, dossiers et réservations sont indexés une fois par tableau (WeakMap) ; l'écran calcule les étapes
 // une fois par rendu (views/whatsapp-etapes.mjs).
@@ -41,7 +41,8 @@ export const libelleEtape = (v) => (ETAPES.find((e) => e.valeur === v) || {}).li
 export const CLES_ENTREPRISE = ["secret", "taxi", "aucune"];
 // Le tri écarte un contact qui n'est pas un client seulement pour ces motifs ; « non_client » (posé sans appel pour un contact typé) ne
 // compte pas : c'est le type du moment qui décide.
-export const MOTIFS_TRI_NON_CLIENT = ["personnel", "partenaire", "publicite", "contact_jamais"];
+// Relecture finale du 22.11.2026 (migration 110) : plus « partenaire », seul un type posé par Nani ou déduit sort une conversation des étapes.
+export const MOTIFS_TRI_NON_CLIENT = ["personnel", "publicite", "contact_jamais"];
 export const RELANCE_MS = 48 * 3600 * 1000;
 // Un voucher envoyé par Nani juste avant que le dossier soit noté compte pour ce dossier (elle crée souvent le dossier après).
 const MARGE_VOUCHER_MS = 15 * 60 * 1000;

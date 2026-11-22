@@ -26,7 +26,8 @@ import { plat } from "./pret.js";
 export const VERSION_SIGNAUX = 2;
 export const TYPES_DECISION = ["client", "partenaire", "apporteur", "personnel", "inconnu"];
 export const DECISIONS_GARDEES = 5;
-// Poids de chaque repère. « Nets » : 4 points au moins, sur 2 repères différents au moins.
+// Poids de chaque repère. « Nets » : 4 points au moins, sur 2 repères différents au moins, dont un venu du CONTACT (relecture finale du
+// 22.11.2026) : deux phrases de Nani (« Are you free at 9am? Most of our customers take this time ») ne suffisent jamais.
 export const POIDS = { transfert_demande: 3, commission: 3, dispo_demandee: 2, prix_du_contact: 2, pax_prix: 2, clients_nani: 2, clients_contact: 2, prise_en_charge: 2, sur_place: 1, thai_nani: 1 };
 export const SEUIL_NETS = 4;
 
@@ -102,7 +103,12 @@ const vivants = (messages = []) => messages.filter((m) => m && !m.supprime_le &&
 export function signauxPartenaire(messages = [], { conv = null, maintenant = new Date().toISOString() } = {}) {
   if (conv && conv.reponses === "jamais") return { v: VERSION_SIGNAUX, jamais: true, calcule_le: maintenant };
   const codes = {};
-  const ajoute = (c) => (codes[c] = (codes[c] || 0) + 1);
+  let duContact = 0;
+  let entrant = false;
+  const ajoute = (c) => {
+    codes[c] = (codes[c] || 0) + 1;
+    if (entrant) duContact++;
+  };
   const lus = vivants(messages);
   // Nani qui écrit en thaï à quelqu'un qui lui écrit en thaï : rien de particulier (un client thaï).
   const contactThai = lus.some((m) => m.sens === "entrant" && thaiPhrase(texteDe(m)));
@@ -110,6 +116,7 @@ export function signauxPartenaire(messages = [], { conv = null, maintenant = new
     const brut = texteDe(m);
     if (!brut) continue;
     const p = plat(brut);
+    entrant = m.sens === "entrant";
     // Le formulaire du site (« Transfer request: … Price on the site: … ») est celui d'un client.
     if (m.sens === "entrant" && /^\s*transfer request\s*:/i.test(brut)) continue;
     if (COMMISSION.test(p) || net(p)) ajoute("commission");
@@ -128,7 +135,7 @@ export function signauxPartenaire(messages = [], { conv = null, maintenant = new
   }
   const presents = Object.keys(codes);
   const score = presents.reduce((s, c) => s + (POIDS[c] || 0), 0);
-  return { v: VERSION_SIGNAUX, codes, score, nets: score >= SEUIL_NETS && presents.length >= 2, calcule_le: maintenant };
+  return { v: VERSION_SIGNAUX, codes, du_contact: duContact, score, nets: score >= SEUIL_NETS && presents.length >= 2 && duContact > 0, calcule_le: maintenant };
 }
 
 // Ce que le tri reçoit, sans aucun texte : une ligne courte par repère trouvé. Des indices, jamais des faits (relecture n° 3).
@@ -149,12 +156,13 @@ export function lignesReperes(signaux) {
   return Object.keys(LIBELLES_REPERES).filter((c) => codes[c]).map((c) => LIBELLES_REPERES[c]);
 }
 
-// La décision « type du contact » lue dans la réponse JSON du tri : { type, raison } ou null. La raison : 120 caractères, sans chiffre long.
+// La décision « type du contact » lue dans la réponse JSON du tri : { type, raison } ou null. La raison : 120 caractères, sans aucun chiffre
+// (relecture finale : « gives net 1,800 THB » ne garde pas son montant), ni monnaie qui le suivait.
 export function lireTypeDecision(j) {
   if (!j || typeof j !== "object" || !TYPES_DECISION.includes(j.type_contact)) return null;
   const raison = String(typeof j.raison_type === "string" ? j.raison_type : "")
     .replace(/[\u0000-\u001f\u007f​-‏‪-‮⁠-⁩﻿]/g, " ")
-    .replace(/\+?\d[\d\s.\-()/]{5,}\d/g, "…")
+    .replace(/(?:[฿$€]\s*)?\+?\d(?:[\d\s.,'’\-()/]*\d)?(?:\s*(?:thb|bahts?|฿|usd|eur(?:os?)?|chf|€|\$|k)(?![\p{L}]))?/giu, "…")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 120);
@@ -181,7 +189,9 @@ export function decisionsDe(conv) {
 }
 // La dernière décision qui dit quelque chose (« inconnu » ne dit rien : un « ok » d'un partenaire).
 const derniereNette = (decisions) => [...decisions].reverse().find((d) => d.type !== "inconnu") || null;
-const signauxNets = (conv) => !!(conv && conv.type_signaux && conv.type_signaux.nets === true && !conv.type_signaux.jamais);
+// Des repères nets : jamais sans un repère venu du contact (les repères gardés avant la relecture finale n'ont pas ce compte : ils ne comptent
+// pas, la reprise les refait).
+const signauxNets = (conv) => !!(conv && conv.type_signaux && conv.type_signaux.nets === true && !conv.type_signaux.jamais && conv.type_signaux.du_contact > 0);
 // Une conversation reliée à une fiche client ou à un dossier n'est jamais déduite partenaire : la base effacerait le lien client
 // (whatsapp_reclasser) et les apprentissages (oublier_apprentissages). Relecture n° 1.
 export const relieeAuClient = (conv) => !!conv && (!!conv.client_id || !!conv.dossier_id);

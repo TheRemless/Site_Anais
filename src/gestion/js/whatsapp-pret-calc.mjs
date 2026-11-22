@@ -6,13 +6,15 @@
 //     le retrait. Un dossier du même client (fiche reliée ou même numéro) créé depuis le prix donné, mais pas relié, ne la fait pas sortir :
 //     la carte propose « Relier au dossier » (cas réel C36 : dossier créé, conversation restée à trier sans lien).
 //   - jamais : un Contact personnel, un partenaire (posé par Nani ou déduit, migration 110), un apporteur, une fiche partenaire reliée, ou un tri
-//     « personnel », « partenaire » ou « publicite ». Mêmes listes que la fonction, un test les compare.
+//     « personnel », « publicite » ou « contact_jamais » (plus « partenaire » depuis la migration 110). Mêmes listes que la fonction, un test les compare.
 import { N_ } from "./i18n.mjs";
 import { memeNumero } from "./demandes-whatsapp-calc.mjs";
 
 export const FILTRE_PRET = { valeur: "pret", libelle: N_("Prêt à réserver") };
 export const TYPES_EXCLUS = ["partenaire", "apporteur"];
-export const MOTIFS_TRI_EXCLUS = ["personnel", "partenaire", "publicite", "contact_jamais"];
+// Relecture finale du 22.11.2026 (migration 110) : plus « partenaire ». Le motif d'un seul tri ne sort pas une conversation des listes de
+// clients : seul un type posé par Nani ou déduit le fait (type-contact.js, traiterEnPartenaire).
+export const MOTIFS_TRI_EXCLUS = ["personnel", "publicite", "contact_jamais"];
 
 // La décision « prêt » lisible, ou null (colonne absente, décision « pas prêt », valeur abîmée).
 export function decisionPret(c) {

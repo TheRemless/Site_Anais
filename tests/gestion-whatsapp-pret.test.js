@@ -205,9 +205,19 @@ test("préparation de la #314 : les messages « non transmis » ne sont pas lus"
   assert.match(lire("supabase/functions/whatsapp/pret.ts"), /\.neq\("type", "non_transmis"\)/);
 });
 
-test("modèle C34 : un « Yes » d'un bateau sur l'itinéraire (tri « partenaire ») : exclu à l'écran", () => {
+test("modèle C34 : un « Yes » d'un bateau sur l'itinéraire : pas « prêt » (la question n'est pas un prix) ; exclu à l'écran une fois typé partenaire", () => {
   const d = decide([["sortant", "Do you stop at the snorkeling spot on the Sunday trip?"], ["entrant", "Yes"]], { tri: { motif: "partenaire" } });
   assert.equal(E.pretAReserver({ pret_reserver: d, tri: { motif: "partenaire" } }), null);
+  assert.equal(E.pretAReserver({ pret_reserver: d, type_contact: "partenaire", type_source: "deduit" }), null);
+});
+
+test("relecture finale (migration 110) : le motif « partenaire » d'un seul tri ne sort plus une conversation du « Prêt à réserver »", () => {
+  const d = decide([["entrant", "How much to the pier for 2?"], ["sortant", "450 THB by songthaew"], ["entrant", "Yes please book it"]]);
+  assert.equal(d.pret, true);
+  assert.ok(E.pretAReserver({ pret_reserver: d, reponses: "auto", tri: { motif: "partenaire" } }), "un seul tri « partenaire » : reste");
+  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "partenaire", type_source: "deduit" }), null, "type déduit : sort");
+  assert.equal(E.pretAReserver({ pret_reserver: d, reponses: "auto", type_contact: "partenaire", type_source: "nani" }), null, "type de Nani : sort");
+  assert.ok(!E.MOTIFS_TRI_EXCLUS.includes("partenaire") && !MOTIFS_TRI_EXCLUS.includes("partenaire"));
 });
 
 test("modèles C2, C3, C10 : Contact personnel : exclu sans même lire les messages ; tri personnel ou publicité : exclu à l'écran", () => {

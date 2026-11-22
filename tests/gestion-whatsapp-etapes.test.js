@@ -118,13 +118,18 @@ test("le dossier relié compte même sans fiche ni numéro identiques ; un autre
 });
 
 // ---- Contacts exclus --------------------------------------------------------------------------------------------------------------
-test("modèles C2, C11, C13, C31, C34 : Contact personnel, partenaire (posé ou déduit), apporteur, fiche partenaire, tri « partenaire » : jamais d'étape", () => {
+test("modèles C2, C11, C13, C31, C34 : Contact personnel, partenaire (posé ou déduit), apporteur, fiche partenaire, tri « personnel » : jamais d'étape", () => {
   const lignes = [["entrant", "Price for tomorrow?", 3 * H], ["sortant", "1,900 THB", 2 * H]];
-  for (const extra of [{ reponses: "jamais" }, { type_contact: "partenaire" }, { type_contact: "partenaire", type_source: "deduit" }, { type_contact: "apporteur" }, { partenaire_id: "p" }, { tri: { motif: "partenaire" } }, { tri: { motif: "personnel" } }]) {
+  for (const extra of [{ reponses: "jamais" }, { type_contact: "partenaire" }, { type_contact: "partenaire", type_source: "deduit" }, { type_contact: "apporteur" }, { partenaire_id: "p" }, { tri: { motif: "personnel" } }]) {
     const c = conv(lignes, extra);
     assert.deepEqual(etapes(c), [], JSON.stringify(extra));
     assert.equal(E.conversationClient(c), false);
   }
+  // Relecture finale (migration 110) : le motif « partenaire » d'un seul tri ne sort plus des étapes ; seul un type posé ou déduit le fait.
+  const unTri = conv(lignes, { tri: { motif: "partenaire" } });
+  assert.equal(E.conversationClient(unTri), true);
+  assert.notDeepEqual(etapes(unTri), [], "un seul tri « partenaire » : l'étape reste");
+  assert.ok(!E.MOTIFS_TRI_NON_CLIENT.includes("partenaire"));
 });
 
 test("modèle C1 (cas douteux) : un bateau non typé qui propose un prix ressemble à une demande : Nani le type en partenaire et il sort", () => {

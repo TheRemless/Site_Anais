@@ -180,7 +180,7 @@ export function demandeTri(messages = [], { aTrier = true, debut = null, signaux
   const vivants = messages.filter((m) => !m.supprime_le);
   const derniers = vivants.slice(-8);
   const vus = new Set(derniers.map((m) => m.id).filter(Boolean));
-  const premiers = (debut ? debut.filter((m) => !m.supprime_le) : vivants.slice(0, -8)).filter((m) => !m.id || !vus.has(m.id)).slice(0, DEBUT_TRI);
+  const premiers = (debut ? debut.filter((m) => !m.supprime_le && m.type !== "reaction") : vivants.slice(0, -8)).filter((m) => !m.id || !vus.has(m.id)).slice(0, DEBUT_TRI);
   const lignes = derniers.map((m) => ligneMessage(m, { qui: "Nani" })).filter(Boolean).join("\n");
   const lignesDebut = premiers.map((m) => ligneMessage(m, { qui: "Nani" })).filter(Boolean).join("\n");
   const reperes = lignesReperes(signaux && signaux.codes ? signaux : signauxPartenaire(vivants)).join(" ; ");
