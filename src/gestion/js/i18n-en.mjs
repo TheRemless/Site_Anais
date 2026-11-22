@@ -4614,6 +4614,16 @@ export const EN = {
   "Le prix accepté ne couvre pas le net de tous les véhicules : revoyez le prix ou le nombre de véhicules avant d'envoyer.": "The accepted price does not cover the net of all vehicles: review the price or the number of vehicles before sending.",
   "Complétez le prix ci-dessus avant de copier la réponse.": "Complete the price above before copying the reply.",
   "devis calculé": "calculated quote",
+  // Sièges enfant ou bébé sur la carte de l'Assistant (22.11.2026)
+  "{n} siège enfant": "{n} child seat",
+  "{n} sièges enfant": "{n} child seats",
+  // Relecture de la PR 315 (sièges enfant ou bébé)
+  "Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant ».": "More child or baby seats than children and babies: check with “Check first”.",
+  "10 sièges enfant ou bébé au plus : corrigez le nombre.": "10 child or baby seats at most: correct the number.",
+  "Plus de sièges que d'enfants et de bébés : vérifiez.": "More seats than children and babies: check.",
+  "Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus.": "Seats only print on a transfer voucher: clear the field if they are no longer needed.",
+  "{n} sièges enfant ou bébé au plus.": "{n} child or baby seats at most.",
+  "Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer.": "More seats than children and babies: check, then save again to confirm.",
 };
 
 // Prêt à réserver (migration 85) : traductions à part, ajoutées sans remplacer une clé déjà là.

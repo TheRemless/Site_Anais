@@ -7,6 +7,7 @@ import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
+import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
 import { venteDuTarif } from "../demande-calc.mjs";
@@ -27,7 +28,7 @@ import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire } from "./prestataire.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
-import { gestePrincipal, entreesMenu } from "../carte-reservation-calc.mjs";
+import { gestePrincipal, entreesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 import { saisieRapideNet } from "./saisie-net.mjs";
 import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
@@ -256,7 +257,8 @@ export async function dupliquerService(r, apres) {
         statut: "confirme", reference_partenaire: "", montant_vente: attendu.montant_vente ?? r.montant_vente ?? null, notes: "", paye_sur_place: !!r.paye_sur_place,
         // Un retour au point de départ dupliqué reste un retour au point de départ, avec son programme et sa durée.
         // L'origine d'un prix repris du client sans correction de Nani suit la copie (revue de la PR 307) : le contrôle ne lève jamais un net avec.
-        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
+        // Les sièges enfant ou bébé suivent la copie (relecture de la PR 315).
+        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...(r.details && Number(r.details.sieges) > 0 ? { sieges: Number(r.details.sieges) } : {}), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
       });
       try {
         await modifier("documents", doc.id, { contenu: copie.contenu, updated_at: new Date().toISOString() });
@@ -328,7 +330,9 @@ const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
     format: (cle, v) => (cle === "partenaire_id" ? (v ? nomPartenaire(v) : tr("Sans partenaire")) : cle === "prestation_id" ? (v ? ((etat.db.prestations.find((x) => x.id === v) || {}).libelle || "") : tr("Hors catalogue")) : cle === "statut" ? tr(STATUTS_RESERVATION[statutReservation(v)]) : cle === "date_service" ? (v ? formatDate(v) : tr("Date à fixer")) : cle === "paye_sur_place" ? (v ? tr("sur place") : tr("chez nous")) : cle.startsWith("personnes.") ? (v === null || v === undefined ? "0" : String(v)) : null),
   });
 
-export function formulaireReservation(r, apres) {
+// `base` : la ligne telle qu'elle est en base, quand `r` arrive déjà modifiée (carte « Modification » de l'Assistant) : la fusion d'une
+// modification concurrente part d'elle, sinon le changement proposé passerait pour l'état d'origine et serait effacé en silence.
+export function formulaireReservation(r, apres, { base = r } = {}) {
   const nets = voitNets() && peut("dossiers.ecrire");
   const n = r.id && nets ? netReservation(r) : null;
   const p = r.personnes || {};
@@ -509,6 +513,7 @@ export function formulaireReservation(r, apres) {
   };
   date.addEventListener("change", cv.majJours);
   const CHAMPS = cv.CHAMPS;
+  const siegesSaisis = () => Number(cv.valeurs().sieges) || 0;
   // Une location : la prise et le retour se lisent côte à côte, juste sous la date de départ.
   const RETOUR = ["retour_date", "retour_heure", "retour_lieu"];
   // Le bloc voucher n'existe qu'en excursions (Secret) ; Taxi n'a que ce qui s'imprime sur sa Booking confirmation (dépose, vol, bagages et sièges,
@@ -521,7 +526,10 @@ export function formulaireReservation(r, apres) {
   const dessinerModele = () => {
     const m = modele.value === SANS_VOUCHER ? null : modele.value || modeleAuto;
     legende.textContent = m ? TITRES_VOUCHER[m] : tr("Voucher");
-    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]())] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
+    // Les sièges enfant ou bébé ne s'impriment que sur un voucher de transfert (et la Booking confirmation de Secret, qui en est un) : ailleurs,
+    // le champ ne reste visible que tant qu'il a une valeur, pour qu'elle ne se garde jamais sans être vue (relecture de la PR 315).
+    const siegesHorsModele = m && m !== "transfert" && siegesSaisis() > 0;
+    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()), ...(siegesHorsModele ? [CHAMPS.sieges(), h("p", { class: "aide" }, tr("Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus."))] : [])] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
   };
   modele.addEventListener("change", dessinerModele);
   if (avecVoucher) dessinerModele();
@@ -571,6 +579,7 @@ export function formulaireReservation(r, apres) {
     if (change && commissionLibre && !commissionTapee) (commissionPrevue.value = ""), (commissionPrevue.placeholder = indication), (commissionSaisie = false);
   };
   for (const x of [tarif, partenaire]) x.addEventListener("change", majNetsAvantChangement);
+  let siegesConfirmes = "";
   const blocVoucher = modeTaxi()
     ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()), CHAMPS.remarques())
     : avecVoucher
@@ -595,6 +604,20 @@ export function formulaireReservation(r, apres) {
         }
         // Retour au point de départ : le programme est obligatoire, la durée lisible si elle est donnée.
         if (blocVoucher) cv.verifierTrajet();
+        // Sièges enfant ou bébé (relecture de la PR 315) : 10 au plus ; plus que d'enfants et de bébés, Nani confirme en enregistrant de
+        // nouveau (le nombre d'enfants peut être inconnu). Un enregistrement d'un geste (carte de l'Assistant) s'arrête donc ici.
+        const champSieges = e.target.querySelector("#v-sieges");
+        if (champSieges) {
+          erreurChamp(champSieges, null);
+          const s = siegesSaisis();
+          const petits = (nb(enfants.value) || 0) + (nb(bebes.value) || 0);
+          const cle = `${s}:${petits}`;
+          if (s > SIEGES_MAX) erreurChamp(champSieges, tr("{n} sièges enfant ou bébé au plus.", { n: SIEGES_MAX }));
+          else if (s > petits && siegesConfirmes !== cle) {
+            siegesConfirmes = cle;
+            erreurChamp(champSieges, tr("Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer."));
+          }
+        }
         if (focusPremiereErreur(e.target)) return;
         const tarifPrestation = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
         const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
@@ -609,19 +632,20 @@ export function formulaireReservation(r, apres) {
         let nouvelEssaiNets = null;
         try {
           // La facture suit la réservation (mode de règlement, date, personnes, annulation) par le chemin commun : total montré, confirmation si elle est partie.
-          const modeChange = estSurPlace() !== !!r.paye_sur_place;
-          const dateChangee = (valeurs.date_service || null) !== (r.date_service || null);
-          const annulee = !!r.id && valeurs.statut === "annule" && r.statut !== "annule";
+          // Tout se compare à la ligne d'origine (`base`), pas à `r` déjà modifiée par une carte de l'Assistant (relecture de la PR 315) : la
+          // date, les personnes et l'annulation proposées font suivre la facture comme une saisie à la main.
+          const cmp = comparaisonEnregistrement(base, valeurs, { surPlace: estSurPlace() });
+          const { modeChange, dateChangee, annulee } = cmp;
           let retirer = false;
-          if (annulee && lieeFacture(r)) {
+          if (annulee && lieeFacture(base)) {
             await chargerDossier(r.dossier_id);
-            const choix = await questionAnnulation(r, etat.db.documents.filter((x) => x.dossier_id === r.dossier_id));
+            const choix = await questionAnnulation(base, etat.db.documents.filter((x) => x.dossier_id === r.dossier_id));
             if (choix === null) return;
             retirer = choix === "retirer";
           }
           // Libellé, partenaire, tarif et prix changés ici : les lignes de la facture (et du devis) suivent, avec le même avertissement (16.11.2026).
           const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {};
-          const suivi = await suivreFacture(r, valeurs, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes }, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
+          const suivi = await suivreFacture(base, valeurs, { avant: cmp.avant, apres: cmp.apres, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
           if (!suivi) return;
           const { changements, ecartRestant } = suivi;
           if (suivi.montantVente !== null) valeurs.montant_vente = suivi.montantVente;
@@ -633,7 +657,7 @@ export function formulaireReservation(r, apres) {
             await enregistrerLie("reservations_nets", "reservation_id", r.id, aVider);
             nouvelEssaiNets = Object.fromEntries(Object.keys(aVider).map((k) => [k, n[k]]));
           }
-          const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
+          const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
           // Pas de réservation écrite (conflit abandonné) : les nets d'avant reviennent.
           if (!res && nouvelEssaiNets) await enregistrerLie("reservations_nets", "reservation_id", r.id, nouvelEssaiNets);
