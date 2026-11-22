@@ -201,7 +201,7 @@ test("revue 300, point 1 : la préparation n'envoie que le premier mot d'un nom 
   const t = demandeAgent({ messages: [], nomProfil: "Somchai chauffeur", nomSource: "manuel", entreprise: "Secret" });
   assert.match(t, /Client inconnu dans Secret \(nom noté par l'équipe : Somchai\)\./);
   assert.doesNotMatch(t, /chauffeur/);
-  const p = promptPreparation({ entreprise: "Secret", reglages: {}, messages: [], nomProfil: "Somchai chauffeur", nomSource: "manuel", aujourdhui: "2026-11-21", contact: "chauffeur" });
+  const p = promptPreparation({ entreprise: "Secret", reglages: {}, messages: [], nomProfil: "Somchai chauffeur", nomSource: "manuel", aujourdhui: "2026-11-21", contact: "partenaire" });
   assert.match(p.texte, /Contact, nom noté par l'équipe : Somchai\./);
   assert.doesNotMatch(p.texte, /Somchai chauffeur/);
   const rep = source("supabase/functions/whatsapp/reponse.ts");
@@ -212,7 +212,7 @@ test("revue 300, point 1 : la préparation n'envoie que le premier mot d'un nom 
 test("revue 300, point 2 : « Mr Brown will pick you up » vers un client est bloqué (contact typé ou relié à une fiche)", async () => {
   const lire = (c) => L.lireConversation({ conversation: c.id }, { conversation: c, messages: [{ id: id(), conversation_id: c.id, sens: "entrant", type: "text", texte: "ok", medias: [], envoye_le: "2026-11-21T05:00:00Z" }] });
   const avert = async (memo, message) => (await proposer("proposer_reponse", { titre: "Réponse", message, langue: "en", destinataire: "" }, {}, memo)).avertissements;
-  for (const c of [conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "chauffeur" }), conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: null, partenaire_id: id() }), conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "client", partenaire_id: id() })]) {
+  for (const c of [conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "partenaire" }), conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: null, partenaire_id: id() }), conv({ nom: "Mr Brown", nom_source: "manuel", type_contact: "client", partenaire_id: id() })]) {
     const memo = memoDepuis([], { prestataires: [] });
     retenirLecture(lire(c), memo);
     assert.ok((await avert(memo, "Hi Tom, Mr Brown will pick you up at 9")).includes("nom_prestataire:Mr Brown"), `${c.type_contact || "sans type"}${c.partenaire_id ? ", fiche reliée" : ""}`);

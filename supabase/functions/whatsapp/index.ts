@@ -384,7 +384,7 @@ async function conversationDe(db: SupabaseClient, telephone: string | null, bsui
 // deno-lint-ignore no-explicit-any
 async function reperer(db: SupabaseClient, conversation: string, message: string, m: any) {
   try {
-    // Jamais pour un partenaire, un chauffeur, un hôtel, un apporteur, une fiche partenaire ni un Contact personnel (lecture impossible : rien).
+    // Jamais pour un partenaire, un apporteur, une fiche partenaire ni un Contact personnel (lecture impossible : rien).
     const { data: conv, error: errV } = await db.from("whatsapp_conversations").select("type_contact, partenaire_id, reponses").eq("id", conversation).maybeSingle();
     if (errV || !repereAutorise(conv)) return;
     const { data: avant, error } = await db.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conversation).neq("id", message)

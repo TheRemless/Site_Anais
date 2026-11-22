@@ -162,7 +162,7 @@ test("signature : jamais chez Secret et Taxi, même si les exemples ou les messa
 test("tri : champ nom_client facultatif dans le même appel, sans appel de plus", () => {
   const t = demandeTri(STEFAN);
   assert.match(t, /« nom_client » : le nom du client tel qu'il l'a écrit lui-même/);
-  assert.match(t, /"nom_client": ""\}/);
+  assert.match(t, /"nom_client": "", "type_contact"/);
   assert.equal(parametresTri(STEFAN).max_tokens, 400);
   assert.deepEqual(lireDecision('{"preparer": true, "motif": "demande_client", "entreprise": "taxi", "nom_client": "Stefan Müller"}'), { preparer: true, motif: "demande_client", entreprise: "taxi", nom_client: "Stefan Müller" });
   assert.deepEqual(lireDecision('{"preparer": false, "motif": "remerciement", "entreprise": "inconnu", "nom_client": "Thanks"}'), { preparer: false, motif: "remerciement", entreprise: null }, "pas un nom : absent");

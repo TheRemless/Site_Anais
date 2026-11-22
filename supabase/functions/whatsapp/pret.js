@@ -19,11 +19,12 @@
 //     (« Transfer request: », « Customer: ») ni un rappel d'un service déjà réservé (« the driver is confirmed »).
 //   Sort : une annulation du client après le signal (« cancel », « no longer need », « changed our plans »), ou une
 //   annulation écrite par Nani (« I have cancelled »). Le dossier créé et le retrait par Nani se lisent à l'écran.
-//   Exclu d'office ici : le Contact personnel (réponses « jamais ») seulement, dont rien n'est lu. Partenaire, chauffeur, hôtel, apporteur,
+//   Exclu d'office ici : le Contact personnel (réponses « jamais ») seulement, dont rien n'est lu. Partenaire (un chauffeur en est un), apporteur,
 //   fiche partenaire reliée et tri « personnel », « partenaire » ou « publicite » sont écartés à l'écran (whatsapp-pret-calc.mjs), sur leur
 //   valeur du moment : un contact remis en Client est repris tout de suite, sans attendre un nouveau message (relecture du 22.11.2026).
 
-export const TYPES_EXCLUS = ["partenaire", "chauffeur", "hotel", "apporteur"];
+// Migration 110 : plus de type « chauffeur » ni « hôtel » (Jérémy, 22.11.2026), devenus « partenaire ».
+export const TYPES_EXCLUS = ["partenaire", "apporteur"];
 export const MOTIFS_TRI_EXCLUS = ["personnel", "partenaire", "publicite", "contact_jamais"];
 // Les messages relus pour décider (les plus récents) : une réservation se joue en quelques dizaines de messages.
 export const MESSAGES_LUS = 60;

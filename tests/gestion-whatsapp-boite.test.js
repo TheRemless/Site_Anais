@@ -205,8 +205,8 @@ test("démo : droits comme la base, marquer lu, ranger, traiter, rien n'est envo
     const brut = await store.charger();
     assert.equal(brut.whatsapp_disponible, true);
     // Cinq conversations de demo-whatsapp.mjs, plus celle de Jade (PR 295), typée apporteur par la migration 68 (store-local.mjs), plus
-    // celle de « Prêt à réserver » (demo-pret.mjs, migration 85).
-    assert.equal(brut.whatsapp_conversations.length, 7, "l'administratrice voit tout");
+    // celle de « Prêt à réserver » (demo-pret.mjs, migration 85), plus le bateau reconnu comme partenaire (demo-type-contact.mjs, migration 110).
+    assert.equal(brut.whatsapp_conversations.length, 8, "l'administratrice voit tout");
     const nonLue = brut.whatsapp_conversations.find((c) => c.non_lus > 0 && c.entite_id);
     const lue = await store.modifier("whatsapp_conversations", nonLue.id, { non_lus: 0 });
     assert.equal(lue.non_lus, 0);

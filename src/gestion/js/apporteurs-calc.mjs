@@ -1,8 +1,9 @@
 // Contacts WhatsApp typés et apporteurs d'affaires (migration 68, décisions de Jérémy du 21.11.2026). Logique pure, sans navigateur,
 // testée dans tests/gestion-apporteurs.test.js. Le cas de départ : une travel planner envoie des clients à Nani, sans aucun accord.
-//   * Type d'une conversation : client, apporteur, partenaire, chauffeur, hôtel, personnel. « Personnel » n'est pas stocké dans type_contact :
-//     c'est reponses = 'jamais' sans type (migration 60). Le type ne coupe plus l'IA (demande de Jérémy du 21.11.2026, migration 69) :
-//     partenaire, chauffeur, hôtel et apporteur se lisent comme un client. Seul « Personnel » ferme (patchType). Nani change toujours le
+//   * Type d'une conversation : client, apporteur, partenaire, personnel. « Personnel » n'est pas stocké dans type_contact : c'est
+//     reponses = 'jamais' sans type (migration 60). Plus de « chauffeur » ni d'« hôtel » (migration 110, Jérémy, 22.11.2026 : nos chauffeurs
+//     sont des partenaires, on ne parle pas avec les hôtels), la migration convertit les anciennes valeurs. Le type ne coupe plus l'IA (demande
+//     de Jérémy du 21.11.2026, migration 69) : partenaire et apporteur se lisent comme un client. Seul « Personnel » ferme (patchType). Nani change toujours le
 //     réglage des réponses à part, dans le menu « … ».
 //   * Apporteur : une fiche partenaire de catégorie « apporteur », dans Secret ou Taxi. Aucune rémunération : personne n'est payé en commission
 //     aujourd'hui (Jérémy, 21.11.2026).
@@ -17,11 +18,9 @@ export const TYPES_CONTACT = [
   ["client", N_("Client")],
   ["apporteur", N_("Apporteur")],
   ["partenaire", N_("Partenaire")],
-  ["chauffeur", N_("Chauffeur")],
-  ["hotel", N_("Hôtel")],
   ["personnel", N_("Personnel")],
 ];
-const TYPES_STOCKES = new Set(["client", "apporteur", "partenaire", "chauffeur", "hotel"]);
+const TYPES_STOCKES = new Set(["client", "apporteur", "partenaire"]);
 
 export const estTypeStocke = (t) => TYPES_STOCKES.has(t);
 // Le type affiché d'une conversation : type_contact s'il est posé, sinon « personnel » pour reponses = 'jamais'. null = pas encore typé.

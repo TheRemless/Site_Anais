@@ -2493,6 +2493,11 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .wa-contacts::-webkit-scrollbar { display: none; }
 .wa-contact-puce { flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-weight: 600; font-size: 0.86rem; }
 .wa-contact-puce[aria-pressed="true"] { background: var(--surface-2); border-color: var(--texte-2); color: var(--texte); box-shadow: inset 0 0 0 1px var(--texte-2); }
+/* Migration 110 : partenaire déduit ou probable, sous les puces du type. */
+.wa-type-deduit, .wa-type-suggere { margin: 0; }
+.wa-type-deduit .lien { min-height: 36px; padding: 0 0 0 6px; }
+.wa-deduit { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte); font-weight: 600; font-size: 0.82rem; }
+@media (pointer: coarse) { .wa-type-deduit .lien { min-height: 44px; } }
 .wa-apporteur { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; font-size: 0.9rem; }
 .wa-apporteur a { font-weight: 600; }
 .wa-apporteur .lien { min-height: 36px; padding: 0; }

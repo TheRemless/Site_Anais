@@ -5,13 +5,13 @@
 //   - sort : un dossier relié à la conversation, ou Nani qui l'enlève (« Retirer ») ; elle revient seulement sur un signal plus récent que
 //     le retrait. Un dossier du même client (fiche reliée ou même numéro) créé depuis le prix donné, mais pas relié, ne la fait pas sortir :
 //     la carte propose « Relier au dossier » (cas réel C36 : dossier créé, conversation restée à trier sans lien).
-//   - jamais : un Contact personnel, un partenaire, un chauffeur, un hôtel, un apporteur, une fiche partenaire reliée, ou un tri
+//   - jamais : un Contact personnel, un partenaire (posé par Nani ou déduit, migration 110), un apporteur, une fiche partenaire reliée, ou un tri
 //     « personnel », « partenaire » ou « publicite ». Mêmes listes que la fonction, un test les compare.
 import { N_ } from "./i18n.mjs";
 import { memeNumero } from "./demandes-whatsapp-calc.mjs";
 
 export const FILTRE_PRET = { valeur: "pret", libelle: N_("Prêt à réserver") };
-export const TYPES_EXCLUS = ["partenaire", "chauffeur", "hotel", "apporteur"];
+export const TYPES_EXCLUS = ["partenaire", "apporteur"];
 export const MOTIFS_TRI_EXCLUS = ["personnel", "partenaire", "publicite", "contact_jamais"];
 
 // La décision « prêt » lisible, ou null (colonne absente, décision « pas prêt », valeur abîmée).

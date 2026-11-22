@@ -12,7 +12,7 @@
 //     texte envoyé dans les 3 minutes). Un récapitulatif écrit n'est pas un voucher.
 // L'entreprise d'un message se lit dans ses mots (transfert ou excursion), puis dans le tri déjà calculé (aucun appel de plus), puis dans
 // la demande du client juste avant ; sinon elle reste inconnue.
-// Un Contact personnel n'est jamais lu : { jamais: true }. Le type du contact (partenaire, chauffeur…) est jugé à l'écran sur sa valeur du
+// Un Contact personnel n'est jamais lu : { jamais: true }. Le type du contact (partenaire, apporteur) est jugé à l'écran sur sa valeur du
 // moment : un contact remis en Client est repris tout de suite.
 import { plat, etatPret, contientPrix, MESSAGES_LUS } from "./pret.js";
 

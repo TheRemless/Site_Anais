@@ -1025,8 +1025,8 @@ export async function vueAgent(idOuvert = "") {
     const client = dossier ? etat.db.clients.find((x) => x.id === dossier.client_id) : null;
     const waLue = conv && conv.whatsapp_conversation_id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === conv.whatsapp_conversation_id) || null : null;
     const cartes = c ? [c, ...fil.cartes] : fil.cartes;
-    // Un contact typé (partenaire, chauffeur, hôtel, apporteur) ou relié à une fiche partenaire : son nom se masque en entier.
-    const typee = (x) => !!x && (["partenaire", "chauffeur", "hotel", "apporteur"].includes(x.type_contact) || !!x.partenaire_id);
+    // Un contact typé (partenaire, apporteur) ou relié à une fiche partenaire : son nom se masque en entier.
+    const typee = (x) => !!x && (["partenaire", "apporteur"].includes(x.type_contact) || !!x.partenaire_id);
     return {
       // Les noms du client, masqués mot par mot (sauf mots courants et mots de deux lettres).
       noms: [client && client.prenom, client && client.nom, waLue && !typee(waLue) ? waLue.nom : "", ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom)].filter(Boolean),
@@ -1035,8 +1035,8 @@ export async function vueAgent(idOuvert = "") {
         // Les apporteurs et les contacts typés sont souvent des personnes (« Somchai (driver) ») : aussi mot par mot, hors mots courants.
         ...nomsApporteurAMasquer({ partenaires: etat.brut.partenaires || [], conversationWa: waLue, cartes }).map((nom) => ({ nom, personne: true })),
         ...(etat.brut.partenaires || []).map((x) => x.nom),
-        // Un hôtel typé n'est pas une personne (son nom sert de lieu de pickup) : en entier seulement.
-        ...(etat.brut.whatsapp_conversations || []).filter(typee).map((x) => ({ nom: x.nom, personne: x.type_contact !== "hotel" })),
+        // Migration 110 : plus de type « hôtel », un contact typé est une personne.
+        ...(etat.brut.whatsapp_conversations || []).filter(typee).map((x) => ({ nom: x.nom, personne: true })),
       ].filter((x) => x && (typeof x === "string" || x.nom)),
     };
   }

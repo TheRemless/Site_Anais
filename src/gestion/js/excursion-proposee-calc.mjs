@@ -390,11 +390,11 @@ export function messageExcursions(choisis = [], { prenom = "", devise = "THB", t
 }
 
 // Les noms qui ne partent jamais vers un client : fiches partenaires (plus de deux lettres, comme nomsABloquer de la fonction agent) et
-// conversations WhatsApp nommées (partenaire, chauffeur, hôtel, apporteur) ou reliées à une fiche partenaire, comme nomsContactsTypes de
+// conversations WhatsApp nommées (partenaire, apporteur) ou reliées à une fiche partenaire, comme nomsContactsTypes de
 // whatsapp-envoi. Jamais un contact « personnel » ni un client, ni le nom du client à qui l'on écrit (`client` : sa fiche). Chaque nom vient
 // aussi sans « co, ltd, company, the, tour, tours, travel, koh, lanta » quand il garde quatre lettres, comme partenairesCites du serveur
 // (« Blue Ocean Co., Ltd » bloque « Blue Ocean »). Le lien wa.me et la copie ne passent par aucun contrôle du serveur : l'écran les vérifie.
-export const CONTACTS_NOMMES = ["partenaire", "chauffeur", "hotel", "apporteur"];
+export const CONTACTS_NOMMES = ["partenaire", "apporteur"];
 // Fonction commune avec le point du soir (noms-interdits-calc.mjs) ; ici avec les noms courts et la fiche du client.
 export { nomCourt };
 const contactNomme = (c) => CONTACTS_NOMMES.includes(c.type_contact) || (c.partenaire_id && c.type_contact !== "client" && c.type_contact !== "personnel");

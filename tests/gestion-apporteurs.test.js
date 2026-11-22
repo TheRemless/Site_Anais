@@ -9,13 +9,13 @@ const source = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8
 const A = await import("../src/gestion/js/apporteurs-calc.mjs");
 test("type du contact : le type ne touche plus les réponses, seul « Personnel » ferme l'IA (migration 69)", () => {
   assert.equal(A.typeContact({ reponses: "jamais", type_contact: null }), "personnel");
-  assert.equal(A.typeContact({ reponses: "jamais", type_contact: "chauffeur" }), "chauffeur", "un type existe avec « jamais »");
+  assert.equal(A.typeContact({ reponses: "jamais", type_contact: "partenaire" }), "partenaire", "un type existe avec « jamais »");
   assert.equal(A.typeContact({ reponses: "auto", type_contact: "apporteur" }), "apporteur");
   assert.equal(A.typeContact({ reponses: "auto", type_contact: null }), null);
   assert.equal(A.typeContact({ reponses: "auto", type_contact: "ami" }), null, "une valeur inconnue ne s'affiche pas");
-  // Tout type stocké : seulement type_contact, jamais `reponses` (l'IA lit partenaire, chauffeur, hôtel et apporteur comme un client).
+  // Tout type stocké : seulement type_contact, jamais `reponses` (l'IA lit partenaire et apporteur comme un client).
   const ouvert = { reponses: "auto", type_contact: null };
-  for (const t of ["client", "apporteur", "partenaire", "chauffeur", "hotel"]) {
+  for (const t of ["client", "apporteur", "partenaire"]) {
     assert.deepEqual(A.patchType(t), { type_contact: t }, t);
     assert.deepEqual(A.patchType(t, ouvert), { type_contact: t }, `${t} sur un contact ouvert`);
     assert.deepEqual(A.patchType(t, { reponses: "auto", type_contact: "client" }), { type_contact: t }, `${t} depuis un autre type`);
@@ -27,9 +27,9 @@ test("type du contact : le type ne touche plus les réponses, seul « Personnel 
   assert.equal(A.toastType("personnel", ouvert), "Contact noté : rien envoyé à l'IA");
   const personnel = { reponses: "jamais", type_contact: null };
   assert.deepEqual(A.patchType("partenaire", personnel), { type_contact: "partenaire", reponses: "auto" });
-  assert.equal(A.toastType("chauffeur", personnel), "Contact noté : l'assistant peut lire");
+  assert.equal(A.toastType("partenaire", personnel), "Contact noté : l'assistant peut lire");
   // Un contact typé que Nani a réglé « rien envoyé à l'IA » dans le menu « … » : retyper ne le rouvre pas, le toast le dit.
-  const fermeTyped = { reponses: "jamais", type_contact: "hotel" };
+  const fermeTyped = { reponses: "jamais", type_contact: "partenaire" };
   assert.deepEqual(A.patchType("partenaire", fermeTyped), { type_contact: "partenaire" });
   assert.equal(A.toastType("partenaire", fermeTyped), "Contact noté : rien envoyé à l'IA");
   assert.throws(() => A.patchType("ami"));
@@ -37,7 +37,7 @@ test("type du contact : le type ne touche plus les réponses, seul « Personnel 
   const vue = source("src/gestion/js/views/whatsapp.mjs");
   assert.match(vue, /modifier\("whatsapp_conversations", c\.id, patchType\(t, c\)\)/);
   assert.match(vue, /toast\(tr\(toastType\(t, c\)\)\)/);
-  assert.deepEqual(A.TYPES_CONTACT.map(([k]) => k), ["client", "apporteur", "partenaire", "chauffeur", "hotel", "personnel"]);
+  assert.deepEqual(A.TYPES_CONTACT.map(([k]) => k), ["client", "apporteur", "partenaire", "personnel"]);
   const sql = source("docs/gestion/migration-68-contacts-apporteurs.sql");
   assert.doesNotMatch(sql, /add constraint whatsapp_conversations_personnel_check/, "aucune contrainte ne lie le type aux réponses");
   assert.doesNotMatch(sql.slice(sql.indexOf("create or replace function whatsapp_type_coherent")), /new\.reponses :=/, "le déclencheur ne rouvre jamais l'IA");
@@ -142,11 +142,11 @@ test("démo : Jade, travel planner de Secret, sans rémunération, deux dossiers
     const conv = d.whatsapp_conversations.find((c) => c.partenaire_id === jade.id);
     assert.ok(conv && A.typeContact(conv) === "apporteur" && conv.reponses === "auto" && conv.entite_id === secret.id);
 
-    // Migration 69 : typer « chauffeur » ne ferme plus l'IA. Le réglage des réponses se change à part, le type reste ; retyper ne le touche pas.
-    let c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("chauffeur", conv));
-    assert.deepEqual([c.type_contact, c.reponses], ["chauffeur", "auto"]);
+    // Migration 69 : typer « partenaire » ne ferme plus l'IA. Le réglage des réponses se change à part, le type reste ; retyper ne le touche pas.
+    let c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("partenaire", conv));
+    assert.deepEqual([c.type_contact, c.reponses], ["partenaire", "auto"]);
     c = await store.modifier("whatsapp_conversations", conv.id, { reponses: "jamais" });
-    assert.equal(c.type_contact, "chauffeur");
+    assert.equal(c.type_contact, "partenaire");
     c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("apporteur", c));
     assert.deepEqual([c.type_contact, c.reponses], ["apporteur", "jamais"], "un contact réglé « rien envoyé à l'IA » le reste");
     c = await store.modifier("whatsapp_conversations", conv.id, A.patchType("personnel", c));

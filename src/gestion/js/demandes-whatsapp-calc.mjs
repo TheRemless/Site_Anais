@@ -47,7 +47,7 @@ const moinsJours = (iso, n) => {
 };
 
 // Les numéros qui désignent le client d'un dossier : sa fiche et les conversations WhatsApp de CLIENT déjà reliées à ce dossier (une
-// conversation d'hôtel, de partenaire, de chauffeur, d'apporteur ou un contact personnel ne donne jamais de numéro), plus `autres`.
+// conversation de partenaire, d'apporteur ou un contact personnel ne donne jamais de numéro), plus `autres`.
 export function telephonesDuDossier({ dossier, clients = [], conversations = [], autres = [] } = {}) {
   if (!dossier) return [];
   const fiche = clients.find((c) => c.id === dossier.client_id);
@@ -140,7 +140,7 @@ export function liaisonApresDemande({ demande, dossier, clientEntiteId = null, b
   if (!conversations.length) return rien("aucune");
   if (conversations.length > 1) return rien("plusieurs");
   const w = conversations[0];
-  // Contact personnel : rien de lui ne se relie tout seul. Partenaire, chauffeur, hôtel ou apporteur : ce n'est pas le client.
+  // Contact personnel : rien de lui ne se relie tout seul. Partenaire ou apporteur : ce n'est pas le client.
   if (w.reponses === "jamais") return rien("personnel", w);
   if ((w.type_contact && w.type_contact !== "client") || w.partenaire_id) return rien("autre_contact", w);
   if (w.entite_id && w.entite_id !== demande.entite_id) return rien("autre_entreprise", w);

@@ -17,7 +17,7 @@
 // Nani peut forcer une étape par entreprise (etape_manuelle) : son choix l'emporte jusqu'au prochain événement daté de cette entreprise qui
 // fait avancer (prix, réponse du client, demande, refus, dossier créé ou accepté, service confirmé, voucher). « Sans entreprise » tombe dès
 // qu'une entreprise a une étape.
-// Jamais pour un Contact personnel, un partenaire, un chauffeur, un hôtel, un apporteur, une fiche partenaire reliée, ou un tri
+// Jamais pour un Contact personnel, un partenaire (posé par Nani ou déduit, migration 110), un apporteur, une fiche partenaire reliée, ou un tri
 // « personnel », « partenaire » (donné par Haiku) ou « publicite », jugés sur leur valeur du moment.
 //
 // Performance (relecture n° 8) : clients, dossiers et réservations sont indexés une fois par tableau (WeakMap) ; l'écran calcule les étapes

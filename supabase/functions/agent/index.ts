@@ -13,7 +13,7 @@
 // Boîte WhatsApp (whatsapp-lecture.js, migration 67) : dans l'Assistant de Secret ou de Taxi, pour qui administre cette entreprise
 // (whatsapp_admin, lu avec sa session), trois outils de lecture : chercher_conversations, lire_conversation, a_faire_whatsapp. Les
 // conversations et les messages se lisent avec `sb` : la RLS de la migration 63 décide, jamais avec la clé de service. Seul un contact réglé
-// « jamais » (Contact personnel) n'est ni cherché ni lu. Partenaire, chauffeur, hôtel et apporteur se lisent comme un client (demande de
+// « jamais » (Contact personnel) n'est ni cherché ni lu. Partenaire et apporteur se lisent comme un client (demande de
 // Jérémy du 21.11.2026, migration 69 : plus d'exclusion par type ni par numéro de fiche partenaire). Ce qui part alors chez Anthropic : le
 // nom de profil et le client relié (prénom, nom, référence), la référence du dossier relié, le texte des messages lus et des extraits
 // trouvés (numéros, comptes et IBAN masqués sur le texte entier, avant toute coupe ; un prix écrit par le client, ou un net et une
