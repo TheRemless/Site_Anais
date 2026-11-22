@@ -2516,3 +2516,4 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .wa-pret-carte dt { color: var(--texte-2); }
 .wa-pret-carte dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .wa-suivi-pret .principal.petit svg { margin-right: 6px; vertical-align: -3px; }
+.wa-suivi .wa-pret-dossier { margin-top: 8px; font-size: 0.9rem; color: var(--texte-2); }

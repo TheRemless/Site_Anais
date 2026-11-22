@@ -1023,7 +1023,7 @@ async function fil(c, prop) {
       jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
       lignesTaches(c),
       cartePaiement(c),
-      cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), rafraichir })
+      cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
     doute ? carteVerifier(c, doute) : null,
     carteProposition(c, prop, messages)

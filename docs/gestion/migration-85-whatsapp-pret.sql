@@ -13,7 +13,8 @@
 --      l'entreprise de la conversation, ou d'une des deux pour une conversation à trier. En lecture seule et pour Mook : aucune ligne.
 --   3. whatsapp_pret_outil (déclencheur) : une personne connectée ne réécrit jamais pret_reserver ; la fonction (clé de service) ne touche
 --      jamais pret_retire_le. Les fonctions de déclencheur ne s'exécutent pas en direct : execute retiré à public, anon et authenticated.
--- Le dossier créé fait sortir la conversation du filtre à l'écran (dossier relié, ou dossier du même client créé depuis le prix donné).
+-- Le dossier relié fait sortir la conversation du filtre à l'écran. Un dossier du même client créé depuis le prix donné mais pas relié la
+-- laisse dans le filtre avec « Relier au dossier » (une seule écriture : entite_id, client_id, dossier_id, contrôlés par whatsapp_reclasser).
 -- L'Assistant ne lit pas ces colonnes (outils de supabase/functions/agent inchangés). Rien sur les nets, les commissions ni l'argent ici.
 --
 -- Se rejoue sans effet. Ne modifie aucune donnée existante : les conversations déjà là sont calculées par la reprise de la fonction

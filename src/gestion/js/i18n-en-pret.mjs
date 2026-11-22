@@ -12,6 +12,11 @@ export const EN_PRET = {
   "Vous avez envoyé un récapitulatif.": "You sent a summary.",
   "Retirée de « Prêt à réserver ». Elle revient si le client confirme de nouveau.": "Removed from “Ready to book”. It comes back if the client confirms again.",
   "Remettre dans la liste": "Put back in the list",
+  "Dossier {ref} à relier": "File {ref} to link",
+  "Relier au dossier {ref}": "Link to file {ref}",
+  "Conversation reliée au dossier {ref}.": "Conversation linked to file {ref}.",
+  "Le dossier {ref} n'a pas pu être relié : reliez-le depuis l'en-tête de la conversation.": "File {ref} could not be linked: link it from the conversation header.",
+  "Le dossier {ref} existe déjà pour ce client, créé après le prix donné. Il n'est pas relié à cette conversation.": "File {ref} already exists for this client, created after the price was given. It is not linked to this conversation.",
   "Rien à reprendre automatiquement : l'Assistant lira l'échange.": "Nothing to fill in automatically: the Assistant will read the exchange.",
-  "Aucune conversation prête à réserver. Une conversation arrive ici quand le client dit oui après un prix ou quand vous envoyez la confirmation, et repart dès que le dossier est créé.": "No conversation ready to book. A conversation comes here when the client says yes after a price or when you send the confirmation, and leaves as soon as the file is created.",
+  "Aucune conversation prête à réserver. Une conversation arrive ici quand le client dit oui après un prix ou quand vous envoyez la confirmation, et repart dès que le dossier est relié.": "No conversation ready to book. A conversation comes here when the client says yes after a price or when you send the confirmation, and leaves as soon as the file is linked.",
 };

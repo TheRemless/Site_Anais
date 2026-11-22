@@ -68,7 +68,7 @@ const x = await un("select has_function_privilege('authenticated', 'whatsapp_pre
 ok(x.a === false && x.b === false, "whatsapp_pret_outil() : execute retiré à authenticated et anon");
 
 // ---- La fonction écrit la décision ----------------------------------------------------------------------------------------------------
-const lena = await ranger("+447700900311", "Yes we take it!");
+const lena = await ranger("+447700900311", "Ok, book it please");
 const tom = await ranger("+447700900422", "Yes");
 await db.exec(`update whatsapp_conversations set entite_id = '${ent.taxi}', entite_source = 'manuel' where id in ('${lena}', '${tom}')`);
 ok((await conv(lena)).pret_reserver === null, "une conversation neuve n'a pas encore de décision (la reprise la calculera)");
