@@ -8,9 +8,10 @@ import { champsCreation, resumeSaisie } from "../creation-voucher-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 import { exemple } from "../etat.mjs";
 import { RETOUR_DEPART, detailsTrajet, erreursTrajet } from "../trajet-calc.mjs";
+import { siegesLus, siegesTotal } from "../sieges-calc.mjs";
 
 // Codes d'erreur de erreursTrajet (trajet-calc.mjs).
-export const ERREURS_TRAJET = { e_programme: N_("Indiquez le programme : ce que le client veut faire."), e_duree: N_("Indiquez la durée en heures, par exemple 3 ou 1,5. Vide si elle n'est pas connue."), e_sieges_max: N_("10 sièges enfant ou bébé au plus : corrigez le nombre.") };
+export const ERREURS_TRAJET = { e_programme: N_("Indiquez le programme : ce que le client veut faire."), e_duree: N_("Indiquez la durée en heures, par exemple 3 ou 1,5. Vide si elle n'est pas connue."), e_sieges_max: N_("10 sièges enfant ou bébé au plus : corrigez le nombre."), e_sieges_choix: N_("Un enfant ou un bébé voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège ».") };
 
 // `details` : les valeurs de départ (celles de la réservation, ou ce que la demande collée a déjà lu).
 // `prefixe` : début des identifiants des champs (« v » dans la fiche, un par service à la création).
@@ -38,7 +39,21 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   const dropOff = texte("drop", dt.drop_off, tr("Hôtel, embarcadère, aéroport"));
   const vol = texte("vol", dt.vol, tr("FD 3217"));
   const bagages = texte("bagages", dt.bagages, tr("2 valises, 1 sac"));
-  const sieges = saisie(h("input", { id: id("sieges"), value: Number(dt.sieges) > 0 ? String(dt.sieges) : "" }), "entier");
+  // Sièges par type (22.11.2026, sieges-calc.mjs) : child seats (`sieges`, l'ancienne clé), baby seats (`sieges_bebe`), ou « aucun siège ».
+  const sieges = saisie(h("input", { id: id("sieges"), value: Number(dt.sieges) > 0 ? String(dt.sieges) : "", "aria-label": tr("Child seats") }), "entier");
+  const siegesBebe = saisie(h("input", { id: id("sieges-bebe"), value: Number(dt.sieges_bebe) > 0 ? String(dt.sieges_bebe) : "", "aria-label": tr("Baby seats") }), "entier");
+  const sansSiege = h("input", { id: id("sans-siege"), type: "checkbox" });
+  sansSiege.checked = siegesLus(dt).aucun;
+  // Un siège tapé décoche « Aucun siège » ; cocher « Aucun siège » vide les deux nombres.
+  for (const x of [sieges, siegesBebe]) x.addEventListener("input", () => { if (String(x.value).trim() && Number(x.value) > 0) sansSiege.checked = false; erreurChamp(sieges, null); });
+  sansSiege.addEventListener("change", () => { if (sansSiege.checked) (sieges.value = "", siegesBebe.value = ""); erreurChamp(sieges, null); });
+  const groupeSieges = h(
+    "div",
+    { class: "sieges-types", id: id("sieges-groupe"), role: "group" },
+    h("label", { class: "sieges-type" }, h("span", null, tr("Child seats")), sieges),
+    h("label", { class: "sieges-type" }, h("span", null, tr("Baby seats")), siegesBebe),
+    h("label", { class: "case sieges-aucun" }, sansSiege, " ", tr("Aucun siège")),
+  );
   const auto = ["", tr("Automatique d'après la prestation")];
   const typeTour = choix("tour", dt.type_tour, [auto, ["join", tr("Join tour")], ["prive", tr("Private tour")]]);
   const typeTransfert = choix("transfert", dt.type_transfert, [auto, ["taxi", tr("Private taxi")], ["minivan", tr("Private minivan")], ["partage", tr("Shared minivan")]]);
@@ -99,7 +114,7 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
     duree_h: () => selon("retour", champ(tr("Durée en heures"), dureeH, tr("Facultatif. Vide : non précisée."))),
     vol: () => champ(tr("Numéro de vol"), vol),
     bagages: () => champ(tr("Bagages"), bagages),
-    sieges: () => champ(tr("Sièges enfant ou bébé"), sieges, tr("Nombre de sièges. Vide si aucun.")),
+    sieges: () => champ(tr("Sièges enfant ou bébé"), groupeSieges, tr("Avec un enfant ou un bébé : le nombre de child seats et de baby seats, ou « Aucun siège ». Imprimé sur le voucher.")),
     type_tour: () => champ(tr("Type de tour"), typeTour),
     type_transfert: () => champ(tr("Type de transfert"), typeTransfert),
     parc: () => champ(tr("Frais de parc"), parc),
@@ -126,9 +141,14 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
 
   // Les sièges sont un nombre ; ils ne s'ajoutent qu'à une réservation qui en a, ou quand on en saisit (pas de « 0 » partout).
   const nbSieges = () => Math.max(0, Math.floor(Number(String(sieges.value).trim()) || 0));
+  const nbBebe = () => Math.max(0, Math.floor(Number(String(siegesBebe.value).trim()) || 0));
+  const aucun = () => sansSiege.checked && !nbSieges() && !nbBebe();
   const valeurs = () => ({
     chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim(), de: de.value.trim(), vers: vers.value.trim(), depart: depart.value, arrivee: arrivee.value,
     ...(nbSieges() > 0 || "sieges" in dt ? { sieges: nbSieges() } : {}),
+    ...(nbBebe() > 0 || "sieges_bebe" in dt ? { sieges_bebe: nbBebe() } : {}),
+    // « Aucun siège » : true seulement coché sans siège ; false efface une ancienne valeur (la fiche écrit tous les champs).
+    ...(aucun() || "sans_siege" in dt ? { sans_siege: aucun() } : {}),
     ...("hotel" in dt || hotel.value.trim() !== String(hotelFiche || "").trim() ? { hotel: hotel.value.trim() } : {}),
     // Aller simple : ni type, ni programme, ni durée ; retour au départ : pas de drop-off, la durée en nombre.
     ...detailsTrajet({ type_trajet: typeTrajet.value, programme_trajet: programmeTrajet.value, duree_h: dureeH.value }),
@@ -160,7 +180,7 @@ export const champsLongs = (cles) => cles.filter((c) => LONGS.includes(c));
 export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe, sauf = [], aideLieu = "", ouvert = true, surSaisie = null }) {
   // Des sièges déjà saisis restent visibles même si le modèle n'en imprime pas (transfert devenu excursion, relecture de la PR 315).
   const base = champsCreation(service, { taxi });
-  const cles = [...base, ...(Number(s.sieges) > 0 && !base.includes("sieges") ? ["sieges"] : [])].filter((c) => !sauf.includes(c));
+  const cles = [...base, ...(siegesTotal(siegesLus({ ...(s.details || {}), sieges: s.sieges })) > 0 && !base.includes("sieges") ? ["sieges"] : [])].filter((c) => !sauf.includes(c));
   if (!cles.length) return null;
   const location = service.type === "location";
   const cv = champsVoucher({ details: { ...s.details, ...(s.sieges ? { sieges: s.sieges } : {}) }, prefixe, dateService: () => service.date || "" });
@@ -190,7 +210,8 @@ export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe,
     if (cles.includes("adultes")) s.personnes = { ...(s.personnes || {}), adultes: entier(adultes), enfants: entier(enfants) };
     const { sieges, ...details } = cv.valeurs();
     // Seuls les champs montrés s'écrivent : ce qu'une demande a lu pour un autre modèle de voucher reste tel quel.
-    const montres = new Set(cles);
+    // Le champ des sièges écrit aussi les sièges bébé et « aucun siège ».
+    const montres = new Set([...cles, ...(cles.includes("sieges") ? ["sieges_bebe", "sans_siege"] : [])]);
     s.details = { ...Object.fromEntries(Object.entries(s.details || {}).filter(([k]) => !montres.has(k))), ...Object.fromEntries(Object.entries(details).filter(([k]) => montres.has(k))) };
     // Durée tapée mais illisible : gardée telle quelle, pour que la création la refuse au lieu de l'effacer.
     if (montres.has("duree_h") && details.type_trajet && dureeBrute() && details.duree_h === "") s.details.duree_h = dureeBrute();

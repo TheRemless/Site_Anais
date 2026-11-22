@@ -95,7 +95,14 @@ export function propositionVersDemande(p, contexte) {
     // Le numéro de vol de la carte (21.11.2026) : il rejoint le bloc du voucher du service, modifiable.
     const vol = s.vol ? { vol: s.vol } : {};
     // Les sièges enfant ou bébé de la carte (22.11.2026) : dans le bloc du voucher du service, puis sur la réservation.
-    const sieges = Number(s.sieges) > 0 ? { sieges: Number(s.sieges) } : {};
+    // Avec les sièges bébé, « aucun siège », les bagages et la remarque du voucher (22.11.2026) : `voucherCarte`, posé dans le bloc du voucher.
+    const voucherCarte = {
+      ...(Number(s.sieges_bebe) > 0 ? { sieges_bebe: Number(s.sieges_bebe) } : {}),
+      ...(s.sans_siege === true && !(Number(s.sieges) > 0) && !(Number(s.sieges_bebe) > 0) ? { sans_siege: true } : {}),
+      ...(Number(s.bagages) > 0 ? { bagages: String(Number(s.bagages)) } : {}),
+      ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}),
+    };
+    const sieges = { ...(Number(s.sieges) > 0 ? { sieges: Number(s.sieges) } : {}), ...(Object.keys(voucherCarte).length ? { voucherCarte } : {}), ...(s.sieges_requis === true ? { siegesRequis: true } : {}) };
     if (s.hors_catalogue) return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol };
     // La première offre garde le prix de la carte quand il vient de la conversation (prix_carte) ; les autres restent au catalogue.
     // Elle garde aussi les véhicules du devis (s.vehicules, « Calculer le devis ») : le dossier reprend le devis.

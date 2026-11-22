@@ -6,6 +6,7 @@ import { h } from "../ui.mjs";
 import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { avecMarque } from "../noms-calc.mjs";
+import { siegesLus } from "../sieges-calc.mjs";
 
 // Plus d'image de marque par défaut (migration 44) : sans logo ni photo dans les réglages, la Booking confirmation n'en montre pas.
 // Taxi d'Anaïs a son logo et sa photo enregistrés (la migration y écrit la photo d'avant).
@@ -57,7 +58,7 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
   const t = (cle) => avecMarque(textes(cle), nomSociete);
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: siegesLus(dt), vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
   const valeur = (c) =>
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
   const logo = (regl.apparence && regl.apparence.logo) || "";

@@ -5,6 +5,7 @@
 // commissions se calculent ainsi comme pour Secret, sans rien changer à la base.
 
 import { textesVoucher, DEFAUTS_TEXTES } from "./textes-voucher.mjs";
+import { siegesAnglais } from "./sieges-calc.mjs";
 
 export const FONCTIONNEMENT_TAXI = "taxi";
 export const estTaxi = (reglages) => !!reglages && reglages.fonctionnement === FONCTIONNEMENT_TAXI;
@@ -51,13 +52,14 @@ export function heureBooking(texte) {
 const nombreDe = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 // « 4 adults + luggage », « 2 adults, 1 child, 1 baby », d'après les personnes de la réservation et ses bagages.
 // Les sièges enfant ou bébé suivent les personnes : « 2 adults, 1 child (1 child seat) + 3 pieces of luggage ».
+// `sieges` : un nombre (sièges enfant, l'ancienne forme) ou les sièges par type ({ enfant, bebe, aucun }, sieges-calc.mjs, 22.11.2026) :
+// « 2 adults, 1 child, 1 baby (1 child seat, 1 baby seat) », « 2 adults, 1 child (no child seat needed) ».
 export function passagersBooking(personnes = {}, bagages = "", sieges = 0) {
   const a = Number(personnes.adultes) || 0;
   const e = Number(personnes.enfants) || 0;
   const b = Number(personnes.bebes) || 0;
   const liste = [a ? nombreDe(a, "adult", "adults") : "", e ? nombreDe(e, "child", "children") : "", b ? nombreDe(b, "baby", "babies") : ""].filter(Boolean).join(", ");
-  const s = Math.max(0, Math.floor(Number(sieges) || 0));
-  const siege = s ? nombreDe(s, "child seat", "child seats") : "";
+  const siege = siegesAnglais(sieges && typeof sieges === "object" ? sieges : { enfant: Math.max(0, Math.floor(Number(sieges) || 0)) });
   const gens = liste && siege ? `${liste} (${siege})` : liste || siege;
   const sac = String(bagages || "").trim();
   // Un nombre de bagages s'écrit « + 3 pieces of luggage », un oui sans nombre « + luggage » comme sur le modèle.

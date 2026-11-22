@@ -7,6 +7,7 @@ import { h } from "../ui.mjs";
 import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { photoBandeau } from "./voucher-taxi.mjs";
+import { siegesLus } from "../sieges-calc.mjs";
 
 // Plus d'image de marque par défaut (migration 44) : sans logo ni photo dans les réglages, rien. Secret d'Anaïs a les siens enregistrés.
 
@@ -36,7 +37,7 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
   const remplir = (s) => String(s || "").replaceAll("{ENTREPRISE}", marque);
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: siegesLus(dt), vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
   const valeur = (c) => (c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur);
   const logo = (regl.apparence && regl.apparence.logo) || "";
   const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur))) + Math.max(0, champs.length - 7);

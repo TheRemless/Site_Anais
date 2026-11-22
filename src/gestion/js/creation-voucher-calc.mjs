@@ -6,6 +6,7 @@ import { libelleClient, ligneLibre } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 import { estRetourDepartDetails, libelleRetourDepart, dureeFrancais, erreursTrajet } from "./trajet-calc.mjs";
 import { tr } from "./i18n.mjs";
+import { SIEGES_MAX, siegesLus, siegesTotal, siegesAChoisir } from "./sieges-calc.mjs";
 
 // Les services du dossier tels que la création en fera des réservations : une ligne adulte et sa ligne enfant font un seul service,
 // avec un seul voucher. Le regroupement est celui de la création elle-même (reservationsDepuisDocument), pour ne jamais diverger.
@@ -113,9 +114,15 @@ export function parServiceCreation(services, saisies) {
 // Avant de créer : le premier service en « retour au point de départ » sans programme ou avec une durée illisible.
 // `parService` : la sortie de parServiceCreation (ou celle de la demande collée). Rend { index, ligneIds, champ, code } ou null.
 // Sièges enfant ou bébé : 10 au plus, sans plafond silencieux (relecture de la PR 315). Au-delà, la création s'arrête sur le champ.
-export const SIEGES_MAX = 10;
+// Sièges par type (22.11.2026, sieges-calc.mjs) : enfant et bébé ensemble, 10 au plus. Un transfert dont la fiche montre les sièges
+// (`siegesRequis`) avec au moins un enfant ou un bébé : child seat, baby seat ou « aucun siège », sinon la création s'arrête sur le champ.
+export { SIEGES_MAX };
 export function siegesIncomplets(parService = []) {
-  for (const [index, x] of parService.entries()) if (Number(x.sieges) > SIEGES_MAX) return { index, ligneIds: x.ligneIds || [], champ: "sieges", code: "e_sieges_max" };
+  for (const [index, x] of parService.entries()) {
+    const s = siegesLus({ ...(x.details || {}), sieges: x.sieges });
+    if (siegesTotal(s) > SIEGES_MAX) return { index, ligneIds: x.ligneIds || [], champ: "sieges", code: "e_sieges_max" };
+    if (x.siegesRequis && siegesAChoisir({ enfants: (x.personnes || {}).enfants, bebes: x.bebes, sieges: s })) return { index, ligneIds: x.ligneIds || [], champ: "sieges", code: "e_sieges_choix" };
+  }
   return null;
 }
 // Plus de sièges que d'enfants et de bébés : à vérifier (le nombre d'enfants peut être inconnu), jamais refusé.

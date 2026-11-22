@@ -5,6 +5,7 @@
 //   - une carte « dossier » vers l'écran « Coller une demande » déjà rempli (la création reste celle de l'outil).
 
 import { reglesReponse } from "./defauts.mjs";
+import { siegesLus, siegesTotal, detailsAvecSieges, siegesAChoisir as siegesAChoisirCalc } from "./sieges-calc.mjs";
 
 // L'agent est proposé quand l'entreprise l'a allumé (Réglages), indépendamment de l'assistant de « Coller une demande » ; l'écran vérifie en
 // plus que le rôle peut lire les tarifs et écrire des dossiers.
@@ -101,18 +102,35 @@ export function quand(iso, { maintenant = new Date(), langue = "fr" } = {}) {
 // (origine « saisi ») devient le prix du transfert privé ; le lieu de pickup proposé devient celui du service.
 // Les sièges enfant ou bébé d'un service de carte : un entier positif, sans plafond silencieux (la fonction refuse au-delà de 10, la fiche
 // de création aussi).
+// `sieges` : les sièges enfant ; `sieges_bebe` : les sièges bébé ; `sans_siege` : aucun siège (sieges-calc.mjs, 22.11.2026).
 export const siegesCarte = (s) => Math.max(0, Math.floor(Number(s && s.sieges) || 0));
+export const siegesBebeCarte = (s) => Math.max(0, Math.floor(Number(s && s.sieges_bebe) || 0));
+export const siegesDeCarte = (s) => ({ enfant: siegesCarte(s), bebe: siegesBebeCarte(s), aucun: !siegesCarte(s) && !siegesBebeCarte(s) && !!(s && s.sans_siege === true) });
+// Les enfants et bébés d'un service de carte : ceux du service, sinon ceux du dossier quand le service ne donne personne ; les bébés du dossier.
+const petitsDe = (s, d) => (Number(s.enfants) || (Number(s.adultes) ? 0 : Number(d.enfants) || 0)) + (Number(d.bebes) || 0);
+const servicesDeCarte = (carte) => {
+  const d = (carte && carte.donnees) || {};
+  return carte && carte.genre === "reservation" ? [d.service || {}] : carte && carte.genre === "dossier" ? d.services || [] : [];
+};
 // Une carte « dossier » ou « reservation » dont un service a plus de sièges que d'enfants et de bébés (relecture de la PR 315) : la carte le
 // dit et ne se valide pas d'un geste ; Nani confirme avec « Vérifier avant » (le nombre d'enfants peut être inconnu).
 export function siegesAVerifier(carte) {
   const d = (carte && carte.donnees) || {};
-  const services = carte && carte.genre === "reservation" ? [d.service || {}] : carte && carte.genre === "dossier" ? d.services || [] : [];
-  return services.some((s) => {
-    const n = siegesCarte(s);
-    const enfants = Number(s.enfants) || (Number(s.adultes) ? 0 : Number(d.enfants) || 0);
-    return n > 0 && n > enfants + (Number(d.bebes) || 0);
+  return servicesDeCarte(carte).some((s) => {
+    const n = siegesTotal(siegesDeCarte(s));
+    return n > 0 && n > petitsDe(s, d);
   });
 }
+// Un transfert (sieges_requis, posé par la fonction) avec au moins un enfant ou un bébé, sans siège ni « aucun siège » (Jérémy, 22.11.2026) :
+// la carte ne se valide pas, ni d'un geste ni par « Vérifier avant » sans que le choix soit fait dans la fiche.
+export function siegesAChoisir(carte) {
+  const d = (carte && carte.donnees) || {};
+  return servicesDeCarte(carte).some((s) => s.sieges_requis === true && siegesAChoisirCalc({ enfants: petitsDe(s, d), sieges: siegesDeCarte(s) }));
+}
+// Les bagages d'un service de carte, en texte comme `details.bagages` ("" sans bagages).
+const bagagesCarte = (s) => (Number(s && s.bagages) > 0 ? String(Math.floor(Number(s.bagages))) : "");
+// La note interne d'un service : la nouvelle (note_interne) et l'ancienne remarque d'une carte d'avant le 22.11.2026, qui restait interne.
+const noteCarte = (s) => [s && s.note_interne, s && s.remarque].filter((x) => x && String(x).trim()).join(" ");
 export function propositionDepuisCarte(donnees = {}) {
   const c = donnees.client || {};
   return {
@@ -123,8 +141,14 @@ export function propositionDepuisCarte(donnees = {}) {
       heure: s.heure_pickup || "",
       adultes: s.adultes || 0,
       enfants: s.enfants || 0,
-      // Les sièges enfant ou bébé lus par l'Assistant (22.11.2026) : ils suivent jusqu'à la réservation (details.sieges).
+      // Les sièges par type lus par l'Assistant (22.11.2026) : ils suivent jusqu'à la réservation (details.sieges, sieges_bebe, sans_siege).
       sieges: siegesCarte(s),
+      sieges_bebe: siegesBebeCarte(s),
+      sans_siege: siegesDeCarte(s).aucun,
+      sieges_requis: s.sieges_requis === true,
+      // Les bagages et la remarque du voucher (22.11.2026) : sur le voucher (details.bagages, details.remarques), plus dans les notes.
+      bagages: bagagesCarte(s),
+      remarque_voucher: String(s.remarque_voucher || "").trim(),
       de: s.de || "",
       vers: s.vers || "",
       prive: true,
@@ -145,14 +169,23 @@ export function propositionDepuisCarte(donnees = {}) {
       // Le numéro de vol lu par l'agent (contrôlé par la fonction) : posé sur la réservation du transfert, modifiable dans la fenêtre.
       vol: s.vol || "",
     })),
+    // Les notes du dossier : seulement ce qui est interne (note_interne, ou la remarque d'une ancienne carte).
     remarques: (donnees.services || [])
-      .map((s) => s.remarque)
+      .map(noteCarte)
       .filter(Boolean)
       .join(" ")
       .slice(0, 400),
   };
 }
 
+// Les `details` d'une réservation depuis un service de carte : rien quand rien n'est dit.
+function detailsDeCarte(s) {
+  const details = detailsAvecSieges(
+    { ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
+    siegesDeCarte(s),
+  );
+  return Object.keys(details).length ? { details } : {};
+}
 // La réservation à ouvrir dans le formulaire de l'outil, depuis une carte « service » (ajout à un dossier).
 export function reservationDepuisCarte(donnees = {}) {
   const s = donnees.service || {};
@@ -167,8 +200,9 @@ export function reservationDepuisCarte(donnees = {}) {
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
     // L'origine d'un prix repris du client sans correction de Nani (revue de la PR 307) : relue par le contrôle (dossierPourControle).
-    ...(s.vol || s.origine_prix === "client_non_corrige" || siegesCarte(s) ? { details: { ...(s.vol ? { vol: s.vol } : {}), ...(siegesCarte(s) ? { sieges: siegesCarte(s) } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) } } : {}),
-    notes: s.remarque || "",
+    // Tout ce qui sert au client et au chauffeur va sur le voucher (22.11.2026) : vol, sièges par type, bagages, remarque en anglais.
+    ...detailsDeCarte(s),
+    notes: noteCarte(s),
   };
 }
 
@@ -189,14 +223,27 @@ export function reservationModifiee(r, donnees = {}) {
     case "enfants":
       return { ...r, personnes: { ...p, enfants: Number(v) || 0 } };
     // Les sièges enfant ou bébé : dans `details.sieges` (0 les retire), ce que le voucher et la Booking confirmation impriment.
-    case "sieges": {
-      const { sieges, ...autres } = r.details || {};
-      const n = siegesCarte({ sieges: v });
-      return { ...r, details: n ? { ...autres, sieges: n } : autres };
+    // Sièges bébé et « aucun siège » (22.11.2026) : un siège posé retire « aucun », « aucun » retire les sièges.
+    case "sieges":
+    case "sieges_bebe":
+    case "sans_siege": {
+      const avant = siegesLus(r.details || {});
+      const n = Math.max(0, Math.floor(Number(v) || 0));
+      const s = donnees.champ === "sans_siege" ? { enfant: 0, bebe: 0, aucun: v === "oui" } : { ...avant, aucun: false, ...(donnees.champ === "sieges" ? { enfant: n } : { bebe: n }) };
+      return { ...r, details: detailsAvecSieges(r.details || {}, s) };
     }
+    case "bagages": {
+      const { bagages, ...autres } = r.details || {};
+      return { ...r, details: Number(v) > 0 ? { ...autres, bagages: String(Math.floor(Number(v))) } : autres };
+    }
+    // La remarque du voucher, en anglais : ajoutée à `details.remarques`, que le voucher et la Booking confirmation impriment.
+    case "remarque_voucher":
+      return { ...r, details: { ...(r.details || {}), remarques: [(r.details || {}).remarques, String(v || "").trim()].filter(Boolean).join("\n") } };
     // Le numéro de vol : dans `details.vol`, ce que le voucher et la Booking confirmation impriment (le reste de `details` est gardé).
     case "vol":
       return { ...r, details: { ...(r.details || {}), vol: String(v || "").trim() } };
+    // La note interne (et l'ancienne « remarque » d'une carte d'avant le 22.11.2026) : dans les notes, jamais imprimées.
+    case "note_interne":
     case "remarque":
       return { ...r, notes: [r.notes, v].filter(Boolean).join("\n") };
     // Annulation : le formulaire habituel pose ensuite sa question (retirer de la facture, ou garder) si le service est facturé.

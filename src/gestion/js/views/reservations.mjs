@@ -8,6 +8,7 @@ import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremi
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
+import { siegesLus, siegesTotal, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
@@ -260,7 +261,7 @@ export async function dupliquerService(r, apres) {
         // Un retour au point de départ dupliqué reste un retour au point de départ, avec son programme et sa durée.
         // L'origine d'un prix repris du client sans correction de Nani suit la copie (revue de la PR 307) : le contrôle ne lève jamais un net avec.
         // Les sièges enfant ou bébé suivent la copie (relecture de la PR 315).
-        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...(r.details && Number(r.details.sieges) > 0 ? { sieges: Number(r.details.sieges) } : {}), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
+        details: { ...(r.details && r.details.prix_origine ? { prix_origine: r.details.prix_origine } : {}), ...detailsAvecSieges({}, siegesLus(r.details || {})), ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
       });
       try {
         await modifier("documents", doc.id, { contenu: copie.contenu, updated_at: new Date().toISOString() });
@@ -515,7 +516,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   };
   date.addEventListener("change", cv.majJours);
   const CHAMPS = cv.CHAMPS;
-  const siegesSaisis = () => Number(cv.valeurs().sieges) || 0;
+  // Les sièges saisis, enfant et bébé ensemble (sieges-calc.mjs), et le choix complet (un siège ou « Aucun siège »).
+  const siegesSaisisTypes = () => siegesLus(cv.valeurs());
+  const siegesSaisis = () => siegesTotal(siegesSaisisTypes());
   // Une location : la prise et le retour se lisent côte à côte, juste sous la date de départ.
   const RETOUR = ["retour_date", "retour_heure", "retour_lieu"];
   // Le bloc voucher n'existe qu'en excursions (Secret) ; Taxi n'a que ce qui s'imprime sur sa Booking confirmation (dépose, vol, bagages et sièges,
@@ -615,6 +618,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
           const petits = (nb(enfants.value) || 0) + (nb(bebes.value) || 0);
           const cle = `${s}:${petits}`;
           if (s > SIEGES_MAX) erreurChamp(champSieges, tr("{n} sièges enfant ou bébé au plus.", { n: SIEGES_MAX }));
+          // Un enfant ou un bébé (Jérémy, 22.11.2026) : child seats, baby seats ou « Aucun siège », toujours dit, jamais laissé vide.
+          else if (siegesAChoisir({ enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0, sieges: siegesSaisisTypes() })) erreurChamp(champSieges, tr("Un enfant ou un bébé voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège »."));
           else if (s > petits && siegesConfirmes !== cle) {
             siegesConfirmes = cle;
             erreurChamp(champSieges, tr("Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer."));

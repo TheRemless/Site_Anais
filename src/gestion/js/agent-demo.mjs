@@ -110,9 +110,10 @@ export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = 
 
   if (!manque.length && (!plan.vol || plan.vol.verdict !== "pas_tenable")) {
     ev.push({ t: "etape", outil: "proposer_dossier", texte: "Je prépare le dossier" });
-    const service = (de, vers, h, remarque) => ({ texte: `Transfert privé ${de} → ${vers}`, libelle: `${de} → ${vers}`, offre: null, date: course.date, heure_pickup: h, lieu_pickup: de, de, vers, adultes: comp.personnes, enfants: 0, prix: null, origine_prix: "a_fixer", remarque, avertissements: [] });
-    const services = [service(course.pickup, course.rdv, plan.pickup.heure, `Rendez-vous à ${course.heureRdv}, ${comp.bagages} bagage(s).`)];
-    if (course.aeroport) services.push({ ...service(course.rdv, course.aeroport, rdv.depart.heure, `Vol à ${comp.heureVol}.`), vol: comp.numeroVol || "" });
+    // Comme la fonction depuis le 22.11.2026 : les bagages dans leur champ, la remarque du voucher en anglais, rien dans la note interne.
+    const service = (de, vers, h, remarque) => ({ texte: `Transfert privé ${de} → ${vers}`, libelle: `${de} → ${vers}`, offre: null, date: course.date, heure_pickup: h, lieu_pickup: de, de, vers, adultes: comp.personnes, enfants: 0, sieges: 0, sieges_bebe: 0, sans_siege: false, sieges_requis: true, bagages: Number(comp.bagages) || 0, prix: null, origine_prix: "a_fixer", remarque_voucher: remarque, note_interne: "", avertissements: [] });
+    const services = [service(course.pickup, course.rdv, plan.pickup.heure, `Appointment at ${course.heureRdv}.`)];
+    if (course.aeroport) services.push({ ...service(course.rdv, course.aeroport, rdv.depart.heure, `Flight at ${comp.heureVol}.`), vol: comp.numeroVol || "" });
     ev.push({ t: "carte", carte: { genre: "dossier", titre: `Course du ${dateLongue(course.date)}`, donnees: { client: { nom: "", telephone: "", hotel: course.pickup, langue: "en" }, adultes: comp.personnes, enfants: 0, bebes: 0, services }, avertissements: [] } });
     ev.push({ t: "etape", outil: "proposer_reponse", texte: "Je prépare la réponse" });
     const message = [

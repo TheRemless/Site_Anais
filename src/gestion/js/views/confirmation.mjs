@@ -30,6 +30,7 @@ const ERREURS = {
   e_nombre: N_("Un nombre entier."),
   e_prix: N_("Prix absent ou illisible : écrivez-le en chiffres."),
   e_sieges: N_("Plus de sièges que d'enfants."),
+  e_sieges_choix: N_("Un enfant voyage : indiquez les child seats, les baby seats, ou cochez « Aucun siège »."),
   e_tel: N_("Numéro incorrect."),
   e_duree: N_("Durée en heures, par exemple 3."),
 };
@@ -80,7 +81,10 @@ export function ouvrirConfirmation(texteInitial = "", options = {}) {
     champ("adultes", tr("Adultes"), nombre()),
     champ("enfants", tr("Enfants"), nombre()),
     champ("bagages", tr("Bagages"), texte()),
+    // Sièges par type (22.11.2026) : child seats, baby seats, ou « Aucun siège » quand un enfant voyage sans.
     champ("sieges", tr("Sièges enfant"), nombre()),
+    champ("sieges_bebe", tr("Sièges bébé"), nombre()),
+    champ("sans_siege", tr("Aucun siège"), h("input", { type: "checkbox" }), "cc-case"),
     champ("prix", tr("Prix (payé au chauffeur)"), h("input", { type: "text", inputmode: "decimal", autocomplete: "off" })),
     champ("remarques", tr("Remarque imprimée sur la Booking confirmation"), h("textarea", { rows: 2 }), "cc-large"),
     champ("notes", tr("Note interne du dossier (jamais imprimée)"), h("textarea", { rows: 2 }), "cc-large")
@@ -166,7 +170,8 @@ export function ouvrirConfirmation(texteInitial = "", options = {}) {
       if (cle === "notes") continue;
       const val = v[cle] ?? "";
       // Une date ou une heure illisible reste vide : le champ le signale, et ce qui a été écrit est montré à côté.
-      champs[cle].value = (cle === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(val)) || (cle === "heure" && !/^\d{2}:\d{2}$/.test(val)) ? "" : val;
+      if (champs[cle].type === "checkbox") champs[cle].checked = val === "oui";
+      else champs[cle].value = (cle === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(val)) || (cle === "heure" && !/^\d{2}:\d{2}$/.test(val)) ? "" : val;
       erreurs[cle].hidden = true;
       champs[cle].removeAttribute("aria-invalid");
     }
@@ -195,7 +200,8 @@ export function ouvrirConfirmation(texteInitial = "", options = {}) {
   });
 
   // Les valeurs du formulaire, au format de l'écran de Mook ; `afficher` : les erreurs sous les champs.
-  const valeurs = () => ({ ...valeursVides(), ...Object.fromEntries(Object.keys(champs).map((c) => [c, champs[c].value])) });
+  const lireChamp = (c) => (champs[c].type === "checkbox" ? (champs[c].checked ? "oui" : "") : champs[c].value);
+  const valeurs = () => ({ ...valeursVides(), ...Object.fromEntries(Object.keys(champs).map((c) => [c, lireChamp(c)])) });
   function verifier(afficher = true) {
     const v = valeurs();
     const e = erreursConfirmation(v);

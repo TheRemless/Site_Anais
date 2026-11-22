@@ -6,6 +6,7 @@ import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient, libelleU
 import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { estRetourDepart, trajetPourChauffeur, DROPOFF_RETOUR } from "./trajet-calc.mjs";
+import { siegesLus, siegesAnglais } from "./sieges-calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
 
@@ -517,10 +518,11 @@ export const champsVoucherDe = (type, { trajet = false } = {}) => (CHAMPS_VOUCHE
 export const dropOffDepuisLibelle = (r, p, trajet) => (estRetourDepart(r) ? "" : trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
 export const pickupDepuisLibelle = (r, p, trajet) => (trajet ? trajet.de : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→")[0].replace(/^[^:]*:\s*/, "").trim() : "");
 
-// Sièges enfant ou bébé d'un transfert, imprimés après le nombre d'enfants : « 1 (1 child seat) ». Rien quand il n'y en a pas.
-export const siegesVoucher = (n) => {
-  const s = Math.max(0, Math.floor(Number(n) || 0));
-  return s ? ` (${s} child ${s > 1 ? "seats" : "seat"})` : "";
+// Sièges enfant ou bébé d'un transfert, imprimés après le nombre d'enfants : « 1 (1 child seat, 1 baby seat) », « 1 (no child seat needed) ».
+// `x` : les `details` de la réservation (sièges par type, sieges-calc.mjs) ou un nombre de sièges enfant (ancienne forme). Rien sans rien de dit.
+export const siegesVoucher = (x) => {
+  const t = siegesAnglais(x && typeof x === "object" ? siegesLus(x) : { enfant: Math.max(0, Math.floor(Number(x) || 0)) });
+  return t ? ` (${t})` : "";
 };
 export const TITRES_VOUCHER = { billet: "Boat Ticket Voucher", bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
 
