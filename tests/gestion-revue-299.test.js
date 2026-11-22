@@ -149,7 +149,11 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   assert.ok(bloqueMontant(r.avertissements, 1100));
   const autre = await repondre(memo, "Hi Tom, 1,350 THB per person.");
   assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net"), "sans le droit nets, le code sans sa valeur");
-  assert.doesNotMatch(JSON.stringify(r), /550|1350/, "aucun autre net ne sort");
+  // L'empreinte d'un montant masqué (« montant_interne:#sel:empreinte ») est aléatoire : elle peut contenir « 550 » par hasard. Elle est
+  // retirée avant de chercher les nets, et seuls des nombres entiers comptent (pas un morceau d'un autre nombre).
+  const sansEmpreintes = JSON.stringify(r).replace(/#[0-9a-f]{8,32}:[0-9a-f,]+/g, "#empreinte");
+  assert.match(sansEmpreintes, /montant_interne:#empreinte/, "l'empreinte est bien celle qui a été retirée");
+  assert.doesNotMatch(sansEmpreintes, /(?<![\d,.])(?:550|1,?350)(?![\d,.])/, "aucun autre net ne sort");
 });
 
 // ---- 3. Noms lus chez un partenaire -------------------------------------------------------------------------------------------------
