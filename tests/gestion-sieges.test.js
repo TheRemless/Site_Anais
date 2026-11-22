@@ -43,9 +43,12 @@ test("Assistant : le schéma des services a les sièges ; proposer_dossier et pr
   assert.equal(normaliserEntree("proposer_dossier", { titre: "x", services: [service({ sieges: 2 })] }).services[0].sieges, 2);
   const carte = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 2, bebes: 0, services: [service({ sieges: 2 }), service({ sieges: 0 })], apporteur: "" }, ctx(), memo());
   assert.deepEqual(carte.carte.donnees.services.map((s) => s.sieges), [2, 0]);
-  // Borné : un nombre absurde est ramené à 10, un texte à 0.
-  const borne = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [service({ sieges: 40 })], apporteur: "" }, ctx(), memo());
-  assert.equal(borne.carte.donnees.services[0].sieges, 10);
+  // Plus de 10 : refusé avec un motif, jamais ramené à 10 en silence (relecture de la PR 315).
+  const trop = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [service({ sieges: 40 })], apporteur: "" }, ctx(), memo());
+  assert.equal(trop.contenu.erreur, "sieges_trop_nombreux");
+  assert.equal((await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", donnees.dossiers[0].id), service: service({ sieges: 11 }) }, ctx(), memo())).contenu.erreur, "sieges_trop_nombreux");
+  const dix = await executer("proposer_dossier", { titre: "Dossier", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [service({ sieges: 10 })], apporteur: "" }, ctx(), memo());
+  assert.equal(dix.carte.donnees.services[0].sieges, 10);
   const ajout = await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", donnees.dossiers[0].id), service: service({ sieges: 1 }) }, ctx(), memo());
   assert.equal(ajout.carte.donnees.service.sieges, 1);
 });
@@ -75,7 +78,7 @@ test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusq
   assert.deepEqual(services.map((s) => s.sieges), [2, undefined]);
   // Fiche de création (views/demande.mjs) : le service garde ses sièges dans sa saisie, posée sur la réservation (creation-excursions.mjs).
   const demande = lire("src/gestion/js/views/demande.mjs");
-  assert.match(demande, /sieges: Number\(sv\.sieges\) \|\| \(site \? Number\(d\.sieges\) \|\| 0 : 0\)/, "plus seulement pour une demande du site");
+  assert.match(demande, /sieges: modeExcursions\(\) \? Number\(sv\.sieges\) \|\| \(site \? Number\(d\.sieges\) \|\| 0 : 0\) : 0/, "plus seulement pour une demande du site");
   assert.match(demande, /vol: t\.vol \|\| "", sieges: Number\(t\.sieges\) \|\| 0,/, "le service de l'Assistant porte ses sièges");
   assert.match(demande, /sieges: v\.sieges, details/, "la réservation reçoit la saisie");
   assert.match(lire("src/gestion/js/views/creation-excursions.mjs"), /\.\.\.\(sieges \? \{ sieges: Number\(sieges\) \} : \{\}\)/);
@@ -113,12 +116,69 @@ test("impression : voucher de transfert, Booking confirmation (Taxi et Secret), 
   assert.match(lire("src/gestion/js/views/voucher-secret.mjs"), /sieges: dt\.sieges/);
 });
 
-test("fiche de réservation : « Sièges enfant ou bébé » à côté des personnes, pour tout service sauf une location, une seule fois", () => {
+test("relecture 2 : un service du catalogue (offre non nulle) garde ses sièges jusqu'à la fiche de création", () => {
+  const contexte = { prestations: donnees.prestations, trajets: [], partenaires: donnees.partenaires };
+  const carte = { client: { nom: "Test" }, adultes: 2, enfants: 2, services: [{ texte: "Transfert", offre: { genre: "prestation", id: donnees.prestations[0].id }, date: "2026-12-03", adultes: 2, enfants: 2, sieges: 2, prix: 2500, origine_prix: "catalogue" }] };
+  const { services } = propositionVersDemande(propositionDepuisCarte(carte), contexte);
+  assert.equal(services[0].offres.length, 1, "l'offre du catalogue est là");
+  assert.equal(services[0].sieges, 2, "et les sièges aussi");
+});
+
+test("relecture 3 et 7 : le champ sièges suit l'impression (transfert chez Secret, toujours chez Taxi, jamais chez ZTP) et reste visible tant qu'il a une valeur", () => {
   const vue = lire("src/gestion/js/views/reservations.mjs");
-  assert.match(vue, /type === "location" \? null : CHAMPS\.sieges\(\)/);
-  assert.doesNotMatch(vue, /CHAMPS\.bagages\(\), CHAMPS\.sieges\(\)/, "plus dans le bloc Taxi");
-  assert.match(vue, /"sieges"\]\)\.map\(\(c\) => CHAMPS\[c\]\(\)\)/, "plus dans le bloc du modèle de voucher");
+  // Taxi : la Booking confirmation imprime toujours les sièges.
+  assert.match(vue, /CHAMPS\.vol\(\), CHAMPS\.bagages\(\), CHAMPS\.sieges\(\)\), CHAMPS\.remarques\(\)\)/);
+  // Secret : seulement le modèle « transfert » (voucher de transfert, Booking confirmation de Secret : estBookingSecret exige un transfert).
+  assert.match(lire("src/gestion/js/taxi-calc.mjs"), /estBookingSecret = \(r, type, reglages\) => .*type === "transfert"/);
+  assert.match(lire("src/gestion/js/operations-calc.mjs"), /transfert: \[[^\]]*"sieges"/);
+  assert.doesNotMatch(lire("src/gestion/js/operations-calc.mjs"), /(?:bateau|activite|location|billet): \[[^\]]*"sieges"/);
+  // Ailleurs, seulement tant qu'une valeur reste (transfert devenu excursion, location devenue transfert) ; jamais dans la grille des personnes.
+  assert.match(vue, /const siegesHorsModele = m && m !== "transfert" && siegesSaisis\(\) > 0;/);
+  assert.doesNotMatch(vue, /type === "location" \? null : CHAMPS\.sieges\(\)/);
+  // ZTP : pas de voucher, pas de champ ; et la fiche de création n'y reprend jamais de sièges.
+  assert.match(vue, /const avecVoucher = modeExcursions\(\) && !modeTaxi\(\);/);
+  assert.match(lire("src/gestion/js/views/demande.mjs"), /sieges: modeExcursions\(\) \? Number\(sv\.sieges\)/);
+  // Fiche de création : des sièges saisis restent visibles même si le modèle n'en imprime pas.
+  assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /Number\(s\.sieges\) > 0 && !base\.includes\("sieges"\) \? \["sieges"\] : \[\]/);
+});
+
+test("relecture 4 : plus de sièges que d'enfants et de bébés, à vérifier (carte bloquée d'un geste, fiche à confirmer) ; au-delà de 10, refusé", async () => {
+  const { siegesAVerifier } = await import("../src/gestion/js/agent-calc.mjs");
+  const { siegesEnTrop, siegesIncomplets, SIEGES_MAX } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  const dossier = (s, plus = {}) => ({ genre: "dossier", donnees: { adultes: 2, enfants: 1, bebes: 0, services: [{ adultes: 2, enfants: 1, ...s }], ...plus } });
+  assert.equal(siegesAVerifier(dossier({ sieges: 1 })), false);
+  assert.equal(siegesAVerifier(dossier({ sieges: 2 })), true);
+  assert.equal(siegesAVerifier(dossier({ sieges: 2 }, { bebes: 1 })), false, "un bébé compte");
+  assert.equal(siegesAVerifier({ genre: "reservation", donnees: { service: { adultes: 2, enfants: 0, sieges: 1 } } }), true);
+  assert.equal(siegesEnTrop({ sieges: 3, enfants: 1, bebes: 1 }), true);
+  assert.equal(siegesEnTrop({ sieges: 2, enfants: 1, bebes: 1 }), false);
+  assert.equal(SIEGES_MAX, 10);
+  assert.deepEqual(siegesIncomplets([{ sieges: 2 }, { ligneIds: ["l2"], sieges: 11 }]), { index: 1, ligneIds: ["l2"], champ: "sieges", code: "e_sieges_max" });
+  assert.equal(siegesIncomplets([{ sieges: 10 }]), null);
+  const agent = lire("src/gestion/js/views/agent.mjs");
+  assert.match(agent, /else if \(siegesAVerifier\(c\)\) r = \{ ok: false, motif:/, "jamais validé d'un geste");
+  assert.match(agent, /c\.statut === "proposee" && siegesAVerifier\(c\) \? \["sieges_a_verifier"\] : \[\]/, "dit sur la carte");
+  const vue = lire("src/gestion/js/views/reservations.mjs");
+  assert.match(vue, /if \(s > SIEGES_MAX\) erreurChamp\(champSieges/);
+  assert.match(vue, /else if \(s > petits && siegesConfirmes !== cle\)/, "la fiche demande une confirmation, pas un refus");
+  const demande = lire("src/gestion/js/views/demande.mjs");
+  assert.match(demande, /trajetIncomplet\(parService\) \|\| siegesIncomplets\(parService\)/);
+  assert.match(demande, /if \(siegesEnTrop\(\{ sieges: saisie\.sieges, enfants: sv\.enfants, bebes: saisie\.bebes \}\)\) alertes\.push/);
+  // Côté écran, plus de plafond silencieux.
+  assert.equal(siegesCarte({ sieges: 12 }), 12);
+});
+
+test("relecture 5 et 6 : la duplication garde les sièges ; une modification se fusionne depuis la ligne d'origine", () => {
+  const vue = lire("src/gestion/js/views/reservations.mjs");
+  assert.match(vue, /\.\.\.\(r\.details && Number\(r\.details\.sieges\) > 0 \? \{ sieges: Number\(r\.details\.sieges\) \} : \{\}\), \.\.\.\(copie\.ids/);
+  assert.match(vue, /export function formulaireReservation\(r, apres, \{ base = r \} = \{\}\)/);
+  assert.match(vue, /modifierProtege\("reservations", r\.id, valeurs, \{ base, arbitrer/);
+  const agent = lire("src/gestion/js/views/agent.mjs");
+  assert.match(agent, /\}, \{ base: r \}\), \{ ferme: revenir \}\);/, "Vérifier avant d'une modification");
+  assert.match(agent, /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
+});
+
+test("fiche de réservation : le champ « Sièges enfant ou bébé » existe et la carte de l'Assistant dit les sièges", () => {
   assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /sieges: \(\) => champ\(tr\("Sièges enfant ou bébé"\)/);
-  // La carte de l'Assistant les dit avant de créer.
   assert.match(lire("src/gestion/js/views/agent.mjs"), /siegesTexte\(s\)/);
 });

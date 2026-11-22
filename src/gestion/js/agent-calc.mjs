@@ -99,8 +99,20 @@ export function quand(iso, { maintenant = new Date(), langue = "fr" } = {}) {
 // Une carte « dossier » dans la forme que lit la fiche de création (views/demande.mjs, par assistant-calc.mjs propositionVersDemande) :
 // client, services avec leur ligne de la base, transfert privé hors catalogue à prix libre. Un prix tapé par la personne dans la conversation
 // (origine « saisi ») devient le prix du transfert privé ; le lieu de pickup proposé devient celui du service.
-// Les sièges enfant ou bébé d'un service de carte : un entier de 0 à 10.
-export const siegesCarte = (s) => Math.min(10, Math.max(0, Math.floor(Number(s && s.sieges) || 0)));
+// Les sièges enfant ou bébé d'un service de carte : un entier positif, sans plafond silencieux (la fonction refuse au-delà de 10, la fiche
+// de création aussi).
+export const siegesCarte = (s) => Math.max(0, Math.floor(Number(s && s.sieges) || 0));
+// Une carte « dossier » ou « reservation » dont un service a plus de sièges que d'enfants et de bébés (relecture de la PR 315) : la carte le
+// dit et ne se valide pas d'un geste ; Nani confirme avec « Vérifier avant » (le nombre d'enfants peut être inconnu).
+export function siegesAVerifier(carte) {
+  const d = (carte && carte.donnees) || {};
+  const services = carte && carte.genre === "reservation" ? [d.service || {}] : carte && carte.genre === "dossier" ? d.services || [] : [];
+  return services.some((s) => {
+    const n = siegesCarte(s);
+    const enfants = Number(s.enfants) || (Number(s.adultes) ? 0 : Number(d.enfants) || 0);
+    return n > 0 && n > enfants + (Number(d.bebes) || 0);
+  });
+}
 export function propositionDepuisCarte(donnees = {}) {
   const c = donnees.client || {};
   return {

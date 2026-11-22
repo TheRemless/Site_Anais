@@ -15,7 +15,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
@@ -207,6 +207,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (sv.adultes + sv.enfants === 0) alertes.push(tr("Nombre de personnes à préciser."));
     if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
     if (sv.copie) alertes.push(tr("Même service, autre date."));
+    // Plus de sièges que d'enfants et de bébés : à vérifier avant de créer (relecture de la PR 315).
+    const saisie = sv.saisie || {};
+    if (siegesEnTrop({ sieges: saisie.sieges, enfants: sv.enfants, bebes: saisie.bebes })) alertes.push(tr("Plus de sièges que d'enfants et de bébés : vérifiez."));
     n.alertes.replaceChildren(...alertes.map((a) => h("span", { class: "demande-attention" }, a)));
     n.alertes.hidden = !alertes.length;
     n.li.classList.toggle("decoche", !sv.coche);
@@ -241,7 +244,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges), modifiable dans la fenêtre.
     const site = d.type === "transfer";
     // Les sièges du service (carte de l'Assistant, 22.11.2026) passent avant ceux du formulaire du site.
-    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: Number(sv.sieges) || (site ? Number(d.sieges) || 0 : 0), details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
+    // Jamais chez ZTP : ses vouchers n'impriment pas de sièges (relecture de la PR 315).
+    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: modeExcursions() ? Number(sv.sieges) || (site ? Number(d.sieges) || 0 : 0) : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
     // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
     if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
@@ -475,7 +479,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       parService.push({ ligneIds: ls.map((l) => l.id), ...reservationDe(sv, offre) });
     }
     // Retour au point de départ sans programme : on ne crée pas, le champ est montré.
-    const incomplet = trajetIncomplet(parService);
+    const incomplet = trajetIncomplet(parService) || siegesIncomplets(parService);
     if (incomplet) return { incomplet: coches()[incomplet.index], code: incomplet.code, champ: incomplet.champ };
     const plusieurs = parService.length > 1;
     // Prix convenu dans « Modifier » (un seul service) : la facture prend ce total, l'écart va sur la première ligne.
@@ -487,7 +491,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function montrerIncomplet(b) {
     erreur.textContent = tr(ERREURS_TRAJET[b.code]);
     const sv = b.incomplet;
-    const champ_ = document.getElementById(`svc${sv.id}-v-${b.champ === "duree_h" ? "duree-h" : "programme-trajet"}`);
+    const champ_ = document.getElementById(`svc${sv.id}-v-${b.champ === "duree_h" ? "duree-h" : b.champ === "sieges" ? "sieges" : "programme-trajet"}`);
     if (!champ_) return;
     const bloc = champ_.closest("details");
     if (bloc) bloc.open = true;

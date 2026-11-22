@@ -221,7 +221,7 @@ const SERVICE = obj({
   vers: S("Lieu d'arrivée d'un transfert, ou \"\"."),
   adultes: I("0 si inconnu."),
   enfants: I("0 si inconnu."),
-  sieges: I("Sièges enfant ou bébé demandés pour ce service (« child seat », « baby seat », « car seat », « booster »), 0 si rien n'est dit. Ne les mets pas aussi dans « remarque »."),
+  sieges: I("Sièges enfant ou bébé demandés pour ce service (« child seat », « baby seat », « car seat », « booster »), 0 si rien n'est dit, 10 au plus. Ne les mets pas aussi dans « remarque »."),
   prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes."),
   vol: S("Numéro du vol d'un transfert qui part d'un aéroport ou y va (« FD3217 »), seulement s'il est écrit dans la conversation, le WhatsApp lu ou une pièce jointe, sinon \"\". Jamais l'heure du vol, jamais un numéro deviné."),
   remarque: S("Ce qu'il faut savoir pour réserver (bagages, attente, heure du vol), ou \"\". Le numéro du vol va dans « vol »."),
@@ -873,6 +873,8 @@ function chiffresService(r, n) {
   };
 }
 
+// Au plus 10 sièges enfant ou bébé par service (même borne que l'écran, creation-voucher-calc.mjs).
+export const SIEGES_MAX = 10;
 // Les sièges enfant ou bébé d'une réservation : la colonne lue par la fonction (sieges:details->>sieges), sinon details.sieges.
 const siegesDe = (r) => entier(Number(r.sieges ?? (r.details || {}).sieges) || 0, 10);
 export async function lireDossier(e, ctx) {
@@ -1403,7 +1405,7 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     adultes,
     enfants,
     // Les sièges enfant ou bébé (22.11.2026) : posés sur la réservation (details.sieges), imprimés sur le voucher et la Booking confirmation.
-    sieges: entier(s.sieges, 10),
+    sieges: Number.isInteger(s.sieges) && s.sieges > 0 ? s.sieges : 0,
     prix,
     origine_prix: origine,
     ...(catalogueAffiche !== null ? { prix_catalogue: catalogueAffiche } : {}),
@@ -1641,6 +1643,8 @@ export async function proposer(nom, e, ctx, memo) {
     if (!t) return { erreur: "confirmation_introuvable" };
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { course: { texte: t.slice(0, 4000) } } };
   }
+  // Plus de 10 sièges enfant ou bébé : refusé avec un motif, jamais ramené à 10 en silence (relecture de la PR 315).
+  if (["proposer_dossier", "proposer_reservation"].includes(nom) && [...(e.services || []), ...(e.service ? [e.service] : [])].some((x) => x && Number(x.sieges) > SIEGES_MAX)) return { erreur: "sieges_trop_nombreux" };
   if (nom === "proposer_dossier") {
     const services = [];
     for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes, null, memo));
@@ -1675,7 +1679,7 @@ export async function proposer(nom, e, ctx, memo) {
     const avertVol = [];
     const v = e.champ === "vol" ? volSource(e.valeur, ctx, memo, avertVol) : texte(e.valeur, 300);
     if (e.champ === "vol" && !v) return { erreur: avertVol[0] || "valeur_invalide" };
-    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), sieges: /^\d{1,2}$/.test(v) && Number(v) <= 10, vol: !!v, remarque: !!v, annulation: v === "annule" }[e.champ];
+    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), sieges: /^\d{1,2}$/.test(v) && Number(v) <= SIEGES_MAX, vol: !!v, remarque: !!v, annulation: v === "annule" }[e.champ];
     if (!ok) return { erreur: "valeur_invalide" };
     if (e.champ === "annulation" && r.statut === "annule") return { erreur: "deja_annule" };
     const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), sieges: String(siegesDe(r)), vol: texte(r.vol || (r.details && r.details.vol) || "", 20), remarque: "", annulation: r.statut || "" }[e.champ];

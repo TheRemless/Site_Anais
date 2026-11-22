@@ -4555,4 +4555,11 @@ export const EN = {
   // Sièges enfant ou bébé sur la carte de l'Assistant (22.11.2026)
   "{n} siège enfant": "{n} child seat",
   "{n} sièges enfant": "{n} child seats",
+  // Relecture de la PR 315 (sièges enfant ou bébé)
+  "Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant ».": "More child or baby seats than children and babies: check with “Check first”.",
+  "10 sièges enfant ou bébé au plus : corrigez le nombre.": "10 child or baby seats at most: correct the number.",
+  "Plus de sièges que d'enfants et de bébés : vérifiez.": "More seats than children and babies: check.",
+  "Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus.": "Seats only print on a transfer voucher: clear the field if they are no longer needed.",
+  "{n} sièges enfant ou bébé au plus.": "{n} child or baby seats at most.",
+  "Plus de sièges que d'enfants et de bébés : vérifiez, puis enregistrez de nouveau pour confirmer.": "More seats than children and babies: check, then save again to confirm.",
 };

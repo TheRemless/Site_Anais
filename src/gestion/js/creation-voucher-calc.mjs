@@ -112,6 +112,14 @@ export function parServiceCreation(services, saisies) {
 
 // Avant de créer : le premier service en « retour au point de départ » sans programme ou avec une durée illisible.
 // `parService` : la sortie de parServiceCreation (ou celle de la demande collée). Rend { index, ligneIds, champ, code } ou null.
+// Sièges enfant ou bébé : 10 au plus, sans plafond silencieux (relecture de la PR 315). Au-delà, la création s'arrête sur le champ.
+export const SIEGES_MAX = 10;
+export function siegesIncomplets(parService = []) {
+  for (const [index, x] of parService.entries()) if (Number(x.sieges) > SIEGES_MAX) return { index, ligneIds: x.ligneIds || [], champ: "sieges", code: "e_sieges_max" };
+  return null;
+}
+// Plus de sièges que d'enfants et de bébés : à vérifier (le nombre d'enfants peut être inconnu), jamais refusé.
+export const siegesEnTrop = ({ sieges = 0, enfants = 0, bebes = 0 } = {}) => (Number(sieges) || 0) > (Number(enfants) || 0) + (Number(bebes) || 0);
 export function trajetIncomplet(parService = []) {
   for (const [index, x] of parService.entries()) {
     const e = erreursTrajet(x.details || {});

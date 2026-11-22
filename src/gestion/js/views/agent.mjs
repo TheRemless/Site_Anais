@@ -7,6 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
+import { siegesAVerifier } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
@@ -110,6 +111,8 @@ const AVERTISSEMENTS = {
   apporteur_inconnu: N_("La référence donnée par l'assistant ne correspond à aucune fiche apporteur."),
   // Numéro de vol (21.11.2026) : contrôlé par la fonction, jamais deviné.
   vol_piece_jointe: N_("Numéro de vol lu sur une pièce jointe : vérifiez-le avant de valider."),
+  // Relecture de la PR 315 : calculé par l'écran, jamais par la fonction.
+  sieges_a_verifier: N_("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant »."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
   vol_illisible: N_("Un numéro de vol proposé n'a pas la forme d'un numéro de vol : il a été laissé vide."),
 };
@@ -890,7 +893,7 @@ export async function vueAgent(idOuvert = "") {
     }
     // Espace unifié : « entreprise à choisir » tombe dès que chaque service a son entreprise (corrigée d'un tap).
     const resolu = c.genre === "dossier" && carteUnifiee(d) && (c.statut !== "proposee" || (donneesCarte(c).services || []).every((s) => s.entite_id));
-    const avertissements = (c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir"));
+    const avertissements = [...(c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir")), ...(c.statut === "proposee" && siegesAVerifier(c) ? ["sieges_a_verifier"] : [])];
     const avert = avertissements.length && c.genre !== "amelioration" ? h("ul", { class: "assistant-avertissements" }, avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
     const libelles = { dossier: estCourse(c) ? N_("Course") : N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: c.genre === "reponse" && d.destinataire === "apporteur" ? N_("Réponse à l'apporteur") : N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
     // Une demande envoyée montre son suivi (envoyée, PR prête, en ligne, refusée).
@@ -1132,6 +1135,8 @@ export async function vueAgent(idOuvert = "") {
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
     try {
       if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
+      // Plus de sièges que d'enfants et de bébés (relecture de la PR 315) : jamais validé d'un geste, Nani confirme dans la fiche.
+      else if (siegesAVerifier(c)) r = { ok: false, motif: tr("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant ».") };
       // Un prix du client sous le net (revue de la PR 307) : jamais validé d'un geste.
       else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
@@ -1266,12 +1271,13 @@ export async function vueAgent(idOuvert = "") {
     return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {
       const r = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
       if (!r) return void toast(tr("Ce service n'existe plus."), true), false;
+      // La base de la fusion est la ligne d'origine (relecture de la PR 315) : une modification concurrente n'efface pas le changement proposé.
       const ferme = modal(tr("Modifier la réservation"), formulaireReservation(reservationModifiee(r, c.donnees), async (res) => {
         ferme();
         if (!res) return;
         toast(tr("Service modifié."));
         await noterReussite(c, { ok: true, reservation: { ...res, dossier_id: res.dossier_id || r.dossier_id } });
-      }), { ferme: revenir });
+      }, { base: r }), { ferme: revenir });
       return true;
     });
   }
@@ -1291,7 +1297,7 @@ export async function vueAgent(idOuvert = "") {
         ferme();
         fin(r);
       };
-      const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }));
+      const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }), { base: ancienne || valeurs });
       ferme = modal(tr("Réservation"), form, { cache: true });
       minuterie = setTimeout(() => terminer({ ok: false, motif: tr("Rien n'a été enregistré : ouvrez « Vérifier avant ».") }), 60_000);
       form.requestSubmit();

@@ -150,10 +150,15 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   const autre = await repondre(memo, "Hi Tom, 1,350 THB per person.");
   assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net"), "sans le droit nets, le code sans sa valeur");
   // L'empreinte d'un montant masqué (« montant_interne:#sel:empreinte ») est aléatoire : elle peut contenir « 550 » par hasard. Elle est
-  // retirée avant de chercher les nets, et seuls des nombres entiers comptent (pas un morceau d'un autre nombre).
-  const sansEmpreintes = JSON.stringify(r).replace(/#[0-9a-f]{8,32}:[0-9a-f,]+/g, "#empreinte");
+  // retirée avant de chercher les nets (relecture de la PR 315 : \b voit aussi 550 dans {"net":550}, [550,1350] et 550.00).
+  const sansEmpreinte = (j) => j.replace(/#[0-9a-f]{8,32}:[0-9a-f,]+/g, "#empreinte");
+  const FUITE = /\b(?:550|1,?350)\b/;
+  const sansEmpreintes = sansEmpreinte(JSON.stringify(r));
   assert.match(sansEmpreintes, /montant_interne:#empreinte/, "l'empreinte est bien celle qui a été retirée");
-  assert.doesNotMatch(sansEmpreintes, /(?<![\d,.])(?:550|1,?350)(?![\d,.])/, "aucun autre net ne sort");
+  assert.doesNotMatch(sansEmpreintes, FUITE, "aucun autre net ne sort");
+  // Le contrôle lui-même : une empreinte qui contient 550 passe, une vraie fuite échoue, sous toutes ses formes.
+  assert.doesNotMatch(sansEmpreinte('{"avertissements":["montant_interne:#eca6ccc4df28550d:b0c7cd815f825b4f"]}'), FUITE);
+  for (const fuite of ['{"net":550,"x":1}', '{"nets":[550,1350]}', '"net 550.00"', '"1,350 THB"']) assert.match(sansEmpreinte(fuite), FUITE, fuite);
 });
 
 // ---- 3. Noms lus chez un partenaire -------------------------------------------------------------------------------------------------
