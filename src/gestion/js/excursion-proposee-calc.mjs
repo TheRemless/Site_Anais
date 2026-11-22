@@ -90,6 +90,27 @@ export const agesDe = (x) => {
   return m ? `${m[1]} to ${m[2]}` : "";
 };
 
+// ---- Radeaux privés (réponse de Jérémy à la question 3 de la PR 310) --------------------------------------------------------------------
+// Un radeau se vend pour le radeau (1 ou 2 personnes), puis par personne en plus, puis par enfant : trois lignes de la même option du site.
+// Seule la première ligne (le radeau) se propose ; les deux autres donnent leurs prix, lus dans le catalogue par leur identifiant. Sans page
+// du site reliée, pas de radeau (on ne sait pas lire ses lignes).
+export const PAGES_RADEAU = ["sunrise-raft", "sunset-dinner-raft", "fishing-trip"];
+export function radeauDe(p, prestations = []) {
+  const page = pageDe(p);
+  if (!page || !PAGES_RADEAU.includes(page.id)) return null;
+  const option = (page.options || []).find((o) => o.id === page.optionId);
+  const tarifs = (option && option.tarifs) || [];
+  if (!tarifs.length || tarifs[0].prestation !== p.id) return null;
+  const ligne = (re) => {
+    const t = tarifs.find((x) => re.test(x.ligne || ""));
+    const q = t ? (prestations || []).find((y) => y.id === t.prestation) : null;
+    return q && q.actif !== false && Number(q.prix_vente) > 0 ? q : null;
+  };
+  return { extra: ligne(/extra/i), enfant: ligne(/^child/i) };
+}
+const radeauProposable = (p, prestations, { noms = [] } = {}) =>
+  !!p && p.actif !== false && ["excursion", "activite"].includes(p.famille) && Number(p.prix_vente) > 0 && !p.sur_place && !resteBloque(`${p.libelle_en || ""} ${p.libelle || ""}`, { noms }).length && !!radeauDe(p, prestations);
+
 // Une ou deux propositions, de familles différentes, dans l'ordre FAMILLES_EXCURSION puis l'ordre du catalogue. `deja` : les prestations
 // et familles déjà réservées pour ce client (une famille déjà prise n'est pas reproposée). Rend toutes les possibilités triées : l'écran
 // coche les `max` premières de familles différentes, Nani change le choix.
@@ -99,13 +120,13 @@ export const agesDe = (x) => {
 export function possibilites(prestations = [], { noms = [], deja = { prestations: new Set(), familles: new Set() }, enfants = 0, jours = null } = {}) {
   const rang = (f) => FAMILLES_EXCURSION.indexOf(f);
   return (prestations || [])
-    .filter((p) => proposable(p, { noms }) && !deja.prestations.has(p.id))
+    .filter((p) => (proposable(p, { noms }) || radeauProposable(p, prestations, { noms })) && !deja.prestations.has(p.id))
     // Quad : les lignes enfant (conducteur, passager) partagent le même nom avant la virgule, le prix enfant pourrait être le mauvais ;
     // le modèle dit déjà les âges.
-    .map((p) => ({ prestation: p, famille: familleDe(p), page: pageDe(p) }))
+    .map((p) => ({ prestation: p, famille: familleDe(p), page: pageDe(p), radeau: radeauDe(p, prestations) }))
     .filter((x) => !(enfants > 0 && x.famille === "plongee"))
     .filter((x) => !jours || enSaison(x, jours))
-    .map((x) => ({ ...x, enfant: x.famille === "quad" || !(enfants > 0) ? null : ligneEnfant(x.prestation, prestations) }))
+    .map((x) => ({ ...x, enfant: x.famille === "quad" || !(enfants > 0) ? null : x.radeau ? x.radeau.enfant : ligneEnfant(x.prestation, prestations) }))
     .filter((x) => !deja.familles.has(x.famille))
     .sort((a, b) => rang(a.famille) - rang(b.famille) || (a.prestation.ordre || 0) - (b.prestation.ordre || 0) || Number(a.prestation.prix_vente) - Number(b.prestation.prix_vente))
     // Un même nom affiché (karting de deux tailles, cours en duo saisi deux fois) ne se propose qu'une fois : le premier du catalogue.
@@ -286,14 +307,19 @@ export const MODELES = {
   intro: {
     un: "Hello {prenom}, since you're staying a few days, here is an idea for a day out.",
     deux: "Hello {prenom}, since you're staying a few days, here are two ideas for a day out.",
-    // Client de Taxi : Secret se présente d'abord, avec son site (registre, 10.11.2026 : toujours un lien quand on les nomme).
-    taxi_un: "Hello {prenom}, we also organise day trips and activities through Secret Travel & Tour ({site}). Since you're staying a few days, here is an idea.",
-    taxi_deux: "Hello {prenom}, we also organise day trips and activities through Secret Travel & Tour ({site}). Since you're staying a few days, here are two ideas.",
+  },
+  // Client de Taxi (décision de Jérémy, question 7 de la PR 310) : une question, sans pousser une sortie précise, puis deux ou trois exemples
+  // du catalogue de Secret (nom et prix de vente) et la page des sorties. Passé par humanizer, puis par la fiche de voix et le registre.
+  taxi: {
+    intro: "Hello {prenom}, are you planning any activities, day trips or boat tours during your stay? We organise those too. A few examples:",
+    lien: "More ideas here: {tours}",
+    fin: "If something tempts you, tell me which day and how many people, and I'll check availability 😊",
   },
   familles: {
     iles: "Hotel transfer, lunch and snorkelling gear are included. The national park fee is paid in cash on the island.",
     elephants: "There is no riding at this sanctuary. You walk with the elephants, feed them and join them for their bath. Bring clothes that can get dirty, a towel and flip-flops.",
-    cuisine: "You cook four dishes and make your own curry paste. Hotel transfer both ways is included, and you take home the recipe book and a certificate.",
+    // Jours et heures : cours avec marché et déjeuner, registre (réponse de Jérémy à la question 4 de la PR 310).
+    cuisine: "You cook four dishes and make your own curry paste. Classes run on Monday, Wednesday and Saturday, from 9am to 2pm. Hotel transfer both ways is included, and you take home the recipe book and a certificate.",
     radeau: "It's a private wooden raft, just for your group.",
     quad: "A guide, the gear and hotel transfer are included, with fruit and drinks. Children can ride as passengers from age 4 and drive from age 6, with the guide.",
     plongee: "You dive with an instructor, two students each, from age 10. Breakfast, lunch, hotel transfer and the gear are included. The national park fee is extra.",
@@ -310,6 +336,13 @@ const montant = (n, devise) => `${new Intl.NumberFormat("en-US", { maximumFracti
 // « 1,200 THB per person » ; avec la ligne enfant : « 2,000 THB per adult, 1,000 THB per child aged 4 to 11 ».
 export function prixTexte(x, devise = "THB") {
   const p = x.prestation;
+  // Radeau : « 3,500 THB for 1 or 2 people, 1,800 THB for each extra person, 1,500 THB per child aged 3 to 9 » (lignes du site).
+  if (x.radeau) {
+    const morceaux = [`${montant(p.prix_vente, devise)} for 1 or 2 people`];
+    if (x.radeau.extra) morceaux.push(`${montant(x.radeau.extra.prix_vente, devise)} for each extra person`);
+    if (x.enfant) morceaux.push(`${montant(x.enfant.prix_vente, devise)} per child${agesDe(x.enfant) ? ` aged ${agesDe(x.enfant)}` : ""}`);
+    return morceaux.join(", ");
+  }
   // Quad : le prix du conducteur (le passager a sa ligne à part, jamais proposée seule).
   const unite = /\bdriver\b/i.test(`${p.libelle_en || ""} ${p.libelle || ""}`) ? "per driver" : p.unite === "ad" || x.enfant ? "per adult" : "per person";
   const enfant = x.enfant ? `, ${montant(x.enfant.prix_vente, devise)} per child${agesDe(x.enfant) ? ` aged ${agesDe(x.enfant)}` : ""}` : "";
@@ -334,10 +367,22 @@ export function phraseDe(x) {
 }
 
 // Le message complet. `choisis` : les possibilités retenues (une ou deux). `taxi` : le dossier est chez Taxi.
+// Le voucher (ou la Booking confirmation) d'une réservation noté envoyé au client (details.envois.client, comme etatEnvoisVouchers).
+export const voucherEnvoye = (r) => !!(r && r.details && r.details.envois && r.details.envois.client);
+export const PAGE_TOURS = `${SITE_SECRET}/tours/`;
+// Client de Taxi : la question, puis une ligne par exemple (« - 4 Islands: Join-in longtail, 1,000 THB per person »), la page des sorties.
+export function messageTaxi(choisis = [], { prenom = "", devise = "THB" } = {}) {
+  if (!choisis.length) return "";
+  const m = MODELES.taxi;
+  const tete = m.intro.replace("Hello {prenom},", prenom ? `Hello ${prenom},` : "Hello,");
+  const exemples = choisis.map((x) => `- ${nomService(x.prestation, x.page)}: ${prixTexte(x, devise)}`).join("\n");
+  return [`${tete}\n${exemples}`, m.lien.replace("{tours}", PAGE_TOURS), m.fin].join("\n\n");
+}
 export function messageExcursions(choisis = [], { prenom = "", devise = "THB", taxi = false } = {}) {
   if (!choisis.length) return "";
-  const cle = `${taxi ? "taxi_" : ""}${choisis.length > 1 ? "deux" : "un"}`;
-  const tete = MODELES.intro[cle].replace("Hello {prenom},", prenom ? `Hello ${prenom},` : "Hello,").replace("{site}", SITE_SECRET.replace(/^https:\/\//, ""));
+  if (taxi) return messageTaxi(choisis, { prenom, devise });
+  const cle = choisis.length > 1 ? "deux" : "un";
+  const tete = MODELES.intro[cle].replace("Hello {prenom},", prenom ? `Hello ${prenom},` : "Hello,");
   const blocs = choisis.map((x) => [`*${nomService(x.prestation, x.page)}*`, prixTexte(x, devise), phraseDe(x), lienPage(x)].filter(Boolean).join("\n"));
   return [tete, ...blocs, MODELES.fin[choisis.length > 1 ? "deux" : "un"]].join("\n\n");
 }

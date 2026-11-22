@@ -11,10 +11,12 @@ import { exempleDe } from "../exemples.mjs";
 import { resteBloque } from "../agent-calc.mjs";
 import { marqueEntite, lienWhatsApp, fenetre, ERREURS_ENVOI, envoiIncertain, aConfirmerEnvoi } from "../whatsapp-calc.mjs";
 import { conversationDuVoucher, contactVoucher } from "../whatsapp-voucher-calc.mjs";
-import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, lieuxExterieurs, reservationsDuDossierLie, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
+import { possibilites, choixParDefaut, messageExcursions, estTransfert, sejour, sensTransfert, joursLibres, lieuxExterieurs, reservationsDuDossierLie, voucherEnvoye, familleDe, nomService, prixTexte, nomsInterdits } from "../excursion-proposee-calc.mjs";
 import { adminsWhatsApp } from "./voucher-whatsapp.mjs";
 
+// Une ou deux sorties pour un client de Secret ; deux ou trois exemples pour un client de Taxi (question 7 de la PR 310).
 const MAX = 2;
+const MAX_TAXI = 3;
 const entite = (id) => (etat.brut.entites || []).find((e) => e.id === id) || null;
 const parMarque = (m) => entitesAccessibles().find((e) => marqueEntite(e) === m) || null;
 
@@ -41,6 +43,8 @@ export function contexteProposition(dossier) {
   const exterieurs = lieuxExterieurs(zones);
   const s = sejour(transferts, { ile, ajd, sens: (r) => sensTransfert(r, { prestation: prestationDe(r), trajet: trajetDe(r), ile, exterieurs }) });
   if (!s) return null;
+  // Client de Taxi (décision de Jérémy, question 7 de la PR 310) : seulement une fois le voucher du transfert envoyé au client.
+  if (marque === "taxi" && !transferts.some(voucherEnvoye)) return null;
   // Les sorties déjà réservées : celles du dossier et du dossier lié de l'autre entreprise (Secret et Taxi d'une même demande, jamais ZTP).
   const lie = reservationsDuDossierLie(dossier, { dossiers: etat.brut.dossiers || [], reservations: etat.brut.reservations || [], marqueDe: (id) => marqueEntite(entite(id)) });
   const avecLie = [...reservations, ...lie];
@@ -74,7 +78,8 @@ export function boutonProposerExcursion({ dossier, conversation = null, classe =
 
 function ouvrirProposition(ctx, conversationDonnee) {
   const { dossier, client, liste, noms, charges, taxi, devise } = ctx;
-  let choisis = choixParDefaut(liste, MAX);
+  const max = taxi ? MAX_TAXI : MAX;
+  let choisis = choixParDefaut(liste, max);
   let modifie = false;
   const prenom = (client && (client.prenom || client.nom)) || "";
   const message = () => messageExcursions(liste.filter((x) => choisis.includes(x.prestation.id)), { prenom, devise, taxi });
@@ -144,7 +149,7 @@ function ouvrirProposition(ctx, conversationDonnee) {
     const id = `excursion-${x.prestation.id}`;
     const caseX = h("input", { type: "checkbox", id, checked: choisis.includes(x.prestation.id) });
     caseX.addEventListener("change", () => {
-      choisis = caseX.checked ? [...choisis, x.prestation.id].slice(-MAX) : choisis.filter((v) => v !== x.prestation.id);
+      choisis = caseX.checked ? [...choisis, x.prestation.id].slice(-max) : choisis.filter((v) => v !== x.prestation.id);
       for (const autre of listeCases.querySelectorAll("input")) autre.checked = choisis.includes(autre.id.replace("excursion-", ""));
       if (!modifie) zone.value = message();
       maj();
@@ -217,7 +222,17 @@ function ouvrirProposition(ctx, conversationDonnee) {
     h(
       "div",
       { class: "modal-corps proposer-excursion" },
-      h("p", { class: "aide" }, client ? tr("Pour {nom}. Cochez une ou deux excursions, relisez le message : rien ne part sans vous.", { nom: nomClient(client) }) : tr("Cochez une ou deux excursions, relisez le message : rien ne part sans vous.")),
+      h(
+        "p",
+        { class: "aide" },
+        taxi
+          ? client
+            ? tr("Pour {nom}, client de Taxi. Cochez deux ou trois exemples, relisez le message : rien ne part sans vous.", { nom: nomClient(client) })
+            : tr("Client de Taxi. Cochez deux ou trois exemples, relisez le message : rien ne part sans vous.")
+          : client
+            ? tr("Pour {nom}. Cochez une ou deux excursions, relisez le message : rien ne part sans vous.", { nom: nomClient(client) })
+            : tr("Cochez une ou deux excursions, relisez le message : rien ne part sans vous.")
+      ),
       listeCases,
       h("div", { class: "champ" }, h("label", { for: "excursion-message" }, tr("Message au client (anglais)")), zone, refaire),
       alerte,

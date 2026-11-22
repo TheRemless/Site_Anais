@@ -190,12 +190,68 @@ test("message : anglais, prénom, service, prix, page du site ; famille devinée
   assert.doesNotMatch(texte, /Nani|Anaïs|Best|Regards|Cheers|net|commission/i);
 });
 
-test("message pour un client de Taxi : Secret se présente avec son site, deux idées", async () => {
-  const { possibilites, messageExcursions, choixParDefaut } = await load();
-  const liste = possibilites([presta("4 Islands by longtail"), presta("Thai cooking class", { famille: "activite" })]);
-  const texte = messageExcursions(liste.filter((x) => choixParDefaut(liste).includes(x.prestation.id)), { prenom: "Ben", taxi: true });
-  assert.match(texte, /^Hello Ben, we also organise day trips and activities through Secret Travel & Tour \(secrettravelandtour\.com\)\. Since you're staying a few days, here are two ideas\./);
-  assert.match(texte, /If one of them tempts you/);
+test("question 7 : client de Taxi, une question, deux ou trois exemples avec leur prix, la page des sorties ; aucune signature", async () => {
+  const { possibilites, messageExcursions, choixParDefaut, MODELES } = await load();
+  const liste = possibilites([presta("4 Islands by longtail", { prix_vente: 1000 }), presta("Thai cooking class", { famille: "activite", prix_vente: 1650 }), presta("Elephant sanctuary, half day", { famille: "activite", prix_vente: 1800 })]);
+  const choisis = liste.filter((x) => choixParDefaut(liste, 3).includes(x.prestation.id));
+  assert.equal(choisis.length, 3);
+  const texte = messageExcursions(choisis, { prenom: "Ben", taxi: true });
+  assert.equal(
+    texte,
+    [
+      "Hello Ben, are you planning any activities, day trips or boat tours during your stay? We organise those too. A few examples:\n- 4 Islands by longtail: 1,000 THB per person\n- Elephant sanctuary, half day: 1,800 THB per person\n- Thai cooking class: 1,650 THB per person",
+      "More ideas here: https://secrettravelandtour.com/tours/",
+      "If something tempts you, tell me which day and how many people, and I'll check availability 😊",
+    ].join("\n\n")
+  );
+  assert.doesNotMatch(texte, /Nani|Anaïs|Best|Regards|Cheers|net|commission|Secret Travel/i);
+  assert.doesNotMatch(JSON.stringify(MODELES.taxi), /[—–]/);
+  // Sans prénom : « Hello, ».
+  assert.match(messageExcursions(choisis.slice(0, 2), { taxi: true }), /^Hello, are you planning/);
+});
+
+test("question 7 : chez Taxi, le bouton n'apparaît qu'une fois le voucher du transfert envoyé au client ; Secret ne change pas", async () => {
+  const { voucherEnvoye } = await load();
+  assert.equal(voucherEnvoye({ details: { envois: { client: "2026-11-21" } } }), true);
+  assert.equal(voucherEnvoye({ details: { envois: { prestataire: "2026-11-21" } } }), false);
+  assert.equal(voucherEnvoye({ details: {} }), false);
+  assert.equal(voucherEnvoye(null), false);
+  const vue = lire("views/proposer-excursion.mjs");
+  assert.match(vue, /if \(marque === "taxi" && !transferts\.some\(voucherEnvoye\)\) return null;/);
+  assert.match(vue, /const max = taxi \? MAX_TAXI : MAX;/);
+  assert.match(vue, /const MAX_TAXI = 3;/);
+});
+
+test("question 3 : radeaux proposés, prix du radeau, de la personne en plus et de l'enfant lus dans le catalogue", async () => {
+  const { possibilites, prixTexte, messageExcursions, MODELES } = await load();
+  const { PRODUITS_SITE } = await import("../src/gestion/js/site-produits.mjs");
+  const page = PRODUITS_SITE.find((p) => p.id === "sunset-dinner-raft");
+  const [base, extra, enfant] = page.options[0].tarifs;
+  const P = [
+    presta(base.prestation, { libelle: base.libelle, prix_vente: 3900, unite: "grp" }),
+    presta(extra.prestation, { libelle: extra.libelle, prix_vente: 1800, unite: "pp" }),
+    presta(enfant.prestation, { libelle: enfant.libelle, prix_vente: 1500, unite: "ch" }),
+  ];
+  const liste = possibilites(P, { enfants: 1 });
+  assert.equal(liste.length, 1, "seule la ligne du radeau se propose");
+  assert.equal(liste[0].famille, "radeau");
+  assert.equal(prixTexte(liste[0]), "3,900 THB for 1 or 2 people, 1,800 THB for each extra person, 1,500 THB per child aged 3 to 9");
+  // Sans enfant dans le groupe : pas de prix enfant.
+  assert.equal(prixTexte(possibilites(P)[0]), "3,900 THB for 1 or 2 people, 1,800 THB for each extra person");
+  // Ligne en plus sans prix au catalogue : on ne l'écrit pas.
+  assert.equal(prixTexte(possibilites([P[0], { ...P[1], prix_vente: null }])[0]), "3,900 THB for 1 or 2 people");
+  assert.match(messageExcursions(liste, { prenom: "Lea" }), new RegExp(MODELES.familles.radeau.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  // Un radeau sans page du site n'est pas proposé (lignes illisibles).
+  assert.deepEqual(possibilites([presta("Private raft at sunrise, for 1 to 2 people", { unite: "grp" })]), []);
+});
+
+test("question 4 : le cours de cuisine dit ses jours et ses heures (registre)", async () => {
+  const { MODELES, possibilites, messageExcursions } = await load();
+  assert.match(MODELES.familles.cuisine, /Classes run on Monday, Wednesday and Saturday, from 9am to 2pm\./);
+  const { PRODUITS_SITE } = await import("../src/gestion/js/site-produits.mjs");
+  const t = PRODUITS_SITE.find((p) => p.id === "cooking-class").options.find((o) => o.id === "partner-chef").tarifs[0];
+  const [x] = possibilites([presta(t.prestation, { libelle: t.libelle, famille: "activite", prix_vente: 1650 })]);
+  assert.match(messageExcursions([x], { prenom: "Mark" }), /Monday, Wednesday and Saturday/);
 });
 
 test("page du site : nom de la page et de l'option, lien vers la page", async () => {
