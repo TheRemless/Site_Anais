@@ -48,7 +48,7 @@ import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAb
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
 import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
-import { itinerairePermis, ligneItineraire } from "./itineraire.js";
+import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -925,9 +925,10 @@ Deno.serve(async (req) => {
   const systemeBase = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees, vouchers: avecVouchers, whatsapp: !!whatsapp });
   const systeme = systemeBase + blocApporteur(apporteur, { qui: ra.responsable || "l'équipe", unifie: !!unifie });
   // Calcul d'itinéraire seulement sur demande (itineraire.js, 22.11.2026) : décidé sur le message de cet échange et les textes déjà gardés de
-  // la personne. Le modèle le lit dans le contexte ; l'exécution le refuse aussi (outils.js, executer).
-  const textesGardes = ((anciens.data || []) as { role: string; contenu: unknown }[]).filter((l) => l.role === "user" && Array.isArray(l.contenu)).flatMap((l) => (l.contenu as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || ""));
-  const itineraire = itinerairePermis({ texte: message, precedents: textesGardes, modeWa: waId ? waMode : "" });
+  // la personne. Le modèle le lit dans le contexte ; l'exécution ne refuse qu'un pickup recalculé (outils.js, executer, bloquerRecalcul).
+  // anciens.data va du plus récent au plus ancien : remis dans l'ordre, les deux derniers sont les plus récents.
+  const textesGardes = ([...(anciens.data || [])].reverse() as { role: string; contenu: unknown }[]).filter((l) => l.role === "user" && Array.isArray(l.contenu)).flatMap((l) => (l.contenu as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || ""));
+  const itineraire = decisionItineraire({ texte: message, precedents: textesGardes, modeWa: waId ? waMode : "" });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie, itineraire: ligneItineraire(itineraire) });
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   // Les lectures de la boîte WhatsApp des messages précédents ne repartent pas (whatsapp-lecture.js, retirerLecturesWhatsApp) : l'agent

@@ -6,81 +6,83 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { OUTILS_ITINERAIRE, demandeItineraire, pickupDonne, creationEnCours, itinerairePermis, refusItineraire, ligneItineraire, outilPermis, trajetAHoraires } from "../supabase/functions/agent/itineraire.js";
+import { OUTILS_ITINERAIRE, REFUS_RECALCUL, bloquerRecalcul, decisionItineraire, demandeItineraire, ligneItineraire, motsDeNani, naniAEcrit, parleDeLaDate, pickupDonnePourService } from "../supabase/functions/agent/itineraire.js";
 import { executer, memoDepuis, OUTILS } from "../supabase/functions/agent/outils.js";
 import { consignes, contexteDuJour } from "../supabase/functions/agent/prompt.js";
 import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
-import { variablesVoucher, sansLignesVides, PAIEMENT_CHAUFFEUR, DEJA_PAYE } from "../src/gestion/js/message-voucher-calc.mjs";
+import { variablesVoucher, sansLignesVides, pickupDuVoucher, phrasePaiement, PAIEMENT_CHAUFFEUR, DEJA_PAYE } from "../src/gestion/js/message-voucher-calc.mjs";
+import { messageSousVoucher } from "../src/gestion/js/views/messages.mjs";
 import { MESSAGES_DEFAUT, MESSAGES_TAXI, messagesDefautPour } from "../src/gestion/js/defauts.mjs";
 import { gabaritConfirmationVoucher, remplirGabarit } from "../src/gestion/js/operations-calc.mjs";
 
 const lire = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 
 // ---- 1. Itinéraire seulement sur demande ---------------------------------------------------------------------------------------------
-test("itinéraire : une demande explicite de la personne, en français ou en anglais", () => {
-  for (const t of ["Combien de temps de l'hôtel au port ?", "À quelle heure partir pour le vol de 14h ?", "Calcule l'heure de pickup", "calcule moi le pickup stp", "Quel est le temps de trajet jusqu'à Ao Nang ?", "Est-ce tenable avec le ferry ?", "How long from the resort to Krabi Airport?", "What time should they leave?", "Horaires des bateaux pour Phi Phi demain ?"]) assert.equal(demandeItineraire(t), true, t);
-  for (const t of ["Résume", "Qu'y a-t-il à faire ?", "Crée le dossier", "Le prix est 2500", "Elle arrive le 25 à 11:00", "Merci"]) assert.equal(demandeItineraire(t), false, t);
-  // Un client qui demande la durée dans l'échange joint ne compte pas : seuls les mots de la personne.
-  const joint = texteDepuisWhatsApp({ mode: "creer", conv: { id: "00000000-0000-4000-8000-000000000001", telephone: "+447700900111" }, messages: [{ sens: "entrant", texte: "How long does the transfer take?", envoye_le: "2026-11-22T03:00:00Z" }] });
-  assert.equal(demandeItineraire(joint), false);
-  // La question de « Demander à l'assistant » compte, l'échange non.
-  const question = texteDepuisWhatsApp({ mode: "question", question: "Combien de temps jusqu'à l'aéroport ?", conv: { id: "00000000-0000-4000-8000-000000000001", telephone: "+447700900111" }, messages: [] });
-  assert.equal(demandeItineraire(question), true);
+const CONV = { id: "00000000-0000-4000-8000-000000000001", telephone: "+447700900111" };
+const joint = (messages, o = {}) => texteDepuisWhatsApp({ mode: "creer", conv: CONV, messages, ...o });
+const msg = (texte, min = 0) => ({ sens: "entrant", texte, envoye_le: `2026-11-22T03:${String(min).padStart(2, "0")}:00Z` });
+
+test("itinéraire : la demande de Nani se lit dans ses propres mots, en français, en anglais et en thaï (pour la ligne du contexte)", () => {
+  for (const t of ["Combien de temps de l'hôtel au port ?", "À quelle heure partir pour le vol de 14h ?", "Calcule l'heure de pickup", "calcule-moi le pickup stp", "Quelle heure pour le pickup ?", "Quelle est la durée du trajet jusqu'à Ao Nang ?", "Est-ce tenable avec le ferry ?", "How long from the resort to Krabi Airport?", "How far is it?", "What time should they leave?", "ไปสนามบินใช้เวลากี่โมง"]) assert.equal(demandeItineraire(t), true, t);
+  for (const t of ["Résume", "Résume l'itinéraire", "Qu'y a-t-il à faire ?", "Crée le dossier", "Le prix est 2500", "Merci"]) assert.equal(demandeItineraire(t), false, t);
+  // Un client qui demande la durée dans l'échange joint ne compte pas ; la question de « Demander à l'assistant » compte.
+  assert.equal(demandeItineraire(joint([msg("How long does the transfer take?")])), false);
+  assert.equal(demandeItineraire(texteDepuisWhatsApp({ mode: "question", question: "Combien de temps jusqu'à l'aéroport ?", conv: CONV, messages: [] })), true);
+  assert.match(ligneItineraire(decisionItineraire({ texte: "Résume l'itinéraire" })), /pas demandé dans ce message/);
 });
 
-test("itinéraire : une heure de pickup donnée n'est jamais recalculée ; une course sans pickup le calcule", () => {
-  for (const t of ["Pickup time: 11:00", "pick up at 9.30 please", "prise en charge à 8h", "Pick-up 10am at the hotel", "Pickup: 07:45"]) assert.equal(pickupDonne([t]), true, t);
-  for (const t of ["Flight at 14:30 from Krabi", "Arrival 11:00", "Pickup at the hotel"]) assert.equal(pickupDonne([t]), false, t);
-  // Le cas qui a fait la demande : formulaire avec « Pickup time: 11:00 », puis « Créer le dossier » : aucun calcul.
-  const avecPickup = texteDepuisWhatsApp({ mode: "creer", conv: { id: "00000000-0000-4000-8000-000000000001", telephone: "+447700900111" }, messages: [{ sens: "entrant", texte: "Transfer request: Test Lagoon Resort to Fictive Palms Hotel Date: Wed 25 Nov 2026 Pickup time: 11:00 Guests: 2 adults", envoye_le: "2026-11-22T03:00:00Z" }] });
-  assert.deepEqual(itinerairePermis({ texte: avecPickup, modeWa: "creer" }), { permis: false, raison: "pickup_donne", horaires: false });
-  // Un vol seul (aucun pickup) : la course a besoin du calcul.
-  const avecVol = avecPickup.replace("Pickup time: 11:00", "Flight: 14:30 from Krabi Airport");
-  assert.deepEqual(itinerairePermis({ texte: avecVol, modeWa: "creer" }), { permis: true, raison: "pickup_manquant", horaires: true });
-  // Un pickup donné plus tôt dans la discussion compte aussi ; une demande explicite l'emporte toujours.
-  assert.deepEqual(itinerairePermis({ texte: "Crée le dossier", precedents: ["Le client veut un pickup à 08:30"] }), { permis: false, raison: "pickup_donne", horaires: false });
-  assert.deepEqual(itinerairePermis({ texte: "Recalcule le pickup avec le ferry de 10h", precedents: ["pickup at 08:30"] }), { permis: true, raison: "demande", horaires: true });
-  // Ni demande, ni course : rien.
-  assert.deepEqual(itinerairePermis({ texte: "Résume la conversation" }), { permis: false, raison: "non_demande", horaires: false });
-  assert.equal(creationEnCours({ texte: "Prépare les dossiers" }), true);
-  assert.equal(creationEnCours({ texte: "", modeWa: "maj" }), true);
-});
-
-test("itinéraire : horaires_trajet reste permis pour les départs et les prix d'un bateau ou d'un minivan partagé demandé", () => {
-  // Les deux cas du rejeu des 7 jours : un devis de bateau, sans calcul de route.
-  for (const t of ["j'ai des clients qui veulent aller de Koh Lanta à Koh Yao Noi en bateau, donne moi toutes les possibilités avec prix", "Ils veulent aussi aller à Koh Phi Phi en bateau le 26 novembre. Prépare la réponse au client", "Speedboat request: Koh Lanta to Phuket Departure: 14:30", "shared minivan to Krabi Airport?"]) {
-    assert.equal(trajetAHoraires(t), true, t);
-    const d = itinerairePermis({ texte: t });
-    assert.equal(outilPermis("horaires_trajet", d), true, t);
-    assert.equal(outilPermis("planifier_course", d), d.permis, t);
-  }
-  // Un taxi privé sans demande : ni horaires, ni calcul.
-  const taxi = itinerairePermis({ texte: "Résume la demande de taxi privé" });
-  assert.deepEqual([outilPermis("horaires_trajet", taxi), outilPermis("temps_de_route", taxi), outilPermis("planifier_course", taxi), outilPermis("estimer_temps_web", taxi)], [false, false, false, false]);
-  // Un pickup donné bloque le calcul, pas la lecture des départs du bateau demandé.
-  const bateau = itinerairePermis({ texte: "Speedboat request: Koh Lanta to Phi Phi Pickup time: 08:00" });
-  assert.deepEqual([bateau.raison, outilPermis("horaires_trajet", bateau), outilPermis("planifier_course", bateau)], ["pickup_donne", true, false]);
-  assert.match(ligneItineraire(bateau), /horaires_trajet reste permis pour les départs et les prix/);
-  assert.match(ligneItineraire(taxi), /N'appelle pas non plus horaires_trajet/);
-  assert.equal(outilPermis("chercher_catalogue", taxi), true, "les autres outils ne changent pas");
-});
-
-test("itinéraire : l'exécution refuse hors demande, sans rien calculer, et le dit au modèle", async () => {
+test("itinéraire : jamais de refus quand Nani a écrit dans ce message ou ses 2 précédents ; dans le doute, on autorise", () => {
+  assert.equal(motsDeNani(joint([msg("Pickup time: 11:00")])), "", "« Créer le dossier » : aucun mot de Nani");
+  assert.equal(naniAEcrit({ texte: joint([]), modeWa: "creer" }), false);
+  assert.equal(naniAEcrit({ texte: joint([]), modeWa: "creer", precedents: ["Note : c'est pour la famille Test", "ok", joint([])] }), true, "un de ses 2 messages précédents");
+  assert.equal(naniAEcrit({ texte: joint([]), modeWa: "creer", precedents: ["c'est pour la famille Test", joint([]), joint([])] }), false, "au-delà de 2 messages, plus rien");
+  // Avec des mots de Nani, même une formule que l'expression ne comprend pas : rien n'est bloqué.
+  const formulaire = joint([msg("Transfer request: Test Lagoon Resort Koh Lanta to Fictive Palms Hotel Krabi Date: Wed 25 Nov 2026 Pickup time: 11:00 Guests: 2 adults")]);
+  const appel = { date: "2026-11-25", points: [{ lieu: "Test Lagoon Resort, Koh Lanta" }, { lieu: "Fictive Palms Hotel, Krabi" }], heure_depart: "", heure_vol: "" };
+  const avecNani = decisionItineraire({ texte: `${formulaire}`, precedents: ["ช่วยดูเวลารับให้หน่อย"], modeWa: "creer" });
+  assert.equal(bloquerRecalcul("planifier_course", appel, avecNani), false);
+  // Seuls ces outils existent ; temps_de_route, horaires_trajet et estimer_temps_web ne sont jamais bloqués.
+  const sansNani = decisionItineraire({ texte: formulaire, modeWa: "creer" });
+  for (const nom of ["temps_de_route", "horaires_trajet", "estimer_temps_web"]) assert.equal(bloquerRecalcul(nom, appel, sansNani), false, nom);
   assert.deepEqual(OUTILS_ITINERAIRE, ["temps_de_route", "planifier_course", "horaires_trajet", "estimer_temps_web"]);
+});
+
+test("itinéraire : le seul blocage, un pickup déjà donné pour CE service, recalculé pendant la création d'une carte", () => {
+  const formulaire = joint([msg("Transfer request: Test Lagoon Resort Koh Lanta to Fictive Palms Hotel Krabi Date: Wed 25 Nov 2026 Pickup time: 11:00 Guests: 2 adults")]);
+  const d = decisionItineraire({ texte: formulaire, modeWa: "creer" });
+  const aller = { date: "2026-11-25", points: [{ lieu: "Test Lagoon Resort, Koh Lanta" }, { lieu: "Fictive Palms Hotel, Krabi" }], heure_depart: "", heure_vol: "" };
+  assert.equal(bloquerRecalcul("planifier_course", aller, d), true, "même date, même lieu de départ : déjà donné");
+  // Une heure de départ fournie : le calcul part du pickup donné, il ne le recalcule pas.
+  assert.equal(bloquerRecalcul("planifier_course", { ...aller, heure_depart: "11:00" }, d), false);
+  // Le retour, sans heure : se calcule (autre date, autre lieu de départ).
+  assert.equal(bloquerRecalcul("planifier_course", { date: "2026-11-29", points: [{ lieu: "Fictive Palms Hotel, Krabi" }, { lieu: "Krabi Airport" }], heure_depart: "", heure_vol: "16:00" }, d), false);
+  // Le client B d'un apporteur, même jour, autre hôtel : pas bloqué par le pickup du client A.
+  const apporteur = joint([msg("Client A: Test Lagoon Resort, 25 Nov, pickup 08:00, 2 pax"), msg("Client B: Sunny Test Bungalows, 25 Nov, 2 pax, flight 15:30", 1)], { apporteur: true });
+  const da = decisionItineraire({ texte: apporteur, modeWa: "creer" });
+  assert.equal(bloquerRecalcul("planifier_course", { date: "2026-11-25", points: [{ lieu: "Sunny Test Bungalows, Koh Lanta" }], heure_depart: "", heure_vol: "15:30" }, da), false);
+  assert.equal(bloquerRecalcul("planifier_course", { date: "2026-11-25", points: [{ lieu: "Test Lagoon Resort" }], heure_depart: "", heure_vol: "" }, da), true);
+  // Dans le doute (date sans pickup, lieu introuvable, lieu vide) : on autorise.
+  assert.equal(pickupDonnePourService(["Pickup time: 11:00"], { date: "2026-11-25", lieu: "Test Lagoon Resort" }), false, "sans date dans le segment");
+  assert.equal(pickupDonnePourService(["25 Nov pickup 11:00 at the resort"], { date: "2026-11-25", lieu: "" }), false, "sans lieu de départ");
+  for (const [s, iso] of [["Wed 25 Nov 2026", "2026-11-25"], ["25/11", "2026-11-25"], ["25.11.2026", "2026-11-25"], ["November 25th", "2026-11-25"], ["le 3 décembre", "2026-12-03"]]) assert.equal(parleDeLaDate(s, iso), true, s);
+  assert.equal(parleDeLaDate("125 Nov", "2026-11-25"), false);
+  assert.equal(parleDeLaDate("25 Dec", "2026-11-25"), false);
+});
+
+test("itinéraire : l'exécution ne refuse que le recalcul, sans rien lire ; sinon tout passe comme avant", async () => {
   let appels = 0;
-  const ctx = { permissions: [], charger: async () => (appels++, []), reglages: {}, itineraire: { permis: false, raison: "pickup_donne" } };
-  for (const nom of OUTILS_ITINERAIRE) {
-    const r = await executer(nom, { de: "A", vers: "B", date: "", adultes: 0, enfants: 0, points: [], heure_depart: "", heure_vol: "", vol_international: false }, ctx, memoDepuis([], {}));
-    assert.equal(r.erreur, true, nom);
-    assert.equal(r.contenu.erreur, "itineraire_non_demande", nom);
-    assert.match(r.contenu.conseil, /reprends-la telle quelle/, nom);
-  }
+  const ctx = (itineraire) => ({ permissions: [], charger: async () => (appels++, []), reglages: {}, itineraire });
+  const formulaire = joint([msg("Transfer request: Test Lagoon Resort Koh Lanta to Fictive Palms Hotel Date: Wed 25 Nov 2026 Pickup time: 11:00")]);
+  const d = decisionItineraire({ texte: formulaire, modeWa: "creer" });
+  const entree = { date: "2026-11-25", points: [{ lieu: "Test Lagoon Resort, Koh Lanta", attente_min: 0, source_duree: "", arrivee_voulue: "", duree_vers_suivant_min: 0 }], heure_depart: "", heure_vol: "", vol_international: false };
+  const r = await executer("planifier_course", entree, ctx(d), memoDepuis([], {}));
+  assert.deepEqual([r.erreur, r.contenu.erreur], [true, "pickup_deja_donne"]);
+  assert.equal(r.contenu, REFUS_RECALCUL);
+  assert.match(REFUS_RECALCUL.conseil, /reprends-la telle quelle/);
   assert.equal(appels, 0, "rien n'est lu ni calculé");
-  assert.match(refusItineraire("non_demande").conseil, /demande-la en une ligne/);
-  // Permis : l'outil s'exécute comme avant (ici sans données, il rend son résultat habituel).
-  const permis = await executer("horaires_trajet", { de: "A", vers: "B", date: "", adultes: 0, enfants: 0 }, { ...ctx, itineraire: { permis: true, raison: "demande" } }, memoDepuis([], {}));
-  assert.notEqual(permis.contenu.erreur, "itineraire_non_demande");
-  // Les outils restent dans la liste (cache et historique inchangés), leurs descriptions disent « seulement sur demande ».
+  // Hors de ce cas (ici une question de Nani), l'outil s'exécute.
+  const libre = await executer("horaires_trajet", { de: "A", vers: "B", date: "", adultes: 0, enfants: 0 }, ctx(decisionItineraire({ texte: "Résume" })), memoDepuis([], {}));
+  assert.notEqual(libre.contenu.erreur, "pickup_deja_donne");
   for (const nom of OUTILS_ITINERAIRE) assert.match(OUTILS.find((o) => o.name === nom).description, /Calcul d'itinéraire/, nom);
   assert.doesNotMatch(OUTILS.find((o) => o.name === "planifier_course").description, /Toujours utiliser cet outil pour donner une heure de pickup/);
 });
@@ -88,17 +90,18 @@ test("itinéraire : l'exécution refuse hors demande, sans rien calculer, et le 
 test("itinéraire : consigne, contexte de l'échange et branchement de la fonction", () => {
   const c = consignes({ entreprise: "VIP Taxi Lanta", reglages: { fonctionnement: "taxi" }, prenomEquipe: "Nani" });
   assert.match(c, /Calcul d'itinéraire seulement sur demande/);
+  assert.match(c, /Une demande peut venir en thaï, d'une relance ou d'une tournure libre : dans le doute, calcule\./);
   assert.match(c, /Une heure de pickup donnée par le client ou par Nani se reprend telle quelle dans la carte : jamais recalculée/);
   assert.doesNotMatch(c, /Une heure de pickup se calcule toujours avec planifier_course/);
-  assert.doesNotMatch(c, /chercher une durée, regarder les horaires/);
-  assert.match(contexteDuJour({ aujourdhui: "2026-11-22", jour: "dimanche", itineraire: ligneItineraire({ permis: false, raison: "non_demande" }) }), /Calcul d'itinéraire : non demandé dans ce message/);
+  assert.doesNotMatch(c, /hors de ces cas, l'outil refuse/);
+  assert.match(contexteDuJour({ aujourdhui: "2026-11-22", jour: "dimanche", itineraire: ligneItineraire(decisionItineraire({ texte: "Résume" })) }), /Calcul d'itinéraire : pas demandé dans ce message/);
+  assert.match(ligneItineraire(decisionItineraire({ texte: joint([]), modeWa: "creer" })), /seulement pour une heure de prise en charge qui manque/);
   assert.doesNotMatch(contexteDuJour({ aujourdhui: "2026-11-22", jour: "dimanche" }), /Calcul d'itinéraire/);
   const f = lire("supabase/functions/agent/index.ts");
-  assert.match(f, /const itineraire = itinerairePermis\(\{ texte: message, precedents: textesGardes, modeWa: waId \? waMode : "" \}\);/);
-  assert.match(f, /itineraire: ligneItineraire\(itineraire\)/);
+  assert.match(f, /const textesGardes = \(\[\.\.\.\(anciens\.data \|\| \[\]\)\]\.reverse\(\)/, "dans l'ordre : les 2 derniers sont les plus récents");
+  assert.match(f, /const itineraire = decisionItineraire\(\{ texte: message, precedents: textesGardes, modeWa: waId \? waMode : "" \}\);/);
   assert.match(f, /const ctx = \{ itineraire, /);
-  // « Créer le dossier » ne réclame plus des « pickups calculés ».
-  const t = texteDepuisWhatsApp({ mode: "creer", conv: { id: "00000000-0000-4000-8000-000000000001", telephone: "+447700900111" }, messages: [] });
+  const t = joint([]);
   assert.doesNotMatch(t, /pickups calculés/);
   assert.match(t, /pickup repris de la conversation \(calculé seulement s'il manque\)/);
 });
@@ -137,55 +140,85 @@ If anything changes, please let us know as soon as possible.
 Have a nice day ☀️
 Secret Travel & Tour 🌴`;
 // Le même chemin que l'écran (views/voucher-envoi.mjs, messageClientVoucher) : le modèle de l'entreprise, ses variables, sans ligne vide.
-const rendu = (reglages, { services = [], type = "", paye = false, entreprise }) => sansLignesVides(remplirGabarit(gabaritConfirmationVoucher([], messagesDefautPour(reglages)), { entreprise, ...variablesVoucher({ services, type, paye, entreprise }) }));
+const rendu = (reglages, { reservation = {}, type = "", trajet = false, paiement = "en_attente", solde = null, entreprise }) => sansLignesVides(remplirGabarit(gabaritConfirmationVoucher([], messagesDefautPour(reglages)), { entreprise, ...variablesVoucher({ reservation, type, trajet, paiement, solde, devise: "THB", entreprise }) }));
+const TAXI = { fonctionnement: "taxi" };
+const SECRET = { fonctionnement: "excursions" };
 export const EXEMPLES = {
-  taxi_paye_chauffeur: rendu({ fonctionnement: "taxi" }, { entreprise: "VIP Taxi Lanta", type: "transfert", paye: false, services: [{ heure: "11:00", lieu: "Test Lagoon Resort" }] }),
-  taxi_deja_paye: rendu({ fonctionnement: "taxi" }, { entreprise: "VIP Taxi Lanta", type: "transfert", paye: true, services: [{ heure: "11:00", lieu: "Test Lagoon Resort" }] }),
-  secret_excursion: rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", type: "activite", services: [{ heure: "08:30", lieu: "Lanta Resort" }] }),
-  secret_transfert: rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", type: "transfert", services: [{ heure: "09:15", lieu: "Fictive Palms Hotel" }] }),
+  taxi_paye_chauffeur: rendu(TAXI, { entreprise: "VIP Taxi Lanta", type: "transfert", paiement: "sur_place", reservation: { heure_pickup: "11:00", lieu_pickup: "Test Lagoon Resort" } }),
+  taxi_deja_paye: rendu(TAXI, { entreprise: "VIP Taxi Lanta", type: "transfert", paiement: "paye", reservation: { heure_pickup: "11:00", lieu_pickup: "Test Lagoon Resort" } }),
+  taxi_acompte: rendu(TAXI, { entreprise: "VIP Taxi Lanta", type: "transfert", paiement: "acompte", solde: 1500, reservation: { heure_pickup: "11:00" } }),
+  secret_excursion: rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "excursion", reservation: { heure_pickup: "08:30", lieu_pickup: "Lanta Resort" } }),
+  secret_transfert: rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "transfert", reservation: { heure_pickup: "09:15", lieu_pickup: "Fictive Palms Hotel" } }),
 };
 
-test("Taxi : le modèle de Jérémy mot pour mot, la phrase de paiement seulement si le client paie le chauffeur", () => {
+test("Taxi : le modèle de Jérémy mot pour mot ; déjà payé ou acompte, la phrase de paiement change", () => {
   assert.equal(EXEMPLES.taxi_paye_chauffeur, TAXI_JEREMY, "mot pour mot, signature comprise");
+  assert.equal(rendu(TAXI, { entreprise: "VIP Taxi Lanta", type: "transfert", paiement: "en_attente" }), TAXI_JEREMY, "rien reçu : la phrase de Jérémy telle quelle");
   assert.equal(EXEMPLES.taxi_deja_paye, TAXI_JEREMY.replace(PAIEMENT_CHAUFFEUR, DEJA_PAYE));
   assert.doesNotMatch(EXEMPLES.taxi_deja_paye, /cash|Wise/);
   assert.equal(DEJA_PAYE, "Your transfer is already paid.");
-  // Rangé dans les messages de Taxi (usage « voucher »), modifiable dans l'écran Messages ; le rappel du point du soir ne change pas.
+  // Acompte reçu, solde réel du dossier (relecture de la PR 328, point 4).
+  assert.equal(EXEMPLES.taxi_acompte, TAXI_JEREMY.replace(PAIEMENT_CHAUFFEUR, "The remaining 1,500 THB will be collected in cash directly by the driver."));
+  assert.equal(phrasePaiement({ paiement: "acompte", solde: 0 }), PAIEMENT_CHAUFFEUR, "un acompte sans solde connu : la phrase de Jérémy");
+  assert.equal(phrasePaiement({ paiement: "acompte", solde: 2250.5, devise: "THB" }), "The remaining 2,250.5 THB will be collected in cash directly by the driver.");
   const m = MESSAGES_TAXI.find((x) => x.id === "taxi-voucher-en");
   assert.deepEqual([m.pour, m.cle, m.langue], ["client", "voucher", "en"]);
-  assert.ok(MESSAGES_TAXI.some((x) => x.id === "taxi-rappel-en" && x.cle === "rappel"));
+  assert.ok(MESSAGES_TAXI.some((x) => x.id === "taxi-rappel-en" && x.cle === "rappel"), "le point du soir garde son rappel");
 });
 
-test("Secret : le modèle de Jérémy mot pour mot, la ligne de pickup du dossier, « transfer » pour un transfert", () => {
+test("Secret : le modèle de Jérémy mot pour mot ; le pickup de la réservation seulement, comme le voucher l'imprime", () => {
   assert.equal(EXEMPLES.secret_excursion, SECRET_JEREMY, "mot pour mot, signature comprise");
   assert.match(EXEMPLES.secret_transfert, /for the day of your transfer\.\n/);
   assert.match(EXEMPLES.secret_transfert, /\n\nYour pickup will be at 09:15 at Fictive Palms Hotel\.\n\n/);
-  // Sans pickup (rendez-vous sur place sans heure ni lieu, location) : la ligne disparaît, rien n'est inventé.
-  const sans = rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", type: "activite", services: [{ heure: "", lieu: "" }] });
+  // Rien sur la réservation : pas de ligne, jamais l'hôtel de la fiche client (le calcul ne reçoit que la réservation).
+  const sans = rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "excursion", reservation: { heure_pickup: "", lieu_pickup: "" } });
   assert.equal(sans, SECRET_JEREMY.replace("Your pickup will be at 08:30 at Lanta Resort.\n\n", ""));
-  const location = rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", type: "location", services: [{ heure: "09:00", lieu: "Lanta Resort" }] });
-  assert.doesNotMatch(location, /pickup/i);
+  assert.equal(pickupDuVoucher({ heure_pickup: "", lieu_pickup: "" }, { type: "excursion" }), null);
+  // Location : jamais de ligne. Billet ou bateau sans pickup inclus (pas de trajet, pas de lieu) : pas de ligne non plus.
+  assert.doesNotMatch(rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "location", reservation: { heure_pickup: "09:00", lieu_pickup: "Lanta Resort" } }), /pickup/i);
+  assert.equal(pickupDuVoucher({ heure_pickup: "10:30" }, { type: "billet", trajet: false }), null);
+  assert.deepEqual(pickupDuVoucher({ heure_pickup: "08:00" }, { type: "billet", trajet: true }), { heure: "08:00", lieu: "" }, "trajet du catalogue avec pickup inclus");
+  assert.deepEqual(pickupDuVoucher({ lieu_pickup: "Saladan Pier" }, { type: "bateau" }), { heure: "", lieu: "Saladan Pier" });
   // Ce qui est connu seulement : une heure sans lieu, un lieu sans heure.
-  assert.match(rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", services: [{ heure: "08:30", lieu: "" }] }), /\nYour pickup will be at 08:30\.\n/);
-  assert.match(rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", services: [{ heure: "", lieu: "Saladan Pier" }] }), /\nYour pickup will be at Saladan Pier\.\n/);
-  // Plusieurs services : une ligne par pickup, avec le service et la date.
-  const deux = rendu({ fonctionnement: "excursions" }, { entreprise: "Secret Travel & Tour", services: [{ heure: "08:30", lieu: "Lanta Resort", prestation: "4 Islands", date: "25 November 2026" }, { heure: "07:00", lieu: "Lanta Resort", prestation: "Koh Rok", date: "27 November 2026" }] });
-  assert.match(deux, /\n\nYour pickup for 4 Islands on 25 November 2026 will be at 08:30 at Lanta Resort\.\nYour pickup for Koh Rok on 27 November 2026 will be at 07:00 at Lanta Resort\.\n\n/);
+  assert.match(rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "excursion", reservation: { heure_pickup: "08:30" } }), /\nYour pickup will be at 08:30\.\n/);
+  assert.match(rendu(SECRET, { entreprise: "Secret Travel & Tour", type: "excursion", reservation: { lieu_pickup: "Saladan Pier" } }), /\nYour pickup will be at Saladan Pier\.\n/);
+  // {jour} : « trip » pour un billet ou un bateau de transport, « transfer » pour un transfert, « activity » sinon.
+  for (const [type, jour] of [["billet", "trip"], ["bateau", "trip"], ["transfert", "transfer"], ["excursion", "activity"], ["activite", "activity"], ["location", "activity"]]) assert.equal(variablesVoucher({ type }).jour, jour, type);
   const m = MESSAGES_DEFAUT.find((x) => x.id === "voucher-en");
   assert.deepEqual([m.pour, m.cle, m.langue], ["client", "voucher", "en"]);
 });
 
-test("message avec le voucher : l'envoi direct, le lien wa.me et les cartes de l'Assistant passent par le même message", () => {
+test("message avec le voucher : l'envoi direct, le lien wa.me et les cartes de l'Assistant ; une réservation par voucher", () => {
   const vue = lire("src/gestion/js/views/voucher-envoi.mjs");
-  assert.match(vue, /\.\.\.variablesVoucher\(\{ services, type: x\.type, paye, entreprise: nomEntreprise \}\)/);
-  assert.match(vue, /const paye = statutPaiementVoucher\(\{ \.\.\.res, surPlace: !!r\.paye_sur_place \}\) === "paye";/);
+  assert.match(vue, /const trajet = !!sourcesVoucher\(r, x\.prestation \|\| null\)\.trajet;/);
+  assert.match(vue, /\.\.\.variablesVoucher\(\{ reservation: r, type: x\.type, trajet, paiement, solde: res\.reste, devise, entreprise: nomEntreprise \}\)/);
+  assert.match(vue, /const paiement = statutPaiementVoucher\(\{ \.\.\.res, surPlace: !!r\.paye_sur_place \}\);/);
+  assert.doesNotMatch(vue, /hotelEtChambre/, "jamais l'hôtel de la fiche client pour le pickup");
+  assert.doesNotMatch(vue, /x\.reservations/, "plus de code pour un voucher à plusieurs réservations : vouchersDuDossier en rend une par voucher");
   assert.match(vue, /return sansLignesVides\(message\);/);
   assert.match(vue, /const message = \{ client: messageClientVoucher\(x\) \};/, "lien wa.me et envoi depuis l'écran");
   assert.match(lire("src/gestion/js/views/agent-cartes-voucher.mjs"), /legende: messageClientVoucher\(x\)/, "cartes « Voucher » de l'Assistant");
-  // Le modèle « voucher » passe avant la « confirmation » ; l'écran Messages propose l'usage et ses variables.
+  const voucher = lire("src/gestion/js/views/voucher.mjs");
+  assert.match(voucher, /export function sourcesVoucher\(r, prestationLive\)/);
+  assert.match(voucher, /const pickupInclus = !!\(r\.heure_pickup \|\| r\.lieu_pickup\) && \(!!trajet \|\| !!r\.lieu_pickup\);/, "la même règle que pickupDuVoucher");
+  assert.match(voucher, /return \{ reservation: r, prestation, type: modeleDe\(r, sourcesVoucher\(r, prestation\), taxi\) \};/, "une réservation par voucher");
   assert.match(lire("src/gestion/js/operations-calc.mjs"), /for \(const cle of \["voucher", "confirmation"\]\)/);
+});
+
+test("écran Messages : l'usage « Message avec le voucher » et la note « Utilisé sous le voucher »", () => {
   const messages = lire("src/gestion/js/views/messages.mjs");
   assert.match(messages, /\{ cle: "voucher", pour: "client", libelle: N_\("Message avec le voucher"\), modes: \["excursions", "taxi"\] \}/);
   assert.match(messages, /Message avec le voucher : \{pickup\} \{jour\} \{paiement\} \{ENTREPRISE\}/);
-  assert.match(lire("src/gestion/js/i18n-en.mjs"), /"Message avec le voucher": "Message with the voucher"/);
+  assert.match(messages, /sousVoucher && !sousVoucher\.defaut && sousVoucher\.id === m\.id \? h\("span", \{ class: "tag tag-voucher" \}, tr\("Utilisé sous le voucher"\)\) : null/);
+  assert.match(messages, /tr\("Utilisé sous le voucher : le modèle de départ « \{titre\} »\.", \{ titre: sousVoucher\.titre \}\)/);
+  // Le message choisi, comme gabaritConfirmationVoucher : un « voucher » enregistré, sinon le modèle de départ, sinon la confirmation.
+  const conf = { id: "c1", pour: "client", cle: "confirmation", langue: "en", titre: "Confirmation", corps: "Hello {prenom}" };
+  const vouch = { id: "v1", pour: "client", cle: "voucher", langue: "en", titre: "Mine", corps: "Thanks" };
+  assert.equal(messageSousVoucher([conf, vouch], MESSAGES_DEFAUT).id, "v1");
+  const defaut = messageSousVoucher([conf], MESSAGES_DEFAUT);
+  assert.deepEqual([defaut.defaut, defaut.titre], [true, "Message with the voucher"]);
+  assert.equal(messageSousVoucher([conf], []).id, "c1");
+  const en = lire("src/gestion/js/i18n-en.mjs");
+  assert.match(en, /"Utilisé sous le voucher": "Used with the voucher"/);
+  assert.match(en, /"Message avec le voucher": "Message with the voucher"/);
 });

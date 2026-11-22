@@ -14,6 +14,14 @@ export const LANGUES = [
   ["th", "ไทย"],
 ];
 export const messagesTypes = () => (reglages().messages || []).filter((m) => m && m.corps);
+// Le message utilisé sous le voucher (operations-calc.mjs, gabaritConfirmationVoucher) : { id, titre, defaut } ou null.
+export function messageSousVoucher(stockes, defauts) {
+  for (const cle of ["voucher", "confirmation"]) {
+    const choisi = gabaritsPropose(stockes, defauts, { pour: "client", langue: "en", cle }).choisi;
+    if (choisi && choisi.corps) return choisi;
+  }
+  return null;
+}
 export const DESTINATAIRES = [
   ["client", N_("Au client")],
   ["partenaire", N_("Au partenaire")],
@@ -180,6 +188,9 @@ export function vueMessages() {
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   const ouvrir = (m) => { const fermer = modal(m.id ? tr("Modifier le message") : tr("Nouveau message type"), formulaireMessage(m, () => (fermer(), rafraichir())), { large: true }); };
   const tous = messagesTypes();
+  // Le message qui part sous le voucher et la Booking confirmation (22.11.2026) : le « voucher » en anglais, sinon la « confirmation »,
+  // comme gabaritConfirmationVoucher. Marqué « Utilisé sous le voucher » ; encore le modèle de départ, une ligne le dit.
+  const sousVoucher = messageSousVoucher(tous, defautsEntreprise());
   // Les modèles par défaut dont l'usage manque (une relance, une annulation…). Une entreprise dont les documents sont en anglais n'y gagne pas de français.
   const manquants = admin ? gabaritsManquants(tous, defautsEntreprise()).filter(visible) : [];
   const ajouterManquants = async () => {
@@ -222,7 +233,7 @@ export function vueMessages() {
         null,
         h("h2", null, tr("{pour}, {langue}", { pour: tr(nomPour), langue: { fr: tr("en français"), en: tr("en anglais"), th: tr("en thaï") }[code] || nom })),
         code === "th" ? h("p", { class: "aide" }, tr("Propositions à faire relire par une personne qui lit le thaï avant usage réel.")) : null,
-        h("ul", { class: "cartes" }, du.map((m) => h("li", { class: `carte${m.actif === false ? " archive" : ""}` }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, m.titre, h("span", { class: "tag" }, libelleUsage(m.cle)), m.actif === false ? h("span", { class: "tag" }, tr("Désactivé")) : null), h("pre", { class: "message-texte" }, m.corps), h("span", { class: "carte-pied" }, h("span"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => copier(m.corps) }, tr("Copier")), admin ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(m) }, tr("Modifier")) : null))))))
+        h("ul", { class: "cartes" }, du.map((m) => h("li", { class: `carte${m.actif === false ? " archive" : ""}` }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, m.titre, h("span", { class: "tag" }, libelleUsage(m.cle)), sousVoucher && !sousVoucher.defaut && sousVoucher.id === m.id ? h("span", { class: "tag tag-voucher" }, tr("Utilisé sous le voucher")) : null, m.actif === false ? h("span", { class: "tag" }, tr("Désactivé")) : null), h("pre", { class: "message-texte" }, m.corps), h("span", { class: "carte-pied" }, h("span"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => copier(m.corps) }, tr("Copier")), admin ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(m) }, tr("Modifier")) : null))))))
       );
     }));
 
@@ -243,6 +254,7 @@ export function vueMessages() {
     "div",
     { "data-titre": tr("Messages") },
     h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, modeTaxi() ? tr("Au client : confirmation, avis. Au chauffeur : la commission des courses de la veille. À copier depuis une réservation.") : tr("Au client : confirmation, rappel de la veille, avis, météo, réponse à une demande. À copier depuis une réservation ou une demande."))), admin ? h("div", { class: "entete-actions" }, manquants.length ? h("button", { class: "secondaire", type: "button", onclick: ajouterManquants }, tr("Ajouter les modèles manquants")) : null, h("button", { class: "secondaire", type: "button", onclick: remettre }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
+    sousVoucher && sousVoucher.defaut ? h("p", { class: "aide note-voucher" }, tr("Utilisé sous le voucher : le modèle de départ « {titre} ».", { titre: sousVoucher.titre }), admin ? ` ${tr("Ajoutez les modèles manquants pour le modifier.")}` : "") : null,
     tous.length > 4 ? barre.noeud : null,
     zone,
     !tous.length ? h("p", { class: "vide-court" }, tr("Aucun message type.")) : null,

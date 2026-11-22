@@ -12,11 +12,11 @@ import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
-import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
+import { renderVoucher, imprimerVoucher, vouchersDuDossier, sourcesVoucher } from "./voucher.mjs";
 import { ajusterBooking } from "./voucher-taxi.mjs";
-import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher, hotelEtChambre, statutPaiementVoucher, dateTexte } from "../operations-calc.mjs";
+import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher, statutPaiementVoucher } from "../operations-calc.mjs";
 import { variablesVoucher, sansLignesVides } from "../message-voucher-calc.mjs";
-import { chiffres, libelleClient } from "../partenaires-calc.mjs";
+import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { conversationPourVoucher, boutonVoucherWhatsApp } from "./voucher-whatsapp.mjs";
@@ -70,15 +70,14 @@ export function messageClientVoucher(x) {
   const res = resumeDossier(dossier.id) || {};
   const devise = res.devise || reglages().devise || "THB";
   const nomEntreprise = (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "";
-  // Les réservations couvertes par ce voucher (une, ou celles d'un voucher groupé) : une ligne de pickup chacune.
-  const couvertes = (Array.isArray(x.reservations) && x.reservations.length ? x.reservations : [r]).filter(Boolean);
-  const services = couvertes.map((s) => ({ heure: s.heure_pickup || "", lieu: hotelEtChambre(client, s).hotel || "", prestation: libelleClient(s.libelle || ""), date: dateTexte(s.date_service || dossier.date_depart, "en"), type: s.id === r.id ? x.type : "" }));
-  const paye = statutPaiementVoucher({ ...res, surPlace: !!r.paye_sur_place }) === "paye";
+  // Le pickup vient de la réservation seulement, comme le voucher l'imprime (pickupInclus) : jamais l'hôtel de la fiche client.
+  const trajet = !!sourcesVoucher(r, x.prestation || null).trajet;
+  const paiement = statutPaiementVoucher({ ...res, surPlace: !!r.paye_sur_place });
   const message = messageVoucher({
     pour: "client",
     prenom: client.prenom || "",
     gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
-    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ services, type: x.type, paye, entreprise: nomEntreprise }) },
+    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ reservation: r, type: x.type, trajet, paiement, solde: res.reste, devise, entreprise: nomEntreprise }) },
   });
   return sansLignesVides(message);
 }

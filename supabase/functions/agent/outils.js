@@ -24,7 +24,7 @@
 //     réservations de l'entreprise active (dossiers.lire, jamais « vouchers.seul ») ; ZTP n'a pas de voucher. Ni net, ni commission, ni prix,
 //     ni nom de prestataire ; l'écran fait les cartes et l'image, rien ne part sans le clic de la personne.
 import { partenaireProbable, prixDeVentePermis } from "../whatsapp/type-contact.js";
-import { OUTILS_ITINERAIRE, outilPermis, refusItineraire } from "./itineraire.js";
+import { REFUS_RECALCUL, bloquerRecalcul } from "./itineraire.js";
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
@@ -1958,11 +1958,12 @@ export async function executer(nom, entree, ctx, memo) {
   if (whatsapp && !peutLireWhatsApp(ctx)) return { contenu: { erreur: "outil_non_permis" }, erreur: true };
   // Vouchers : refusés à l'exécution aussi hors de Secret et Taxi, sans le droit de lire les réservations, ou avec « vouchers.seul ».
   if (voucher && !peutTrouverVouchers(ctx)) return { contenu: { erreur: "outil_non_permis" }, erreur: true };
-  // Itinéraire seulement sur demande (itineraire.js) : sans demande de la personne ni pickup manquant à une course, rien n'est calculé.
-  if (OUTILS_ITINERAIRE.includes(nom) && ctx && ctx.itineraire && !outilPermis(nom, ctx.itineraire)) return { contenu: refusItineraire(ctx.itineraire.raison), erreur: true };
   const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx), apporteur: !!ctx.apporteur });
   if (!propre) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec des valeurs au bon format (textes, nombres entiers positifs, valeurs des listes fermées)." }, erreur: true };
   entree = propre;
+  // Itinéraire sur demande (itineraire.js) : le seul refus, planifier_course qui recalculerait un pickup déjà donné pour ce service pendant
+  // la création d'une carte, sans aucun mot de la personne dans ses derniers messages. Tout le reste passe : la consigne suffit.
+  if (ctx && ctx.itineraire && bloquerRecalcul(nom, entree, ctx.itineraire)) return { contenu: REFUS_RECALCUL, erreur: true };
   const ajouter = (r) => {
     for (const p of r.prix || []) memo.prix.add(Number(p));
     for (const h of r.heures || []) memo.heures.add(h);
