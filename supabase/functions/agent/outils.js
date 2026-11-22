@@ -993,6 +993,10 @@ export function retenirLecture(resultat, memo, nom = "lire_conversation") {
   if (nom === "lire_conversation" && memo.conversationClient === true && memo.conversationLiee && resultat && resultat.conversation === memo.conversationLiee) {
     if (!(memo.nani instanceof Set)) memo.nani = new Set();
     for (const n of montantsDeNaniLus(resultat, { confirme: true })) memo.nani.add(n);
+    // Les prix du client que Nani n'a pas corrigés, dans l'ordre des envois (« le »).
+    if (!(memo.clientValides instanceof Set)) memo.clientValides = new Set();
+    const lus = (Array.isArray(resultat.messages) && !CONTACTS_NOMMES.includes(resultat.contact) && resultat.fiche_reliee !== true ? resultat.messages : []).filter((m) => m && typeof m.texte === "string").sort((a, b) => String(a.le || "").localeCompare(String(b.le || "")));
+    for (const n of montantsClientValides(lus.map((m) => ({ auteur: m.de === "client" ? "client" : "nani", texte: m.texte })))) memo.clientValides.add(n);
   }
   ajouterNoms(memo, noms);
 }
@@ -1217,6 +1221,31 @@ export function lignesJointes(blocs = []) {
     }
   return out;
 }
+// Les montants écrits par le client que Nani n'a pas corrigés (demande de Jérémy du 22.11.2026 : « si un client met le prix et que Nani ne
+// le corrige pas, c'est que le prix est validé finalement »). `messages` : [{ auteur: "client" | "nani", texte }] dans l'ordre de la
+// conversation. Un montant du client compte si Nani a écrit au moins un message après lui sans qu'aucun de ces messages contienne de
+// montant (sinon, seuls les montants de Nani comptent). Seulement pour le prix_saisi d'une carte : jamais une source de la réponse au client.
+export function montantsClientValides(messages = []) {
+  const out = new Set();
+  messages.forEach((m, i) => {
+    if (!m || m.auteur !== "client") return;
+    const montants = [...montantsTapes([m.texte])];
+    if (!montants.length) return;
+    const apres = messages.slice(i + 1).filter((x) => x && x.auteur === "nani");
+    if (!apres.length || apres.some((x) => montantsTapes([x.texte]).size || montantsDuTexte(x.texte).length)) return;
+    for (const n of montants) out.add(n);
+  });
+  return out;
+}
+// Les messages d'un bloc joint, dans l'ordre des lignes : « [Client … » pour le client, tout autre auteur sauf l'apporteur pour Nani.
+export const messagesJoints = (blocs = []) =>
+  blocs.flatMap((b) =>
+    String(b || "")
+      .split("\n")
+      .map((l) => LIGNE_JOINTE.exec(l))
+      .filter((m) => m && m[1] !== "Apporteur")
+      .map((m) => ({ auteur: m[1] === "Client" ? "client" : "nani", texte: m[2] }))
+  );
 export function montantsDeNani(blocs = []) {
   return new Set(lignesDeNani(blocs).flatMap((l) => [...montantsTapes([l])]));
 }
@@ -1281,20 +1310,33 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
   let prix = null;
   let origine = "a_fixer";
   const saisi = nombre(String(s.prix_saisi || "").replace(/[ ,']/g, ""));
+  // Le prix du catalogue pour ce service. Mêmes quantités que l'outil (partenaires-calc.mjs, quantiteParDefaut) : par personne, par adulte,
+  // par enfant, sinon une fois.
+  const prixCatalogue =
+    p && nombre(p.prix_vente) !== null
+      ? Number(p.prix_vente) * ((p.unite === "pp" ? adultes + enfants : p.unite === "ad" ? adultes : p.unite === "ch" ? enfants : 1) || 1)
+      : t && nombre(t.prix_adulte) !== null
+        ? Number(t.prix_adulte) * Math.max(1, adultes) + (enfants && nombre(t.prix_enfant) !== null ? Number(t.prix_enfant) * enfants : 0)
+        : null;
+  let catalogueAffiche = null;
   if (saisi !== null && saisi > 0) {
     // Un prix saisi égal à un net interne ou d'un service de la demande en cours est refusé (revue de sécurité de la PR 306).
-    if (tapes.has(saisi) && (memo.internes instanceof Set && memo.internes.has(saisi) || netsDuControle(memo).bloquants.has(saisi))) avert.push("prix_egal_net");
+    const interdit = (memo.internes instanceof Set && memo.internes.has(saisi)) || netsDuControle(memo).bloquants.has(saisi);
+    // Le prix du client que Nani n'a pas corrigé (demande de Jérémy du 22.11.2026, montantsClientValides) : admis, marqué comme tel.
+    const duClient = !tapes.has(saisi) && memo.clientValides instanceof Set && memo.clientValides.has(saisi);
+    if ((tapes.has(saisi) || duClient) && interdit) avert.push("prix_egal_net");
     else if (tapes.has(saisi)) {
       prix = saisi;
       origine = "saisi";
+    } else if (duClient) {
+      prix = saisi;
+      origine = "client_non_corrige";
+      avert.push("prix_client_non_corrige");
+      // Un prix du catalogue différent n'est jamais remplacé en silence : la carte montre les deux et garde celui de la conversation.
+      if (prixCatalogue !== null && prixCatalogue !== saisi) catalogueAffiche = prixCatalogue;
     } else avert.push("prix_non_tape");
-  } else if (p && nombre(p.prix_vente) !== null) {
-    // Mêmes quantités que l'outil (partenaires-calc.mjs, quantiteParDefaut) : par personne, par adulte, par enfant, sinon une fois.
-    const q = p.unite === "pp" ? adultes + enfants : p.unite === "ad" ? adultes : p.unite === "ch" ? enfants : 1;
-    prix = Number(p.prix_vente) * (q || 1);
-    origine = "catalogue";
-  } else if (t && nombre(t.prix_adulte) !== null) {
-    prix = Number(t.prix_adulte) * Math.max(1, adultes) + (enfants && nombre(t.prix_enfant) !== null ? Number(t.prix_enfant) * enfants : 0);
+  } else if (prixCatalogue !== null) {
+    prix = prixCatalogue;
     origine = "catalogue";
   }
   const date = dateValide(s.date) ? s.date : "";
@@ -1318,6 +1360,7 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     enfants,
     prix,
     origine_prix: origine,
+    ...(catalogueAffiche !== null ? { prix_catalogue: catalogueAffiche } : {}),
     // Le numéro de vol, seulement pour un transfert (une excursion ou un billet de bateau n'en imprime pas) et seulement s'il a une source.
     vol: p && p.famille !== "transfert" ? "" : t ? "" : volSource(s.vol, ctx, memo, avert),
     remarque: texte(s.remarque, 300),
@@ -1539,7 +1582,8 @@ export function partenairesCites(t, noms = []) {
 }
 
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source"];
+// Avec le prix du client non corrigé par Nani et le prix refusé parce qu'égal à un net (22.11.2026) : la carte les montre, rien n'est bloqué.
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_egal_net"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
@@ -1733,7 +1777,7 @@ export async function executer(nom, entree, ctx, memo) {
 // boîte qui donne aussi des prix de Nani (retenirLecture).
 export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, conversationLiee = null } = {}) {
   // refs : les prestations et trajets rendus par les outils ; nets et servicesEnCours : posés par la fonction (netsPourControle, dossier relié).
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), prixCarte: [], conversationClient: conversationClient === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
@@ -1767,7 +1811,10 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
       const jointes = conversationClient ? lignesDeNani(conversationsJointes(t)) : lignesJointes(conversationsJointes(t));
       for (const x of [sansConversation(t), ...jointes]) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
       if (conversationInterne) for (const n of montantsInternesDe(conversationsJointes(t))) memo.internes.add(n);
-      else if (conversationClient) for (const n of montantsDeNani(conversationsJointes(t))) memo.nani.add(n);
+      else if (conversationClient) {
+        for (const n of montantsDeNani(conversationsJointes(t))) memo.nani.add(n);
+        for (const n of montantsClientValides(messagesJoints(conversationsJointes(t)))) memo.clientValides.add(n);
+      }
     };
     if (m.role === "user" && typeof m.content === "string") tapes(m.content);
     if (m.role === "user" && Array.isArray(m.content)) {

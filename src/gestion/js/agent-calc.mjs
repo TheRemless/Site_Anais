@@ -116,7 +116,11 @@ export function propositionDepuisCarte(donnees = {}) {
       offre: s.offre || null,
       alternatives: [],
       confiance: s.offre ? "haute" : "moyenne",
-      prix_libre: !s.offre && s.origine_prix === "saisi" && s.prix !== null && s.prix !== undefined ? Number(s.prix) : null,
+      // Le prix du client non corrigé par Nani (22.11.2026) aussi, marqué sur la carte.
+      prix_libre: !s.offre && ["saisi", "client_non_corrige"].includes(s.origine_prix) && s.prix !== null && s.prix !== undefined ? Number(s.prix) : null,
+      // Un service du catalogue dont le prix vient de la conversation (« saisi » ou « client_non_corrige ») garde ce prix à la validation,
+      // le prix du catalogue reste affiché à côté (Jérémy, 22.11.2026). Un prix « catalogue » se recalcule comme avant.
+      prix_carte: s.offre && ["saisi", "client_non_corrige"].includes(s.origine_prix) && Number(s.prix) > 0 ? Number(s.prix) : null,
       lieu_pickup: s.lieu_pickup || "",
       // Le numéro de vol lu par l'agent (contrôlé par la fonction) : posé sur la réservation du transfert, modifiable dans la fenêtre.
       vol: s.vol || "",

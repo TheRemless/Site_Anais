@@ -18,7 +18,7 @@ import { tr, N_, pluriel } from "../i18n.mjs";
 import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
-import { offresRecalculees } from "../assistant-calc.mjs";
+import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal } from "../demandes-site-calc.mjs";
@@ -141,7 +141,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     return { offre: choisie(sv, offres), offres };
   }
   // Lignes prises à la main : la date corrigée sur la ligne du service passe aux lignes (elle date la réservation), sauf si le service n'a pas de date.
-  const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, ...(l.kind !== "texte" && sv.date ? { date_service: sv.date } : {}) })) : offre ? lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise) : []);
+  // Une offre au prix de la carte (prix venu de la conversation) : ses lignes prennent ce prix (assistant-calc.mjs, lignesAuPrixCarte).
+  const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, ...(l.kind !== "texte" && sv.date ? { date_service: sv.date } : {}) })) : offre ? lignesAuPrixCarte(lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise), offre.prixCarte) : []);
   // Le partenaire du service : celui de l'offre, ou de la première ligne prise dans la base. Sa grille de pickup donne les zones.
   const partenaireDeOffre = (sv, offre) => (sv.lignesCustom ? (sv.lignesCustom.find((l) => l.partenaire_id) || {}).partenaire_id : offre && offre.source && offre.source.partenaire_id) || "";
   const partenaireDuService = (sv) => partenaireDeOffre(sv, sv.lignesCustom ? null : etatDe(sv).offre);
@@ -193,6 +194,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     }
     if (sv.confiance) n.titre.append(badgeConfiance(sv.confiance));
     n.prix.textContent = offre && offre.total !== null && offre.total !== undefined ? formatMontant(offre.total, devise) : "-";
+    // Le prix de la conversation l'emporte ; celui du catalogue s'affiche à côté quand il diffère (Jérémy, 22.11.2026).
+    if (offre && offre.prixCarte !== undefined && offre.totalCatalogue !== null && offre.totalCatalogue !== undefined && offre.totalCatalogue !== offre.total) n.prix.append(h("small", { class: "dsv-catalogue" }, ` ${tr("catalogue : {prix}", { prix: formatMontant(offre.totalCatalogue, devise) })}`));
     const alertes = [];
     if (!sv.date) alertes.push(tr("Date à préciser."));
     else if (sv.date < aujourdhui()) alertes.push(tr("La date du service est passée."));

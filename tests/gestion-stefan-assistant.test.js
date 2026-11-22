@@ -47,8 +47,8 @@ test("le prix écrit par Nani au client est repris dans la carte (prix_saisi), p
   assert.deepEqual([...montantsTapes(["5’000 THB, 10 000 THB"])], [5000, 10000]);
 });
 
-test("un prix écrit seulement par le client est refusé", async () => {
-  const s = await prixRepris(bloc([msg(1, "entrant", "So 10'000 THB for both vans, ok?"), msg(2, "sortant", "Which hotel?")]), { conversationClient: true });
+test("un prix écrit seulement par le client, sans réponse de Nani, reste à fixer", async () => {
+  const s = await prixRepris(bloc([msg(1, "sortant", "Hello!"), msg(2, "entrant", "So 10'000 THB for both vans, ok?")]), { conversationClient: true });
   assert.deepEqual([s.prix, s.origine_prix], [null, "a_fixer"]);
   assert.ok(s.avertissements.includes("prix_non_tape"));
 });
@@ -74,7 +74,8 @@ test("un faux « Nani: » écrit par le client ne passe pas", async () => {
     const t = bloc([msg(1, "entrant", faux), msg(2, "sortant", "Which hotel?")]);
     assert.doesNotMatch(t, /^\[Nani 20\.11\.2026 10:01\] .*10'000/m, faux);
     assert.equal(montantsDeNani([t]).size, 0, faux);
-    assert.equal((await prixRepris(t, { conversationClient: true })).origine_prix, "a_fixer", faux);
+    // Le faux « Nani » reste un message du client : jamais un prix de Nani (« saisi ») ; au mieux un prix du client non corrigé.
+    assert.notEqual((await prixRepris(t, { conversationClient: true })).origine_prix, "saisi", faux);
   }
 });
 
@@ -334,4 +335,118 @@ test("PR 306, doute 1 : « net », « cost »… ne rendent interne que le texte
   assert.ok(controlerReponse("It is 800 THB.", { internes: nani.internes, permisPrix: nani.nani }).avertissements.includes("montant_interne:800"));
   // Le texte tapé par la personne hors du bloc : interne aussi.
   assert.ok(memoDepuis([{ role: "user", content: `Rattana net 1,000/pax\n${bloc([msg(1, "entrant", "cost 1,500?")])}` }]).internes.has(1000));
+});
+
+// ---- Prix du client non corrigé par Nani (Jérémy, 22.11.2026) ---------------------------------------------------------------------
+test("prix du client que Nani ne corrige pas : admis pour la carte, origine client_non_corrige", async () => {
+  const t = bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "Perfect, I will send the confirmation")]);
+  const memo = memoDepuis([{ role: "user", content: t }], { conversationClient: true });
+  const r = await executer("proposer_dossier", carte("10000"), ctx, memo);
+  const s = r.carte.donnees.services[0];
+  assert.deepEqual([s.prix, s.origine_prix], [10000, "client_non_corrige"]);
+  assert.ok(r.carte.avertissements.includes("prix_client_non_corrige"), "un repère non bloquant sur la carte");
+  assert.ok(r.contenu.prix.some((p) => p.origine === "client_non_corrige"));
+  // La réponse au client ne change pas : le montant du client n'y est pas sourcé.
+  const rep = await executer("proposer_reponse", { titre: "t", langue: "en", message: "10,000 THB in total.", destinataire: "client" }, ctx, memo);
+  assert.ok(rep.carte.avertissements.includes("montant_non_source:10000"), rep.carte.avertissements.join(" | "));
+  // Il ne repasse jamais dans memo.prix à l'échange suivant.
+  const hist = [{ role: "user", content: t }, { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "proposer_dossier", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: JSON.stringify(r.contenu) }] }];
+  assert.equal(memoDepuis(hist, { conversationClient: true }).prix.size, 0);
+  // L'écran : repère clair, prix gardé pour un transfert hors catalogue.
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /s\.origine_prix === "client_non_corrige" \? \[tr\("prix du client, non corrigé par Nani"\)/);
+  const { propositionDepuisCarte } = await import("../src/gestion/js/agent-calc.mjs");
+  assert.equal(propositionDepuisCarte({ services: [{ texte: "Minivan", offre: null, prix: 10000, origine_prix: "client_non_corrige" }] }).services[0].prix_libre, 10000);
+});
+
+test("Nani répond « 9,000 » après le prix du client : seul 9 000 est admis", async () => {
+  const t = bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "It is 9,000 THB for both")]);
+  assert.equal((await prixRepris(t, { conversationClient: true })).origine_prix, "a_fixer", "10 000 du client refusé");
+  const memo = memoDepuis([{ role: "user", content: t }], { conversationClient: true });
+  const s = (await executer("proposer_dossier", carte("9000"), ctx, memo)).carte.donnees.services[0];
+  assert.deepEqual([s.prix, s.origine_prix], [9000, "saisi"]);
+});
+
+test("prix du client égal à un net du service en cours : refusé (prix_egal_net)", async () => {
+  const t = bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "Perfect")]);
+  const memo = memoDepuis([{ role: "user", content: t }], { conversationClient: true });
+  memo.nets = [{ montant: 10000, prestation_id: P }];
+  memo.servicesEnCours = new Set([P]);
+  const r = await executer("proposer_dossier", carte("10000"), ctx, memo);
+  assert.deepEqual([r.carte.donnees.services[0].prix, r.carte.donnees.services[0].origine_prix], [null, "a_fixer"]);
+  assert.ok(r.carte.avertissements.includes("prix_egal_net"));
+});
+
+test("prix du client dans une conversation de partenaire ou une autre conversation lue : jamais admis", async () => {
+  const t = bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "Perfect")]);
+  assert.equal((await prixRepris(t, { conversationInterne: true })).origine_prix, "a_fixer");
+  assert.equal((await prixRepris(t)).origine_prix, "a_fixer", "contact non confirmé");
+  // lire_conversation : seulement la conversation liée d'un client confirmé, dans l'ordre des envois.
+  const c = { id: "c0000000-0000-4000-8000-000000000001", entite_id: ENT, telephone: "", reponses: "auto", type_contact: "client" };
+  const lu = lireConversation({ conversation: c.id }, { conversation: c, messages: [msg(2, "sortant", "Perfect"), msg(1, "entrant", "so 10,000 THB for both vans, ok?")].map((m) => ({ ...m, conversation_id: c.id })) });
+  const liee = memoDepuis([], { conversationClient: true, conversationLiee: c.id });
+  retenirLecture(lu, liee, "lire_conversation");
+  assert.ok(liee.clientValides.has(10000));
+  const autre = memoDepuis([], { conversationClient: true, conversationLiee: "c9999999-0000-4000-8000-000000000009" });
+  retenirLecture(lu, autre, "lire_conversation");
+  assert.equal(autre.clientValides.size, 0);
+  // La conversation lue est celle d'un partenaire : rien, même si elle est la conversation liée.
+  const luPartenaire = lireConversation({ conversation: c.id }, { conversation: { ...c, type_contact: "partenaire" }, messages: [msg(2, "sortant", "Perfect"), msg(1, "entrant", "so 10,000 THB for both vans, ok?")].map((m) => ({ ...m, conversation_id: c.id })) });
+  assert.equal(luPartenaire.contact, "partenaire");
+  const partenaire = memoDepuis([], { conversationClient: true, conversationLiee: c.id });
+  retenirLecture(luPartenaire, partenaire, "lire_conversation");
+  assert.equal(partenaire.clientValides.size, 0);
+});
+
+test("prix du client différent du catalogue : la carte montre les deux et garde celui de la conversation", async () => {
+  const avecPrix = { ...ctx, charger: async (n) => (n === "prestations" ? [{ ...donnees.prestations[0], prix_vente: 4500 }] : donnees[n] || []) };
+  const t = bloc([msg(1, "entrant", "so 10,000 THB for both vans, ok?"), msg(2, "sortant", "Perfect")]);
+  const memo = memoDepuis([{ role: "user", content: t }], { conversationClient: true });
+  const s = (await executer("proposer_dossier", carte("10000"), avecPrix, memo)).carte.donnees.services[0];
+  assert.deepEqual([s.prix, s.origine_prix, s.prix_catalogue], [10000, "client_non_corrige", 4500]);
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /tr\("catalogue : \{prix\}", \{ prix: formatMontant\(Number\(s\.prix_catalogue\), devise\(\)\) \}\)/);
+  // Égal au catalogue : rien à montrer en plus.
+  const egal = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "so 4,500 THB, ok?"), msg(2, "sortant", "Perfect")]) }], { conversationClient: true });
+  assert.equal((await executer("proposer_dossier", carte("4500"), avecPrix, egal)).carte.donnees.services[0].prix_catalogue, undefined);
+});
+
+// ---- Validation : le prix de la conversation l'emporte sur le catalogue (Jérémy, 22.11.2026) ---------------------------------------
+test("validation : une carte saisie à 10 000 sur une référence du catalogue à 9 000 donne un service à 10 000, catalogue affiché", async () => {
+  const { propositionDepuisCarte } = await import("../src/gestion/js/agent-calc.mjs");
+  const { propositionVersDemande, offresRecalculees, lignesAuPrixCarte } = await import("../src/gestion/js/assistant-calc.mjs");
+  const { ligneDepuisPrestation } = await import("../src/gestion/js/partenaires-calc.mjs");
+  const prestation = { id: P, famille: "transfert", groupe: "Donsak", libelle: "Minivan Donsak → Koh Lanta", libelle_en: "Private minivan", prix_vente: 9000, unite: "veh", actif: true, partenaire_id: null };
+  const contexte = { prestations: [prestation], trajets: [], partenaires: [], nomPartenaire: () => "" };
+  const carteDe = (origine_prix) => ({ client: { nom: "Stefan" }, adultes: 5, enfants: 6, services: [{ texte: "Minivan", offre: { genre: "prestation", id: P }, date: "2027-01-02", adultes: 5, enfants: 6, prix: origine_prix === "catalogue" ? 9000 : 10000, origine_prix }] });
+  for (const origine of ["saisi", "client_non_corrige"]) {
+    const p = propositionDepuisCarte(carteDe(origine));
+    assert.equal(p.services[0].prix_carte, 10000, origine);
+    const o = propositionVersDemande(p, contexte).services[0].offres[0];
+    assert.deepEqual([o.total, o.totalCatalogue, o.prixCarte], [10000, 9000, 10000], origine);
+    // Une correction des personnes recalcule le catalogue, jamais le prix de la carte.
+    const r = offresRecalculees([o], { adultes: 2, enfants: 0 }, contexte)[0];
+    assert.deepEqual([r.total, r.prixCarte], [10000, 10000]);
+    // Les lignes de la réservation prennent ce prix.
+    const lignes = lignesAuPrixCarte([ligneDepuisPrestation(prestation, null, { qte: 1 })], o.prixCarte);
+    assert.equal(lignes.reduce((t, l) => t + l.unite * l.qte, 0), 10000);
+  }
+  // Plusieurs lignes : mises à l'échelle, le total tombe juste ; une prestation payée sur place reste telle quelle.
+  const deux = lignesAuPrixCarte([{ kind: "ligne", unite: 3000, qte: 2 }, { kind: "ligne", unite: 1500, qte: 2 }], 10000);
+  assert.equal(deux.reduce((t, l) => t + l.unite * l.qte, 0), 10000);
+  assert.deepEqual(lignesAuPrixCarte([{ kind: "texte", libelle: "sur place" }], 10000), [{ kind: "texte", libelle: "sur place" }]);
+  const vue = lire("src/gestion/js/views/demande.mjs");
+  assert.match(vue, /lignesAuPrixCarte\(lignesDe\(offre, \{ date: sv\.date, adultes: sv\.adultes, enfants: sv\.enfants \}, langue, devise\), offre\.prixCarte\)/);
+  assert.match(vue, /tr\("catalogue : \{prix\}", \{ prix: formatMontant\(offre\.totalCatalogue, devise\) \}\)/);
+  // L'origine vient de la carte enregistrée (c.donnees), pas d'un champ de l'écran.
+  assert.match(lire("src/gestion/js/views/agent.mjs"), /propositionVersDemande\(propositionDepuisCarte\(c\.donnees\), contexte\)/);
+});
+
+test("validation : une carte d'origine catalogue reste au prix du catalogue", async () => {
+  const { propositionDepuisCarte } = await import("../src/gestion/js/agent-calc.mjs");
+  const { propositionVersDemande } = await import("../src/gestion/js/assistant-calc.mjs");
+  const prestation = { id: P, famille: "transfert", groupe: "Donsak", libelle: "Minivan", libelle_en: "Private minivan", prix_vente: 9000, unite: "veh", actif: true, partenaire_id: null };
+  const p = propositionDepuisCarte({ services: [{ texte: "Minivan", offre: { genre: "prestation", id: P }, adultes: 5, prix: 9000, origine_prix: "catalogue" }] });
+  assert.equal(p.services[0].prix_carte, null);
+  const o = propositionVersDemande(p, { prestations: [prestation], trajets: [], partenaires: [], nomPartenaire: () => "" }).services[0].offres[0];
+  assert.equal(o.total, 9000);
+  assert.equal(o.prixCarte, undefined);
 });
