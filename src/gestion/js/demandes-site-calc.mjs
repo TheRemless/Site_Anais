@@ -9,7 +9,7 @@ import { N_ } from "./i18n.mjs";
 export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
 export const MOTIFS_REFUS = { complet: N_("Complet ce jour-là"), mer: N_("Mer trop agitée"), indisponible: N_("Pas possible ce jour-là"), autre: N_("Sans motif") };
 
-// La même recherche et la même priorité que les demandes du carnet (carnet-ages.mjs : les sorties du carnet d'abord, puis celles du site).
+// La seule recherche d'une sortie par identifiant (carnet-ages.mjs), la même que pour le tarif et l'âge (re-exportée ici, comme dans bandeau-calc.mjs).
 export const produitSite = sortieParId;
 export const nomProduit = (d) => d.produit || (produitSite(d.produit_id) || {}).nom || d.produit_id;
 // Ce que le client demande, pour l'écran et les réponses. Une page taxi sert les deux sens : son nom (« Krabi Airport to Koh Lanta ») peut être
@@ -27,7 +27,7 @@ export const demandesDuDossier = (demandes, dossierId) =>
 export function titreOption(d) {
   if (d.option_titre) return d.option_titre;
   const p = produitSite(d.produit_id);
-  const o = p && d.option_id ? p.options.find((x) => x.id === d.option_id) : null;
+  const o = p && d.option_id ? p.options.find((x) => x.id === d.option_id || (x.alias || []).includes(d.option_id)) : null;
   return o ? o.titre : d.option_id || "";
 }
 // Options proposées pour « Modifier » : celles de la page produit du site.
@@ -71,16 +71,29 @@ export const prenom = (nom) => String(nom || "").trim().split(/\s+/)[0] || "";
 // ---- Le message à relire ------------------------------------------------------------------------------------------
 // Le message que le site a envoyé à WhatsApp, avec les changements d'Anaïs posés dessus : « Coller une demande » le lit comme d'habitude
 // (même format, mêmes tests), trouve le service dans la base de prix et crée le dossier. Sans message (ancien site), il est reconstruit.
+// « 2 adults, 2 children (ages 5 and under 1) » : les invités lus dans le message (agesDuMessage), avec leurs âges, tels que le contrat du site les écrit.
+function invitesAnglais({ adultes = 0, enfants = 0, bebes = 0, ages = [] }) {
+  const enfantsTous = ages.length || enfants + bebes;
+  const age = (a) => (a === 0 ? "under 1" : String(a));
+  const liste = ages.length ? ` (age${ages.length > 1 ? "s" : ""} ${ages.length > 1 ? `${ages.slice(0, -1).map(age).join(", ")} and ${age(ages[ages.length - 1])}` : age(ages[0])})` : "";
+  return [adultes ? `${adultes} adult${adultes > 1 ? "s" : ""}` : "", enfantsTous ? `${enfantsTous} ${enfantsTous > 1 ? "children" : "child"}${liste}` : ""].filter(Boolean).join(", ");
+}
 export function texteDemande(d, modifs = {}) {
   const e = demandeEffective(d, modifs);
   const transfert = d.marque === "taxi" || /^(Transfer|Shared minivan) request:/m.test(d.message || "");
-  let lignes = (d.message || "").split("\n").filter((l) => l.trim());
+  // Une demande du carnet n'est jamais relue d'après le récapitulatif de la page (écrit en français, ni « Booking request: » ni « Guests: ») : le message que la fenêtre de création
+  // lit est refait des champs de la demande, avec les âges des enfants lus dans le récapitulatif (agesDuMessage). Le message du client, lui, reste affiché tel quel.
+  const carnet = estCarnet(d);
+  let lignes = carnet ? [] : (d.message || "").split("\n").filter((l) => l.trim());
   if (!lignes.length) {
     const option = e.option_titre ? ` – ${e.option_titre}` : "";
-    lignes = [transfert ? `Transfer request: ${nomProduit(d)}${option}` : `Booking request: ${nomProduit(d)}${option}`];
+    const sortie = carnet ? sortieParId(d.produit_id) : null;
+    const produit = sortie ? sortie.nom : nomProduit(d);
+    lignes = [transfert ? `Transfer request: ${produit}${option}` : `Booking request: ${produit}${option}`];
     if (d.date_service) lignes.push(`Date: ${dateDuSite(d.date_service)}`);
     if (d.heure) lignes.push(`Pickup time: ${d.heure}`);
-    const gens = personnesAnglais(d.adultes || 0, d.enfants || 0);
+    const invites = carnet ? agesDuMessage(d.message) : null;
+    const gens = invites ? invitesAnglais(invites) : personnesAnglais(d.adultes || 0, d.enfants || 0);
     if (gens) lignes.push(`Guests: ${gens}`);
     if (d.pickup) lignes.push(`Pickup: ${d.pickup}`);
     if (d.nom) lignes.push(`Name: ${d.nom}`);
@@ -118,8 +131,9 @@ export function changements(d, final) {
   if (final.heure && d.heure && final.heure !== d.heure) ajoute("heure", d.heure, final.heure);
   const optAvant = titreOption(d);
   if (final.option_titre && optAvant && final.option_titre !== optAvant) ajoute("option", optAvant, final.option_titre);
-  // Les personnes de la demande comme elles sont tarifées : un enfant du carnet plus âgé que le barème compte adulte (même règle que la fenêtre de création).
-  const tarifee = demandeTarifee(d, final.option_titre || d.option_titre);
+  // « Avant » : la demande telle que le client l'a envoyée, tarifée avec SON option (un enfant du carnet plus âgé que le barème compte adulte, même règle que la fenêtre de
+  // création). « Après » : ce que la fenêtre a créé (final), avec l'option finale.
+  const tarifee = demandeTarifee(d, titreOption(d));
   const gensAvant = personnesAnglais(tarifee.adultes || 0, tarifee.enfants || 0);
   const gensApres = personnesAnglais(final.adultes || 0, final.enfants || 0);
   if (gensAvant && gensApres && gensAvant !== gensApres) ajoute("personnes", gensAvant, gensApres);
@@ -230,11 +244,11 @@ export function estCarnet(d) {
 // La demande comme Gestion la tarife : un enfant d'une sortie du carnet plus âgé que le barème de la sortie compte adulte (ajusterAgesCarnet). Les adultes, enfants et
 // bébés viennent du message (agesDuMessage), comme dans la fenêtre de création, et non du compteur de la table qui compte tous les enfants : une seule source
 // pour tous les chemins (fenêtre de création, changements, réponse de confirmation).
-export function demandeTarifee(d, titre = d.option_titre) {
+export function demandeTarifee(d, titre = titreOption(d)) {
   if (!estCarnet(d) || !sortieParId(d.produit_id)) return d;
   const invites = agesDuMessage(d.message);
   // `titre` : l'option telle qu'elle est tarifée (celle de la demande, ou celle choisie dans « Modifier »), la même résolution que le tarif.
-  return ajusterAgesCarnet({ ...d, ...(invites || {}), option: titre || "", carnet: carnetDeLaDemande(d) });
+  return ajusterAgesCarnet({ ...d, ...(invites || {}), option: titre, carnet: carnetDeLaDemande(d) });
 }
 // La sortie et l'option que la fenêtre de création lit dans une demande du carnet (product_id et option), ou null pour une demande qui n'en est pas une.
 export const carnetDeLaDemande = (d) => (estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null);
@@ -252,7 +266,7 @@ export function autresSorties(d) {
     if (ici) return PRODUITS_CARNET.filter((p) => p.id !== d.produit_id && p.marque === d.marque && p.guide === ici.guide);
     // Une sortie du site Secret proposée par le guide de Koh Lanta : les autres sorties de ce guide, pas toutes celles du site.
     if (SORTIES_KOH_LANTA.includes(d.produit_id)) return SORTIES_KOH_LANTA.filter((id) => id !== d.produit_id).map((id) => PRODUITS_SITE.find((p) => p.id === id)).filter((p) => p && p.marque === d.marque);
-    return [];
+    // Un identifiant que ni le carnet ni le guide de Koh Lanta ne connaissent (une sortie que le site n'a pas, un guide futur) : la liste de la marque, comme avant.
   }
   return PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
 }

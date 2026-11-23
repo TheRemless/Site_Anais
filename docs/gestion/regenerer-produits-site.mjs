@@ -7,8 +7,8 @@
 //
 // Chaque option porte :
 //   - `tarifs` : ses lignes de prix reliées à un tarif de Gestion par src/_data/gestion-keys.json du site (clé « slug|option|ligne »),
-//     { ligne, prestation, libelle, ages } : la ligne telle que le site l'écrit, l'identifiant du tarif dans Gestion et son libellé anglais, et les âges qu'elle déclare
-//     (`ages: { min, max }` du prix sur le site, structurés : les barèmes d'âge des guides du carnet en viennent, jamais d'une lecture du libellé).
+//     { ligne, prestation, libelle } : la ligne telle que le site l'écrit, l'identifiant du tarif dans Gestion et son libellé anglais.
+//   - `enfant` : le barème d'âge des enfants de l'option, `{ min, max }`, tiré des `ages` de ses lignes enfant sur le site (bareme-enfant-site.mjs), jamais d'une lecture du libellé.
 //     Ni prix ni net : le tarif lui-même reste dans la base.
 //     Une option sans ligne de prix (« Price on WhatsApp ») prend ses tarifs dans docs/gestion/cles-options-site.json de ce dépôt
 //     (clé « slug|identifiant de l'option »), où `ligne` est la tranche de groupe du tarif.
@@ -17,6 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { baremeDeOption } from "./bareme-enfant-site.mjs";
 import { fileURLToPath } from "node:url";
 
 const depot = path.resolve(process.argv[2] || "");
@@ -100,9 +101,12 @@ const produits = fichiers.filter((f) => !f.startsWith(`${DOSSIER_TAXI}/`)).map((
     options: (p.options || []).map((o) => {
       const titre = o.label || o.title || o.id;
       const tarifs = (o.prices || [])
-        .map((r) => ({ ligne: r.label, ages: r.ages, cle: cles[`${p.slug}|${titre}|${r.label}`] }))
+        .map((r) => ({ ligne: r.label, cle: cles[`${p.slug}|${titre}|${r.label}`] }))
         .filter((x) => x.cle && x.cle.prestation)
-        .map((x) => ({ ligne: x.ligne, prestation: x.cle.prestation, libelle: x.cle.gestion || "", ...(x.ages ? { ages: x.ages } : {}) }));
+        .map((x) => ({ ligne: x.ligne, prestation: x.cle.prestation, libelle: x.cle.gestion || "" }));
+      // Barème d'âge de l'option : tiré de TOUTES ses lignes enfant, reliées à Gestion ou non (bareme-enfant-site.mjs) ; une ligne enfant sans âge fait échouer la génération.
+      const { bareme, ambigu } = baremeDeOption(o.prices, `${p.slug} / ${o.id}`);
+      if (ambigu) console.warn(`${p.slug} / ${o.id} : des lignes enfant d'âges différents, aucun barème d'âge n'est écrit.`);
       // Option sans ligne de prix reliée : la clé d'option de Gestion. Une option qui a ses lignes garde celles du site.
       const cleOption = clesOptions[`${p.slug}|${o.id}`];
       if (cleOption) {
@@ -111,7 +115,7 @@ const produits = fichiers.filter((f) => !f.startsWith(`${DOSSIER_TAXI}/`)).map((
         else tarifs.push(...cleOption.map((x) => ({ ligne: x.ligne, prestation: x.prestation, libelle: x.libelle || "" })));
       }
       const anciens = [...(titresPasses.get(`${p.slug}|${o.id}`) || [])].filter((t) => t !== titre && !titres.includes(t) && porteurs.get(t) === 1).sort();
-      return { id: o.id, titre, ...(tarifs.length ? { tarifs } : {}), ...(anciens.length ? { anciens } : {}) };
+      return { id: o.id, titre, ...(bareme ? { enfant: bareme } : {}), ...(tarifs.length ? { tarifs } : {}), ...(anciens.length ? { anciens } : {}) };
     }),
   };
 });

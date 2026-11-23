@@ -3,6 +3,7 @@
 // du lien et la fin automatique sont calculés ici et gardés avec le bandeau ; la fonction publique « bandeau-site » les transmet au site.
 // Les modèles ne disent que ce qu'Anaïs choisit d'annoncer : aucune promesse ni information qui ne vienne d'elle.
 import { PRODUITS_SITE } from "./site-produits.mjs";
+import { sortieParId } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const TEXTE_MAX = 140;
@@ -55,7 +56,8 @@ export function dateBandeau(iso, aujourdhui) {
 }
 const jourCourt = (iso) => (iso ? `${utc(iso).getUTCDate()} ${MOIS[utc(iso).getUTCMonth()].slice(0, 3)}` : "");
 
-export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || null;
+// La seule recherche d'une sortie par identifiant (carnet-ages.mjs : les sorties du carnet d'abord, puis celles du site) ; un bandeau ne vise que des pages du site, aucun identifiant n'est commun.
+export const produitSite = sortieParId;
 export const produitsDeMarques = (marques) => PRODUITS_SITE.filter((p) => marques.includes(p.marque));
 
 // Texte anglais d'un bandeau à partir du modèle et de ce qu'Anaïs a choisi. Renvoie { texte, manque: [champs vides] }.

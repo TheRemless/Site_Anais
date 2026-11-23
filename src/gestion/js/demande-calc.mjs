@@ -6,7 +6,7 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET } from "./carnet-produits.mjs";
-import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId } from "./carnet-ages.mjs";
+import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, LIGNE_ENFANT } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -959,8 +959,6 @@ export function completerSupplement(offre, pax, prestations) {
 // Le message du site dit le produit et l'option (« Booking request: Koh Rok & Koh Haa – Day trip », « Rental request: Big bikes »). La page produit
 // du site (site-produits.mjs, recopié depuis le site avec src/_data/gestion-keys.json) relie chaque ligne de prix de l'option à un tarif de Gestion.
 // Ce tarif-là est proposé en premier, sans deviner (18.11.2026). Rien n'est imposé quand l'option n'est pas reconnue ou que son tarif n'est pas en base.
-const cleTexte = (s) => sansAccents(s).replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
-const LIGNE_ENFANT = /^child\b/i;
 // Supplément à cocher ou personne en plus : ils s'ajoutent au tarif de base (completerSupplement), ils ne le remplacent pas.
 const LIGNE_A_PART = /^(?:add\b|each extra person\b|extra\b)/i;
 // « 1 to 3 people », « 1 or 2 people, the raft » : la tranche de groupe d'un bateau privé.

@@ -14,8 +14,8 @@ import { spawnSync } from "node:child_process";
 import { PRODUITS_CARNET, SORTIES_KOH_LANTA } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
 import { lireMessage, offresDuService, optionDuSite } from "../src/gestion/js/demande-calc.mjs";
-import { ajusterAgesCarnet, baremeEnfant, sortieParId, resoudreSortie } from "../src/gestion/js/carnet-ages.mjs";
-import { demandeTarifee, autresSorties, produitSite, texteDemande, changements } from "../src/gestion/js/demandes-site-calc.mjs";
+import { ajusterAgesCarnet, baremeEnfant, sortieParId, resoudreSortie, resoudreProduit, agesDuMessage, LIGNE_ENFANT, cleTexte } from "../src/gestion/js/carnet-ages.mjs";
+import { demandeTarifee, autresSorties, produitSite, texteDemande, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit } from "../src/gestion/js/operations-calc.mjs";
 
 const AJD = "2026-11-23";
@@ -177,16 +177,38 @@ test("Koh Lanta : le barème d'âge d'une OPTION vient de l'âge structuré de s
   for (const id of ["go-kart", "cooking-class", "rental", "speedboat-ferry", "shared-minivan"]) for (const o of produit(id).options) assert.equal(baremeEnfant(produit(id), o), null, `${id} / ${o.id}`);
 });
 
-test("Koh Lanta : chaque ligne « Child » d'une option du site porte un âge structuré (sinon le barème casserait sans signal)", () => {
-  for (const p of PRODUITS_SITE.filter((x) => x.marque === "secret")) for (const o of p.options) for (const t of o.tarifs || []) {
-    if (!/^child\b/i.test(t.ligne)) continue;
-    assert.ok(t.ages && Number.isFinite(t.ages.min) && Number.isFinite(t.ages.max) && t.ages.min <= t.ages.max, `${p.id} / ${o.id} / ${t.ligne} : âge structuré manquant (regenerer-produits-site.mjs)`);
+test("Koh Lanta : chaque option du site avec une ligne « Child » reliée a un barème structuré, sauf celles dont les lignes enfant se contredisent (quad)", () => {
+  const sansBareme = [];
+  for (const p of PRODUITS_SITE.filter((x) => x.marque === "secret")) for (const o of p.options) {
+    if (!(o.tarifs || []).some((t) => LIGNE_ENFANT.test(t.ligne))) continue;
+    if (o.enfant) assert.ok(Number.isFinite(o.enfant.min) && Number.isFinite(o.enfant.max) && o.enfant.min <= o.enfant.max, `${p.id} / ${o.id}`);
+    else sansBareme.push(`${p.id} / ${o.id}`);
   }
-  // Un changement de libellé n'y change rien : le barème ne lit pas le texte de la ligne.
+  assert.deepEqual(sansBareme, ["atv / track-30-min", "atv / forest-1-hr", "atv / beach-bridge-2-hr", "atv / atv-kayak-2-hr"], "une nouvelle option avec ligne enfant sans barème est à regarder (regenerer-produits-site.mjs)");
+  // Un libellé renommé n'y change rien : le barème ne lit pas le texte de la ligne.
   const p = PRODUITS_SITE.find((x) => x.id === "4-islands");
   const o = p.options.find((x) => x.id === "join-in-longtail");
-  const renomme = { ...o, tarifs: o.tarifs.map((t) => (/^child/i.test(t.ligne) ? { ...t, ligne: "Child, ages as shown" } : t)) };
-  assert.deepEqual(baremeEnfant(p, renomme), { min: 4, max: 11 });
+  assert.deepEqual(baremeEnfant(p, { ...o, tarifs: o.tarifs.map((t) => (/^child/i.test(t.ligne) ? { ...t, ligne: "Kids, as shown" } : t)) }), { min: 4, max: 11 });
+});
+
+test("génération du barème d'âge d'une option du site : toutes les lignes enfant comptent, reliées à Gestion ou non ; une ligne sans âge fait échouer", async () => {
+  const { baremeDeOption } = await import("../docs/gestion/bareme-enfant-site.mjs");
+  // Une ligne enfant que le site ne relie à aucun tarif de Gestion garde son barème.
+  assert.deepEqual(baremeDeOption([{ label: "Adult", amount: 1000 }, { label: "Child, 4 to 11", amount: 600, ages: { min: 4, max: 11 } }, { label: "Child under 4", amount: 0, ages: { max: 3 } }]), { bareme: { min: 4, max: 11 }, ambigu: false });
+  assert.deepEqual(baremeDeOption([{ label: "Child 3 to 9, per person", ages: { min: 3, max: 9 } }]).bareme, { min: 3, max: 9 });
+  // Plusieurs lignes d'un même âge : un seul barème.
+  assert.deepEqual(baremeDeOption([{ label: "Child rider", ages: { min: 5, max: 12 } }, { label: "Child passenger", ages: { min: 5, max: 12 } }]).bareme, { min: 5, max: 12 });
+  // Des âges différents : aucun barème, et la génération le dit.
+  assert.deepEqual(baremeDeOption([{ label: "Child rider", ages: { min: 5, max: 12 } }, { label: "Child passenger", ages: { min: 3, max: 12 } }]), { bareme: null, ambigu: true, lignes: 2 });
+  // Pas de ligne enfant (bateau privé) : rien.
+  assert.equal(baremeDeOption([{ label: "1 to 2 people" }]).bareme, null);
+  assert.equal(baremeDeOption(undefined).bareme, null);
+  // Une ligne enfant sans âge : la génération échoue, avec la ligne en cause.
+  assert.throws(() => baremeDeOption([{ label: "Child, 4 to 11", amount: 600 }], "4-islands / join-in-longtail"), /4-islands \/ join-in-longtail : la ligne enfant « Child, 4 to 11 » n'a pas d'âge/);
+  // Le script de génération s'en sert, et le fichier généré porte `enfant` sur les options, plus d'`ages` sur les lignes de prix.
+  const script = lireFichier("docs/gestion/regenerer-produits-site.mjs");
+  assert.match(script, /baremeDeOption\(o\.prices/);
+  for (const p of PRODUITS_SITE) for (const o of p.options) for (const t of o.tarifs || []) assert.equal(t.ages, undefined, `${p.id} / ${o.id}`);
 });
 
 test("Koh Lanta : un enfant de 12 ans compte adulte, un enfant de 3 ans est signalé, des enfants sans âge aussi, comme pour Koh Samui", () => {
@@ -312,27 +334,37 @@ test("Koh Lanta : « Modifier » change l'option d'une demande du carnet, le tar
 
 // ---- Revue de la PR 333 ---------------------------------------------------------------------------------------------------------------------
 const ZTP = "https://zwaldtravelplanner.com/carnet/koh-lanta/";
-test("« Modifier » vers une autre option : l'âge, le tarif, les changements et la réponse suivent le titre du message", () => {
-  const ligne = { marque: "secret", produit_id: "4-islands", produit: "4 Islands", option_id: "private-longtail", option_titre: "Private longtail", date_service: "2026-12-20", adultes: 1, enfants: 1, nom: "Anna", telephone: null, total_estime: null, devise: "THB", page_url: ZTP,
-    message: "Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 1 adult, 1 child (age 12)\nName: Anna" };
-  // Tel que demandé (bateau privé) : aucun barème, l'enfant reste enfant.
-  assert.equal(demandeTarifee(ligne).plusGrands, undefined);
-  // Après « Modifier » vers le join-in : le message dit le nouveau titre, l'identifiant d'option de la demande reste celui d'avant.
-  const texte = texteDemande(ligne, { option_titre: "Join-in longtail" });
+test("« Modifier » vers une autre option : l'âge, le tarif et la réponse suivent le titre du message, « avant » est la demande telle qu'envoyée", () => {
+  const base = { marque: "secret", produit_id: "4-islands", produit: "4 Islands", date_service: "2026-12-20", adultes: 1, enfants: 1, nom: "Anna", telephone: null, total_estime: null, devise: "THB", page_url: ZTP };
+  const privee = { ...base, option_id: "private-longtail", option_titre: "Private longtail", message: "Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 1 adult, 1 child (age 12)\nName: Anna" };
+  const groupe = { ...base, option_id: "join-in-longtail", option_titre: "Join-in longtail", message: "Booking request: 4 Islands – Join-in longtail\nDate: Sun 20 Dec 2026\nGuests: 1 adult, 1 child (age 12)\nName: Anna" };
+  // Tel que demandé (bateau privé) : aucun barème, l'enfant reste enfant ; en join-in, il compte adulte.
+  assert.deepEqual([demandeTarifee(privee).adultes, demandeTarifee(privee).enfants], [1, 1]);
+  assert.deepEqual([demandeTarifee(groupe).adultes, demandeTarifee(groupe).enfants], [2, 0]);
+  // Après « Modifier » du bateau privé vers le join-in : le message dit le nouveau titre, l'identifiant d'option de la demande reste celui d'avant.
+  const texte = texteDemande(privee, { option_titre: "Join-in longtail" });
   assert.match(texte, /^Booking request: 4 Islands – Join-in longtail$/m);
   const lu = ajusterAgesCarnet({ ...lireMessage(texte, AJD), carnet: { produit: "4-islands", option: "private-longtail" } });
   assert.deepEqual([lu.adultes, lu.enfants, lu.plusGrands, lu.plusGrandsMax], [2, 0, 1, 11], "fenêtre de création : l'enfant de 12 ans compte adulte");
-  const table = demandeTarifee(ligne, "Join-in longtail");
-  assert.deepEqual([table.adultes, table.enfants, table.plusGrands], [lu.adultes, lu.enfants, lu.plusGrands], "liste : même résultat");
+  assert.deepEqual([demandeTarifee(privee, "Join-in longtail").adultes, demandeTarifee(privee, "Join-in longtail").enfants], [lu.adultes, lu.enfants], "liste : même résultat");
   assert.equal(resoudreSortie(lu).option.id, "join-in-longtail");
-  // Le tarif suit la même option : adulte pour les deux.
   const offre = offresDuService(lu, texte, { phrase: texte, date: lu.date, adultes: lu.adultes, enfants: lu.enfants }, contexte)[0];
   assert.equal(offre.total, 2 * 1010);
-  // Changements et réponse de confirmation : mêmes personnes, aucun changement de personnes inventé, l'option changée est dite.
-  const final = { date: "2026-12-20", option_titre: "Join-in longtail", adultes: lu.adultes, enfants: lu.enfants, total: offre.total, devise: "THB" };
-  const ch = changements(ligne, final);
-  assert.deepEqual(ch.filter((c) => c.champ === "personnes"), []);
-  assert.ok(ch.some((c) => c.champ === "option"));
+  // Sens 1 : bateau privé vers join-in. Avant (demande telle qu'envoyée, bateau privé) : 1 adulte et 1 enfant ; après (join-in) : 2 adultes.
+  const finalGroupe = { date: "2026-12-20", option_titre: "Join-in longtail", adultes: lu.adultes, enfants: lu.enfants, total: offre.total, devise: "THB" };
+  const ch = changements(privee, finalGroupe);
+  assert.deepEqual(ch.find((c) => c.champ === "personnes"), { champ: "personnes", avant: "1 adult, 1 child", apres: "2 adults" });
+  assert.match(reponseConfirmation(privee, finalGroupe, { aujourdhui: AJD }), /Guests: 2 adults instead of 1 adult, 1 child/);
+  // Sens 2 : join-in vers bateau privé. Avant (demande en join-in) : 2 adultes ; après (bateau privé, l'enfant de 12 ans reste enfant) : 1 adulte et 1 enfant.
+  const texte2 = texteDemande(groupe, { option_titre: "Private longtail" });
+  const lu2 = ajusterAgesCarnet({ ...lireMessage(texte2, AJD), carnet: { produit: "4-islands", option: "join-in-longtail" } });
+  assert.deepEqual([lu2.adultes, lu2.enfants, lu2.plusGrands], [1, 1, undefined], "bateau privé : aucun barème, l'enfant reste enfant");
+  const finalPrive = { date: "2026-12-20", option_titre: "Private longtail", adultes: lu2.adultes, enfants: lu2.enfants, total: 6110, devise: "THB" };
+  assert.deepEqual(changements(groupe, finalPrive).find((c) => c.champ === "personnes"), { champ: "personnes", avant: "2 adults", apres: "1 adult, 1 child" });
+  assert.match(reponseConfirmation(groupe, finalPrive, { aujourdhui: AJD }), /Guests: 1 adult, 1 child instead of 2 adults/);
+  // Sans changement d'option : aucun changement de personnes, ni dans un sens ni dans l'autre.
+  assert.equal(changements(groupe, { ...finalGroupe, option_titre: "Join-in longtail" }).find((c) => c.champ === "personnes"), undefined);
+  assert.equal(changements(privee, { ...finalPrive, adultes: 1, enfants: 1, option_titre: "Private longtail" }).find((c) => c.champ === "personnes"), undefined);
 });
 
 test("une seule recherche des sorties : le carnet d'abord, aucun identifiant du carnet qui soit aussi celui du site", () => {
@@ -359,7 +391,12 @@ test("« Proposer une autre sortie » : le guide de Koh Lanta a sa propre liste,
   const ligne = { page_url: ZTP, marque: "secret", produit_id: "4-islands" };
   assert.deepEqual(autresSorties(ligne).map((p) => p.id), SORTIES_KOH_LANTA.filter((id) => id !== "4-islands"));
   assert.ok(!autresSorties(ligne).some((p) => p.id === "shared-minivan"), "un transfert du site n'est pas une sortie de ce guide");
-  assert.deepEqual(autresSorties({ ...ligne, produit_id: "shared-minivan" }), [], "une sortie du site que ce guide ne propose pas : rien à proposer");
+  // Un identifiant que ni le carnet ni le guide ne connaissent (une sortie que le site n'a pas, un guide futur) : la liste de la marque, comme avant, jamais une liste vide.
+  for (const inconnu of ["koh-talabeng-koh-bubu", "island-day-tour", "shared-minivan", "un-guide-futur"]) {
+    const liste = autresSorties({ ...ligne, produit_id: inconnu });
+    assert.deepEqual(liste.map((p) => p.id), PRODUITS_SITE.filter((p) => p.marque === "secret" && p.id !== inconnu).map((p) => p.id), inconnu);
+    assert.ok(liste.length > 0, inconnu);
+  }
   // Une demande du site Secret (pas du carnet) : toutes les sorties du site, comme avant.
   const site = autresSorties({ ...ligne, page_url: "https://secrettravelandtour.com/tours/4-islands/" });
   assert.ok(site.some((p) => p.id === "shared-minivan") && site.every((p) => PRODUITS_SITE.includes(p)));
@@ -386,4 +423,109 @@ test("groupe d'un bateau privé : l'âge minimum de la sortie dit à partir de q
   assert.equal(joint("2 adults, 1 child (age 3)").avertissement, "age_enfant");
   assert.equal(joint("2 adults, 1 child (age 3)").total, 2 * 1010 + 610);
   assert.equal(joint("2 adults, 1 child (age 2)").avertissement, "");
+});
+
+// ---- Deuxième relecture de la PR 333 -----------------------------------------------------------------------------------------------------
+test("barème de la SORTIE (Koh Samui) : il s'applique sans option résolue, le repli sur les lignes du site exige l'option", () => {
+  // Ang Thong en big boat : deux options, barème 4 à 11 ans pour la sortie. Option inconnue, absente : l'enfant de 12 ans compte adulte quand même.
+  const big = (carnet, option = "") => ajusterAgesCarnet({ ...lireMessage("Booking request: Ang Thong Marine Park by big boat – x\nGuests: 1 adult, 1 child (age 12)", AJD), option, carnet });
+  for (const carnet of [{ produit: "ang-thong-big-boat", option: "inconnue" }, { produit: "ang-thong-big-boat", option: "" }, { produit: "ang-thong-big-boat" }]) {
+    assert.equal(resoudreSortie({ carnet, option: "" }), null, "l'option n'est pas résolue");
+    const d = big(carnet);
+    assert.deepEqual([d.adultes, d.enfants, d.plusGrands, d.plusGrandsMax], [2, 0, 1, 11], JSON.stringify(carnet));
+  }
+  // Sortie du site : sans option résolue, aucun barème (repli sur les lignes enfant de l'option, qui n'existe pas ici).
+  const site = (carnet) => ajusterAgesCarnet({ ...lireMessage("Booking request: 4 Islands – x\nGuests: 1 adult, 1 child (age 12)", AJD), option: "", carnet });
+  for (const carnet of [{ produit: "4-islands", option: "inconnue" }, { produit: "4-islands", option: "" }, { produit: "scuba-diving", option: "" }]) assert.equal(site(carnet).plusGrands, undefined, JSON.stringify(carnet));
+  assert.equal(baremeEnfant(sortieParId("ang-thong-big-boat"), null).max, 11);
+  assert.equal(baremeEnfant(sortieParId("4-islands"), null), null);
+});
+
+test("ligne de la liste sans option_titre ni option_id : le titre de l'option vient de titreOption, comme pour le tarif", () => {
+  // Sortie Samui à une seule option, ligne sans titre ni identifiant d'option : l'enfant de 12 ans compte adulte.
+  const ligne = { page_url: "https://zwaldtravelplanner.com/carnet/koh-samui/", marque: "secret", produit_id: "ang-thong-petit-groupe-speedboat", option_id: null, option_titre: null, adultes: 1, enfants: 1, message: "Demande de réservation : x\nPersonnes : 1 adulte, 1 enfant (12 ans)" };
+  const t = demandeTarifee(ligne);
+  assert.deepEqual([t.adultes, t.enfants, t.plusGrands], [2, 0, 1]);
+  // Big boat (deux options) sans titre ni identifiant : le barème de la sortie s'applique quand même.
+  const big = demandeTarifee({ ...ligne, produit_id: "ang-thong-big-boat" });
+  assert.deepEqual([big.adultes, big.enfants, big.plusGrands], [2, 0, 1]);
+  // Option_titre vide mais identifiant d'option connu (page de Koh Lanta) : titreOption le retrouve par l'identifiant.
+  const lanta = demandeTarifee({ ...ligne, produit_id: "4-islands", option_id: "join-in-longtail", message: "Booking request: 4 Islands – Join-in longtail\nGuests: 1 adult, 1 child (age 12)" });
+  assert.deepEqual([lanta.adultes, lanta.enfants], [2, 0]);
+});
+
+test("récapitulatif de la page du carnet (en français) : la fenêtre lit un message refait des champs, les âges viennent de « Personnes : », l'option « avec-kayak » est reconnue", () => {
+  const recap = "Demande de réservation : Ang Thong en big boat, journée en groupe\nFormule : avec kayak\nDate : 20 décembre 2026\nPersonnes : 2 adultes, 2 enfants (5 ans, 12 ans)\nPrise en charge : Hotel Example\nNom : Anna\nWhatsApp : +41791234567\nRéf : SAM-AB12";
+  assert.deepEqual(agesDuMessage(recap), { adultes: 2, enfants: 2, bebes: 0, ages: [5, 12] });
+  assert.deepEqual(agesDuMessage("Personnes : 1 adulte, 1 enfant (moins d'1 an)"), { adultes: 1, enfants: 0, bebes: 1, ages: [0] });
+  assert.equal(agesDuMessage("Date : x"), null);
+  const ligne = { marque: "secret", produit_id: "ang-thong-big-boat", produit: "Ang Thong en big boat, journée en groupe", option_id: "avec-kayak", option_titre: "avec kayak", date_service: "2026-12-20", adultes: 2, enfants: 2, pickup: "Hotel Example", nom: "Anna", telephone: null, total_estime: null, devise: "THB", page_url: "https://zwaldtravelplanner.com/carnet/koh-samui/", message: recap };
+  const texte = texteDemande(ligne);
+  assert.match(texte, /^Booking request: Ang Thong Marine Park by big boat – avec kayak$/m, "produit du catalogue, option de la demande");
+  assert.match(texte, /^Guests: 2 adults, 2 children \(ages 5 and 12\)$/m);
+  assert.match(texte, /^Pickup: Hotel Example$/m);
+  // Les modifications se posent sur le message refait.
+  assert.match(texteDemande(ligne, { option_titre: "Without kayak", date: "2026-12-22" }), /^Booking request: Ang Thong Marine Park by big boat – Without kayak$/m);
+  // Même résultat que la fenêtre : option par alias, tarif, enfant de 12 ans adulte.
+  const lu = ajusterAgesCarnet({ ...lireMessage(texte, AJD), carnet: { produit: "ang-thong-big-boat", option: "avec-kayak" } });
+  assert.equal(resoudreSortie(lu).option.id, "with-kayak");
+  assert.deepEqual([lu.adultes, lu.enfants, lu.plusGrands], [3, 1, 1]);
+  assert.deepEqual([demandeTarifee(ligne).adultes, demandeTarifee(ligne).enfants], [3, 1]);
+  assert.equal(resoudreSortie({ carnet: { produit: "ang-thong-big-boat", option: "sans-kayak" }, option: "" }).option.id, "without-kayak");
+  assert.equal(resoudreSortie({ carnet: { produit: "ang-thong-big-boat", option: "" }, option: "sans kayak" }).option.id, "without-kayak");
+  assert.equal(optionDuSite({ ...lu }).option.id, "with-kayak");
+  // Une demande qui n'est pas du carnet garde son message : jamais refait.
+  const site = { ...ligne, page_url: "https://secrettravelandtour.com/tours/4-islands/", message: "Booking request: 4 Islands – Join-in longtail\nGuests: 2 adults" };
+  assert.equal(texteDemande(site), site.message);
+});
+
+test("chemins qui ne reçoivent que du texte (Assistant, message collé) : aucun contexte du carnet, donc ni barème d'âge ni tarif de la sortie, et le test le documente", () => {
+  // Le message que la page envoie à WhatsApp ne porte ni l'adresse de la page, ni l'identifiant de la sortie, ni la marque du guide : seulement le nom français de la sortie et
+  // « Réf : SAM-… » (préfixe réglable). Un chemin qui ne reçoit que ce texte ne peut pas savoir qu'il vient du carnet.
+  const recap = "Demande de réservation : Ang Thong en big boat, journée en groupe\nFormule : avec kayak\nPersonnes : 1 adulte, 1 enfant (12 ans)\nRéf : SAM-AB12";
+  const lu = lireMessage(recap, AJD);
+  assert.equal(lu.libre, true, "lu comme un message libre");
+  assert.equal(lu.carnet, undefined);
+  assert.equal(optionDuSite(lu), null);
+  assert.ok(!offresDuService(lu, recap, { phrase: recap, date: "", adultes: 1, enfants: 1 }, contexte).some((o) => o.ligneSite), "aucun tarif de la sortie choisi d'après le texte");
+  assert.equal(ajusterAgesCarnet({ ...lu, ages: [12], enfants: 1, adultes: 1 }).plusGrands, undefined, "aucune conversion adulte sans contexte");
+  // Le même enfant, quand le contexte existe (la ligne de la table, qui porte la page et l'identifiant) : compté adulte.
+  const ligne = { page_url: ZTP, marque: "secret", produit_id: "ang-thong-big-boat", option_id: "avec-kayak", option_titre: "avec kayak", adultes: 1, enfants: 1, message: recap };
+  assert.deepEqual([demandeTarifee(ligne).adultes, demandeTarifee(ligne).enfants], [2, 0]);
+  // Et une demande ordinaire du site Secret, lue en texte : jamais ajustée.
+  const ordinaire = lireMessage("Booking request: 4 Islands – Join-in longtail\nGuests: 1 adult, 1 child (age 12)", AJD);
+  assert.equal(ajusterAgesCarnet(ordinaire).plusGrands, undefined);
+  assert.equal(resoudreProduit(ordinaire), null);
+});
+
+test("une seule définition : ligne enfant, normalisation du texte, recherche d'une sortie par identifiant", async () => {
+  const code = (f) => lireFichier(`src/gestion/js/${f}`).split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert.doesNotMatch(code("demande-calc.mjs"), /const LIGNE_ENFANT\s*=|const cleTexte\s*=/, "demande-calc.mjs importe LIGNE_ENFANT et cleTexte de carnet-ages.mjs");
+  assert.doesNotMatch(code("carnet-ages.mjs"), /\/\^child\\b\/i\.test/, "carnet-ages.mjs ne redéfinit pas la ligne enfant");
+  assert.equal((code("carnet-ages.mjs").match(/\^child\\b/g) || []).length, 1);
+  assert.equal(cleTexte("  Join-in  Longtail & Co "), "join in longtail and co");
+  assert.equal(LIGNE_ENFANT.test("Child, 4 to 11"), true);
+  assert.equal(LIGNE_ENFANT.test("Children's seat"), false);
+  const bandeau = await import("../src/gestion/js/bandeau-calc.mjs");
+  const liste = await import("../src/gestion/js/demandes-site-calc.mjs");
+  assert.equal(bandeau.produitSite, sortieParId);
+  assert.equal(liste.produitSite, sortieParId);
+  assert.equal(bandeau.produitSite("4-islands").id, "4-islands");
+});
+
+test("identifiants des sorties : aucune sortie du carnet (Koh Samui, Ao Nang) ni du guide de Koh Lanta n'entre en collision avec un identifiant du site Secret ou du carnet", () => {
+  const idsSite = new Map();
+  for (const p of PRODUITS_SITE) idsSite.set(p.id, (idsSite.get(p.id) || 0) + 1);
+  for (const [id, n] of idsSite) assert.equal(n, 1, `${id} : identifiant du site en double`);
+  const idsCarnet = PRODUITS_CARNET.map((p) => p.id);
+  assert.equal(new Set(idsCarnet).size, idsCarnet.length, "identifiant du carnet en double");
+  for (const p of PRODUITS_CARNET) assert.ok(!idsSite.has(p.id), `${p.id} (${p.guide}) : aussi un identifiant du site Secret`);
+  assert.ok(PRODUITS_CARNET.some((p) => p.guide === "koh-samui") && PRODUITS_CARNET.some((p) => p.guide === "aonang"));
+  // Le guide de Koh Lanta n'a que des identifiants du site, aucun du carnet.
+  for (const id of SORTIES_KOH_LANTA) {
+    assert.ok(idsSite.has(id), `${id} : absent du site`);
+    assert.ok(!idsCarnet.includes(id), `${id} : aussi un identifiant du carnet`);
+    assert.equal(sortieParId(id).guide, undefined, `${id} : se résout vers le site`);
+  }
+  for (const p of PRODUITS_CARNET) assert.equal(sortieParId(p.id), p, `${p.id} : se résout vers le carnet`);
 });
