@@ -49,6 +49,9 @@ export const USAGES = [
   { cle: "avis", pour: "client", libelle: N_("Demande d'avis"), modes: ["excursions", "taxi"] },
   { cle: "meteo", pour: "client", libelle: N_("Météo, report ou annulation"), modes: ["excursions", "taxi"] },
   { cle: "reponse", pour: "client", libelle: N_("Réponse à une demande"), modes: ["excursions", "taxi"] },
+  // 23.11.2026 : le texte que l'Assistant reprend mot pour mot quand il donne un prix (supabase/functions/agent/modele-prix.js). Il passe
+  // avant « Réponse à une demande » et avant la voix. Chaque entreprise a les siens.
+  { cle: "prix", pour: "client", libelle: N_("Réponse de prix (Assistant)"), modes: ["sur_mesure", "excursions", "taxi"] },
   { cle: "envoi_facture", pour: "client", libelle: N_("Envoi de la facture (message)"), modes: ["sur_mesure", "excursions"] },
   { cle: "objet_facture", pour: "client", libelle: N_("Envoi de la facture (objet de l'e-mail)"), modes: ["sur_mesure", "excursions"] },
   { cle: "renvoi_facture", pour: "client", libelle: N_("Renvoi de la facture corrigée (message)"), modes: ["sur_mesure", "excursions"] },
@@ -173,7 +176,7 @@ function formulaireMessage(m, apres) {
     h("div", { class: "grille-form" }, champ(tr("Titre"), titre), champ(tr("Usage"), cle, tr("Quand l'outil propose ce message. Le même usage dans plusieurs langues : le bon est proposé selon la langue.")), champ(tr("Langue"), langue)),
     h("label", { class: "case", for: "m-actif" }, actif, tr("Proposer ce message")),
     h("p", { class: "aide" }, tr("Décoché, ni ce message ni le modèle de départ du même usage ne sont proposés : l'usage est désactivé dans cette langue.")),
-    champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Message avec le voucher : {pickup} {jour} {paiement} {ENTREPRISE}. Envoi d'une facture : {bonjour} {numero} {total}")),
+    champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Message avec le voucher : {pickup} {jour} {paiement} {ENTREPRISE}. Envoi d'une facture : {bonjour} {numero} {total}. Réponse de prix : {total} {prenom}, l'Assistant reprend le reste mot pour mot.")),
     h("div", { class: "actions" }, m.id ? h("button", { class: "danger", type: "button", onclick: async () => {
       // Supprimer le seul message d'un usage fait revenir le modèle de départ : on le dit, et on renvoie vers « Proposer ce message ».
       const defautRevient = defautsEntreprise().some((d) => d.cle === m.cle && d.langue === m.langue && !messagesTypes().some((x) => x.id !== m.id && x.cle === m.cle && x.langue === m.langue));

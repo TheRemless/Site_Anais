@@ -131,6 +131,13 @@ const AVERTISSEMENTS = {
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
   vol_illisible: N_("Un numéro de vol proposé n'a pas la forme d'un numéro de vol : il a été laissé vide."),
 };
+// Modèle de réponse de prix (23.11.2026) : la valeur est le titre du modèle, ou la raison donnée par l'Assistant quand il ne l'a pas suivi.
+const AVERTISSEMENTS_PRIX = {
+  modele_prix: N_("Modèle de prix « {v} » repris mot pour mot."),
+  modele_prix_remplace: N_("La réponse s'écartait du modèle de prix « {v} » : le modèle rempli la remplace."),
+  hors_modele_prix: N_("Modèle de prix non suivi : {v}"),
+  modele_prix_a_choisir: N_("La réponse donne un prix sans le modèle « {v} » : vérifiez si le modèle convenait."),
+};
 function texteAvertissement(a) {
   const [code, valeur] = String(a).split(/:(.*)/s);
   if (code === "montant_non_source") return tr("Montant sans source dans la conversation : {v}. À vérifier.", { v: valeur });
@@ -143,6 +150,7 @@ function texteAvertissement(a) {
   if (code === "montant_egal_net") return valeur ? tr("Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.", { v: valeur }) : tr("Un montant de la réponse est égal à un net interne. Vérifiez que c'est bien un prix de vente.");
   if (code === "montant_illisible") return tr("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.");
   if (code === "controle_impossible") return tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.");
+  if (AVERTISSEMENTS_PRIX[code]) return tr(AVERTISSEMENTS_PRIX[code], { v: valeur });
   if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }

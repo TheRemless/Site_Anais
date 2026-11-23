@@ -13,7 +13,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
-import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef } from "../agent/outils.js";
+import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef, prixEcritParNani } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { lireApprentissages } from "../agent/apprentissages.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
@@ -332,7 +332,7 @@ async function preparer(
     const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.erreur ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? "partenaire" : null, prixRepris: prixDeVentePermis(conv) });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
-    const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+    const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), contact: partenaire ? "partenaire" : typeof conv.type_contact === "string" ? conv.type_contact : "" });
     // Garde-fou de la PR 278 : un montant égal à un net d'un service de la demande en cours (rendu par un outil, ou du dossier relié à la
     // conversation) et à aucun prix de vente est signalé « montant_interne » et bloque la copie dans l'écran. Le net d'un autre service du
     // catalogue n'est qu'un avertissement (montant_egal_net, faux blocage du 21.11.2026). Les nets restent ici, dans la fonction : ils ne
@@ -350,6 +350,8 @@ async function preparer(
     // Une conversation de client : les montants écrits par Nani (messages sortants, app ou Gestion) sont des prix de vente donnés au client
     // (21.11.2026). Jamais ceux du client, jamais chez un partenaire ou un apporteur (conversationDeClient).
     for (const n of montantsSortants(messages, conv)) memo.nani.add(n);
+    // Un prix déjà écrit par Nani, client confirmé ou non : le modèle de réponse de prix ne s'impose plus (agent/modele-prix.js).
+    if (prixEcritParNani(messages)) memo.prixDonne = true;
     const r = await tourner({
       anthropic,
       modele: Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT,

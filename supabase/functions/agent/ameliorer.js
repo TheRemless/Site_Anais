@@ -9,6 +9,7 @@
 // Règles tenues ici : seules les administratrices (droit reglages.ecrire ; catalogue.ecrire pour le catalogue) reçoivent une carte ; un prix
 // vient d'un montant tapé par la personne ; aucune coordonnée de paiement n'est lue ; une demande de code ne part pas d'une conversation qui
 // contient une pièce jointe ; son texte (public) ne cite ni client, ni prestataire, ni montant.
+import { voixCopieModele } from "./modele-prix.js";
 import { controlerTexte, texteDemande, TITRE_MAX, TEXTE_MAX } from "../ameliorations/calc.js";
 import { entrepriseActive } from "./unifie.js";
 
@@ -103,7 +104,7 @@ export function lireReglages({ sujet = "tout" } = {}, ctx = {}) {
     out.messages = (Array.isArray(r.messages) ? r.messages : [])
       .filter((m) => m && m.pour !== "partenaire")
       .slice(0, 60)
-      .map((m) => ({ id: String(m.id || ""), titre: texte(m.titre, 120), langue: m.langue || "", corps: bloc(m.corps, 1200) }));
+      .map((m) => ({ id: String(m.id || ""), titre: texte(m.titre, 120), usage: m.cle || "", langue: m.langue || "", corps: bloc(m.corps, 1200) }));
   if (sujet === "tout" || sujet === "reglages") out.reglages = Object.fromEntries(Object.entries(REGLAGES_PERMIS).map(([k, d]) => [k, { libelle: d.nom, valeur: d.type === "module" ? moduleTexte(lire(r, k)) : (valeurReglage(r, k) ?? "") }]));
   return { resultat: { ...out, note: "Le catalogue (libellés, prix de vente, mise en vente) se lit avec chercher_catalogue ; les références P-… servent à proposer_reglage." } };
 }
@@ -146,6 +147,8 @@ export async function proposerReglage(e, ctx, memo = {}) {
     if (!VOIX[e.champ]) return refuse("champ_inconnu", "Champs possibles : fr, en, lieu.");
     const valeur = e.champ === "lieu" ? texte(e.valeur, 120) : bloc(e.valeur, 3000);
     if (!valeur) return refuse("valeur_invalide");
+    // Une voix qui recopie le modèle de réponse de prix (23.11.2026) : le modèle s'applique déjà tout seul (modele-prix.js).
+    if (e.champ !== "lieu" && voixCopieModele(valeur, r)) return refuse("modele_dans_voix", "Le modèle de réponse de prix s'applique déjà tout seul à chaque prix demandé : ne le recopie pas dans la voix.");
     const avant = String((r.assistant_voix || {})[e.champ] || "");
     if (avant === valeur) return refuse("rien_ne_change");
     return { genre: "reglage", ...base, donnees: { sujet: "voix", champ: e.champ, nom: VOIX[e.champ], avant, valeur, raison: base.raison } };

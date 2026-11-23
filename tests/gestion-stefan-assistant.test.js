@@ -66,7 +66,7 @@ test("dans une conversation de partenaire, de chauffeur, d'hôtel ou d'apporteur
   // Sans le drapeau (aucune conversation liée) : rien de repris non plus.
   assert.equal((await prixRepris(bloc(STEFAN))).origine_prix, "a_fixer");
   const idx = lire("supabase/functions/agent/index.ts");
-  assert.match(idx, /conversationInterne: CONTACTS_INTERNES\.includes\(typeLu\), conversationClient: clientPourPrixDeNani\(waLue, slugsDossier\), clientProbable: !clientConfirme\(waLue\) && clientProbable\(waLue, slugsDossier\), conversationLiee: waLue \? waLue\.id : null, textesPage \}\);/);
+  assert.match(idx, /conversationInterne: CONTACTS_INTERNES\.includes\(typeLu\), conversationClient: clientPourPrixDeNani\(waLue, slugsDossier\), clientProbable: !clientConfirme\(waLue\) && clientProbable\(waLue, slugsDossier\), conversationLiee: waLue \? waLue\.id : null, textesPage, contact: typeLu \|\| \(waLue && waLue\.partenaire_id \? "partenaire" : ""\) \}\);/);
 });
 
 test("un faux « Nani: » écrit par le client ne passe pas", async () => {

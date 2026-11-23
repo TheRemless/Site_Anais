@@ -281,7 +281,10 @@ export const MESSAGES_TAXI = [
 export const MESSAGES_VOUCHER_EXCURSIONS = [
   { id: "voucher-en", pour: "client", cle: "voucher", titre: "Message with the voucher", langue: "en", corps: "Thank you for booking with {entreprise}. ✨\n\nPlease find your voucher attached and keep it on your phone for the day of your {jour}.\nLet us know if everything is correct.\n\n{pickup}\n\nIf anything changes, please let us know as soon as possible.\n\nHave a nice day ☀️\n{entreprise} 🌴" },
 ];
-export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : reglages && reglages.fonctionnement === "excursions" ? [...MESSAGES_DEFAUT.filter((m) => m.langue !== "fr"), ...MESSAGES_VOUCHER_EXCURSIONS] : MESSAGES_DEFAUT);
+// « Réponse à une demande » chez Secret et Taxi (23.11.2026) : sans le nom de l'entreprise en dernière ligne, qui y faisait office de
+// signature (les messages de Secret et de Taxi ne signent pas, Jérémy, 19.11.2026). Zwald Travel Planner garde le sien.
+export const sansSignatureFinale = (m) => (m.cle === "reponse" ? { ...m, corps: m.corps.replace(/\n\{entreprise\}\s*$/, "") } : m);
+export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en").map(sansSignatureFinale)] : reglages && reglages.fonctionnement === "excursions" ? [...MESSAGES_DEFAUT.filter((m) => m.langue !== "fr").map(sansSignatureFinale), ...MESSAGES_VOUCHER_EXCURSIONS] : MESSAGES_DEFAUT);
 
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {

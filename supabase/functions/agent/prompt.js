@@ -1,6 +1,7 @@
 // Agent de Gestion : consignes, paramètres de l'appel, limites et coût. Logique pure, sans dépendance (fonction Supabase et tests node).
 import { OUTILS, retirerSignature } from "./outils.js";
 import { reglesReponse } from "./ameliorer.js";
+import { consignesModelesPrix } from "./modele-prix.js";
 import { PLAFOND_DEFAUT_USD } from "../assistant/budget.js";
 import { MOT_INTERNE } from "./apprendre.js";
 
@@ -100,11 +101,17 @@ const VOIX = {
     en: `An ongoing WhatsApp chat: natural, warm and short, in plain English. "Hello Firstname," on the first message only. Concrete sentences, one emoji per paragraph at most. No tourist superlatives, no sales pressure. When something is missing, ask for it simply. No sign-off at all: no name, no company name, no "Have a nice day" at the bottom.`,
   },
 };
+// Une voix enregistrée qui finit par une formule signée (« puis « Belle journée, {entreprise} » », « then "Have a nice day, {entreprise}" ») :
+// chez Secret et Taxi, les messages ne signent pas (Jérémy, 19.11.2026). La formule est retirée avant d'entrer dans les consignes, sans
+// toucher au reste de la voix. Seule une formule de fin (en fin de ligne, point final admis) qui cite {entreprise} et aucune autre variable
+// est une signature sûre (relecture de la PR 342).
+const FORMULE_SIGNEE = /,?[ \t]*(?:puis|then)[ \t]*[«"“][ \t]*[^»"”\n{}]{0,60}\{entreprise\}[^»"”\n{}]{0,8}[»"”](?=[ \t]*\.?[ \t]*$)/gim;
+export const voixSansSignature = (t) => String(t).replace(FORMULE_SIGNEE, "");
 export function voixPour(reglages, entreprise, prenom) {
   const a = (reglages && reglages.assistant_voix) || {};
   const s = signe(reglages);
   const base = s ? VOIX.signe : VOIX.conversation;
-  const remplir = (t) => String(t).replaceAll("{entreprise}", entreprise || "").replaceAll("{prenom}", prenom || "");
+  const remplir = (t) => (s ? String(t) : voixSansSignature(t)).replaceAll("{entreprise}", entreprise || "").replaceAll("{prenom}", prenom || "");
   return {
     fr: remplir((typeof a.fr === "string" && a.fr.trim()) || base.fr).slice(0, 3000),
     en: remplir((typeof a.en === "string" && a.en.trim()) || base.en).slice(0, 3000),
@@ -246,7 +253,7 @@ ${reglesPar
 - Règles de l'entreprise, à appliquer chaque fois qu'elles concernent la réponse (proposer ou confirmer ce dont elles parlent). Elles l'emportent sur la voix :
 ${regles.map((l) => `  - ${l}`).join("\n")}`
         : ""
-  }
+  }${consignesModelesPrix(reglages, { entreprise, qui })}
 - Voix en français :
 ${voix.fr}
 - Voix en anglais :
