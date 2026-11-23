@@ -92,13 +92,13 @@
   {%- endif %}
   {%- if o.parc %}
   {%- if o.parc.regle %}
-  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant ({{ o.parc.regle }}), gratuit avant {{ o.parc.enfantMin }} ans. À payer sur place, en espèces, au parc (tarif étranger).{% if o.parc.confirmer %} Montants à confirmer au moment de la réservation.{% endif %}</p>
+  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant ({{ o.parc.regle }}), gratuit avant {{ o.parc.enfantMin }} ans. {% if o.parc.fixe %}Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces.{% else %}À payer sur place, en espèces, au parc (tarif étranger).{% endif %}</p>
   {%- else %}
-  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant. À payer sur place, en espèces, au parc.{% if o.parc.confirmer %} Montants à confirmer au moment de la réservation.{% endif %}</p>
+  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant. {% if o.parc.fixe %}Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces.{% else %}À payer sur place, en espèces, au parc.{% endif %}</p>
   {%- endif %}
   {%- endif %}
   {%- if not o.parc and o.variantes and o.variantes[0].parc %}
-  <p class="cg-droits">Entrée du parc national, en plus du prix{% for v in o.variantes %}{% if loop.first %} : {% else %}{{ ' ; ' }}{% endif %}{{ v.parcLabel or v.label }}, {{ thb(v.parc.adulte) }} par adulte et {{ thb(v.parc.enfant) }} par enfant{% endfor %} (enfant {{ o.variantes[0].parc.regle }}, gratuit avant {{ o.variantes[0].parc.enfantMin }} ans). À payer sur place, en espèces, au parc. Montants à confirmer au moment de la réservation.</p>
+  <p class="cg-droits">Entrée du parc national, en plus du prix{% for v in o.variantes %}{% if loop.first %} : {% else %}{{ ' ; ' }}{% endif %}{{ v.parcLabel or v.label }}, {{ thb(v.parc.adulte) }} par adulte et {{ thb(v.parc.enfant) }} par enfant{% endfor %} (enfant {{ o.variantes[0].parc.regle }}, gratuit avant {{ o.variantes[0].parc.enfantMin }} ans). Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces.</p>
   {%- endif %}
   {%- if o.extras %}
   <p class="cg-droits">{% for x in o.extras %}{{ x.label }} : {{ thb(x.prix) }}{% if x.unite == "personne" %} par personne{% elif x.unite == "bateau" %} par bateau{% endif %} (en option){% if not loop.last %} ; {% endif %}{% endfor %}.</p>

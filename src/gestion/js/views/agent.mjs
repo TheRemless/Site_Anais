@@ -846,6 +846,29 @@ export async function vueAgent(idOuvert = "") {
   const resultats = new Map();
   // Le motif d'une carte qui n'a pas pu être enregistrée d'un geste, avec l'entreprise où la passer s'il y a lieu.
   const motifs = new Map();
+  // Cartes en cours de validation (INV-2026-046 et 047, 23.11.2026 : un second tap pendant les 4 secondes d'enregistrement a créé un second
+  // dossier). Un second geste sur la même carte ne relance rien ; la base, elle, ne laisse prendre une carte qu'une fois (migration 120).
+  const enValidation = new Set();
+  // Cartes qui ont déjà enregistré quelque chose (relecture de la PR 337) : notées dès la création, dans l'écran et dans l'onglet
+  // (sessionStorage), avant même que la base les dise validées. Un nouveau tap ne refait jamais rien : il ne fait que noter la carte validée.
+  const cartesFaites = new Set();
+  const CLE_FAITE = (id) => `gestion-carte-faite:${id}`;
+  const faite = (id) => {
+    if (cartesFaites.has(id)) return true;
+    try {
+      return !!sessionStorage.getItem(CLE_FAITE(id));
+    } catch {
+      return false;
+    }
+  };
+  const noterFaite = (id) => {
+    cartesFaites.add(id);
+    try {
+      sessionStorage.setItem(CLE_FAITE(id), "1");
+    } catch {
+      // stockage refusé : la mémoire de l'écran suffit pour cette visite
+    }
+  };
   // Espace unifié : l'entreprise d'un service corrigée d'un tap avant de valider (carte -> { index du service: { id, slug } }).
   const corrections = new Map();
   // Le devis calculé par Nani sur cette carte (devis-carte.mjs) passe aussi : « Créer le dossier » reprend ses véhicules et son total.
@@ -1060,11 +1083,26 @@ export async function vueAgent(idOuvert = "") {
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
             action && action.bloque ? h("p", { class: "aide pleine-largeur" }, tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
-            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque, onclick: (e) => action.faire(e.currentTarget) }, action.libelle), action) : null,
-            action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
-            h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
+            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque || enValidation.has(c.id), "aria-busy": enValidation.has(c.id) ? "true" : null, onclick: (e) => agir(e.currentTarget, action) }, enValidation.has(c.id) ? tr("Création…") : action.libelle), action) : null,
+            action && action.puis ? h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && action.puis.faire() }, action.puis.libelle) : null,
+            h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && decider(c, "ecartee") }, tr("Écarter"))
           )
     );
+  }
+
+  // Le bouton principal d'une carte : désactivé dès le geste et jusqu'à la fin (un double tap ne lance qu'une action).
+  async function agir(bouton, action) {
+    if (bouton.disabled || bouton.getAttribute("aria-busy") === "true") return;
+    bouton.disabled = true;
+    bouton.setAttribute("aria-busy", "true");
+    try {
+      await action.faire(bouton);
+    } finally {
+      if (bouton.isConnected) {
+        bouton.disabled = !!action.bloque;
+        bouton.removeAttribute("aria-busy");
+      }
+    }
   }
 
   function lierBouton(bouton, action) {
@@ -1272,7 +1310,38 @@ export async function vueAgent(idOuvert = "") {
   // ---- Valider d'un geste ---------------------------------------------------------------------------------------------------------
   // Chaque genre passe par le code habituel de l'outil, sans le montrer ; un motif d'arrêt reste sur la carte. Rend true si c'est enregistré.
   async function valider(c, { seule = true } = {}) {
+    if (enValidation.has(c.id)) return false;
+    enValidation.add(c.id);
+    try {
+      // Déjà enregistrée (la base n'a pas pu la noter validée) : rien n'est recréé, la carte est seulement notée validée.
+      if (faite(c.id)) return await marquerValidee(c);
+      return await validerUneFois(c, { seule });
+    } finally {
+      enValidation.delete(c.id);
+      // La carte redessinée pendant l'enregistrement (motif) avait son bouton en attente : elle se redessine, bouton rendu.
+      const actuelle = fil.cartes.find((x) => x.id === c.id);
+      if (actuelle && actuelle.statut === "proposee") redessiner(actuelle);
+    }
+  }
+  async function validerUneFois(c, { seule }) {
     motifs.delete(c.id);
+    // La carte se prend dans la base avant tout enregistrement : prise ailleurs (autre onglet, autre appareil) ou déjà validée, rien n'est créé.
+    let prise = false;
+    try {
+      prise = await etat.store.agentPrendreCarte(c.id);
+    } catch (err) {
+      motifs.set(c.id, { motif: err.message, entreprise: null });
+      redessiner(c);
+      if (seule) toast(err.message, true);
+      return false;
+    }
+    if (!prise) {
+      const motif = tr("Cette carte est déjà en cours de validation, ou déjà validée : rien n'a été créé une seconde fois.");
+      motifs.set(c.id, { motif, entreprise: null });
+      redessiner(c);
+      if (seule) toast(motif, true);
+      return false;
+    }
     let r = { ok: false, motif: "" };
     // Un numéro de vol lu sur une pièce jointe (la fonction ne peut pas le relire) se vérifie dans la fenêtre : jamais validé d'un geste.
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
@@ -1305,6 +1374,8 @@ export async function vueAgent(idOuvert = "") {
       r = { ok: false, motif: err.message };
     }
     if (!r || !r.ok) {
+      // Rien n'est enregistré : la carte se rend, elle peut être validée de nouveau.
+      await etat.store.agentRendreCarte(c.id).catch((err) => console.error("agent : rendre la carte", err));
       motifs.set(c.id, { motif: (r && r.motif) || tr("Rien n'a été enregistré."), entreprise: (r && r.entreprise) || null });
       redessiner(c);
       if (seule) toast((r && r.motif) || tr("Rien n'a été enregistré."), true);
@@ -1314,9 +1385,24 @@ export async function vueAgent(idOuvert = "") {
     return true;
   }
   // Une carte enregistrée : la conversation se relie au dossier et les corrections sont gardées (apresValidation), puis la carte est validée.
+  // La carte est notée validée dès que quelque chose est enregistré, avant les suites (WhatsApp, demandes, apprentissages) : une carte qui
+  // a produit un dossier ne se reprend plus, même si une suite échoue ou si sa prise expire (relecture de la PR 337). Si la base refuse,
+  // l'écran et l'onglet s'en souviennent (noterFaite) et un nouveau tap ne fait que réessayer de la noter.
+  async function marquerValidee(c) {
+    noterFaite(c.id);
+    try {
+      await decider(c, "validee");
+      return true;
+    } catch (err) {
+      console.error("agent : noter la carte validée", err);
+      toast(tr("Enregistré, mais la carte n'a pas pu être notée validée : touchez de nouveau le bouton pour la noter, rien ne sera recréé."), true);
+      return false;
+    }
+  }
   async function noterReussite(c, r) {
     const dossier = r.dossier || (r.fait && r.fait.dossier) || null;
     if (dossier) resultats.set(c.id, { dossier, course: r.fait || null, dossiers: r.dossiers || null });
+    await marquerValidee(c);
     // Le contact WhatsApp lié, relu en base (revue PR 298) : l'apporteur ne se pose que s'il est toujours de type « apporteur ».
     const typeLie = await typeContactLie();
     if (dossier && c.genre === "dossier" && !estCourse(c) && c.donnees && c.donnees.apporteur) {
@@ -1341,7 +1427,9 @@ export async function vueAgent(idOuvert = "") {
         }
       }
     } else await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res, ...(typeof r.notesAvant === "string" ? { notesAvant: r.notesAvant } : {}) } : null, ecran: Array.isArray(r.ecran) ? r.ecran : null, typeLie });
-    await decider(c, "validee");
+    // Les suites faites : la carte se redessine avec ce qu'elles ont ajouté (Booking confirmation d'une course).
+    const maj = fil.cartes.find((x) => x.id === c.id);
+    if (maj) redessiner(maj);
   }
 
   // Le type du contact de la conversation WhatsApp liée, relu en base : null sans liaison, illisible ou sans type.
@@ -1387,18 +1475,38 @@ export async function vueAgent(idOuvert = "") {
   }
 
   // ---- Vérifier avant : la fenêtre habituelle, affichée ------------------------------------------------------------------------
+  // « Vérifier avant » (relecture de la PR 337) : la carte se prend aussi à l'ouverture de la fenêtre, comme d'un geste. Prise ailleurs (autre
+  // onglet, autre appareil, validation en cours) ou déjà enregistrée : la fenêtre ne s'ouvre pas. Fermée sans rien créer : la carte se rend.
+  async function prendrePourFenetre(c) {
+    if (enValidation.has(c.id)) return false;
+    const refus = (motif) => (motifs.set(c.id, { motif, entreprise: null }), redessiner(c), toast(motif, true), false);
+    if (faite(c.id)) return refus(tr("Cette carte a déjà créé son dossier : rien n'est recréé."));
+    try {
+      if (await etat.store.agentPrendreCarte(c.id)) return true;
+    } catch (err) {
+      return refus(err.message);
+    }
+    return refus(tr("Cette carte est déjà en cours de validation (autre onglet ou autre appareil) : la fenêtre ne s'ouvre pas, rien n'est créé deux fois."));
+  }
+  // À la fermeture : rendue si rien n'a été créé (la création note la carte, noterFaite, avant la fin de la fenêtre).
+  const rendreSiRien = (c) => () => setTimeout(() => {
+    if (!faite(c.id)) etat.store.agentRendreCarte(c.id).catch((err) => console.error("agent : rendre la carte", err));
+  }, 0);
   async function ouvrirDossier(c) {
     // Migration 72 : même accord qu'à la validation d'un geste avant un second dossier pour ce client.
     if (!(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) return;
+    if (!(await prendrePourFenetre(c))) return;
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     // `services` : ce que l'écran a fait de chaque service (prix tapé à la place de celui du catalogue), pour les apprentissages.
-    (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }) });
+    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }), ferme: rendreSiRien(c) });
+    if (!ouverte) rendreSiRien(c)();
   }
   async function ouvrirCourse(c) {
     // Même règle que la validation d'un geste (et que l'ancien écran) : une course depuis une confirmation se crée par une administratrice.
     if (!confirmationPermise()) return toast(tr("Une course depuis une confirmation se crée par une administratrice."), true);
-    (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { surCree: (fait) => noterReussite(c, { ok: true, fait }) });
+    if (!(await prendrePourFenetre(c))) return;
+    (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { surCree: (fait) => noterReussite(c, { ok: true, fait }), ferme: rendreSiRien(c) });
   }
   function ouvrirReservation(c) {
     return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {

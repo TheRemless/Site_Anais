@@ -6,11 +6,11 @@ import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-cal
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
-import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
+import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, typeTransfert, valeursFigees } from "../operations-calc.mjs";
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
 import { siegesLus, siegesTotal, siegesChoisis, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
-import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, bebesDemandes, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
 import { venteDuTarif } from "../demande-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
@@ -24,7 +24,7 @@ import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, 
 import { prestataires } from "../apporteurs-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
-import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
+import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier, raisonsNonAlignees } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire } from "./prestataire.mjs";
@@ -143,11 +143,30 @@ async function alignerFacture(r, ecart, apres) {
     // Une ligne enfant ajoutée à la facture devient une ligne de la réservation, et son prix entre dans le montant vendu.
     const patch = { ...(valeurs.details ? { details: valeurs.details } : {}), ...(suivi.montantVente !== null ? { montant_vente: suivi.montantVente } : {}) };
     if (Object.keys(patch).length) await modifier("reservations", r.id, patch);
-    toast(tr("Facture alignée sur la réservation."));
+    // « Facture alignée » seulement si tout a suivi : sinon, ce qui reste et pourquoi (23.11.2026, un prix resté à 2 850 sans un mot).
+    const non = raisonsNonAlignees({ nonAlignes: suivi.nonAlignes, reste: suivi.resteFacture, lignes: suivi.lignesService, raisonEnfant: suivi.raisonEnfant });
+    if (non.ecarts.length || non.raisons.length) nonAligne(non, { partiel: suivi.factureChangee, documentId: suivi.documentId });
+    else toast(tr("Facture alignée sur la réservation."));
     apres();
   } catch (err) {
     toast(tr("Alignement impossible : {message}", { message: err.message }), true);
   }
+}
+
+// Fenêtre « ce qui n'a pas suivi » : les écarts qui restent, pourquoi, et un lien vers la facture pour les corriger.
+function nonAligne({ ecarts, raisons }, { partiel, documentId }) {
+  const fermer = modal(
+    partiel ? tr("Facture alignée en partie") : tr("La facture n'a pas changé"),
+    h(
+      "div",
+      { class: "modal-corps", role: "alert" },
+      h("p", null, partiel ? tr("Ces points restent différents entre la réservation et la facture.") : tr("Rien n'a pu être reporté sur la facture. Ces points restent différents.")),
+      ecarts.length ? h("ul", null, ecarts.map((x) => h("li", null, x))) : null,
+      raisons.map((x) => h("p", null, x)),
+      h("div", { class: "actions colonne" }, documentId && peut("documents.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => (fermer(), naviguer(`#/doc/${documentId}`)) }, tr("Ouvrir la facture")) : null, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Fermer")))
+    ),
+    { protege: false }
+  );
 }
 
 // Remet la réservation d'après les lignes de la facture : date, adultes et enfants (les bébés restent), montant vendu.
@@ -349,6 +368,18 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   partenaire.value = r.partenaire_id || "";
   const date = h("input", { id: "r-date", type: "date", value: r.date_service || "" });
   const heure = h("input", { id: "r-heure", type: "time", value: r.heure_pickup || "" });
+  // Trajet du catalogue sans heure de pickup (contre-relecture de la PR 337) : le voucher imprime l'heure de départ à part, jamais comme pickup.
+  const departTrajetR = (r.trajet_id && (etat.db.trajets.find((t) => t.id === r.trajet_id) || {}).depart) || "";
+  const alerteHeure = h("p", { class: "aide alerte-heure", role: "status" });
+  const majAlerteHeure = () => {
+    const manque = !!r.trajet_id && !heure.value;
+    alerteHeure.hidden = !manque;
+    alerteHeure.textContent = manque ? (departTrajetR ? tr("Heure de pickup à vérifier : le voucher n'imprime que le départ du trajet ({heure}).", { heure: departTrajetR }) : tr("Heure de pickup à vérifier : rien ne s'imprime sur le voucher.")) : "";
+  };
+  heure.addEventListener("input", majAlerteHeure);
+  heure.addEventListener("change", majAlerteHeure);
+  majAlerteHeure();
+  const avecAlerte = (c, aide) => (c.append(aide), c);
   const lieu = h("input", { id: "r-lieu", value: r.lieu_pickup || "", placeholder: tr("Hôtel, chambre, vol") });
   const adultes = saisie(h("input", { id: "r-ad", value: p.adultes ?? 1 }), "entier");
   const enfants = saisie(h("input", { id: "r-enf", value: p.enfants ?? 0 }), "entier");
@@ -486,7 +517,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const dt = r.details || {};
   const dossierR = etat.db.dossiers.find((x) => x.id === r.dossier_id);
   const clientR = (dossierR && etat.db.clients.find((c) => c.id === dossierR.client_id)) || {};
-  const cv = champsVoucher({ details: dt, prefixe: "v", dateService: () => date.value, dateInitiale: r.date_service, hotelFiche: hotelEtChambre(clientR, { entite_id: r.entite_id || (dossierR && dossierR.entite_id) || etat.entiteId }).hotel });
+  // Ce que « Automatique » imprimera comme type de transfert : un trajet du catalogue donne « Shared minivan » d'office.
+  const transfertAuto = typeTransfert(r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null, r, r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null);
+  const cv = champsVoucher({ details: dt, prefixe: "v", dateService: () => date.value, dateInitiale: r.date_service, hotelFiche: hotelEtChambre(clientR, { entite_id: r.entite_id || (dossierR && dossierR.entite_id) || etat.entiteId }).hotel, transfertAuto });
   // Zone de l'hôtel sur la grille de pickup du partenaire : la zone et le départ remplissent l'heure, sans écraser une heure tapée à la main.
   let heureDeGrille = "";
   const zonesPickup = blocZonesPickup({
@@ -507,10 +540,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
-  const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
+  const trajetR = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null;
+  const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id), trajetR);
   // Modèle de voucher (audit n° 22 et 23) : choisi ici, sinon celui figé au premier envoi, sinon la déduction d'après la prestation et le libellé.
   const figees = valeursFigees(r);
-  const modeleAuto = (figees && figees.modele) || typeVoucherDeduit(r, prestation, partenaireDe(r.partenaire_id));
+  const modeleAuto = (figees && figees.modele) || typeVoucherDeduit(r, prestation, partenaireDe(r.partenaire_id), trajetR);
   const modele = h("select", { id: "r-modele" }, h("option", { value: "" }, modeleAuto ? tr("Automatique : {modele}", { modele: TITRES_VOUCHER[modeleAuto] }) : tr("Automatique : pas de voucher")), MODELES_VOUCHER.map((m) => h("option", { value: m }, TITRES_VOUCHER[m])), h("option", { value: SANS_VOUCHER }, tr("Pas de voucher")));
   modele.value = modeleChoisi(r);
   const details = () => {
@@ -538,8 +572,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     legende.textContent = m ? TITRES_VOUCHER[m] : tr("Voucher");
     // Les sièges enfant ou bébé ne s'impriment que sur un voucher de transfert (et la Booking confirmation de Secret, qui en est un) : ailleurs,
     // le champ ne reste visible que tant qu'il a une valeur, pour qu'elle ne se garde jamais sans être vue (relecture de la PR 315).
-    const siegesHorsModele = m && m !== "transfert" && siegesSaisis() > 0;
-    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()), ...(siegesHorsModele ? [CHAMPS.sieges(), h("p", { class: "aide" }, tr("Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus."))] : [])] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
+    const siegesHorsModele = m && !champsVoucherDe(m, { trajet: !!r.trajet_id }).includes("sieges") && siegesSaisis() > 0;
+    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()), ...(siegesHorsModele ? [CHAMPS.sieges(), m === "transfert" ? null : h("p", { class: "aide" }, tr("Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus."))] : [])] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
   };
   modele.addEventListener("change", dessinerModele);
   if (avecVoucher) dessinerModele();
@@ -553,7 +587,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     const tid = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
     const memeService = (partenaire.value || null) === (r.partenaire_id || null) && pid === (r.prestation_id || null) && tid === (r.trajet_id || null);
     const p2 = pid ? etat.db.prestations.find((x) => x.id === pid) || null : null;
-    const nouveau = typeVoucherDeduit({ ...r, prestation_id: pid, trajet_id: tid, libelle: libelle.value }, p2, partenaireDe(partenaire.value || null)) || null;
+    const t2 = tid ? etat.db.trajets.find((x) => x.id === tid) || null : null;
+    const nouveau = typeVoucherDeduit({ ...r, prestation_id: pid, trajet_id: tid, libelle: libelle.value }, p2, partenaireDe(partenaire.value || null), t2) || null;
     // Le modèle d'avant devient un choix explicite : il ne suivra plus la déduction d'après le nouveau partenaire.
     if (!memeService && modele.value === "") {
       modele.value = modeleAvant || SANS_VOUCHER;
@@ -699,11 +734,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     champ(tr("Prestation"), libelle),
     // La référence s'imprime sur le voucher de Secret (« Operator ref. » dans Remarks, audit n° 61) ; Taxi ne l'imprime pas.
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champTarif, champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference, modeExcursions() && !modeTaxi() ? tr("Imprimée sur le voucher, dans Remarks (« Operator ref. »).") : null)),
-    h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
+    h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), avecAlerte(champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), alerteHeure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
     zonesPickup.noeud,
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
-    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), type === null || type === "billet" ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), bebesDemandes(type, { trajet: !!r.trajet_id }) ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,

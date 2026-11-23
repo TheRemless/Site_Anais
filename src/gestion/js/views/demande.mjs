@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, ajusterAgesCarnet, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireDuTexte, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -50,7 +50,7 @@ const AVERTISSEMENTS = {
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
   // Revue de la PR 307 : le prix de la carte valait pour d'autres personnes.
-  extra_sans_tarif: N_("Extra demandé sans tarif en base : ajoutez-le à la main avec « Ajouter un service »."),
+  extra_sans_tarif: N_("Extra demandé mais aucune ligne créée (tarif absent de la base ou extra impossible pour cette sortie). Vérifiez, puis ajoutez-le à la main avec « Ajouter un service » si besoin."),
   prix_carte_personnes: N_("Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation."),
 };
 
@@ -198,7 +198,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     else if (offre && offre.avertissement === "age_enfant_sans_tarif" && offre.bareme) alertes.push(tr("Cette sortie n'a pas de tarif enfant : un enfant de moins de {min} ans n'a aucun tarif propre. Vérifiez avec le partenaire.", { min: offre.bareme.min }));
     else if (offre && offre.avertissement === "age_enfant" && offre.bareme) alertes.push(tr("Âge d'un enfant hors du barème de cette sortie ({min} à {max} ans) : vérifiez le tarif avec le partenaire.", { min: offre.bareme.min, max: offre.bareme.max }));
     else if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
-    // Un extra demandé sans tarif en base : dit EN PLUS de l'avertissement ci-dessus (un groupe hors tranche ne le cache pas).
+    // Un extra demandé qui ne crée aucune ligne (sans tarif en base, ou impossible pour la sortie) : dit EN PLUS de l'avertissement ci-dessus (un groupe hors tranche ne le cache pas).
     if (offre && offre.extrasManquants && offre.extrasManquants.length) alertes.push(tr(AVERTISSEMENTS.extra_sans_tarif));
     if (sv.copie) alertes.push(tr("Même service, autre date."));
     // Plus de sièges que d'enfants et de bébés : à vérifier avant de créer (relecture de la PR 315).
@@ -577,7 +577,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   }
 
   // Ouvre l'écran « Nouveau dossier » déjà rempli, pour vérifier ou compléter avant de créer.
+  // Jamais depuis une carte de l'Assistant (`options.surCree`, relecture de la PR 337) : « Nouveau dossier » créerait le dossier sans que la
+  // carte soit notée, et « Tout valider » pourrait en créer un second. La fiche de la carte crée elle-même, avec la carte prise.
   function verifierAvant() {
+    if (options.surCree) return;
     const b = preparer();
     if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque && b.manque.transfertLibre) return (erreur.textContent = tr("Indiquez le prix du transfert privé, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
@@ -637,7 +640,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
         h("button", { class: "secondaire petit", type: "button", onclick: () => { const sv = nouveauService({ phrase: tr("Service ajouté") }); choisirDansBase(sv); } }, tr("Ajouter un service")),
         totalBloc,
         erreur,
-        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
+        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite && !options.surCree ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
     );
   }
@@ -646,10 +649,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function lire(valeur) {
     texte = valeur;
     erreur.textContent = "";
-    let lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
-    // Demande d'une page du carnet : la sortie et l'option viennent de la demande du site (product_id, option), le tarif se choisit sur elles.
+    // Demande d'une page du carnet : sa sortie et son option sont connues ; un texte collé à la main est lu avec la détection par la référence de la page (lireDuTexte).
     // Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
-    if (lu && depuisSite && depuisSite.carnet) lu = ajusterAgesCarnet({ ...lu, carnet: depuisSite.carnet });
+    const lu = texte.trim() ? lireDuTexte(texte, aujourdhui(), depuisSite) : null;
     if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
     d = null;
     vider();
@@ -688,7 +690,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const corps = h("div", { class: "modal-corps demande" });
   // Demande du site : son message reste sous les yeux (il se relit si on le corrige). Carte de l'agent : la demande est déjà lue.
   corps.append(...(depuisSite ? [h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone)] : []), reconnu);
-  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto });
+  // `options.ferme` (carte de l'Assistant, « Vérifier avant ») : appelé à la fermeture de la fiche, créée ou non (la carte se rend si rien n'est créé).
+  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto, ferme: options.ferme || null });
 
   // Hôtels situés (migration 48) : lus en arrière-plan, leurs zones complètent ensuite les propositions de zone de pickup.
   // Une validation d'un geste les attend (leurs zones servent aux zones de pickup), jamais plus de HOTELS_DELAI_MS : une lecture lente ou

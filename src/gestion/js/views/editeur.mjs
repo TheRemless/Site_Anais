@@ -551,7 +551,9 @@ function editeurVue(id) {
         montants.push(champ(tr("Prix unitaire ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", disabled: prixFige, oninput: maj("unite", num) })));
         montants.push(champ(tr("Quantité"), h("input", { id: `l${l.id}-q`, type: "number", step: "1", value: l.qte ?? "", oninput: maj("qte", num) })));
       }
-      montants.push(champ(detail ? tr("Total fixe (si pas de quantité)") : l.kind === "bloc" ? tr("Montant (vide si le prix est sur les lignes suivantes)") : tr("Montant ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", disabled: prixFige, oninput: maj("montant", num) })));
+      // Ligne au prix total (« Mettre la facture comme la réservation », 23.11.2026) : une quantité, pas de prix unitaire, un montant.
+      const prixTotal = (l.unite === null || l.unite === undefined || l.unite === "") && l.montant !== null && l.montant !== undefined && l.montant !== "" && l.qte !== null && l.qte !== undefined && l.qte !== "";
+      montants.push(champ(detail ? (prixTotal ? tr("Total fixe") : tr("Total fixe (si pas de quantité)")) : l.kind === "bloc" ? tr("Montant (vide si le prix est sur les lignes suivantes)") : tr("Montant ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", disabled: prixFige, oninput: maj("montant", num) }), detail && prixTotal ? tr("La quantité ne change pas le prix.") : undefined));
       montants.push(champ(tr("Texte à la place du montant"), h("input", { id: `l${l.id}-t`, value: l.texte_montant ?? "", placeholder: tr("inclus, offert"), oninput: (e) => ((l.texte_montant = e.target.value.trim() || null), change()) })));
     }
     const presetRemise =

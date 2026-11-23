@@ -1079,6 +1079,22 @@ export function creer() {
     async agentFichier() {
       return null;
     },
+    // Comme la migration 120 : une carte se prend une fois (proposée, pas prise depuis moins de 2 minutes), se rend après un arrêt.
+    // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou.
+    async agentPrendreCarte(id) {
+      const c = data.agent_cartes.find((x) => x.id === id);
+      if (!c) return true;
+      if (!data.agent_conversations.some((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id)) throw new Error("Carte introuvable");
+      const maintenant = Date.now();
+      if (c.statut !== "proposee" || (c.prise_le && maintenant - Date.parse(c.prise_le) < 2 * 60 * 1000)) return false;
+      c.prise_le = new Date(maintenant).toISOString();
+      sauve();
+      return true;
+    },
+    async agentRendreCarte(id) {
+      const c = data.agent_cartes.find((x) => x.id === id);
+      if (c && c.statut === "proposee" && c.prise_le) (c.prise_le = null), sauve();
+    },
     async agentCarte(id, statut) {
       const c = data.agent_cartes.find((x) => x.id === id);
       if (!c || !data.agent_conversations.some((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id)) throw new Error("Carte introuvable");

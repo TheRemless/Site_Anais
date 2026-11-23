@@ -270,7 +270,8 @@ export function ouvrirConfirmation(texteInitial = "", options = {}) {
   );
   // Fermée après une création dans une autre entreprise : l'écran se redessine dans celle du dossier.
   // Fermée après une création dans une autre entreprise : l'écran se redessine dans celle du dossier.
-  fermer = modal(tr("Confirmation de course"), corps, { large: true, protege: false, cache: auto, ferme: () => etat.entiteId !== depart && window.dispatchEvent(new HashChangeEvent("hashchange")) });
+  // `options.ferme` (carte de l'Assistant, « Vérifier avant ») : appelé à la fermeture, course créée ou non.
+  fermer = modal(tr("Confirmation de course"), corps, { large: true, protege: false, cache: auto, ferme: () => (options.ferme && options.ferme(), etat.entiteId !== depart && window.dispatchEvent(new HashChangeEvent("hashchange"))) });
   if (typeof texteInitial === "string" && texteInitial.trim()) {
     zone.value = texteInitial;
     lire();
