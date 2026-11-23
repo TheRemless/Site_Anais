@@ -185,8 +185,21 @@ export function propositionDepuisCarte(donnees = {}) {
 // Même reconnaissance que la fonction (maps.js, UNE_URL) : avec schéma, en « www. », ou un domaine suivi d'un chemin (« goo.gl/x »).
 const UNE_URL = /(?:\b(?:https?:\/\/|www\.)|(?<![\w@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?=\/))[^\s<>"']+/gi;
 export const sansLien = (t) => String(t || "").replace(UNE_URL, " ").replace(/\s+/g, " ").trim();
-function detailsDeCarte(s) {
-  const depose = sansLien(s.vers);
+// La dépose de la carte n'est-elle qu'une zone que le bout du trajet du catalogue dit déjà, en plus précis (« Ao Nang » pour « Ao Nang
+// Beach ») ? Alors le bout du catalogue l'emporte ; un établissement (« Hotel Plage Exemple ») l'emporte toujours (relecture de la PR 332).
+const motsLieu = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^a-z0-9\u0e00-\u0e7f]+/).filter(Boolean);
+export function zoneDuBout(vers, bout) {
+  const a = motsLieu(vers);
+  const b = new Set(motsLieu(bout));
+  return a.length > 0 && b.size > 0 && a.every((m) => b.has(m));
+}
+// La dépose d'un service de carte : « vers » sans lien, sauf une zone que le bout du catalogue précise (`bout`, Taxi seulement).
+export const deposeCarte = (vers, bout = "") => {
+  const d = sansLien(vers);
+  return bout && zoneDuBout(d, bout) ? String(bout).trim() : d;
+};
+function detailsDeCarte(s, bouts = null) {
+  const depose = deposeCarte(s.vers, bouts && bouts.dropoff);
   const details = detailsAvecSieges(
     { ...(depose ? { drop_off: depose } : {}), ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
     siegesDeCarte(s),
@@ -210,8 +223,13 @@ export const payeSurPlaceCarte = ({ taxi = false, partenaire = null, modeDe = ()
 // partenaire (migration 115) la lui montre. Jamais chez Secret ni ZTP (taxi indépendant, aucun partenaire deviné).
 // `surPlace` : une course de Taxi se paie au chauffeur (relecture de la PR 329), comme ligneVoucher et courseTaxi ; sinon le formulaire
 // garde son défaut.
-export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surPlace = false } = {}) {
+// `lieuDossier` : le lieu de pickup du dossier (lieuParDefaut : dernier lieu de ses services, sinon l'hôtel du client) ; `bouts` : les deux bouts
+// du trajet du catalogue en Taxi ({ pickup, dropoff }, boutsDuService). Le pickup : celui de la carte, sinon (transfert libre) son départ,
+// sinon le lieu du dossier, sinon le bout du catalogue, sinon le départ lu (relecture de la PR 332), comme une carte « dossier ».
+export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surPlace = false, lieuDossier = "", bouts = null } = {}) {
   const s = donnees.service || {};
+  const de = sansLien(s.de);
+  const libre = !s.offre;
   return {
     ...(partenaireId ? { partenaire_id: partenaireId } : {}),
     ...(surPlace ? { paye_sur_place: true } : {}),
@@ -219,15 +237,14 @@ export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surP
     libelle: s.libelle || s.texte || "",
     date_service: s.date || "",
     heure_pickup: s.heure_pickup || "",
-    // Sans lieu de pickup, le départ lu (« de »), comme une carte « dossier » (propositionVersDemande, 23.11.2026).
-    lieu_pickup: s.lieu_pickup || sansLien(s.de),
+    lieu_pickup: s.lieu_pickup || (libre && de) || lieuDossier || (bouts && bouts.pickup) || de,
     personnes: { adultes: s.adultes || 0, enfants: s.enfants || 0 },
     montant_vente: s.prix ?? null,
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
     // L'origine d'un prix repris du client sans correction de Nani (revue de la PR 307) : relue par le contrôle (dossierPourControle).
     // Tout ce qui sert au client et au chauffeur va sur le voucher (22.11.2026) : vol, sièges par type, bagages, remarque en anglais.
-    ...detailsDeCarte(s),
+    ...detailsDeCarte(s, bouts),
     notes: noteCarte(s),
   };
 }

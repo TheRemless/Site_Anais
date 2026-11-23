@@ -243,7 +243,7 @@ test("partenaire : une course de Taxi ajoutée par carte reçoit le chauffeur r�
   assert.equal(reservationDepuisCarte({ dossier_id: DOS, service: {} }, { partenaireId: PA }).partenaire_id, PA);
   assert.equal("partenaire_id" in reservationDepuisCarte({ dossier_id: DOS, service: {} }), false);
   // Les deux chemins de l'écran (valider d'un geste, « Vérifier avant ») passent le chauffeur, calculé dans l'entreprise du dossier.
-  const vue = lire("src/gestion/js/views/agent.mjs");
+  const vue = lire("src/gestion/js/views/agent.mjs") + lire("src/gestion/js/views/agent-valider.mjs");
   assert.equal((vue.match(/reservationDepuisCarte\(c\.donnees, optionsCarte\(c\)\)/g) || []).length, 2);
   assert.match(vue, /const partenaireId = chauffeurDeLaCarte\(c\);/);
   assert.match(vue, /chauffeurCarte\(\(c\.donnees \|\| \{\}\)\.service, \{ taxi: modeTaxi\(\), defaut: modeTaxi\(\) \? partenaireDeTaxi\(etat\.db\.partenaires, chauffeurRegle\(reglages\(\)\)\) : null/);
@@ -297,7 +297,7 @@ test("relecture 3 : une course de Taxi ajoutée par carte est payée sur place",
   assert.equal(payeSurPlaceCarte({ taxi: false, partenaire: { regles: {} }, modeDe: modeParDefaut }), false);
   assert.equal(reservationDepuisCarte({ dossier_id: DOS, service: {} }, { partenaireId: PA, surPlace: true }).paye_sur_place, true);
   assert.equal("paye_sur_place" in reservationDepuisCarte({ dossier_id: DOS, service: {} }), false);
-  assert.match(lire("src/gestion/js/views/agent.mjs"), /surPlace: payeSurPlaceCarte\(\{ taxi: modeTaxi\(\), partenaire, modeDe: modeParDefaut \}\)/);
+  assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /surPlace: payeSurPlaceCarte\(\{ taxi: modeTaxi\(\), partenaire, modeDe: modeParDefaut \}\)/);
 });
 
 test("relecture 4 : maps.google.co.th et .com.au entiers, rien qui prolonge l'hôte", () => {

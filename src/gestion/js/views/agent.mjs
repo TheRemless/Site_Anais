@@ -4,26 +4,23 @@
 // par le code habituel de l'outil (fiche de création du dossier, confirmation de course, formulaire de réservation), sans le réécrire : la
 // fenêtre ne s'ouvre que s'il manque quelque chose ; la carte garde alors le motif. « Tout valider » fait de même pour toutes les cartes.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
-import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
+import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte, chauffeurCarte, payeSurPlaceCarte } from "../agent-calc.mjs";
-import { modeParDefaut } from "../operations-calc.mjs";
+import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
-import { propositionVersDemande } from "../assistant-calc.mjs";
 import { lireMessage } from "../demande-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
-import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
 import { phraseInterne } from "../agent-apprendre-texte.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
-import { espaceUnifie, carteUnifiee, avecCorrections, entrepriseSuivante, badgeModifiable, planCreation, creerDossiersLies, lierDossiers, carteDeLEntreprise, ouvrirDansEntreprise, conversationsDesDeux, ordreEnvois, marqueUnifiee, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
+import { espaceUnifie, carteUnifiee, avecCorrections, entrepriseSuivante, badgeModifiable, carteDeLEntreprise, ouvrirDansEntreprise, conversationsDesDeux, ordreEnvois, marqueUnifiee, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
 import { CLE_DEMANDE_AGENT, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "../whatsapp-suivi-calc.mjs";
 import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
@@ -32,6 +29,7 @@ import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, qu
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { boutonPasBien } from "./agent-retour.mjs";
 import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
+import { preparation, optionsCarte, enregistrerReservation, validerUnifie } from "./agent-valider.mjs";
 import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
 const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
@@ -1167,77 +1165,6 @@ export async function vueAgent(idOuvert = "") {
     }
   }
 
-  // Carte « dossier » de l'espace unifié (migration 63) : un dossier par entreprise, chacun avec sa numérotation et ses règles (Taxi sans
-  // facture, avec Booking confirmation), la même fiche client (créée dans l'entreprise active, puis utilisée dans l'autre par le partage
-  // réciproque), et dossier_lie_id des deux côtés. Tout est vérifié AVANT d'écrire : un service sans entreprise, un droit manquant ou une
-  // fiche qui ne peut pas passer dans l'autre entreprise arrêtent tout, rien n'est créé à moitié.
-  const MOTIFS_UNIFIE = {
-    entreprise_a_choisir: () => tr("Choisissez Secret ou Taxi"),
-    droit_dossier: (id) => tr("Votre rôle ne permet pas de créer un dossier chez {nom}. Rien n'a été créé.", { nom: libelleEntreprise(id) }),
-    droit_client: (id) => tr("Votre rôle ne permet pas de créer la fiche client chez {nom}. Rien n'a été créé.", { nom: libelleEntreprise(id) }),
-    partage: (id) => tr("La fiche client ne peut pas être utilisée chez {nom} : les fiches de Secret et de Taxi ne sont pas partagées pour vous. Rien n'a été créé.", { nom: libelleEntreprise(id) }),
-    aucun_service: () => tr("Aucun service à créer."),
-  };
-  async function validerUnifie(c) {
-    const donnees = donneesCarte(c);
-    const plan = planCreation({ services: donnees.services || [], activeId: etat.entiteId, permissionsDe, nouveauClient: false, partagePermis: (a, b) => partageClientsPermis(a, b) });
-    if (!plan.ok) {
-      const [code, id] = String(plan.motif).split(":");
-      return { ok: false, motif: (MOTIFS_UNIFIE[code] || MOTIFS_UNIFIE.aucun_service)(id) };
-    }
-    const origine = etat.entiteId;
-    const { ouvrirDemande } = await import("./demande.mjs");
-    // Chaque étape se prépare dans son entreprise (catalogue, numérotation, règles), par la fiche habituelle cachée.
-    const dans = async (id, fn) => {
-      changerSansNaviguer(id);
-      try {
-        return await fn();
-      } finally {
-        changerSansNaviguer(origine);
-      }
-    };
-    const sous = (e) => ({ ...c, donnees: { ...donnees, services: e.services } });
-    const r = await creerDossiersLies({
-      etapes: plan.etapes,
-      // Passe à blanc : préparation et contrôles de chaque dossier (prix à fixer, service introuvable, numéro), rien n'est écrit.
-      essayer: (e, i) => dans(e.entite_id, () => ouvrirDemande(null, preparation(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre })),
-      creer: (e, i, clientId) => dans(e.entite_id, () => ouvrirDemande(null, preparation(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId })),
-      // Un dossier ne passe pas : ceux déjà créés vont à la corbeille (la suppression habituelle), dans leur entreprise.
-      defaire: async (crees) => {
-        for (const d of crees) await dans(d.entite_id, () => supprimerLigne("dossiers", d.id));
-        return true;
-      },
-      lier: (a, b) => lierDossiers(a, b, modifier),
-    });
-    if (!r.ok) {
-      const motif = r.motif || tr("Rien n'a été enregistré.");
-      if (!r.ecrit) return { ok: false, motif };
-      const premier = r.crees[0];
-      const pourquoi = motif.replace(/[.\s]+$/, "");
-      return {
-        ok: false,
-        motif: r.defait
-          ? tr("Le dossier chez {nom} n'a pas pu être créé ({motif}). Le dossier {ref} déjà créé a été mis à la corbeille : rien n'est gardé, la carte reste à valider.", { nom: libelleEntreprise(plan.etapes[r.etape].entite_id), motif: pourquoi, ref: premier.ref || "" })
-          : tr("Le dossier chez {nom} n'a pas pu être créé ({motif}). Le dossier {ref} n'a pas pu être mis à la corbeille : supprimez-le depuis sa fiche avant de valider à nouveau.", { nom: libelleEntreprise(plan.etapes[r.etape].entite_id), motif: pourquoi, ref: premier.ref || "" }),
-      };
-    }
-    const crees = r.crees;
-    if (crees.length === 2) {
-      if (r.lies) toast(tr("Deux dossiers liés créés : {a} et {b}.", { a: crees[0].ref || "", b: crees[1].ref || "" }));
-      else toast(tr("Les deux dossiers sont créés, mais le lien entre eux n'a pas pu être posé : {a} et {b}.", { a: crees[0].ref || "", b: crees[1].ref || "" }), true);
-    }
-    const ici = crees.find((x) => x.entite_id === origine) || crees[0];
-    return { ok: true, dossier: ici, dossiers: crees };
-  }
-
-  // Le chauffeur d'une course ajoutée par carte (22.11.2026) : appelé une fois dans l'entreprise du dossier (dansEntreprise, dansFenetre).
-  const chauffeurDeLaCarte = (c) => chauffeurCarte((c.donnees || {}).service, { taxi: modeTaxi(), defaut: modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null, prestations: etat.db.prestations, trajets: etat.db.trajets });
-  // Le chauffeur et le règlement sur place d'une course ajoutée par carte (relecture de la PR 329 : une course de Taxi se paie au chauffeur).
-  const optionsCarte = (c) => {
-    const partenaireId = chauffeurDeLaCarte(c);
-    const partenaire = partenaireId ? etat.db.partenaires.find((p) => p.id === partenaireId) || null : null;
-    return { partenaireId, surPlace: payeSurPlaceCarte({ taxi: modeTaxi(), partenaire, modeDe: modeParDefaut }) };
-  };
   // L'entreprise visée par une carte « service » (le dossier) ou « modification » (le service), quand elle n'est pas l'entreprise active.
   function entiteVisee(c) {
     const d = c.donnees || {};
@@ -1283,16 +1210,16 @@ export async function vueAgent(idOuvert = "") {
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
-      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c);
+      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise });
       else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
-      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(c, reservationDepuisCarte(c.donnees, optionsCarte(c)), tr("Service ajouté au dossier.")));
+      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), tr("Service ajouté au dossier.")));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
           // Les notes d'avant : une remarque retouchée s'apprend par ce qui a été ajouté (agent-apprendre.mjs).
-          return ancienne ? enregistrerReservation(c, reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
+          return ancienne ? enregistrerReservation(reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
         });
       } else if (c.genre === "temps") r = await ajouterTemps(c);
     } catch (err) {
@@ -1381,10 +1308,6 @@ export async function vueAgent(idOuvert = "") {
   }
 
   // ---- Vérifier avant : la fenêtre habituelle, affichée ------------------------------------------------------------------------
-  const preparation = (c) => {
-    const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
-    return { texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) };
-  };
   async function ouvrirDossier(c) {
     // Migration 72 : même accord qu'à la validation d'un geste avant un second dossier pour ce client.
     if (!(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) return;
@@ -1427,30 +1350,7 @@ export async function vueAgent(idOuvert = "") {
 
   // Le formulaire de réservation habituel, rempli et envoyé sans être montré : ses contrôles, la facture qui suit, les questions qu'il pose
   // (annulation d'un service facturé…) restent les siens. Un champ refusé, ou rien d'enregistré, devient le motif de la carte.
-  async function enregistrerReservation(c, valeurs, message, ancienne = null) {
-    const { formulaireReservation } = await import("./reservations.mjs");
-    return new Promise((fin) => {
-      let fini = false;
-      let minuterie = null;
-      let ferme = () => {};
-      const terminer = (r) => {
-        if (fini) return;
-        fini = true;
-        clearTimeout(minuterie);
-        ferme();
-        fin(r);
-      };
-      const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }), { base: ancienne || valeurs });
-      ferme = modal(tr("Réservation"), form, { cache: true });
-      minuterie = setTimeout(() => terminer({ ok: false, motif: tr("Rien n'a été enregistré : ouvrez « Vérifier avant ».") }), 60_000);
-      form.requestSubmit();
-      // Les contrôles du formulaire passent avant tout enregistrement : un champ en erreur arrête tout de suite.
-      queueMicrotask(() => {
-        const refus = form.querySelector('[aria-invalid="true"]');
-        if (refus) terminer({ ok: false, motif: tr("À corriger : {champ}.", { champ: ((form.querySelector(`label[for="${refus.id}"]`) || {}).textContent || "").trim() || tr("un champ") }) });
-      });
-    });
-  }
+
 
   // Une durée donnée dans la conversation entre dans la table de référence, confirmée (Nani l'a donnée elle-même).
   async function ajouterTemps(c) {

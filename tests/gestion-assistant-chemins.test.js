@@ -1,304 +1,318 @@
-// Tous les chemins qui créent ou modifient une réservation depuis l'Assistant (et la demande du site), de bout en bout (23.11.2026).
-// Un service du catalogue validé par une carte « dossier » gardait le pickup et les bagages mais perdait sa dépose (`vers`), que le voucher
-// imprime (details.drop_off). Chaque test fait passer une carte complète par son chemin réel (fonction, calculs, fiche ou formulaire,
-// écriture de la réservation) et compare champ par champ : drop-off, pickup, départ (`de`), heure, vol, sièges par type, bagages, remarque
-// du voucher, personnes et prix.
-// Le formulaire (« Vérifier avant », fenêtre de réservation) est rendu avec un DOM minimal : ses champs du voucher sont relus comme à
-// l'enregistrement (champsVoucher().valeurs()). Données inventées : aucun client, hôtel ni partenaire réel.
-import { test } from "node:test";
+// Tous les chemins qui créent ou modifient une réservation depuis l'Assistant (et la demande du site), par le vrai code (relecture de la
+// PR 332). Le 23.11.2026, un service du catalogue validé par une carte « dossier » avait perdu sa dépose (`vers`), que le voucher imprime.
+// Chaque test part d'une carte faite par la fonction de l'Assistant (executer), la passe par l'écran réel (views/agent-valider.mjs,
+// views/demande.mjs, views/reservations.mjs, views/confirmation.mjs) sur la démo (store-local.mjs, le magasin du mode démo) et un DOM
+// minimal (aides-dom.mjs), puis compare champ par champ ce que l'écran a passé à `inserer` et `modifier` avec la carte : drop-off, pickup,
+// départ (`de`), heure, vol, sièges par type, bagages, remarque du voucher, personnes, prix, partenaire et paiement sur place.
+// Données inventées : aucun client, hôtel ni partenaire réel.
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { installerDom } from "./aides-dom.mjs";
 
-// ---- Un DOM minimal : de quoi construire les champs du voucher et les relire -------------------------------------------------------
-class Node {
-  remove() {}
-}
-class Texte extends Node {
-  constructor(t) {
-    super();
-    this.t = t;
-  }
-  get textContent() {
-    return this.t;
-  }
-}
-class El extends Node {
-  constructor(tag) {
-    super();
-    Object.assign(this, { tag, id: "", children: [], attrs: {}, className: "", value: "", checked: false, hidden: false, style: {}, dataset: {} });
-    this.classList = { add() {}, remove() {}, toggle() {}, contains: () => false };
-  }
-  append(...xs) {
-    this.children.push(...xs);
-  }
-  appendChild(x) {
-    this.children.push(x);
-    return x;
-  }
-  replaceChildren(...xs) {
-    this.children = xs;
-  }
-  setAttribute(k, v) {
-    this.attrs[k] = v;
-    if (k === "id") this.id = v;
-  }
-  removeAttribute(k) {
-    delete this.attrs[k];
-  }
-  getAttribute(k) {
-    return this.attrs[k] ?? null;
-  }
-  hasAttribute(k) {
-    return k in this.attrs;
-  }
-  addEventListener() {}
-  querySelector(sel) {
-    const tag = /^[a-z]+$/.test(sel) ? sel : null;
-    const chercher = (el) => (el instanceof El ? (tag && el.tag === tag ? el : el.children.map(chercher).find(Boolean) || null) : null);
-    return tag ? this.children.map(chercher).find(Boolean) || null : null;
-  }
-  querySelectorAll() {
-    return [];
-  }
-  get firstChild() {
-    return null;
-  }
-  get textContent() {
-    return this.children.map((c) => c.textContent).join("");
-  }
-  set textContent(t) {
-    this.children = [new Texte(t)];
-  }
-}
-globalThis.Node = Node;
-globalThis.document = { createElement: (t) => new El(t), createTextNode: (t) => new Texte(t), getElementById: () => null, querySelector: () => null, addEventListener() {}, documentElement: new El("html"), body: new El("body") };
-// Le champ d'id `id` dans un bloc rendu.
-const trouver = (el, id) => (el instanceof El ? (el.id === id ? el : el.children.map((c) => trouver(c, id)).find(Boolean) || null) : null);
-
+const dom = installerDom();
+globalThis.location.search = "?demo";
+const E = await import("../src/gestion/js/etat.mjs");
+await E.init();
 const { executer, refDe } = await import("../supabase/functions/agent/outils.js");
 const { tempsSimule } = await import("../supabase/functions/agent/planifier.js");
-const { propositionDepuisCarte, reservationDepuisCarte, reservationModifiee } = await import("../src/gestion/js/agent-calc.mjs");
-const { propositionVersDemande, lignesAuPrixCarte } = await import("../src/gestion/js/assistant-calc.mjs");
-const { serviceDeLecture, saisieInitiale, entreeParService, champsReservation, boutsDuTrajet, ligneTransfertPrive, nonVides } = await import("../src/gestion/js/creation-voucher-calc.mjs");
-const { siegesDemande, lireMessage, decouperServices } = await import("../src/gestion/js/demande-calc.mjs");
-const { ligneDepuisPrestation, quantiteParDefaut } = await import("../src/gestion/js/partenaires-calc.mjs");
-const { reservationsDepuisDocument } = await import("../src/gestion/js/operations-calc.mjs");
-const { imposerTotal } = await import("../src/gestion/js/demandes-site-calc.mjs");
-const { champsVoucher, blocServiceCreation } = await import("../src/gestion/js/views/champs-voucher.mjs");
+const { reservationDepuisCarte, reservationModifiee } = await import("../src/gestion/js/agent-calc.mjs");
+const V = await import("../src/gestion/js/views/agent-valider.mjs");
+const { ouvrirDemande } = await import("../src/gestion/js/views/demande.mjs");
+const { ouvrirConfirmation } = await import("../src/gestion/js/views/confirmation.mjs");
+const { partenaireDeTaxi, chauffeurRegle } = await import("../src/gestion/js/voucher-rapide-calc.mjs");
+after(() => setTimeout(() => process.exit(process.exitCode || 0), 50).unref());
 
-const ici = path.dirname(fileURLToPath(import.meta.url));
-const lire = (f) => fs.readFileSync(path.join(ici, "..", f), "utf8");
-
-const PR = "a3000000-0000-4000-8000-000000000031";
-const PR2 = "b3000000-0000-4000-8000-000000000032";
-const DOS = "d3000000-0000-4000-8000-000000000031";
-const RES = "e3000000-0000-4000-8000-000000000031";
-const catalogue = {
-  partenaires: [],
-  prestations: [
-    { id: PR, famille: "transfert", groupe: "Taxi", libelle: "Ville Exemple", libelle_en: "Ville Exemple", prix_vente: 2500, unite: "veh", actif: true },
-    { id: PR2, famille: "excursion", groupe: "Tour", libelle: "Tour Exemple", libelle_en: "Tour Exemple", prix_vente: 1500, unite: "pp", actif: true },
-  ],
-  trajets: [],
-  clients: [{ id: "c3000000-0000-4000-8000-000000000031", prenom: "Client", nom: "Exemple" }],
-  dossiers: [{ id: DOS, ref: "2026-0031", client_id: "c3000000-0000-4000-8000-000000000031", annule: false }],
-  reservations: [{ id: RES, dossier_id: DOS, libelle: "Ville Exemple", date_service: "2026-12-03", heure_pickup: "09:15", lieu_pickup: "Villa Exemple", personnes: { adultes: 2, enfants: 1 }, statut: "confirme" }],
-};
-const ctx = (fonctionnement) => ({ charger: async (n) => catalogue[n] || [], reglages: { fonctionnement }, simule: tempsSimule });
-const PRIX = 3000;
-const memo = () => ({ prix: new Set(), heures: new Set(), tapes: new Set([PRIX]), durees: new Set(), estimations: new Map(), signer: false, prestataires: [], entreprise: "Test", textes: ["Flight FD3217 tomorrow, 3000 THB, drop at Hotel Plage Exemple https://maps.app.goo.gl/exemple1"] });
-const REMARQUE = "Driver waits in the lobby with a name sign.";
-// Le service du cas réel du 23.11.2026, rendu fictif : un service du catalogue, une dépose d'hôtel (avec le lien Maps lu), 2 bagages, un prix tapé.
-const service = (o = {}) => ({ texte: "Taxi to Ville Exemple", ref: refDe("P", PR), date: "2026-12-03", heure_pickup: "09:15", lieu_pickup: "Villa Exemple", de: "Koh Exemple", vers: "Hotel Plage Exemple https://maps.app.goo.gl/exemple1", adultes: 2, enfants: 1, sieges: 1, sieges_bebe: 1, sans_siege: false, bagages: 2, prix_saisi: String(PRIX), vol: "FD3217", remarque_voucher: REMARQUE, note_interne: "", ...o });
-const dossierCarte = (services) => ({ titre: "Dossier", client_nom: "Client Exemple", client_telephone: "+41790000000", hotel: "", langue: "en", adultes: 2, enfants: 1, bebes: 1, services, apporteur: "" });
-const contexte = { prestations: catalogue.prestations, trajets: [], partenaires: [] };
-// Ce que la carte dit du service, dans les clés de la réservation : la référence de chaque comparaison.
-const ATTENDU = { drop_off: "Hotel Plage Exemple", lieu_pickup: "Villa Exemple", heure_pickup: "09:15", vol: "FD3217", sieges: 1, sieges_bebe: 1, bagages: "2", remarques: REMARQUE, adultes: 2, enfants: 1, montant_vente: PRIX };
-// Une réservation, dans ces mêmes clés (sans_siege seulement s'il est vrai).
-const aplatir = (r) => ({ drop_off: (r.details || {}).drop_off, lieu_pickup: r.lieu_pickup, heure_pickup: r.heure_pickup, vol: (r.details || {}).vol, sieges: (r.details || {}).sieges, sieges_bebe: (r.details || {}).sieges_bebe, bagages: (r.details || {}).bagages, remarques: (r.details || {}).remarques, adultes: (r.personnes || {}).adultes, enfants: (r.personnes || {}).enfants, montant_vente: r.montant_vente });
-const comparer = (r, attendu, quoi) => {
-  for (const [k, v] of Object.entries(attendu)) assert.deepEqual(aplatir(r)[k], v, `${quoi} : ${k}`);
-  assert.doesNotMatch(JSON.stringify(r.details || {}), /https?:|goo\.gl|maps\.app|www\./, `${quoi} : aucun lien`);
-};
-// Les champs du voucher relus comme le formulaire les enregistre (vides retirés) : rien ne se perd entre l'ouverture et l'enregistrement.
-const relus = (details) => nonVides(champsVoucher({ details }).valeurs());
-
-// La fiche de création, cachée ou ouverte par « Vérifier avant », puis creerDossierExcursions : la facture (lignes, dont le prix de chaque
-// réservation) et le patch de chaque réservation créée. `bouts` : les deux bouts du trajet du catalogue, posés par la fiche de Taxi.
-function cheminDossier(donnees, { excursions, taxi = false, bouts = null }) {
-  const { d, services } = propositionVersDemande(propositionDepuisCarte(donnees), contexte);
-  return services.map((t, i) => {
-    const sv = serviceDeLecture({ ...t, offresIA: t.offres });
-    const saisie = saisieInitiale(sv, { d, excursions, sd: siegesDemande(d) });
-    if (taxi && bouts) boutsDuTrajet(saisie, bouts, { lieu: true });
-    // Les lignes de la facture : celle du catalogue au prix de la carte, ou celle du transfert libre au prix tapé (demande.mjs, lignesDuService).
-    const offre = (t.offres || [])[0] || null;
-    const lignes = offre ? lignesAuPrixCarte([ligneDepuisPrestation(offre.source, null, { langue: "en", date: sv.date, qte: offre.vehicules || quantiteParDefaut(offre.source.unite, { adultes: sv.adultes, enfants: sv.enfants }), uid: () => `l${i}` })], offre.prixCarte) : sv.transfertLibre ? [ligneTransfertPrive({ ...sv.transfertLibre, prix: sv.prixLibre, date: sv.date }, null, { uid: () => `l${i}` })] : [];
-    const [{ reservation: creee }] = reservationsDepuisDocument({ dossier_id: DOS, contenu: { lignes } }, { uid: () => `r${i}` });
-    const r = { ...creee, personnes: { adultes: sv.adultes, enfants: sv.enfants } };
-    return { sv, d, saisie, offre, reservation: { ...r, ...champsReservation(r, entreeParService(sv, saisie, { garderVol: true })) } };
-  });
+// ---- Le banc : la démo, ses trois entreprises, et chaque écriture de l'écran ------------------------------------------------------
+const entite = (slug) => E.etat.brut.entites.find((e) => e.slug === slug);
+const dans = (slug) => E.changerEntite(entite(slug).id, { naviguer: false });
+// Chaque appel au magasin : { op, table, id, valeurs } (valeurs : ce que l'écran a passé, tel quel).
+const ecrits = [];
+for (const op of ["inserer", "modifier"]) {
+  const f = E.etat.store[op].bind(E.etat.store);
+  E.etat.store[op] = async (table, ...a) => {
+    const r = await f(table, ...a);
+    ecrits.push(op === "inserer" ? { op, table, id: r.id, valeurs: structuredClone(a[0]) } : { op, table, id: a[0], valeurs: structuredClone(a[1]) });
+    return r;
+  };
 }
+// La réservation telle que l'écran l'a écrite : son `inserer`, puis chaque `modifier` par-dessus, dans l'ordre.
+function ecrite(id) {
+  const liste = ecrits.filter((e) => e.table === "reservations" && e.id === id);
+  assert.ok(liste.length && liste[0].op === "inserer", "la réservation est créée par l'écran");
+  return liste.reduce((r, e) => ({ ...r, ...e.valeurs, ...(e.valeurs.details ? { details: { ...(r.details || {}), ...e.valeurs.details } } : {}) }), {});
+}
+const reservationsDu = (dossierId) => E.etat.brut.reservations.filter((r) => r.dossier_id === dossierId).map((r) => ecrite(r.id));
+
+// La fonction de l'Assistant lit le catalogue de l'entreprise active.
+const ctx = () => ({ charger: async (n) => E.etat.db[n] || [], reglages: E.reglages(), simule: tempsSimule });
+const PRIX = 3000;
+const memo = (textes = []) => ({ prix: new Set(), heures: new Set(), tapes: new Set([PRIX]), durees: new Set(), estimations: new Map(), signer: false, prestataires: [], entreprise: "Test", textes: ["Flight FD3217 tomorrow, 3000 THB, drop at Hotel Plage Exemple https://maps.app.goo.gl/exemple1", ...textes] });
+const REMARQUE = "Driver waits in the lobby with a name sign.";
+
+// Le catalogue de chaque entreprise, créé une fois : un transfert dont le libellé donne ses deux bouts, et une excursion.
+const catalogue = {};
+async function catalogueDe(slug) {
+  if (catalogue[slug]) return catalogue[slug];
+  dans(slug);
+  const transfert = await E.inserer("prestations", { famille: "transfert", groupe: "Taxi", libelle: "Embarcadere Exemple → Klong Exemple Beach", libelle_en: "Embarcadere Exemple → Klong Exemple Beach", prix_vente: 2500, unite: "veh", actif: true });
+  const tour = await E.inserer("prestations", { famille: "excursion", groupe: "Tour", libelle: "Tour Exemple", libelle_en: "Tour Exemple", prix_vente: 1500, unite: "pp", actif: true });
+  return (catalogue[slug] = { transfert, tour });
+}
+// Le service du cas réel du 23.11.2026, rendu fictif : un service du catalogue, une dépose d'hôtel (avec le lien Maps lu), 2 bagages, un prix tapé.
+const service = (o = {}) => ({ texte: "Taxi to Ville Exemple", ref: "", date: "2026-12-03", heure_pickup: "09:15", lieu_pickup: "Villa Exemple", de: "Koh Exemple", vers: "Hotel Plage Exemple https://maps.app.goo.gl/exemple1", adultes: 2, enfants: 1, sieges: 1, sieges_bebe: 1, sans_siege: false, bagages: 2, prix_saisi: String(PRIX), vol: "FD3217", remarque_voucher: REMARQUE, note_interne: "", ...o });
+let n = 0;
+const dossierCarte = (services, o = {}) => ({ titre: "Dossier", client_nom: `Client Exemple ${++n}`, client_telephone: `+4179000${String(1000 + n)}`, hotel: "", langue: "en", adultes: 2, enfants: 1, bebes: 1, services, apporteur: "", ...o });
+const carteDe = async (outil, e) => {
+  const r = await executer(outil, e, ctx(), memo());
+  assert.ok(r.carte, JSON.stringify(r.contenu || r));
+  return { id: `carte-${++n}`, ...r.carte, statut: "proposee" };
+};
+const chauffeur = () => partenaireDeTaxi(E.etat.db.partenaires, chauffeurRegle(E.reglages()));
+
+// Ce que la carte dit du service, dans les clés de la réservation, et la comparaison champ par champ avec ce que l'écran a écrit.
+const CLES = ["drop_off", "lieu_pickup", "heure_pickup", "vol", "sieges", "sieges_bebe", "sans_siege", "bagages", "remarques", "adultes", "enfants", "bebes", "montant_vente", "partenaire_id", "paye_sur_place"];
+const aplatir = (r) => {
+  const d = r.details || {};
+  const p = r.personnes || {};
+  return { drop_off: d.drop_off, lieu_pickup: r.lieu_pickup, heure_pickup: r.heure_pickup, vol: d.vol, sieges: d.sieges, sieges_bebe: d.sieges_bebe, sans_siege: d.sans_siege, bagages: d.bagages, remarques: d.remarques, adultes: p.adultes, enfants: p.enfants, bebes: p.bebes, montant_vente: r.montant_vente, partenaire_id: r.partenaire_id ?? null, paye_sur_place: r.paye_sur_place };
+};
+function comparer(r, attendu, quoi) {
+  const a = aplatir(r);
+  for (const k of Object.keys(attendu)) {
+    assert.ok(CLES.includes(k), k);
+    assert.deepEqual(a[k], attendu[k], `${quoi} : ${k}`);
+  }
+  assert.doesNotMatch(JSON.stringify(r.details || {}), /https?:|goo\.gl|maps\.app|www\./, `${quoi} : aucun lien`);
+}
+const DE_LA_CARTE = { drop_off: "Hotel Plage Exemple", lieu_pickup: "Villa Exemple", heure_pickup: "09:15", vol: "FD3217", sieges: 1, sieges_bebe: 1, bagages: "2", remarques: REMARQUE, adultes: 2, enfants: 1, montant_vente: PRIX };
+const sansSieges = ({ sieges, sieges_bebe, ...reste }) => ({ ...reste, sieges: undefined, sieges_bebe: undefined });
+
+// Valider d'un geste une carte « dossier » simple : la fiche de création, cachée (views/agent.mjs, valider).
+const validerDossier = (c) => ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
 
 // ---- 1. Carte « dossier », service du catalogue (Taxi, Secret, ZTP) ---------------------------------------------------------------
-for (const [nom, fonctionnement, excursions, taxi] of [
-  ["Taxi", "taxi", true, true],
-  ["Secret", "excursions", true, false],
-  ["ZTP", "sur_mesure", false, false],
-]) {
-  test(`1. ${nom}, carte « dossier », service du catalogue : chaque champ de la carte arrive sur la réservation`, async () => {
-    const carte = (await executer("proposer_dossier", dossierCarte([service()]), ctx(fonctionnement), memo())).carte;
-    const s = carte.donnees.services[0];
-    assert.equal(s.vers, "Hotel Plage Exemple", "la fonction retire déjà le lien");
-    assert.deepEqual(s.offre, { genre: "prestation", id: PR });
-    assert.equal(s.prix, PRIX);
-    const [{ reservation: r }] = cheminDossier(carte.donnees, { excursions, taxi, bouts: { pickup: "Koh Exemple", dropoff: "Ville Exemple" } });
-    // Les sièges ne vont jamais chez ZTP (ses vouchers n'en impriment pas) ; tout le reste, partout.
-    const { sieges, sieges_bebe, ...sansSieges } = ATTENDU;
-    comparer(r, excursions ? ATTENDU : { ...sansSieges, sieges: undefined, sieges_bebe: undefined }, nom);
-    assert.equal(r.personnes.bebes, 1, "les bébés du dossier");
-    assert.equal(r.prestation_id, PR);
+for (const [nom, slug] of [["Taxi", "taxi"], ["Secret", "excursions"], ["ZTP", "agence"]]) {
+  test(`1. ${nom}, carte « dossier », service du catalogue : chaque champ de la carte arrive sur la réservation écrite`, async () => {
+    const { transfert } = await catalogueDe(slug);
+    dans(slug);
+    const c = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", transfert.id) })]));
+    assert.equal(c.donnees.services[0].vers, "Hotel Plage Exemple", "la fonction retire déjà le lien");
+    const r = await validerDossier(c);
+    assert.equal(r.ok, true, r.motif);
+    const [resa] = reservationsDu(r.dossier.id);
+    const taxi = slug === "taxi";
+    // Les sièges ne vont jamais chez ZTP (ses vouchers n'en impriment pas). Chez Taxi, la course est au chauffeur réglé, payée sur place.
+    comparer(resa, { ...(slug === "agence" ? sansSieges(DE_LA_CARTE) : DE_LA_CARTE), bebes: 1, partenaire_id: taxi ? (chauffeur() || {}).id || null : null, ...(taxi ? { paye_sur_place: true } : {}) }, nom);
+    assert.equal(resa.prestation_id, transfert.id);
   });
 }
 
-// ---- 2. Carte « dossier », service libre (hors catalogue) ---------------------------------------------------------------------
-test("2. carte « dossier », transfert hors catalogue : dépose, pickup précis, prix tapé et le reste arrivent sur la réservation", async () => {
-  const carte = (await executer("proposer_dossier", dossierCarte([service({ ref: "", texte: "Private transfer" })]), ctx("taxi"), memo())).carte;
-  const s = carte.donnees.services[0];
-  assert.equal(s.offre, null);
-  const [{ sv, reservation: r }] = cheminDossier(carte.donnees, { excursions: true, taxi: true });
-  assert.deepEqual(sv.transfertLibre, { de: "Villa Exemple", vers: "Hotel Plage Exemple" }, "le pickup de la carte n'est plus remplacé par la zone de départ");
-  comparer(r, ATTENDU, "libre");
-  assert.match(r.libelle, /Villa Exemple.*Hotel Plage Exemple/, "le libellé dit les deux bouts");
-});
-
-test("2 bis. sans lieu de pickup, le départ (« de ») devient le pickup ; une ancienne carte avec un lien garde la dépose sans le lien", () => {
-  const donnees = { client: { nom: "Client Exemple" }, adultes: 2, services: [{ texte: "Taxi", offre: { genre: "prestation", id: PR }, date: "2026-12-03", heure_pickup: "10:00", lieu_pickup: "", de: "Resort Exemple", vers: "Hotel Plage Exemple https://maps.app.goo.gl/exemple2 www.exemple.test", adultes: 2 }] };
-  const [{ saisie, reservation: r }] = cheminDossier(donnees, { excursions: true, taxi: true, bouts: { pickup: "Koh Exemple", dropoff: "Ville Exemple" } });
-  assert.equal(saisie.lieu, "Resort Exemple");
-  comparer(r, { drop_off: "Hotel Plage Exemple", lieu_pickup: "Resort Exemple", heure_pickup: "10:00" }, "de");
-  // Sans dépose sur la carte, Taxi garde le bout du trajet du catalogue, comme avant.
-  const [{ reservation: r2 }] = cheminDossier({ ...donnees, services: [{ ...donnees.services[0], vers: "" }] }, { excursions: true, taxi: true, bouts: { pickup: "Koh Exemple", dropoff: "Ville Exemple" } });
-  assert.equal(r2.details.drop_off, "Ville Exemple");
-});
-
-// ---- 3. Carte mixte : deux dossiers liés ---------------------------------------------------------------------------------------
-test("3. carte mixte : chaque dossier lié reçoit les champs de ses propres services", async () => {
-  const tour = { ref: refDe("P", PR2), texte: "Tour", date: "2026-12-04", heure_pickup: "08:00", lieu_pickup: "Resort Exemple", vers: "Marina Exemple", vol: "", bagages: 0, sieges: 0, sieges_bebe: 0, prix_saisi: "" };
-  const carte = (await executer("proposer_dossier", dossierCarte([service(), service(tour)]), ctx("excursions"), memo())).carte;
-  // L'espace unifié prépare chaque dossier avec ses services (views/agent.mjs, `sous`), par la même fiche cachée.
-  assert.match(lire("src/gestion/js/views/agent.mjs"), /const sous = \(e\) => \(\{ \.\.\.c, donnees: \{ \.\.\.donnees, services: e\.services \} \}\);/);
-  assert.match(lire("src/gestion/js/views/agent.mjs"), /creer: \(e, i, clientId\) => dans\(e\.entite_id, \(\) => ouvrirDemande\(null, preparation\(sous\(e\)\)/);
-  const [[a], [b]] = carte.donnees.services.map((x) => cheminDossier({ ...carte.donnees, services: [x] }, { excursions: true }));
-  comparer(a.reservation, ATTENDU, "dossier 1");
-  assert.equal(carte.donnees.services[1].prix, b.offre.total, "le prix de la carte est celui de la fiche");
-  comparer(b.reservation, { drop_off: "Marina Exemple", lieu_pickup: "Resort Exemple", heure_pickup: "08:00", vol: undefined, bagages: undefined, remarques: REMARQUE, adultes: 2, enfants: 1, montant_vente: b.offre.total }, "dossier 2");
-});
-
-// ---- 4. Carte « reservation » (ajout à un dossier) ----------------------------------------------------------------------------
-test("4. carte « reservation » : la réservation ouverte dans la fenêtre, puis relue à l'enregistrement, garde chaque champ", async () => {
-  const carte = (await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", DOS), service: service() }, ctx("taxi"), memo())).carte;
-  const r = reservationDepuisCarte(carte.donnees);
-  comparer(r, ATTENDU, "à l'ouverture");
-  // L'enregistrement de la fenêtre (views/reservations.mjs) : les champs du voucher sont relus, le reste de `details` est gardé.
-  const form = lire("src/gestion/js/views/reservations.mjs");
-  assert.match(form, /const d = \{ \.\.\.Object\.fromEntries\(Object\.entries\(dt\)\.filter\(\(\[k\]\) => k !== "pickup_zone" && k !== "modele_voucher"\)\), \.\.\.zoneGardee\(\), \.\.\.cv\.valeurs\(\) \};/);
-  assert.match(form, /heure_pickup: heure\.value, lieu_pickup: lieu\.value\.trim\(\), personnes: \{ adultes: nb\(adultes\.value\) \|\| 0, enfants: nb\(enfants\.value\) \|\| 0, bebes: nb\(bebes\.value\) \|\| 0 \}/);
-  assert.match(form, /const vente = saisie\(h\("input", \{ id: "r-vente", value: r\.montant_vente \?\? "" \}\), "montant"\);/);
-  comparer({ ...r, details: { ...r.details, ...relus(r.details) } }, ATTENDU, "à l'enregistrement");
-  // Sans lieu de pickup : le départ lu, comme pour une carte « dossier ».
-  const sans = (await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", DOS), service: service({ lieu_pickup: "" }) }, ctx("taxi"), memo())).carte;
-  assert.equal(reservationDepuisCarte(sans.donnees).lieu_pickup, "Koh Exemple");
-});
-
-// ---- 5. Carte « modification » ------------------------------------------------------------------------------------------------
-test("5. carte « modification » : chaque champ proposé arrive sur la réservation, les autres restent", async () => {
-  const base = { ...catalogue.reservations[0], montant_vente: PRIX, details: { drop_off: "Ancien Hotel Exemple", vol: "FD1000", bagages: "1", remarques: "Old note.", sieges: 1 } };
-  const memoModif = () => ({ ...memo(), textes: ["Flight FD3217 now, 3 bags"] });
+// ---- Le pickup : celui de la carte, l'hôtel du client, le bout du catalogue (Taxi), puis le départ lu --------------------------------
+test("pickup d'une carte « dossier » : carte, puis hôtel du client, puis bout du catalogue chez Taxi, puis le départ lu", async () => {
+  const { transfert } = await catalogueDe("taxi");
+  dans("taxi");
   const cas = [
-    ["drop_off", "Hotel Plage Exemple", (r) => r.details.drop_off],
-    ["lieu_pickup", "Resort Exemple", (r) => r.lieu_pickup],
-    ["heure_pickup", "10:45", (r) => r.heure_pickup],
-    ["date", "2026-12-05", (r) => r.date_service],
-    ["vol", "FD3217", (r) => r.details.vol],
-    ["bagages", "3", (r) => r.details.bagages],
-    ["sieges", "2", (r) => r.details.sieges],
-    ["sieges_bebe", "1", (r) => r.details.sieges_bebe],
-    ["sans_siege", "oui", (r) => r.details.sans_siege],
-    ["adultes", "3", (r) => r.personnes.adultes],
-    ["enfants", "2", (r) => r.personnes.enfants],
-    ["remarque_voucher", REMARQUE, (r) => r.details.remarques],
+    ["la carte", { lieu_pickup: "Villa Exemple" }, { hotel: "Resort Exemple" }, "Villa Exemple"],
+    ["l'hôtel du client", { lieu_pickup: "" }, { hotel: "Resort Exemple" }, "Resort Exemple"],
+    ["le bout du catalogue", { lieu_pickup: "" }, { hotel: "" }, "Embarcadere Exemple"],
   ];
-  const attendu = { drop_off: "Hotel Plage Exemple", lieu_pickup: "Resort Exemple", heure_pickup: "10:45", date: "2026-12-05", vol: "FD3217", bagages: "3", sieges: 2, sieges_bebe: 1, sans_siege: true, adultes: 3, enfants: 2, remarque_voucher: `Old note.\n${REMARQUE}` };
-  for (const [champ, valeur, lu] of cas) {
-    const c = await executer("proposer_modification", { titre: "Modif", reservation: refDe("R", RES), champ, valeur, raison: "" }, ctx("taxi"), memoModif());
+  for (const [quoi, s, dossier, attendu] of cas) {
+    const c = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", transfert.id), ...s })], dossier));
+    const r = await validerDossier(c);
+    assert.equal(r.ok, true, `${quoi} : ${r.motif}`);
+    assert.equal(reservationsDu(r.dossier.id)[0].lieu_pickup, attendu, quoi);
+  }
+  // Secret : pas de bout de trajet dans la fiche ; sans pickup ni hôtel, le départ lu sert en dernier recours.
+  const { tour } = await catalogueDe("excursions");
+  dans("excursions");
+  const c = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", tour.id), lieu_pickup: "", prix_saisi: "" })]));
+  const r = await validerDossier(c);
+  assert.equal(r.ok, true, r.motif);
+  assert.equal(reservationsDu(r.dossier.id)[0].lieu_pickup, "Koh Exemple", "le départ, faute de mieux");
+});
+
+// ---- La dépose : un établissement l'emporte sur le bout du catalogue, une simple zone non ---------------------------------------
+test("dépose chez Taxi : l'établissement de la carte l'emporte sur le bout du catalogue ; une zone que le bout précise lui cède la place", async () => {
+  const { transfert } = await catalogueDe("taxi");
+  dans("taxi");
+  for (const [vers, attendu] of [["Hotel Plage Exemple", "Hotel Plage Exemple"], ["Klong Exemple", "Klong Exemple Beach"], ["", "Klong Exemple Beach"]]) {
+    const c = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", transfert.id), vers })]));
+    const r = await validerDossier(c);
+    assert.equal(r.ok, true, r.motif);
+    assert.equal(reservationsDu(r.dossier.id)[0].details.drop_off, attendu, `dossier, vers « ${vers} »`);
+  }
+  // Carte « reservation » : la même règle (optionsCarte donne les bouts du catalogue chez Taxi).
+  const dossier = await E.inserer("dossiers", { ref: "T-ZONE", client_id: null, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
+  for (const [vers, attendu] of [["Hotel Plage Exemple", "Hotel Plage Exemple"], ["Klong Exemple", "Klong Exemple Beach"]]) {
+    const c = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", dossier.id), service: service({ ref: refDe("P", transfert.id), vers }) });
+    assert.equal(reservationDepuisCarte(c.donnees, V.optionsCarte(c)).details.drop_off, attendu, `reservation, vers « ${vers} »`);
+  }
+});
+
+// ---- 2. Carte « dossier », transfert libre ------------------------------------------------------------------------------------
+test("2. carte « dossier », transfert hors catalogue : dépose, pickup, prix tapé, chauffeur et le reste arrivent sur la réservation", async () => {
+  dans("taxi");
+  const c = await carteDe("proposer_dossier", dossierCarte([service({ texte: "Private transfer" })]));
+  assert.equal(c.donnees.services[0].offre, null);
+  const r = await validerDossier(c);
+  assert.equal(r.ok, true, r.motif);
+  const [resa] = reservationsDu(r.dossier.id);
+  comparer(resa, { ...DE_LA_CARTE, bebes: 1, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "libre");
+  assert.match(resa.libelle, /Villa Exemple.*Hotel Plage Exemple/, "le libellé dit les deux bouts");
+  // Sans lieu de pickup : le départ lu (« de ») d'un transfert libre.
+  const c2 = await carteDe("proposer_dossier", dossierCarte([service({ texte: "Private transfer", lieu_pickup: "" })], { hotel: "Resort Exemple" }));
+  const r2 = await validerDossier(c2);
+  assert.equal(reservationsDu(r2.dossier.id)[0].lieu_pickup, "Koh Exemple");
+});
+
+// ---- 3. Carte mixte : deux dossiers liés (espace unifié) -----------------------------------------------------------------------
+test("3. carte mixte : validerUnifie crée deux dossiers liés, chacun avec les champs de ses propres services", async () => {
+  const cs = await catalogueDe("excursions");
+  const ct = await catalogueDe("taxi");
+  // La carte de l'espace unifié : chaque service porte son entreprise (celle de son catalogue).
+  dans("excursions");
+  const s1 = (await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", cs.tour.id), texte: "Tour", date: "2026-12-04", heure_pickup: "08:00", lieu_pickup: "Resort Exemple", vers: "Marina Exemple", vol: "", bagages: 0, sieges: 0, sieges_bebe: 0, prix_saisi: "", enfants: 0 })]))).donnees.services[0];
+  dans("taxi");
+  const base = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", ct.transfert.id) })]));
+  const s2 = base.donnees.services[0];
+  const donnees = { ...base.donnees, services: [{ ...s1, entite_id: entite("excursions").id, entreprise: "secret" }, { ...s2, entite_id: entite("taxi").id, entreprise: "taxi" }], entreprises: ["secret", "taxi"] };
+  const c = { ...base, donnees };
+  // Le partage réciproque des fiches Secret et Taxi (migration 63, posé par la base pour Zwald ; la démo le pose à la première carte mixte).
+  for (const [a, b] of [["excursions", "taxi"], ["taxi", "excursions"]]) await E.etat.store.partagerClients(entite(a).id, entite(b).id, true);
+  await E.recharger();
+  dans("taxi");
+  const r = await V.validerUnifie(c, { donnees, libelleEntreprise: (id) => id });
+  assert.equal(r.ok, true, r.motif);
+  assert.equal(r.dossiers.length, 2);
+  const [dS, dT] = ["excursions", "taxi"].map((slug) => r.dossiers.find((d) => d.entite_id === entite(slug).id));
+  assert.equal(E.etat.brut.dossiers.find((d) => d.id === dS.id).dossier_lie_id, dT.id, "liés des deux côtés");
+  assert.equal(E.etat.brut.dossiers.find((d) => d.id === dT.id).dossier_lie_id, dS.id);
+  const [rS] = reservationsDu(dS.id);
+  const [rT] = reservationsDu(dT.id);
+  // Une excursion sans tarif enfant compte les enfants au tarif adulte (règle de la facture, « enfant_plein_tarif ») : ce service n'en a pas.
+  comparer(rS, { drop_off: "Marina Exemple", lieu_pickup: "Resort Exemple", heure_pickup: "08:00", vol: undefined, bagages: undefined, remarques: REMARQUE, adultes: 2, enfants: 0, bebes: 1, montant_vente: s1.prix, partenaire_id: null }, "dossier Secret");
+  comparer(rT, { ...DE_LA_CARTE, bebes: 1, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "dossier Taxi");
+});
+
+// ---- 4. Carte « reservation » : la fenêtre de réservation, enregistrée telle quelle ------------------------------------------
+test("4. carte « reservation » : formulaireReservation par enregistrerReservation, avec le chauffeur, le règlement et le lieu du dossier", async () => {
+  const { transfert } = await catalogueDe("taxi");
+  dans("taxi");
+  const client = await E.inserer("clients", { civilite: "", prenom: "Client", nom: "Exemple R", adresse: "Resort Exemple", telephone: "+41790001999", email: "", notes: "" });
+  const dossier = await E.inserer("dossiers", { ref: "T-RES", client_id: client.id, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
+  const c = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", dossier.id), service: service({ ref: refDe("P", transfert.id), enfants: 2 }) });
+  const r = await V.enregistrerReservation(reservationDepuisCarte(c.donnees, V.optionsCarte(c)), "Service ajouté au dossier.");
+  assert.equal(r.ok, true, r.motif);
+  // Deux enfants pour un child seat et un baby seat (une carte « reservation » n'a pas les bébés du dossier).
+  comparer(ecrite(r.reservation.id), { ...DE_LA_CARTE, enfants: 2, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "ajout");
+  assert.equal(ecrite(r.reservation.id).dossier_id, dossier.id);
+  // Sans lieu de pickup : le lieu du dossier (l'hôtel du client), avant le bout du catalogue et le départ lu.
+  const c2 = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", dossier.id), service: service({ ref: refDe("P", transfert.id), lieu_pickup: "", enfants: 2 }) });
+  const r2 = await V.enregistrerReservation(reservationDepuisCarte(c2.donnees, V.optionsCarte(c2)), "Service ajouté au dossier.");
+  assert.equal(ecrite(r2.reservation.id).lieu_pickup, "Villa Exemple", "le dernier lieu des services du dossier (lieuParDefaut)");
+  const vide = await E.inserer("dossiers", { ref: "T-RES2", client_id: null, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
+  const c3 = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", vide.id), service: service({ ref: refDe("P", transfert.id), lieu_pickup: "" }) });
+  assert.equal(reservationDepuisCarte(c3.donnees, V.optionsCarte(c3)).lieu_pickup, "Embarcadere Exemple", "sans lieu au dossier : le bout du catalogue");
+  dans("excursions");
+  const vS = await E.inserer("dossiers", { ref: "S-RES", client_id: null, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
+  const c4 = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", vS.id), service: service({ lieu_pickup: "", texte: "Tour", ref: refDe("P", (await catalogueDe("excursions")).tour.id) }) });
+  dans("excursions");
+  assert.equal(reservationDepuisCarte(c4.donnees, V.optionsCarte(c4)).lieu_pickup, "Koh Exemple", "rien d'autre : le départ lu");
+});
+
+// ---- 5. Carte « modification » : chaque champ, par la même fenêtre ---------------------------------------------------------------
+test("5. carte « modification » : chaque champ proposé arrive par modifier, le reste ne bouge pas", async () => {
+  const { transfert } = await catalogueDe("taxi");
+  dans("taxi");
+  const dossier = await E.inserer("dossiers", { ref: "T-MOD", client_id: null, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
+  const base = await E.inserer("reservations", { dossier_id: dossier.id, prestation_id: transfert.id, libelle: "Embarcadere Exemple → Klong Exemple Beach", date_service: "2026-12-03", heure_pickup: "09:15", lieu_pickup: "Villa Exemple", personnes: { adultes: 2, enfants: 3 }, statut: "confirme", montant_vente: PRIX, paye_sur_place: true, details: { drop_off: "Ancien Hotel Exemple", vol: "FD1000", bagages: "1", remarques: "Old note.", sieges: 1 } });
+  const cas = [
+    ["drop_off", "Hotel Plage Exemple", (r) => r.details.drop_off, "Hotel Plage Exemple"],
+    ["lieu_pickup", "Resort Exemple", (r) => r.lieu_pickup, "Resort Exemple"],
+    ["heure_pickup", "10:45", (r) => r.heure_pickup, "10:45"],
+    ["date", "2026-12-05", (r) => r.date_service, "2026-12-05"],
+    ["vol", "FD3217", (r) => r.details.vol, "FD3217"],
+    ["bagages", "3", (r) => r.details.bagages, "3"],
+    ["sieges", "2", (r) => r.details.sieges, 2],
+    ["sieges_bebe", "1", (r) => r.details.sieges_bebe, 1],
+    ["sans_siege", "oui", (r) => r.details.sans_siege, true],
+    ["adultes", "3", (r) => r.personnes.adultes, 3],
+    ["enfants", "4", (r) => r.personnes.enfants, 4],
+    ["remarque_voucher", REMARQUE, (r) => r.details.remarques, `Old note.\n${REMARQUE}`],
+  ];
+  for (const [champ, valeur, lu, attendu] of cas) {
+    const avant = structuredClone(E.etat.brut.reservations.find((x) => x.id === base.id));
+    const c = await executer("proposer_modification", { titre: "Modif", reservation: refDe("R", base.id), champ, valeur, raison: "" }, ctx(), memo(["Flight FD3217 now, 3 bags"]));
     assert.ok(c.carte, `${champ} : ${JSON.stringify(c.contenu || c)}`);
-    const r = reservationModifiee(base, c.carte.donnees);
-    assert.deepEqual(lu(r), attendu[champ], champ);
-    // Relue par la fenêtre de réservation (formulaireReservation, `base`) : rien ne se perd, le reste ne bouge pas.
-    const enr = { ...r, details: { ...r.details, ...relus(r.details) } };
-    assert.deepEqual(lu(enr), attendu[champ], `${champ} à l'enregistrement`);
-    assert.equal(enr.montant_vente, PRIX, `${champ} : le prix reste`);
-    for (const k of ["drop_off", "vol", "bagages", "remarques"]) if (!["drop_off", "vol", "bagages", "remarque_voucher"].includes(champ)) assert.equal(enr.details[k], base.details[k], `${champ} : details.${k} reste`);
+    const depuis = ecrits.length;
+    const r = await V.enregistrerReservation(reservationModifiee(avant, c.carte.donnees), "Service modifié.", avant);
+    assert.equal(r.ok, true, `${champ} : ${r.motif}`);
+    const patchs = ecrits.slice(depuis).filter((e) => e.table === "reservations" && e.id === base.id);
+    assert.ok(patchs.length, `${champ} : écrit par modifier`);
+    const apres = E.etat.brut.reservations.find((x) => x.id === base.id);
+    assert.deepEqual(lu(apres), attendu, champ);
+    // Le reste ne bouge pas : prix, partenaire, paiement sur place, et les autres champs du voucher.
+    assert.equal(apres.montant_vente, PRIX, `${champ} : prix`);
+    assert.equal(apres.paye_sur_place, true, `${champ} : paiement sur place`);
+    for (const k of ["drop_off", "vol", "bagages"]) if (!(champ === k || (champ === "drop_off" && k === "drop_off"))) assert.equal(apres.details[k], avant.details[k], `${champ} : details.${k}`);
   }
 });
 
-// ---- 6. « Vérifier avant » : la fiche de création ouverte, pré-remplie -------------------------------------------------------
-test("6. « Vérifier avant » : le bloc du voucher montre chaque champ de la carte, et l'enregistrer sans retouche ne perd rien", async () => {
-  const carte = (await executer("proposer_dossier", dossierCarte([service()]), ctx("taxi"), memo())).carte;
-  const [{ sv, saisie, offre, reservation: r }] = cheminDossier(carte.donnees, { excursions: true, taxi: true, bouts: { pickup: "Koh Exemple", dropoff: "Ville Exemple" } });
-  // Le bloc tel que la fiche le dessine (majService : blocServiceCreation, sauf heure et personnes qui ont leurs champs sur la ligne du service).
-  const bloc = blocServiceCreation({ service: { type: "transfert", personnes: { adultes: 2, enfants: 1 }, pickup: "Koh Exemple", dropoff: "Ville Exemple", date: sv.date }, saisie, taxi: true, prefixe: "svc1-v", sauf: ["heure", "adultes", "enfants"], ouvert: false });
-  const valeur = (id) => (trouver(bloc, `svc1-v-${id}`) || {}).value;
-  assert.equal(valeur("drop"), "Hotel Plage Exemple");
-  assert.equal(valeur("lieu"), "Villa Exemple");
-  assert.equal(valeur("vol"), "FD3217");
-  assert.equal(valeur("bagages"), "2");
-  assert.equal(valeur("sieges"), "1");
-  assert.equal(valeur("sieges-bebe"), "1");
-  assert.equal(valeur("remarques"), REMARQUE);
-  assert.equal(saisie.bebes, 1, "les bébés du dossier (pas de champ chez Taxi : ils viennent du dossier)");
-  // L'heure, les personnes et le prix : sur la ligne du service (champ4 de construireService, prix de l'offre).
-  assert.deepEqual([sv.heure, sv.adultes, sv.enfants, offre.total], ["09:15", 2, 1, PRIX]);
-  assert.deepEqual(relus({ ...saisie.details, sieges: saisie.sieges }), { drop_off: "Hotel Plage Exemple", vol: "FD3217", bagages: "2", remarques: REMARQUE, sieges: 1, sieges_bebe: 1 });
-  comparer(r, ATTENDU, "créée");
-  // Secret : le bloc du voucher de transfert (champsVoucherDe), même pré-remplissage.
-  const carteS = (await executer("proposer_dossier", dossierCarte([service()]), ctx("excursions"), memo())).carte;
-  const [{ saisie: saisieS }] = cheminDossier(carteS.donnees, { excursions: true });
-  const blocS = blocServiceCreation({ service: { type: "transfert", personnes: { adultes: 2, enfants: 1 }, date: sv.date }, saisie: saisieS, taxi: false, prefixe: "svc2-v", sauf: ["heure", "adultes", "enfants"], ouvert: false });
-  const valeurS = (id) => (trouver(blocS, `svc2-v-${id}`) || {}).value;
-  assert.deepEqual(["drop", "lieu", "vol", "bagages", "sieges", "sieges-bebe", "remarques"].map(valeurS), ["Hotel Plage Exemple", "Villa Exemple", "FD3217", "2", "1", "1", REMARQUE]);
-  // « Vérifier avant » ouvre la même fiche, avec la même préparation que la validation d'un geste.
-  const agent = lire("src/gestion/js/views/agent.mjs");
-  assert.match(agent, /\(await import\("\.\/demande\.mjs"\)\)\.ouvrirDemande\(null, preparation\(vue\), \{ titre: c\.titre,/);
-  assert.match(agent, /ouvrirDemande\(null, preparation\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\), \{ auto: true,/);
+// ---- 6. « Vérifier avant » : la fiche affichée, pré-remplie, puis « Créer le dossier » ----------------------------------------
+test("6. « Vérifier avant » : la fiche montre chaque champ de la carte, et la créer sans retouche ne perd rien", async () => {
+  const { transfert } = await catalogueDe("taxi");
+  dans("taxi");
+  const c = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", transfert.id) })]));
+  let cree = null;
+  const ouverte = await ouvrirDemande(null, V.preparation(c), { titre: c.titre, surCree: ({ dossier }) => (cree = dossier) });
+  assert.equal(ouverte.ouverte, true);
+  const champ = (suffixe) => dom.document.documentElement.descendants().filter((e) => e.id.endsWith(suffixe)).pop();
+  assert.equal(champ("-v-drop").value, "Hotel Plage Exemple");
+  assert.equal(champ("-v-lieu").value, "Villa Exemple");
+  assert.equal(champ("-v-vol").value, "FD3217");
+  assert.equal(champ("-v-bagages").value, "2");
+  assert.equal(champ("-v-sieges").value, "1");
+  assert.equal(champ("-v-sieges-bebe").value, "1");
+  assert.equal(champ("-v-remarques").value, REMARQUE);
+  assert.equal(champ("-heure").value, "09:15");
+  const [bouton] = dom.boutons("Créer le dossier").slice(-1);
+  assert.ok(bouton, "le bouton de création");
+  bouton.click();
+  await dom.attendre(60);
+  assert.ok(cree, "dossier créé");
+  comparer(reservationsDu(cree.id)[0], { ...DE_LA_CARTE, bebes: 1, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "Vérifier avant");
 });
 
-// ---- 7. Demande du site -------------------------------------------------------------------------------------------------------
-test("7. demande du site (trajet) : chaque champ du formulaire arrive sur la réservation", () => {
-  const texte = "Transfer request: Exemple Airport to Koh Exemple\nDate: Tue 15 Dec 2026\nPickup time: 14:30\nFlight or ferry: FD3217\nGuests: 2 adults, 1 child (age 5)\nChild seats: 1\nBags: 3\nPickup: Exemple Airport (EXA)\nDrop-off: Hotel Plage Exemple\nName: Client Exemple";
-  const d = lireMessage(texte, "2026-11-23");
-  assert.equal(d.type, "transfer");
-  const [t] = decouperServices(texte, d, { ...contexte, nomPartenaire: () => "", taxi: true }, "2026-11-23");
-  for (const [excursions, nom] of [[true, "Taxi ou Secret"], [false, "ZTP"]]) {
-    const sv = serviceDeLecture(t);
-    const saisie = saisieInitiale(sv, { d, excursions, sd: siegesDemande(d) });
-    // reservationDe : un trajet du site donne son pickup (lieuFinal) ; le prix annoncé se pose par « Modifier » (prixImpose, imposerTotal).
-    const lignes = imposerTotal([ligneTransfertPrive({ de: d.pickup, vers: d.dropoff, prix: 1, date: sv.date }, null, { uid: () => "l" })], 2800);
-    const [{ reservation: creee }] = reservationsDepuisDocument({ dossier_id: DOS, contenu: { lignes } }, { uid: () => "r" });
-    const r0 = { ...creee, personnes: { adultes: sv.adultes, enfants: sv.enfants } };
-    const r = { ...r0, ...champsReservation(r0, entreeParService(sv, saisie, { lieuFinal: d.pickup })) };
-    comparer(r, { drop_off: "Hotel Plage Exemple", lieu_pickup: "Exemple Airport (EXA)", heure_pickup: "14:30", vol: "FD3217", bagages: "3", sieges: excursions ? 1 : undefined, adultes: 2, enfants: 1, montant_vente: 2800 }, nom);
-  }
+// ---- 7. Demande du site ------------------------------------------------------------------------------------------------------
+test("7. demande du site (trajet) : la fiche lit le formulaire, et la réservation créée en garde chaque champ", async () => {
+  dans("taxi");
+  const texte = "Transfer request: Exemple Airport to Koh Exemple\nDate: Tue 15 Dec 2026\nPickup time: 14:30\nFlight or ferry: FD3217\nGuests: 2 adults, 1 child (age 5)\nChild seats: 1\nBags: 3\nPickup: Exemple Airport (EXA)\nDrop-off: Hotel Plage Exemple\nName: Client Exemple Site";
+  let cree = null;
+  ouvrirDemande({ texte, titre: "Demande", telephone: "+41790002000", prixImpose: 2800, surCree: ({ dossier }) => (cree = dossier) });
+  await dom.attendre(10);
+  const [bouton] = dom.boutons("Créer le dossier").slice(-1);
+  assert.ok(bouton, "le bouton de création");
+  bouton.click();
+  await dom.attendre(60);
+  assert.ok(cree, "dossier créé");
+  comparer(reservationsDu(cree.id)[0], { drop_off: "Hotel Plage Exemple", lieu_pickup: "Exemple Airport (EXA)", heure_pickup: "14:30", vol: "FD3217", bagages: "3", sieges: 1, adultes: 2, enfants: 1, montant_vente: 2800, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "site");
 });
 
-test("la fiche de création passe par les fonctions testées ici", () => {
-  const demande = lire("src/gestion/js/views/demande.mjs");
-  assert.match(demande, /nouveauService\(serviceDeLecture\(t\)\)/);
-  assert.match(demande, /sv\.saisie = saisieInitiale\(sv, \{ d, excursions: modeExcursions\(\), sd: siegesDemande\(d\) \}\);/);
-  assert.match(demande, /return entreeParService\(sv, sv\.saisie \|\| saisieVide\(\), \{/);
-  assert.match(demande, /: offre \? lignesAuPrixCarte\(lignesDe\(offre, \{ date: sv\.date, adultes: sv\.adultes, enfants: sv\.enfants \}, langue, devise\), offre\.prixCarte\) : \[\]\);/);
-  assert.match(lire("src/gestion/js/views/creation-excursions.mjs"), /const champs = propre \? champsReservation\(r, propre\) : \{\};/);
+// ---- 8. Carte « course » : une confirmation collée, validée d'un geste -----------------------------------------------------------
+test("8. carte « course » : ouvrirConfirmation crée la course avec chaque champ de la confirmation", async () => {
+  dans("taxi");
+  const texte = `VIP TAXI LANTA
+Name: Client Exemple Course
+Date: 03/12/2026
+Pick-up time: 09:15
+Pick-up location: Villa Exemple
+Drop-off location: Hotel Plage Exemple
+Flight: FD3217
+Passengers: 2 adults, 2 children, 2 bags, 1 child seat, 1 baby seat
+Price: 3000 THB
+Remarks: ${REMARQUE}`;
+  const r = await ouvrirConfirmation(texte, { auto: true });
+  assert.equal(r.ok, true, r.motif);
+  const dossier = r.fait.dossier;
+  comparer(reservationsDu(dossier.id)[0], { ...DE_LA_CARTE, enfants: 2, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "course");
 });

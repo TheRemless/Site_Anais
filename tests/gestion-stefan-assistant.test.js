@@ -459,7 +459,7 @@ test("PR 307, point 4 : prix du client au niveau du net ou dessous, refusé (pri
   assert.match(lire("supabase/functions/agent/index.ts"), /vol:details->>vol, prix_origine:details->>prix_origine[,"]/);
   const { entreeParService } = await import("../src/gestion/js/creation-voucher-calc.mjs");
   assert.equal(entreeParService({}, { details: {} }, { prixClient: true }).details.prix_origine, "client_non_corrige");
-  assert.match(lire("src/gestion/js/views/demande.mjs"), /prixClient: \(offre && offre\.prixCarte !== undefined && offre\.prixOrigine === "client_non_corrige"\)/);
+  assert.match(lire("src/gestion/js/creation-voucher-calc.mjs"), /prixClient: !!\(\(offre && offre\.prixCarte !== undefined && offre\.prixOrigine === "client_non_corrige"\)/);
 });
 
 test("prix du client dans une conversation de partenaire ou une autre conversation : jamais admis", async () => {
@@ -516,7 +516,7 @@ test("validation : une carte saisie à 10 000 sur une référence du catalogue �
   assert.match(vue, /lignesAuPrixCarte\(lignesDe\(offre, \{ date: sv\.date, adultes: sv\.adultes, enfants: sv\.enfants \}, langue, devise\), offre\.prixCarte\)/);
   assert.match(vue, /tr\("catalogue : \{prix\}", \{ prix: formatMontant\(offre\.totalCatalogue, devise\) \}\)/);
   // L'origine vient de la carte enregistrée (c.donnees), pas d'un champ de l'écran.
-  assert.match(lire("src/gestion/js/views/agent.mjs"), /propositionVersDemande\(propositionDepuisCarte\(c\.donnees\), contexte\)/);
+  assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /propositionVersDemande\(propositionDepuisCarte\(c\.donnees\), contexte\)/);
 });
 
 test("validation : une carte d'origine catalogue reste au prix du catalogue", async () => {

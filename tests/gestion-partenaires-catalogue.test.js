@@ -229,7 +229,7 @@ test("assistant : un tarif d'un partenaire masqué n'est pas repris (revue, n° 
   assert.ok(offreDepuisBase({ genre: "prestation", id: "b" }, { adultes: 1, enfants: 0 }, { prestations: [p] }));
   assert.equal(offreDepuisBase({ genre: "prestation", id: "b" }, { adultes: 1, enfants: 0 }, { prestations: [p], partenaires }), null);
   // La carte « Nouveau dossier » de l'Assistant passe les partenaires à la fiche de création (lecture par l'assistant supprimée le 20.11.2026).
-  assert.match(lire("views/agent.mjs"), /partenaires: etat\.db\.partenaires, nomPartenaire/);
+  assert.match(lire("views/agent-valider.mjs"), /partenaires: etat\.db\.partenaires, nomPartenaire/);
 });
 
 test("consigne de check-in du voucher, en anglais, dans la fiche partenaire (clé regles.checkin_voucher, lue par le lot B)", () => {

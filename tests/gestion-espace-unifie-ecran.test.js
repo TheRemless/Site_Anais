@@ -121,8 +121,8 @@ test("doublons Secret et Taxi : même téléphone ou même nom, la plus ancienne
 });
 
 test("Assistant : validation refusée sans rien écrire, écriture dans l'entreprise du dossier visé", () => {
-  const agent = source("views/agent.mjs");
-  assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c\);/);
+  const agent = source("views/agent.mjs") + source("views/agent-valider.mjs");
+  assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise \}\);/);
   assert.match(agent, /entreprise_a_choisir: \(\) => tr\("Choisissez Secret ou Taxi"\)/);
   assert.match(agent, /lier: \(a, b\) => lierDossiers\(a, b, modifier\)/, "dossier_lie_id des deux côtés");
   assert.match(agent, /r = await dansEntreprise\(entiteVisee\(c\), \(\) => enregistrerReservation\(/, "service ajouté au dossier de l'autre entreprise");
@@ -210,7 +210,7 @@ test("1. l'étape 2 échoue quand même : le dossier 1 va à la corbeille, ok:fa
   // Jamais ok:true sans tous les dossiers : un dossier absent compte comme un échec.
   const r3 = await U.creerDossiersLies({ etapes: ETAPES, essayer: async () => ({ ok: true }), creer: async (e, i) => (i ? { ok: true } : { ok: true, dossier: { id: "d1" } }), defaire: async () => true });
   assert.equal(r3.ok, false);
-  const agent = source("views/agent.mjs");
+  const agent = source("views/agent-valider.mjs");
   assert.match(agent, /essai: true, clientAVenir: i > 0/, "la passe à blanc passe par la fiche habituelle");
   assert.match(agent, /for \(const d of crees\) await dans\(d\.entite_id, \(\) => supprimerLigne\("dossiers", d\.id\)\);/, "la suppression existante, dans l'entreprise du dossier");
   // La vue a sa propre fonction supprimer() (la conversation) : la suppression d'un dossier passe par l'import renommé, jamais par elle.
@@ -294,7 +294,7 @@ test("5. lien des deux côtés ou pas du tout", async () => {
   });
   assert.equal(ko, false);
   assert.deepEqual(ecrit2, [["a", "b"], ["a", null]], "le premier lien revient à null");
-  const agent = source("views/agent.mjs");
+  const agent = source("views/agent-valider.mjs");
   assert.match(agent, /if \(r\.lies\) toast\(tr\("Deux dossiers liés créés/, "le toast de succès seulement si les deux liens sont posés");
 });
 

@@ -188,7 +188,7 @@ test("relecture 5 et 6 : la duplication garde les sièges ; une modification se 
   assert.match(vue, /modifierProtege\("reservations", r\.id, valeurs, \{ base, arbitrer/);
   const agent = lire("src/gestion/js/views/agent.mjs");
   assert.match(agent, /\}, \{ base: r \}\), \{ ferme: revenir \}\);/, "Vérifier avant d'une modification");
-  assert.match(agent, /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
+  assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
 });
 
 test("fiche de réservation : le champ « Sièges enfant ou bébé » existe et la carte de l'Assistant dit les sièges", () => {
