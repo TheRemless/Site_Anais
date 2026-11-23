@@ -640,16 +640,31 @@ export const modeleChoisi = (reservation) => {
   return m === SANS_VOUCHER || MODELES_VOUCHER.includes(m) ? m : "";
 };
 
+// Le mode d'un trajet du catalogue, d'après son champ « mode » (« Speedboat », « Minivan + minivan (departs Krabi Town at 11:30) »,
+// « Shared van + speedboat ») : « bateau » (que de l'eau), « route » (minivan, bus, taxi, sans bateau), « mixte » (les deux), "" (inconnu).
+// INV-2026-047 (23.11.2026) : un trajet Lanta → Khao Sok en minivans recevait un billet de bateau parce que tout trajet en était un.
+const EAU = /speed ?boat|ferry|\bboat|catamaran|longtail|long-tail|bateau|express boat|ship/i;
+const ROUTE = /mini ?van|\bvan\b|mini ?bus|\bbus\b|taxi|\bcar\b|pick-?up|voiture|songthaew|sawngthaew/i;
+export function modeTrajet(trajet) {
+  const m = String((trajet && trajet.mode) || "");
+  const eau = EAU.test(m);
+  const route = ROUTE.test(m);
+  return eau && route ? "mixte" : eau ? "bateau" : route ? "route" : "";
+}
+
 // `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (points d'embarquement sur sa fiche), un billet.
-export function typeVoucher(reservation, prestation, partenaire = null) {
+// `trajet` (facultatif) : le trajet de la base lié à la réservation, pour un trajet par la route (voucher de transfert, pas un billet de bateau).
+export function typeVoucher(reservation, prestation, partenaire = null, trajet = null) {
   const choisi = modeleChoisi(reservation);
   if (choisi) return choisi === SANS_VOUCHER ? null : choisi;
-  return typeVoucherDeduit(reservation, prestation, partenaire);
+  return typeVoucherDeduit(reservation, prestation, partenaire, trajet);
 }
 
 // La déduction d'avant (prestation, trajet, mots du libellé) : la valeur par défaut du menu « Modèle de voucher ».
-export function typeVoucherDeduit(reservation, prestation, partenaire = null) {
-  if (reservation.trajet_id) return "billet";
+// Un trajet de la base : un billet de bateau, sauf un trajet tout par la route (minivan, bus) qui reçoit le voucher de transfert. Un trajet
+// mixte (bateau puis minivan, ou l'inverse) garde le billet : le client embarque et le check-in au quai s'imprime. Trajet inconnu : billet.
+export function typeVoucherDeduit(reservation, prestation, partenaire = null, trajet = null) {
+  if (reservation.trajet_id) return trajet && modeTrajet(trajet) === "route" ? "transfert" : "billet";
   if (!prestation && partenaire && ((partenaire.regles && partenaire.regles.points_embarquement && partenaire.regles.points_embarquement.length) || /speed ?boat|ferry/i.test(partenaire.nom || ""))) return "billet";
   const f = prestation ? prestation.famille : "";
   const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
@@ -845,8 +860,15 @@ export function dureeTexte(duree) {
 export const venduParPersonne = (prestation) => !prestation || !prestation.unite || ["pp", "ad", "ch", "pers"].includes(prestation.unite);
 
 
-// Type de transfert d'après le groupe de la prestation.
-export function typeTransfert(prestation, reservation) {
+// Type de transfert d'après le trajet de la base, sinon le groupe de la prestation et le libellé.
+// Un trajet du catalogue se vend à la place (prix par adulte) : un minivan partagé, sauf si son mode dit « private », « privé » ou « taxi »
+// (INV-2026-047, 23.11.2026 : « Minivan + minivan » s'imprimait « Private minivan »).
+export function typeTransfert(prestation, reservation, trajet = null) {
+  if (trajet && reservation && reservation.trajet_id) {
+    const m = String(trajet.mode || "");
+    if (/priv|charter|taxi/i.test(m)) return /taxi|\bcar\b|berline|voiture/i.test(m) ? "taxi" : "minivan";
+    return "partage";
+  }
   const t = `${(prestation && prestation.groupe) || ""} ${(reservation && reservation.libelle) || ""}`;
   if (/partag|shared|navette|join/i.test(t)) return "partage";
   if (/taxi|berline|voiture|car\b/i.test(t)) return "taxi";

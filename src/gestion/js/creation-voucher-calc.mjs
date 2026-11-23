@@ -1,7 +1,7 @@
 // Création d'un dossier de Secret ou de Taxi avec tout ce que le voucher dit, service par service (13.11.2026) : la logique pure, sans DOM,
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
-import { reservationsDepuisDocument, typeVoucher, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle, adresseEstHotel } from "./operations-calc.mjs";
+import { reservationsDepuisDocument, typeVoucher, typeTransfert, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle, adresseEstHotel } from "./operations-calc.mjs";
 import { libelleClient, ligneLibre } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 import { estRetourDepartDetails, libelleRetourDepart, dureeFrancais, erreursTrajet, RETOUR_DEPART } from "./trajet-calc.mjs";
@@ -12,13 +12,14 @@ import { SIEGES_MAX, siegesLus, siegesTotal, siegesAChoisir } from "./sieges-cal
 // avec un seul voucher. Le regroupement est celui de la création elle-même (reservationsDepuisDocument), pour ne jamais diverger.
 // Rend [{ cle, ligneIds, libelle, date, personnes, type }] ; `type` est le modèle de voucher (null : pas de voucher, une option par exemple).
 // `pickup` et `dropoff` : les deux bouts du trajet, tels que la Booking confirmation les imprimerait sans saisie.
+// `transfertAuto` : le type de transfert que le voucher imprimera sans choix (« partage » pour un trajet du catalogue).
 export function servicesCreation(lignes, { prestations = [], partenaires = [], trajets = [] } = {}) {
   const prets = lignes.map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
   return reservationsDepuisDocument({ dossier_id: "", contenu: { lignes: prets } }, { uid: () => "" }).map(({ reservation: r }) => {
     const prestation = r.prestation_id ? prestations.find((p) => p.id === r.prestation_id) || null : null;
     const partenaire = r.partenaire_id ? partenaires.find((p) => p.id === r.partenaire_id) || null : null;
     const trajet = r.trajet_id ? trajets.find((t) => t.id === r.trajet_id) || null : null;
-    return { cle: r.ligne_id, ligneIds: (r.details && r.details.lignes_ids) || [r.ligne_id], libelle: r.libelle, date: r.date_service || "", personnes: r.personnes, type: typeVoucher(r, prestation, partenaire), trajet: !!trajet, pickup: libelleClient(pickupDepuisLibelle(r, prestation, trajet)), dropoff: libelleClient(dropOffDepuisLibelle(r, prestation, trajet)) };
+    return { cle: r.ligne_id, ligneIds: (r.details && r.details.lignes_ids) || [r.ligne_id], libelle: r.libelle, date: r.date_service || "", personnes: r.personnes, type: typeVoucher(r, prestation, partenaire, trajet), transfertAuto: typeTransfert(prestation, r, trajet), trajet: !!trajet, pickup: libelleClient(pickupDepuisLibelle(r, prestation, trajet)), dropoff: libelleClient(dropOffDepuisLibelle(r, prestation, trajet)) };
   });
 }
 

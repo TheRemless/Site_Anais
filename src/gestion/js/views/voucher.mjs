@@ -51,7 +51,7 @@ export function sourcesVoucher(r, prestationLive) {
 function modeleDe(r, sources, taxi) {
   const choisi = modeleChoisi(r);
   if (choisi) return choisi === SANS_VOUCHER ? null : choisi;
-  return sources.modele || typeVoucherDeduit(r, sources.prestation, sources.partenaire) || (taxi ? "transfert" : null);
+  return sources.modele || typeVoucherDeduit(r, sources.prestation, sources.partenaire, sources.trajet) || (taxi ? "transfert" : null);
 }
 
 // Les réservations qui ont un voucher, dans l'ordre de création. Le numéro (1, 2, 3 après la référence du dossier) se calcule avant d'écarter
@@ -103,7 +103,7 @@ export function figerVoucher(x, date = aujourdhui()) {
   const r = etat.db.reservations.find((y) => y.id === x.reservation.id) || x.reservation;
   const taxi = estTaxi(reglages());
   const src = sourcesVoucher(r, x.prestation);
-  const modele = src.modele || typeVoucherDeduit(r, src.prestation, src.partenaire) || (taxi ? "transfert" : null);
+  const modele = src.modele || typeVoucherDeduit(r, src.prestation, src.partenaire, src.trajet) || (taxi ? "transfert" : null);
   const valeurs = { modele, prestation: extraitPrestation(src.prestation), trajet: extraitTrajet(src.trajet), partenaire: extraitPartenaire(src.partenaire) };
   const d = etat.db.dossiers.find((y) => y.id === r.dossier_id) || null;
   return voucherFige({ reservation: r, index: x.index, numero: x.numero, empreinte: empreinteDuDossier(d)(r), valeurs, date, avant: (r.details && r.details.voucher_fige) || null });
@@ -165,7 +165,8 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };
   const prive = dt.type_tour ? dt.type_tour === "prive" : estPrive(p, r);
-  const transfert = dt.type_transfert || typeTransfert(p, r);
+  // Un trajet du catalogue vendu à la place : « Shared minivan » d'office (typeTransfert), sauf choix posé sur la réservation.
+  const transfert = dt.type_transfert || typeTransfert(p, r, trajet);
   const pers = r.personnes || {};
   const a = Number(pers.adultes) || 0;
   const en_ = Number(pers.enfants) || 0;

@@ -6,7 +6,7 @@ import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-cal
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
-import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
+import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, typeTransfert, valeursFigees } from "../operations-calc.mjs";
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
 import { siegesLus, siegesTotal, siegesChoisis, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
@@ -486,7 +486,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const dt = r.details || {};
   const dossierR = etat.db.dossiers.find((x) => x.id === r.dossier_id);
   const clientR = (dossierR && etat.db.clients.find((c) => c.id === dossierR.client_id)) || {};
-  const cv = champsVoucher({ details: dt, prefixe: "v", dateService: () => date.value, dateInitiale: r.date_service, hotelFiche: hotelEtChambre(clientR, { entite_id: r.entite_id || (dossierR && dossierR.entite_id) || etat.entiteId }).hotel });
+  // Ce que « Automatique » imprimera comme type de transfert : un trajet du catalogue donne « Shared minivan » d'office.
+  const transfertAuto = typeTransfert(r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null, r, r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null);
+  const cv = champsVoucher({ details: dt, prefixe: "v", dateService: () => date.value, dateInitiale: r.date_service, hotelFiche: hotelEtChambre(clientR, { entite_id: r.entite_id || (dossierR && dossierR.entite_id) || etat.entiteId }).hotel, transfertAuto });
   // Zone de l'hôtel sur la grille de pickup du partenaire : la zone et le départ remplissent l'heure, sans écraser une heure tapée à la main.
   let heureDeGrille = "";
   const zonesPickup = blocZonesPickup({
@@ -507,10 +509,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
-  const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
+  const trajetR = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null;
+  const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id), trajetR);
   // Modèle de voucher (audit n° 22 et 23) : choisi ici, sinon celui figé au premier envoi, sinon la déduction d'après la prestation et le libellé.
   const figees = valeursFigees(r);
-  const modeleAuto = (figees && figees.modele) || typeVoucherDeduit(r, prestation, partenaireDe(r.partenaire_id));
+  const modeleAuto = (figees && figees.modele) || typeVoucherDeduit(r, prestation, partenaireDe(r.partenaire_id), trajetR);
   const modele = h("select", { id: "r-modele" }, h("option", { value: "" }, modeleAuto ? tr("Automatique : {modele}", { modele: TITRES_VOUCHER[modeleAuto] }) : tr("Automatique : pas de voucher")), MODELES_VOUCHER.map((m) => h("option", { value: m }, TITRES_VOUCHER[m])), h("option", { value: SANS_VOUCHER }, tr("Pas de voucher")));
   modele.value = modeleChoisi(r);
   const details = () => {
@@ -553,7 +556,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     const tid = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
     const memeService = (partenaire.value || null) === (r.partenaire_id || null) && pid === (r.prestation_id || null) && tid === (r.trajet_id || null);
     const p2 = pid ? etat.db.prestations.find((x) => x.id === pid) || null : null;
-    const nouveau = typeVoucherDeduit({ ...r, prestation_id: pid, trajet_id: tid, libelle: libelle.value }, p2, partenaireDe(partenaire.value || null)) || null;
+    const t2 = tid ? etat.db.trajets.find((x) => x.id === tid) || null : null;
+    const nouveau = typeVoucherDeduit({ ...r, prestation_id: pid, trajet_id: tid, libelle: libelle.value }, p2, partenaireDe(partenaire.value || null), t2) || null;
     // Le modèle d'avant devient un choix explicite : il ne suivra plus la déduction d'après le nouveau partenaire.
     if (!memeService && modele.value === "") {
       modele.value = modeleAvant || SANS_VOUCHER;

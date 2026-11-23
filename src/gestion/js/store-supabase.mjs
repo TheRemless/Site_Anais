@@ -690,6 +690,22 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async agentSupprimerConversation(id) {
       verifie(await sb.from("agent_conversations").delete().eq("id", id).select("id"));
     },
+    // Migration 120 (INV-2026-046 et 047, 23.11.2026) : la carte se prend dans la base avant d'enregistrer quoi que ce soit. Une seconde
+    // validation (double tap, deux onglets, deux appareils) trouve la carte prise ou déjà validée : false, rien n'est créé deux fois.
+    // Sans la migration : true, l'écran garde son propre verrou.
+    async agentPrendreCarte(id) {
+      const { data, error } = await sb.rpc("prendre_agent_carte", { p_carte: id });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return true;
+        throw new Error(error.message);
+      }
+      return data === true;
+    },
+    // Une validation arrêtée (motif, erreur) rend la carte : elle peut être validée de nouveau.
+    async agentRendreCarte(id) {
+      const { error } = await sb.rpc("rendre_agent_carte", { p_carte: id });
+      if (error && !(error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || ""))) console.error("rendre_agent_carte", error.message);
+    },
     async agentCarte(id, statut) {
       return verifie(await sb.from("agent_cartes").update({ statut }).eq("id", id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single());
     },

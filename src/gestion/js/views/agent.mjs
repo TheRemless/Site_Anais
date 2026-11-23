@@ -821,6 +821,9 @@ export async function vueAgent(idOuvert = "") {
   const resultats = new Map();
   // Le motif d'une carte qui n'a pas pu être enregistrée d'un geste, avec l'entreprise où la passer s'il y a lieu.
   const motifs = new Map();
+  // Cartes en cours de validation (INV-2026-046 et 047, 23.11.2026 : un second tap pendant les 4 secondes d'enregistrement a créé un second
+  // dossier). Un second geste sur la même carte ne relance rien ; la base, elle, ne laisse prendre une carte qu'une fois (migration 120).
+  const enValidation = new Set();
   // Espace unifié : l'entreprise d'un service corrigée d'un tap avant de valider (carte -> { index du service: { id, slug } }).
   const corrections = new Map();
   // Le devis calculé par Nani sur cette carte (devis-carte.mjs) passe aussi : « Créer le dossier » reprend ses véhicules et son total.
@@ -1035,11 +1038,26 @@ export async function vueAgent(idOuvert = "") {
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
             action && action.bloque ? h("p", { class: "aide pleine-largeur" }, tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
-            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque, onclick: (e) => action.faire(e.currentTarget) }, action.libelle), action) : null,
-            action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
-            h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
+            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque || enValidation.has(c.id), "aria-busy": enValidation.has(c.id) ? "true" : null, onclick: (e) => agir(e.currentTarget, action) }, enValidation.has(c.id) ? tr("Création…") : action.libelle), action) : null,
+            action && action.puis ? h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && action.puis.faire() }, action.puis.libelle) : null,
+            h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && decider(c, "ecartee") }, tr("Écarter"))
           )
     );
+  }
+
+  // Le bouton principal d'une carte : désactivé dès le geste et jusqu'à la fin (un double tap ne lance qu'une action).
+  async function agir(bouton, action) {
+    if (bouton.disabled || bouton.getAttribute("aria-busy") === "true") return;
+    bouton.disabled = true;
+    bouton.setAttribute("aria-busy", "true");
+    try {
+      await action.faire(bouton);
+    } finally {
+      if (bouton.isConnected) {
+        bouton.disabled = !!action.bloque;
+        bouton.removeAttribute("aria-busy");
+      }
+    }
   }
 
   function lierBouton(bouton, action) {
@@ -1247,7 +1265,36 @@ export async function vueAgent(idOuvert = "") {
   // ---- Valider d'un geste ---------------------------------------------------------------------------------------------------------
   // Chaque genre passe par le code habituel de l'outil, sans le montrer ; un motif d'arrêt reste sur la carte. Rend true si c'est enregistré.
   async function valider(c, { seule = true } = {}) {
+    if (enValidation.has(c.id)) return false;
+    enValidation.add(c.id);
+    try {
+      return await validerUneFois(c, { seule });
+    } finally {
+      enValidation.delete(c.id);
+      // La carte redessinée pendant l'enregistrement (motif) avait son bouton en attente : elle se redessine, bouton rendu.
+      const actuelle = fil.cartes.find((x) => x.id === c.id);
+      if (actuelle && actuelle.statut === "proposee") redessiner(actuelle);
+    }
+  }
+  async function validerUneFois(c, { seule }) {
     motifs.delete(c.id);
+    // La carte se prend dans la base avant tout enregistrement : prise ailleurs (autre onglet, autre appareil) ou déjà validée, rien n'est créé.
+    let prise = false;
+    try {
+      prise = await etat.store.agentPrendreCarte(c.id);
+    } catch (err) {
+      motifs.set(c.id, { motif: err.message, entreprise: null });
+      redessiner(c);
+      if (seule) toast(err.message, true);
+      return false;
+    }
+    if (!prise) {
+      const motif = tr("Cette carte est déjà en cours de validation, ou déjà validée : rien n'a été créé une seconde fois.");
+      motifs.set(c.id, { motif, entreprise: null });
+      redessiner(c);
+      if (seule) toast(motif, true);
+      return false;
+    }
     let r = { ok: false, motif: "" };
     // Un numéro de vol lu sur une pièce jointe (la fonction ne peut pas le relire) se vérifie dans la fenêtre : jamais validé d'un geste.
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
@@ -1280,6 +1327,8 @@ export async function vueAgent(idOuvert = "") {
       r = { ok: false, motif: err.message };
     }
     if (!r || !r.ok) {
+      // Rien n'est enregistré : la carte se rend, elle peut être validée de nouveau.
+      await etat.store.agentRendreCarte(c.id).catch((err) => console.error("agent : rendre la carte", err));
       motifs.set(c.id, { motif: (r && r.motif) || tr("Rien n'a été enregistré."), entreprise: (r && r.entreprise) || null });
       redessiner(c);
       if (seule) toast((r && r.motif) || tr("Rien n'a été enregistré."), true);
