@@ -76,7 +76,7 @@ for (const t of cles["koh-rok-koh-haa|private-longtail"].slice(0, 2)) await base
 // Un tarif privé à faible commission : il doit sortir dans la lecture seule, sans être modifié.
 const faible = (await un("insert into prestations (entite_id, partenaire_id, famille, groupe, libelle, libelle_en, prix_vente, unite, ordre) values ($1, $2, 'excursion', 'Private charter', 'Charter test faible', 'Charter test faible', 3010, 'boat', 11) returning id", [ent.secret, lanta])).id;
 await db.query("insert into prestations_nets (entite_id, prestation_id, net) values ($1, $2, 2840)", [ent.secret, faible]);
-const LIBELLE_KRADAN = "Extension Koh Kradan sur tour 4 îles privé";
+const LIBELLE_KRADAN = "Koh Kradan extension on the private 4 Islands tour";
 const ligneKradan = async (partenaire, prix) => (await un("insert into prestations (entite_id, partenaire_id, famille, groupe, libelle, libelle_en, prix_vente, unite, ordre) values ($1, $2, 'excursion', 'Options', $3, 'Koh Kradan extension', $4, 'boat', 12) returning id", [ent.secret, partenaire, LIBELLE_KRADAN, prix])).id;
 const kradan = await ligneKradan(lanta, ANCIEN);
 await db.query("insert into prestations_nets (entite_id, prestation_id, net) values ($1, $2, 233)", [ent.secret, kradan]);
