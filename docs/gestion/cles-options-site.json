@@ -10,7 +10,9 @@
   ],
   "koh-rok-koh-haa|private-longtail": [
     { "ligne": "1 to 3 people", "prestation": "0e1f1b13-07a1-5496-ab02-02068d7f428b", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" },
-    { "ligne": "4 to 6 people", "prestation": "1961d3a3-783e-5c91-af21-2b93561cbc59", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" }
+    { "ligne": "4 to 6 people", "prestation": "1961d3a3-783e-5c91-af21-2b93561cbc59", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" },
+    { "ligne": "7 to 8 people", "prestation": "05780963-2f3b-072f-12fb-e9cb05f91c99", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" },
+    { "ligne": "9 to 10 people", "prestation": "4bdc7037-6f02-943a-d265-5bbb30c42c08", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" }
   ],
   "4-islands|private-speedboat": [
     { "ligne": "Whole boat, custom day", "prestation": "e1c1818e-ead0-4b8c-bc68-364fb9cf0007", "libelle": "Private speedboat OctopuSea, custom day" }

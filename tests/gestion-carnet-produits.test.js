@@ -12,7 +12,7 @@ import { origineAdmise, originesAdmises, origineCarnet, estPageCarnet, sansCodeC
 import { PRODUITS_CARNET, CHEMIN_CARNET } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
 import { lireMessage, ajusterAgesCarnet, offresDuService, clientsProches, indexClientsParTelephone, clientParTelephone, fichesParNumero, optionDuSite, notesDemande } from "../src/gestion/js/demande-calc.mjs";
-import { estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties, produitSite, texteDemande, nomProduit, titreOption, optionsProduit, demandeTarifee, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
+import { estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties, texteDemande, nomProduit, titreOption, optionsProduit, demandeTarifee, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit, commissionPrevue, fraisDeParc } from "../src/gestion/js/operations-calc.mjs";
 
 const AJD = "2026-11-22";
@@ -31,7 +31,8 @@ const PRIX = {
   "pig-island-longtail-prive-5h|standard|9 to 10 people": [7500, "boat"], "pig-island-longtail-prive-5h|standard|11 to 12 people": [8500, "boat"],
 };
 const PRIX_OPTION = ["option|transfert-hotel|van", [1500, "veh"]];
-const TARIFS_CARNET_CLES = PRODUITS_CARNET.flatMap((p) => p.options.flatMap((o) => o.tarifs.map((t) => t.cle)));
+const SAMUI = PRODUITS_CARNET.filter((p) => p.guide === "koh-samui");
+const TARIFS_CARNET_CLES = SAMUI.flatMap((p) => p.options.flatMap((o) => o.tarifs.map((t) => t.cle)));
 // Catalogue fictif : partenaires A et B, mêmes tarifs et mêmes identifiants que le SQL privé.
 const prestations = [...Object.entries(PRIX), PRIX_OPTION].map(([cle, [prix, unite, enfant]]) => ({ id: md5uuid(`carnet:${cle}`), partenaire_id: cle.startsWith("ang-thong-petit") ? "p-b" : "p-a", famille: "excursion", groupe: cle.startsWith("option") ? "Option, Koh Samui" : "Koh Samui", libelle: cle, libelle_en: cle, prix_vente: prix, unite, details: enfant !== undefined ? { enfant } : {}, sur_place: false, actif: true }));
 const partenaires = [{ id: "p-a", actif: true }, { id: "p-b", actif: true }];
@@ -156,15 +157,15 @@ test("demande-site : la notification dit Carnet ZTP pour une demande du carnet, 
 });
 
 // ---- Le catalogue et ses identifiants -------------------------------------------------------------------------------------------------
-const TARIFS_CARNET = PRODUITS_CARNET.flatMap((p) => p.options.flatMap((o) => o.tarifs.map((t) => ({ ...t, produit: p.id }))));
+const TARIFS_CARNET = SAMUI.flatMap((p) => p.options.flatMap((o) => o.tarifs.map((t) => ({ ...t, produit: p.id }))));
 
 test("carnet-produits : un tarif par ligne, identifiants calculés de la clé, aucun doublon", () => {
-  assert.equal(PRODUITS_CARNET.length, 9);
+  assert.equal(SAMUI.length, 9);
   assert.deepEqual([...TARIFS_CARNET_CLES].sort(), Object.keys(PRIX).sort());
   for (const t of TARIFS_CARNET) assert.equal(t.prestation, md5uuid(`carnet:${t.cle}`), t.cle);
   assert.equal(new Set(TARIFS_CARNET.map((t) => t.prestation)).size, TARIFS_CARNET.length);
   // Les identifiants des sorties ne rencontrent aucune page du site Secret.
-  for (const p of PRODUITS_CARNET) assert.ok(!PRODUITS_SITE.some((s) => s.id === p.id), p.id);
+  for (const p of SAMUI) assert.ok(!PRODUITS_SITE.some((s) => s.id === p.id), p.id);
   assert.deepEqual(PRODUITS_CARNET.filter((p) => p.enfant).map((p) => [p.id, p.enfant.min, p.enfant.max]), [["ang-thong-big-boat", 4, 11], ["ang-thong-speedboat-groupe", 4, 10], ["ang-thong-petit-groupe-speedboat", 3, 9], ["pig-island-groupe", 4, 10]]);
 });
 
@@ -363,7 +364,7 @@ test("demandes du site : une demande du carnet se reconnaît à sa page, jamais 
 });
 
 test("demandes du site : la fiche d'une demande du carnet porte tous les champs reçus, âges des enfants compris", () => {
-  assert.deepEqual(champsCarnet(D), { prestation: "Pig Island and Koh Tan by private longtail, 4 hours – Whole boat", date: "2026-12-20", heure: "", adultes: 2, enfants: 2, ages: [5, 9], hotel: "Hotel Example, Chaweng", nom: "Anna Keller", whatsapp: "+41791234567", total: 4500, devise: "THB" });
+  assert.deepEqual(champsCarnet(D), { prestation: "Pig Island and Koh Tan by private longtail, 4 hours – Whole boat", date: "2026-12-20", heure: "", adultes: 2, enfants: 2, ages: [5, 9], hotel: "Hotel Example, Chaweng", nom: "Anna Keller", whatsapp: "+41791234567", extras: "", transfert: "", total: 4500, devise: "THB" });
   assert.equal(champsCarnet({ ...D, message: "", telephone: null, total_estime: null }).whatsapp, "");
   assert.deepEqual(champsCarnet({ ...D, message: "" }).ages, []);
   assert.equal(nomProduit({ produit: "", produit_id: "pig-island-groupe" }), "Pig Island and Koh Tan by big boat");
@@ -377,7 +378,7 @@ test("demandes du site : « autre sortie » d'une demande du carnet ne propose q
   assert.ok(autres.every((p) => p.guide === "koh-samui" && p.id !== D.produit_id));
   const site = autresSorties({ ...D, page_url: "https://secrettravelandtour.com/tours/4-islands/", produit_id: "4-islands" });
   assert.ok(site.length > 5 && site.every((p) => PRODUITS_SITE.includes(p)));
-  assert.equal(produitSite("pig-island-groupe").guide, "koh-samui");
+  assert.equal(PRODUITS_CARNET.find((p) => p.id === "pig-island-groupe").guide, "koh-samui");
 });
 
 test("demandes du site : le message de la demande se relit tel quel, et la fiche ZTP est retrouvée par le numéro WhatsApp", () => {
@@ -439,7 +440,15 @@ test("enfant de 12 ans : compté adulte partout, avec le même total (fenêtre d
   assert.match(reponseConfirmation(d12, final, { aujourdhui: AJD }), /2 adults\n/);
   // Une demande qui n'est pas du carnet n'est jamais ajustée.
   assert.deepEqual([demandeTarifee({ ...d12, page_url: "https://secrettravelandtour.com/tours/4-islands/" }).adultes], [1]);
-  assert.deepEqual([demandeTarifee({ ...d12, produit_id: "4-islands" }).adultes], [1]);
+  assert.deepEqual([demandeTarifee({ ...d12, produit_id: "n-existe-pas" }).adultes], [1]);
+  // Le cas réel d'une sortie de Koh Lanta, enfant de 12 ans : seule une page /carnet/ de ZTP ajuste. Une page du site Secret, une page absente ou vide et une page
+  // /carnet/ d'un autre site ne comptent jamais l'enfant adulte (une régression d'estCarnet casserait ces lignes).
+  const lanta = { ...d12, produit_id: "4-islands", produit: "4 Islands", option_id: "join-in-longtail", option_titre: "Join-in longtail", adultes: 1, enfants: 1, message: "Booking request: 4 Islands – Join-in longtail\nGuests: 1 adult, 1 child (age 12)" };
+  assert.deepEqual([demandeTarifee({ ...lanta, page_url: "https://zwaldtravelplanner.com/carnet/koh-lanta/" }).adultes, demandeTarifee({ ...lanta, page_url: "https://zwaldtravelplanner.com/carnet/koh-lanta/" }).enfants], [2, 0], "témoin : page du carnet de ZTP");
+  for (const page_url of ["https://secrettravelandtour.com/tours/4-islands/", "", null, undefined, "https://secrettravelandtour.com/carnet/koh-lanta/", "https://www.secrettravelandtour.com/carnet/koh-lanta/", "https://evil.example/carnet/koh-lanta/", "http://zwaldtravelplanner.com/carnet/koh-lanta/"]) {
+    const t = demandeTarifee({ ...lanta, page_url });
+    assert.deepEqual([t.adultes, t.enfants, t.plusGrands], [1, 1, undefined], `page_url ${page_url}`);
+  }
 });
 
 // ---- Liste des demandes -----------------------------------------------------------------------------------------------------------------
@@ -543,7 +552,7 @@ test("module partagé des âges : lireInvites et ajusterAgesCarnet, sans cycle a
   assert.equal(ages.agesDuMessage("Booking request: x\nDate: y"), null);
   const code = (f) => fs.readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
   assert.doesNotMatch(code("demandes-site-calc.mjs"), /from "\.\/demande-calc\.mjs"/, "demandes-site-calc n'importe plus demande-calc");
-  assert.doesNotMatch(code("carnet-ages.mjs"), /from "\.\/(?!carnet-produits)/, "le module partagé n'importe que carnet-produits");
+  assert.doesNotMatch(code("carnet-ages.mjs"), /from "\.\/(?!carnet-produits|site-produits)/, "le module partagé n'importe que des modules de données");
   // La ligne « Guests: » du message se lit à un seul endroit (agesDuMessage), pas dans la liste des demandes.
   assert.doesNotMatch(code("demandes-site-calc.mjs"), /\^Guests/);
   assert.match(code("carnet-ages.mjs"), /\^Guests/);

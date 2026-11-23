@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, ajusterAgesCarnet, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -50,6 +50,7 @@ const AVERTISSEMENTS = {
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
   // Revue de la PR 307 : le prix de la carte valait pour d'autres personnes.
+  extra_sans_tarif: N_("Extra demandé sans tarif en base : ajoutez-le à la main avec « Ajouter un service »."),
   prix_carte_personnes: N_("Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation."),
 };
 
@@ -73,11 +74,13 @@ function lignesBrutes(offre, d, langue, devise) {
   const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.vehicules || (offre.enfant ? d.adultes || 1 : quantite(offre.source, d)), devise });
   // Prix de base pour 1 ou 2 personnes, puis une ligne de supplément par personne en plus (aucune ligne à une ou deux personnes).
   const supplement = offre.supplement ? [ligneDepuisPrestation(offre.supplement.source, netPrestation(offre.supplement.source), { langue, date: d.date, qte: offre.supplement.qte, devise })] : [];
-  if (!offre.enfant) return [adulte, ...supplement];
+  // Extras du site qui ont un tarif (Add Koh Kradan) : une ligne chacun, une seule fois (un prix par bateau).
+  const extras = (offre.extras || []).map((x) => ligneDepuisPrestation(x.source, netPrestation(x.source), { langue, date: d.date, qte: x.qte, devise }));
+  if (!offre.enfant) return [adulte, ...supplement, ...extras];
   // Une ligne par adulte et une ligne enfant au même nom : elles donnent une seule réservation, comme pour un trajet.
   const en = langue === "en";
   const e = ligneDepuisPrestation(offre.enfant, netPrestation(offre.enfant), { langue, date: d.date, qte: d.enfants, devise });
-  return [adulte, { ...e, libelle: `${adulte.libelle}, ${en ? "child" : "enfant"}`, intro: `(${en ? "per child" : "par enfant"})` }, ...supplement];
+  return [adulte, { ...e, libelle: `${adulte.libelle}, ${en ? "child" : "enfant"}`, intro: `(${en ? "per child" : "par enfant"})` }, ...supplement, ...extras];
 }
 
 // L'hôtel du client connu : la première ligne de son adresse (« Hotel Sunset, Room 12 » → « Hotel Sunset »).
@@ -195,6 +198,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     else if (offre && offre.avertissement === "age_enfant_sans_tarif" && offre.bareme) alertes.push(tr("Cette sortie n'a pas de tarif enfant : un enfant de moins de {min} ans n'a aucun tarif propre. Vérifiez avec le partenaire.", { min: offre.bareme.min }));
     else if (offre && offre.avertissement === "age_enfant" && offre.bareme) alertes.push(tr("Âge d'un enfant hors du barème de cette sortie ({min} à {max} ans) : vérifiez le tarif avec le partenaire.", { min: offre.bareme.min, max: offre.bareme.max }));
     else if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
+    // Un extra demandé sans tarif en base : dit EN PLUS de l'avertissement ci-dessus (un groupe hors tranche ne le cache pas).
+    if (offre && offre.extrasManquants && offre.extrasManquants.length) alertes.push(tr(AVERTISSEMENTS.extra_sans_tarif));
     if (sv.copie) alertes.push(tr("Même service, autre date."));
     // Plus de sièges que d'enfants et de bébés : à vérifier avant de créer (relecture de la PR 315).
     const saisie = sv.saisie || {};
@@ -547,7 +552,11 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
       // prix_saisi : la personne a remplacé ici le prix de l'offre du catalogue par un prix à elle (onglet Assistant, agent-apprendre.mjs).
-      const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null, prix_saisi: prixSaisiIci(sv) }));
+      // Les extras et le total de chaque service sont ceux de ses lignes réellement créées (une ligne supprimée dans la fenêtre n'est ni annoncée au client ni comptée).
+      const finals = coches().map((sv, i) => {
+        const ids = new Set((b.parService[i] || {}).ligneIds || []);
+        return { ...serviceCree({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "" }, b.lignes.filter((l) => ids.has(l.id)), etat.db.prestations), prix_saisi: prixSaisiIci(sv) };
+      });
       const somme = b.lignes.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));

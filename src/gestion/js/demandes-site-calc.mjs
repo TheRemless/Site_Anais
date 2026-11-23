@@ -2,15 +2,14 @@
 // Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET } from "./carnet-produits.mjs";
-import { agesDuMessage, ajusterAgesCarnet } from "./carnet-ages.mjs";
+import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
+import { agesDuMessage, ajusterAgesCarnet, sortieParId, resoudreSortie, nomsDeOption, cleTexte, extrasEnElements } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
 export const MOTIFS_REFUS = { complet: N_("Complet ce jour-là"), mer: N_("Mer trop agitée"), indisponible: N_("Pas possible ce jour-là"), autre: N_("Sans motif") };
 
-export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || PRODUITS_CARNET.find((p) => p.id === id) || null;
-export const nomProduit = (d) => d.produit || (produitSite(d.produit_id) || {}).nom || d.produit_id;
+export const nomProduit = (d) => d.produit || (sortieParId(d.produit_id) || {}).nom || d.produit_id;
 // Ce que le client demande, pour l'écran et les réponses. Une page taxi sert les deux sens : son nom (« Krabi Airport to Koh Lanta ») peut être
 // l'inverse du trajet demandé. Le trajet est alors celui du message (« Transfer request: Koh Lanta to Krabi Airport », demande du 18.11.2026).
 export function titreDemande(d) {
@@ -25,12 +24,44 @@ export const demandesDuDossier = (demandes, dossierId) =>
   dossierId ? (demandes || []).filter((x) => x.dossier_id === dossierId).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))) : [];
 export function titreOption(d) {
   if (d.option_titre) return d.option_titre;
-  const p = produitSite(d.produit_id);
-  const o = p && d.option_id ? p.options.find((x) => x.id === d.option_id) : null;
+  const p = sortieParId(d.produit_id);
+  const id = cleTexte(d.option_id);
+  const o = p && id ? p.options.find((x) => nomsDeOption(x).includes(id)) : null;
   return o ? o.titre : d.option_id || "";
 }
-// Options proposées pour « Modifier » : celles de la page produit du site.
-export const optionsProduit = (id) => (produitSite(id) || { options: [] }).options;
+// L'option d'une demande, résolue comme pour le tarif et l'âge (carnet-ages.mjs, resoudreSortie) : { produit, option }, ou null si la sortie ou l'option ne se reconnaît pas.
+// `titre` : le titre à résoudre (celui de la demande, ou celui choisi dans « Modifier »).
+const optionDeLaDemande = (d, titre = d.option_titre || "", id = d.option_id || "") => resoudreSortie({ carnet: { produit: d.produit_id, option: id }, option: titre });
+// Le titre de l'option de la demande, ramené au titre canonique de l'option résolue (« avec kayak » de la page donne « With kayak »), sinon tel que la demande l'écrit.
+export const titreCanonique = (d) => {
+  const r = optionDeLaDemande(d);
+  return r ? r.option.titre : titreOption(d);
+};
+// Ce titre désigne-t-il la même option que la demande ? Comparé par option RÉSOLUE (identifiant, titre, alias), jamais par le texte : « With kayak » et « avec kayak » sont la même.
+export function memeOption(d, titre) {
+  const a = optionDeLaDemande(d);
+  const b = optionDeLaDemande(d, titre, "");
+  if (a && b) return a.option.id === b.option.id;
+  return cleTexte(titre) === cleTexte(titreOption(d));
+}
+// Options proposées pour « Modifier » : celles de la sortie, et l'option de la demande seulement si elle n'est aucune d'elles (un nom qui a changé depuis sur le site). `courante` :
+// le titre à montrer comme choix de départ, canonique quand l'option se résout.
+export function optionsModifiables(d) {
+  const options = [...sortieOptions(d.produit_id)];
+  const r = optionDeLaDemande(d);
+  if (r) return { options, courante: r.option.titre };
+  const brut = titreOption(d);
+  if (brut && !options.some((o) => cleTexte(o.titre) === cleTexte(brut))) options.unshift({ id: d.option_id || "", titre: brut });
+  return { options, courante: brut || (options[0] || {}).titre || "" };
+}
+// Le titre à poser dans les changements quand Anaïs choisit `choisi`, ou null si l'option résolue ne change pas (choisir la même option n'est pas un changement).
+export const optionModifiee = (d, choisi) => {
+  const c = String(choisi || "").trim();
+  return c && !memeOption(d, c) ? c : null;
+};
+// Options d'une sortie (celles du carnet ou de la page produit du site).
+const sortieOptions = (id) => (sortieParId(id) || { options: [] }).options;
+export const optionsProduit = sortieOptions;
 
 // La demande telle qu'elle vaut maintenant : ce que le client a envoyé, avec les changements décidés par Anaïs par-dessus.
 export function demandeEffective(d, modifs = {}) {
@@ -70,22 +101,94 @@ export const prenom = (nom) => String(nom || "").trim().split(/\s+/)[0] || "";
 // ---- Le message à relire ------------------------------------------------------------------------------------------
 // Le message que le site a envoyé à WhatsApp, avec les changements d'Anaïs posés dessus : « Coller une demande » le lit comme d'habitude
 // (même format, mêmes tests), trouve le service dans la base de prix et crée le dossier. Sans message (ancien site), il est reconstruit.
+// Une ligne « Clé : valeur » du message, ou undefined (une seule lecture pour les extras, le transfert et les lignes du récapitulatif).
+const lireLigne = (message, re) => (re.exec(message || "") || [])[1];
+// Les extras que le client a écrits dans la ligne « Extras: » du message (« Add Koh Kradan »). Le transfert depuis l'hôtel n'en fait pas partie : c'est un prix indicatif à confirmer,
+// pas un extra acquis (transfertDuMessage).
+export const extrasDuMessage = (message) => (lireLigne(message, /^Extras\s*:\s*(.+)$/im) || "").trim();
+// Le transfert depuis l'hôtel que le récapitulatif de la page dit « oui », écrit en anglais, sans mot français. Les formes de la page : « oui (1 500 THB par van, indicatif) », « par personne »,
+// « par bateau », « oui (1 500 THB, indicatif) », « oui (indicatif) » et « oui » seul. Une forme inconnue est rendue telle quelle entre guillemets. Vide quand le client ne l'a pas coché.
+const UNITES_TRANSFERT = { "par van": "per van", "par personne": "per person", "par pers": "per person", "/pers": "per person", "par bateau": "per boat", "par groupe": "per group", "par vehicule": "per vehicle", "par voiture": "per car" };
+export function transfertDuMessage(message) {
+  const v = lireLigne(message, /^Transfert depuis l.hôtel\s*:\s*(oui.*)$/im);
+  if (!v) return "";
+  const reste = v.replace(/^oui\s*/i, "").trim();
+  if (!reste) return "requested";
+  const dedans = /^\((.*)\)$/.exec(reste);
+  if (!dedans) return `requested, "${v.trim()}"`;
+  const indicatif = /(?:^|,)\s*indicatif\s*$/i.test(dedans[1]);
+  const corps = dedans[1].replace(/(?:^|,)\s*indicatif\s*$/i, "").trim();
+  let dit = "";
+  if (corps) {
+    const m = /^(.*?\bTHB)\s*(.*)$/i.exec(corps.replace(/\s+/g, " "));
+    const unite = m ? (m[2] ? UNITES_TRANSFERT[cleTexte(m[2]).replace(/^par (\w+)$/, "par $1").replace(/^pers$/, "/pers")] || UNITES_TRANSFERT[m[2].toLowerCase()] : "") : undefined;
+    if (!m || unite === undefined) return `requested, "${v.trim()}"`;
+    dit = [m[1], unite].filter(Boolean).join(" ");
+  }
+  return `requested (${[indicatif ? "indicative" : "", dit].filter(Boolean).join(" ")})`;
+}
+// Les lignes du récapitulatif de la page (en français) qui n'ont pas de champ dans la demande, reportées dans le message refait : « Formula: », « Slot: », « Extras: » (les extras déjà
+// écrits à la façon du site), « Hotel transfer: » (quand le client l'a coché), « Park fee: » et « Message: ». Le texte du client est repris tel que la page l'a écrit.
+function lignesDuRecapitulatif(message) {
+  const lire = (re) => lireLigne(message, re);
+  const formule = lire(/^Formule\s*:\s*(.+)$/im);
+  const creneau = lire(/^Créneau\s*:\s*(.+)$/im);
+  const parc = lire(/^Entrée du parc à payer sur place\s*:\s*(.+)$/im);
+  const client = lire(/^Message\s*:\s*(.+)$/im);
+  const extras = extrasDuMessage(message);
+  const transfert = transfertDuMessage(message);
+  return [formule ? `Formula: ${formule.trim()}` : "", creneau ? `Slot: ${creneau.trim()}` : "", extras ? `Extras: ${extras}` : "", transfert ? `Hotel transfer: ${transfert}` : "", parc ? `Park fee: ${parc.trim()}` : "", client ? `Message: ${client.trim()}` : ""].filter(Boolean);
+}
+// Les extras d'une ligne « Extras: » qui valent pour l'option finale : un extra connu (EXTRAS_DU_SITE) d'une autre option s'en va (« Add Koh Kradan » n'a pas de sens sur le join-in, où
+// Kradan est déjà dans la sortie), avec sa précision (« per boat »). Un extra se compare ENTIER (« Add Koh Kradan sunset dinner » n'est pas « Add Koh Kradan »), les autres restent avec
+// leurs séparateurs d'origine. Rien à retirer : le texte est rendu tel quel. Vide s'il ne reste rien.
+export function extrasPourOption(extras, produitId, optionId) {
+  const inapplicables = EXTRAS_DU_SITE.filter((x) => !(x.produit === produitId && x.option === optionId)).map((x) => cleTexte(x.ligne));
+  const elements = extrasEnElements(extras);
+  const gardes = elements.filter((e) => !inapplicables.includes(cleTexte(e.texte)));
+  if (gardes.length === elements.length) return String(extras || "");
+  return gardes.map((e, i) => (i ? e.sep : "") + e.texte + e.precisions.map((p) => p.sep + p.texte).join("")).join("");
+}
+// « 2 adults, 2 children (ages 5 and under 1) » : les invités lus dans le message (agesDuMessage), avec leurs âges, tels que le contrat du site les écrit.
+function invitesAnglais({ adultes = 0, enfants = 0, bebes = 0, ages = [] }) {
+  const enfantsTous = ages.length || enfants + bebes;
+  const age = (a) => (a === 0 ? "under 1" : String(a));
+  const liste = ages.length ? ` (age${ages.length > 1 ? "s" : ""} ${ages.length > 1 ? `${ages.slice(0, -1).map(age).join(", ")} and ${age(ages[ages.length - 1])}` : age(ages[0])})` : "";
+  return [adultes ? `${adultes} adult${adultes > 1 ? "s" : ""}` : "", enfantsTous ? `${enfantsTous} ${enfantsTous > 1 ? "children" : "child"}${liste}` : ""].filter(Boolean).join(", ");
+}
 export function texteDemande(d, modifs = {}) {
   const e = demandeEffective(d, modifs);
   const transfert = d.marque === "taxi" || /^(Transfer|Shared minivan) request:/m.test(d.message || "");
-  let lignes = (d.message || "").split("\n").filter((l) => l.trim());
+  // Une demande du carnet dont le message est le récapitulatif de la page (écrit en français, ni « Booking request: » ni « Guests: ») n'est pas relue d'après lui : le message que
+  // la fenêtre de création lit est refait des champs de la demande, avec les âges des enfants lus dans « Personnes : » et les lignes du récapitulatif qui n'ont pas de champ
+  // (formule, créneau, transfert depuis l'hôtel, entrée du parc, message du client) reportées telles quelles. Un message déjà au format du site est gardé tel quel.
+  // Le message du client, lui, reste affiché tel qu'il est.
+  const m = modifs || {};
+  const carnet = estCarnet(d);
+  const refait = carnet && !/^Booking request:/im.test(d.message || "");
+  let lignes = refait ? [] : (d.message || "").split("\n").filter((l) => l.trim());
   if (!lignes.length) {
     const option = e.option_titre ? ` – ${e.option_titre}` : "";
-    lignes = [transfert ? `Transfer request: ${nomProduit(d)}${option}` : `Booking request: ${nomProduit(d)}${option}`];
+    const sortie = carnet ? sortieParId(d.produit_id) : null;
+    const produit = sortie ? sortie.nom : nomProduit(d);
+    lignes = [transfert ? `Transfer request: ${produit}${option}` : `Booking request: ${produit}${option}`];
     if (d.date_service) lignes.push(`Date: ${dateDuSite(d.date_service)}`);
     if (d.heure) lignes.push(`Pickup time: ${d.heure}`);
-    const gens = personnesAnglais(d.adultes || 0, d.enfants || 0);
+    const invites = carnet ? agesDuMessage(d.message) : null;
+    const gens = invites ? invitesAnglais(invites) : personnesAnglais(d.adultes || 0, d.enfants || 0);
     if (gens) lignes.push(`Guests: ${gens}`);
     if (d.pickup) lignes.push(`Pickup: ${d.pickup}`);
     if (d.nom) lignes.push(`Name: ${d.nom}`);
     if (d.total_estime) lignes.push(`Estimated total: ${montantAnglais(d.total_estime, d.devise || "THB")}`);
+    if (refait) lignes.push(...lignesDuRecapitulatif(d.message));
   }
-  const m = modifs || {};
+  // Le prix annoncé sur la page est celui de l'option demandée : quand l'option change, la ligne ne vaut plus (la fenêtre garde alors le prix de la base).
+  if (m.option_titre && !memeOption(d, m.option_titre)) {
+    lignes = lignes.filter((l) => !/^(Estimated total|Price on the site|Price):/i.test(l));
+    // Demande du carnet : l'extension de Kradan n'a de sens que sur la sortie et l'option pour lesquelles elle existe ; le message refait et les notes du dossier n'en gardent que ce qui vaut pour l'option finale.
+    const finale = carnet ? resoudreSortie({ carnet: { produit: d.produit_id, option: "" }, option: m.option_titre }) : null;
+    if (finale) lignes = lignes.map((l) => { const x = /^Extras\s*:\s*(.*)$/i.exec(l); return x ? `Extras: ${extrasPourOption(x[1], finale.produit.id, finale.option.id)}` : l; }).filter((l) => !/^Extras:\s*$/.test(l));
+  }
   // Nouvelle option : la première ligne « … request: Produit – Option » change de fin.
   if (m.option_titre && /^(Booking|Transfer) request:/.test(lignes[0])) {
     const avant = titreOption(d);
@@ -105,6 +208,23 @@ export function texteDemande(d, modifs = {}) {
   return lignes.join("\n");
 }
 
+// Ce que la confirmation retient de la fenêtre de création : les services réellement créés (`services` : date, heure, personnes, titre, extras de chacun, tels que la fenêtre les rend) et le total
+// de la facture, avec les changements décidés dans « Modifier ». Les extras sont ceux des lignes créées : une ligne supprimée dans la fenêtre n'est pas annoncée au client.
+export function finalDeConfirmation(d, modifs, { services = [], total = null, devise = "THB" } = {}) {
+  const s = services[0] || {};
+  return {
+    ...(services.length > 1 ? { services: services.map((x) => ({ titre: x.titre, date: x.date, heure: x.heure, adultes: x.adultes, enfants: x.enfants, extras: x.extras || [] })) } : {}),
+    date: s.date || (modifs || {}).date || d.date_service,
+    heure: s.heure || (modifs || {}).heure || d.heure,
+    option_titre: (modifs || {}).option_titre || titreCanonique(d),
+    adultes: s.adultes ?? d.adultes,
+    enfants: s.enfants ?? d.enfants,
+    extras: s.extras || [],
+    total: (modifs || {}).prix ?? (total > 0 ? total : null),
+    devise,
+  };
+}
+
 // ---- Changements et réponses ---------------------------------------------------------------------------------------
 // Ce qui a changé entre la demande et ce qui a été réservé. `final` : { date, heure, option_titre, adultes, enfants, total, devise }.
 // Une heure absente de la demande (une sortie : le site ne la demande pas) n'est pas un changement, c'est une précision.
@@ -115,9 +235,10 @@ export function changements(d, final) {
   if (final.services && final.services.length > 1) return out;
   if (final.date && d.date_service && final.date !== d.date_service) ajoute("date", d.date_service, final.date);
   if (final.heure && d.heure && final.heure !== d.heure) ajoute("heure", d.heure, final.heure);
-  const optAvant = titreOption(d);
-  if (final.option_titre && optAvant && final.option_titre !== optAvant) ajoute("option", optAvant, final.option_titre);
-  // Les personnes de la demande comme elles sont tarifées : un enfant du carnet plus âgé que le barème compte adulte (même règle que la fenêtre de création).
+  const optAvant = titreCanonique(d);
+  if (final.option_titre && optAvant && !memeOption(d, final.option_titre)) ajoute("option", optAvant, final.option_titre);
+  // « Avant » : la demande telle que le client l'a envoyée, tarifée avec SON option (un enfant du carnet plus âgé que le barème compte adulte, même règle que la fenêtre de
+  // création). « Après » : ce que la fenêtre a créé (final), avec l'option finale.
   const tarifee = demandeTarifee(d);
   const gensAvant = personnesAnglais(tarifee.adultes || 0, tarifee.enfants || 0);
   const gensApres = personnesAnglais(final.adultes || 0, final.enfants || 0);
@@ -160,13 +281,13 @@ export function reponseConfirmation(d, final, { aujourdhui = "" } = {}) {
   const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
   const quoi = taxi ? "transfer" : "booking";
   const tete = ch.length === 0 ? `Your ${quoi} is confirmed.` : `Your ${quoi} is confirmed with ${ch.length === 1 ? "one change" : "these changes"}:`;
-  const titre = [titreDemande(d), final.option_titre || titreOption(d)].filter(Boolean).join(" – ");
+  const titre = [titreDemande(d), final.option_titre || titreCanonique(d)].filter(Boolean).join(" – ");
   const quand = [final.date ? dateAnglaise(final.date, aujourdhui) : "", final.heure ? `pickup ${final.heure}` : ""].filter(Boolean).join(", ");
-  const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0)].filter(Boolean).join(", ");
+  const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0), s.extras && s.extras.length ? `Extras: ${s.extras.join(", ")}` : ""].filter(Boolean).join(", ");
   const total = final.total !== null && final.total !== undefined && final.total !== "" ? `Total: ${montantAnglais(final.total, devise)}` : "";
   const recap = final.services && final.services.length > 1
     ? [...final.services.map(ligneService), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean)
-    : [titre, quand, personnesAnglais(final.adultes || 0, final.enfants || 0), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean);
+    : [titre, quand, personnesAnglais(final.adultes || 0, final.enfants || 0), d.pickup ? `Pickup: ${d.pickup}` : "", final.extras && final.extras.length ? `Extras: ${final.extras.join(", ")}` : "", total].filter(Boolean);
   // VIP Taxi Lanta : paiement en espèces au chauffeur (fait publié sur le site, site.json « payment »).
   const paiement = taxi ? ["Payment in cash to the driver on the day."] : [];
   return [salut, "", tete, ...ch.map((c) => ligneChangement(c, devise, aujourdhui)), "", ...recap, ...(paiement.length ? ["", ...paiement] : []), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
@@ -182,7 +303,7 @@ const PHRASE_MOTIF = {
 export function reponseRefus(d, { motif = "autre", alternative = {} } = {}, { aujourdhui = "" } = {}) {
   const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
   const quand = d.date_service ? ` on ${dateAnglaise(d.date_service, aujourdhui)}` : "";
-  const autre = alternative.produit_id ? (produitSite(alternative.produit_id) || { nom: alternative.produit_id }).nom : "";
+  const autre = alternative.produit_id ? (sortieParId(alternative.produit_id) || { nom: alternative.produit_id }).nom : "";
   const autreDate = alternative.date ? dateAnglaise(alternative.date, aujourdhui) : "";
   const offre = autre && autreDate ? `We can offer ${autre} on ${autreDate} instead.` : autre ? `We can offer ${autre} instead.` : autreDate ? `We can offer ${autreDate} instead.` : "";
   return [salut, "", `Thank you for your request for ${titreDemande(d)}${quand}.`, PHRASE_MOTIF[motif] || PHRASE_MOTIF.autre, ...(offre ? [offre, "Would that work for you?"] : ["We hope to see you another time."]), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
@@ -229,10 +350,11 @@ export function estCarnet(d) {
 // La demande comme Gestion la tarife : un enfant d'une sortie du carnet plus âgé que le barème de la sortie compte adulte (ajusterAgesCarnet). Les adultes, enfants et
 // bébés viennent du message (agesDuMessage), comme dans la fenêtre de création, et non du compteur de la table qui compte tous les enfants : une seule source
 // pour tous les chemins (fenêtre de création, changements, réponse de confirmation).
-export function demandeTarifee(d) {
-  if (!estCarnet(d) || !PRODUITS_CARNET.some((p) => p.id === d.produit_id)) return d;
+export function demandeTarifee(d, titre = titreOption(d)) {
+  if (!estCarnet(d) || !sortieParId(d.produit_id)) return d;
   const invites = agesDuMessage(d.message);
-  return ajusterAgesCarnet({ ...d, ...(invites || {}), carnet: carnetDeLaDemande(d) });
+  // `titre` : l'option telle qu'elle est tarifée (celle de la demande, ou celle choisie dans « Modifier »), la même résolution que le tarif.
+  return ajusterAgesCarnet({ ...d, ...(invites || {}), option: titre, carnet: carnetDeLaDemande(d) });
 }
 // La sortie et l'option que la fenêtre de création lit dans une demande du carnet (product_id et option), ou null pour une demande qui n'en est pas une.
 export const carnetDeLaDemande = (d) => (estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null);
@@ -241,14 +363,21 @@ export function titreCarnet(d) {
   const mots = (cheminPage(d && d.page_url).split("/").filter(Boolean)[1] || "").split("-").filter(Boolean);
   return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(" ");
 }
-// Les autres sorties du même guide que celle de la demande (« Proposer une autre sortie ») : celles du carnet pour une demande du carnet,
-// celles du site pour les autres. Jamais les sorties de Koh Lanta pour un guide de Koh Samui.
+// Le guide d'une page du carnet, d'après le début du nom de la page (« /carnet/koh-samui-… », « /carnet/ao-nang-… », « /carnet/koh-lanta-… ») : « koh-samui », « aonang », « koh-lanta ».
+const GUIDES_PAGES = [[/^koh-samui(-|$)/, "koh-samui"], [/^ao-?nang(-|$)/, "aonang"], [/^koh-lanta(-|$)/, "koh-lanta"]];
+export function guideDeLaPage(d) {
+  const nom = cheminPage(d && d.page_url).split("/").filter(Boolean)[1] || "";
+  const g = GUIDES_PAGES.find(([re]) => re.test(nom));
+  return g ? g[1] : null;
+}
+// Les autres sorties du même guide que celle de la demande (« Proposer une autre sortie » quand on refuse) : celles du site pour une demande du site. Une demande du carnet ne se voit proposer que les sorties de SON guide, jamais celles d'un autre : le guide est celui de la
+// sortie (carnet : son guide ; guide de Koh Lanta : SORTIES_KOH_LANTA), à défaut celui de la page. Ni l'un ni l'autre : rien à proposer plutôt qu'une sortie d'un autre guide.
 export function autresSorties(d) {
-  if (estCarnet(d)) {
-    const ici = PRODUITS_CARNET.find((p) => p.id === d.produit_id);
-    return PRODUITS_CARNET.filter((p) => p.id !== d.produit_id && p.marque === d.marque && (!ici || p.guide === ici.guide));
-  }
-  return PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
+  if (!estCarnet(d)) return PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
+  const ici = PRODUITS_CARNET.find((p) => p.id === d.produit_id);
+  const guide = ici ? ici.guide : SORTIES_KOH_LANTA.includes(d.produit_id) ? "koh-lanta" : guideDeLaPage(d);
+  if (guide === "koh-lanta") return SORTIES_KOH_LANTA.filter((id) => id !== d.produit_id).map((id) => PRODUITS_SITE.find((p) => p.id === id)).filter((p) => p && p.marque === d.marque);
+  return guide ? PRODUITS_CARNET.filter((p) => p.id !== d.produit_id && p.marque === d.marque && p.guide === guide) : [];
 }
 // Tout ce que la page a envoyé, pour la fiche de la demande : la sortie et son option, la date, les adultes, les enfants avec leurs âges (lus dans
 // la ligne « Guests: » du message, la fonction ne garde que leur nombre), l'hôtel (le lieu de prise en charge), le nom, le numéro WhatsApp et le total estimé.
@@ -265,6 +394,8 @@ export function champsCarnet(d) {
     hotel: d.pickup || "",
     nom: d.nom || "",
     whatsapp: numeroWhatsApp(d),
+    extras: extrasDuMessage(d.message),
+    transfert: transfertDuMessage(d.message),
     total: d.total_estime ?? null,
     devise: d.devise || "THB",
   };

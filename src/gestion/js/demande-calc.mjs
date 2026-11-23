@@ -5,8 +5,8 @@ import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSu
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET } from "./carnet-produits.mjs";
-import { lireInvites, ajusterAgesCarnet } from "./carnet-ages.mjs";
+import { PRODUITS_CARNET, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
+import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, LIGNE_ENFANT } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -57,12 +57,13 @@ function trajetDe(texte) {
   return m ? { de: m[1].trim(), vers: m[2].trim() } : { de: "", vers: texte.trim() };
 }
 
-function lireSite(lignes, aujourdhui) {
+// `apresVide` : les rangs des lignes précédées d'une ligne vide dans le message (le pied d'une liste de sorties s'y reconnaît).
+function lireSite(lignes, aujourdhui, apresVide = new Set()) {
   let genre = "";
   let m = null;
   for (const [re, g] of ENTETES_SITE) if ((m = re.exec(lignes[0]))) { genre = g; break; }
   if (!genre) return null;
-  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", sorties: [] };
+  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", transfertHotel: "", extrasListe: "", sorties: [] };
   const optionVers = (txt) => {
     if (/join/i.test(txt)) d.mode = "join";
     else if (/private/i.test(txt)) d.mode = "private";
@@ -107,7 +108,7 @@ function lireSite(lignes, aujourdhui) {
   let sortie = null;
   // Les lignes du service lu (la demande, ou la première sortie d'une liste) : elles disent quelle ligne de prix du site a été choisie (tarifsDuSite).
   d.lignesService = genre === "liste" ? [] : lignes.slice(1);
-  for (const l of lignes.slice(1)) {
+  for (const [rang, l] of lignes.slice(1).entries()) {
     if (genre === "liste") {
       const jour = /^(?:[A-Za-z]{3} \d{1,2} [A-Za-z]{3} \d{4}|Date to choose)$/.exec(l);
       if (jour) { sortie = { date: /^Date/.test(l) ? "" : lireDate(l, aujourdhui), texte: l, titre: "", lignes: [] }; sorties.push(sortie); continue; }
@@ -128,7 +129,17 @@ function lireSite(lignes, aujourdhui) {
     else if (cle === "drop-off") d.dropoff = v;
     else if (cle === "hotel on koh lanta") d.hotel = v;
     else if (cle === "name") d.nom = v;
-    else if (cle === "extras") d.extras = v;
+    else if (cle === "extras") {
+      // Liste de sorties : l'extra d'une sortie est dans ses lignes ; celui d'en-tête (avant la première date) ou de pied (après une ligne vide) est à la liste entière.
+      if (genre === "liste" && (!sortie || apresVide.has(rang + 1))) d.extrasListe = [d.extrasListe, v].filter(Boolean).join(", ");
+      else if (sortie) sortie.extras = v;
+      else d.extras = v;
+    }
+    else if (cle === "hotel transfer") d.transfertHotel = v;
+    else if (cle === "formula") d.formule = v;
+    else if (cle === "slot") d.creneau = v;
+    else if (cle === "park fee") d.parc = v;
+    else if (cle === "message") d.remarque = v;
     else if (cle === "departure") { d.depart = v; if (genre === "speedboat") d.heure = heureDe(v) || d.heure; }
     else if (cle === "ticket") d.billet = /^return/i.test(v) ? "return" : "one way";
     else if (cle === "return") d.retour = v;
@@ -162,8 +173,11 @@ function lireSite(lignes, aujourdhui) {
     d.date = premiere.date;
     d.dateTexte = premiere.texte;
     d.lignesService = premiere.lignes;
-    d.sorties = autres.map((x) => `${x.texte}: ${x.titre}`.trim());
+    // Les extras de la première sortie sont ceux du service préparé ; ceux des autres restent dans leur ligne des notes (ils ne comptent pas dans la première).
+    d.extras = premiere.extras || "";
+    d.sorties = autres.map((x) => `${x.texte}: ${x.titre}${x.extras ? ` (Extras: ${x.extras})` : ""}`.trim());
   }
+  if (genre === "liste" && !sorties.length && d.extrasListe) [d.extras, d.extrasListe] = [d.extrasListe, ""];
   // L'hôtel d'un trajet est le bout qui n'est pas un aéroport ou un embarcadère.
   if (!d.hotel && genre !== "tour" && genre !== "liste") {
     const bouts = [d.pickup, d.dropoff].filter(Boolean);
@@ -175,9 +189,20 @@ function lireSite(lignes, aujourdhui) {
 
 // Lit le message d'un formulaire. Renvoie null si le texte ne ressemble à aucune demande.
 export function lireDemande(texte, aujourdhui) {
-  const lignes = String(texte || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lignes = [];
+  const apresVide = new Set();
+  let vide = false;
+  for (const brute of String(texte || "").split(/\r?\n/)) {
+    const l = brute.trim();
+    if (!l) vide = true;
+    else {
+      if (vide && lignes.length) apresVide.add(lignes.length);
+      lignes.push(l);
+      vide = false;
+    }
+  }
   if (!lignes.length) return null;
-  const site = lireSite(lignes, aujourdhui);
+  const site = lireSite(lignes, aujourdhui, apresVide);
   if (site) return site;
   const d = { marque: "", type: "", nom: "", prestation: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, hotel: "" };
   for (const l of lignes) {
@@ -959,8 +984,6 @@ export function completerSupplement(offre, pax, prestations) {
 // Le message du site dit le produit et l'option (« Booking request: Koh Rok & Koh Haa – Day trip », « Rental request: Big bikes »). La page produit
 // du site (site-produits.mjs, recopié depuis le site avec src/_data/gestion-keys.json) relie chaque ligne de prix de l'option à un tarif de Gestion.
 // Ce tarif-là est proposé en premier, sans deviner (18.11.2026). Rien n'est imposé quand l'option n'est pas reconnue ou que son tarif n'est pas en base.
-const cleTexte = (s) => sansAccents(s).replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
-const LIGNE_ENFANT = /^child\b/i;
 // Supplément à cocher ou personne en plus : ils s'ajoutent au tarif de base (completerSupplement), ils ne le remplacent pas.
 const LIGNE_A_PART = /^(?:add\b|each extra person\b|extra\b)/i;
 // « 1 to 3 people », « 1 or 2 people, the raft » : la tranche de groupe d'un bateau privé.
@@ -970,17 +993,6 @@ const trancheGroupe = (ligne) => {
 };
 // Ce qui distingue une ligne d'une autre une fois l'âge retiré : « Adult rider » et « Child rider, 6 to 12 » donnent « rider ».
 const fondLigne = (l) => cleTexte(l).replace(/\b(?:adults?|child(?:ren)?|from|age|to|and|per|person|\d+)\b/g, " ").replace(/\s+/g, " ").trim();
-
-// La sortie d'une page du carnet (carnet-produits.mjs) citée par `d.carnet` ({ produit, option } : product_id et option de la demande du site).
-// L'option se retrouve par son titre écrit dans le message (« Modifier » le change), puis par son identifiant ; une sortie à une seule option n'en demande pas.
-function optionDuCarnet(d) {
-  const c = d.carnet;
-  const produit = c && c.produit ? PRODUITS_CARNET.find((p) => p.id === c.produit) : null;
-  if (!produit) return null;
-  const titre = cleTexte(d.option);
-  const option = (titre ? produit.options.find((o) => cleTexte(o.titre) === titre) : null) || produit.options.find((o) => c.option && o.id === c.option) || (produit.options.length === 1 ? produit.options[0] : null);
-  return option ? { produit, option } : null;
-}
 
 // L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus).
 // Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
@@ -993,7 +1005,11 @@ export function optionDuSite(d) {
   // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : l'identifiant d'abord. Une sortie connue dont l'option n'est pas
   // reconnue ne donne aucun tarif (on ne devine pas une autre sortie) ; un identifiant inconnu se cherche par le nom, dans les sorties du carnet seulement,
   // jamais parmi celles du site Secret (deux sorties peuvent porter le même nom).
-  if (d.carnet && d.carnet.produit) return optionDuCarnet(d) || (PRODUITS_CARNET.some((p) => p.id === d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
+  if (d.carnet && d.carnet.produit) {
+    // La résolution du carnet (carnet-ages.mjs) : identifiant puis option, la même que pour l'âge. Une sortie connue dont l'option n'est pas reconnue ne donne aucun
+    // tarif ; un identifiant inconnu se cherche par le nom, dans les sorties du carnet seulement.
+    return resoudreSortie(d) || (sortieParId(d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
+  }
   if (!d.prestation) return null;
   return optionParNom(d, PRODUITS_SITE);
 }
@@ -1033,7 +1049,11 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   const trouve = optionDuSite(d);
   if (!trouve || !(trouve.option.tarifs || []).length) return [];
   const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants || 0 };
-  const groupe = pax.adultes + (d.ages && d.ages.length ? d.ages.filter((a) => a >= 4).length : pax.enfants);
+  // Le barème d'âge de la sortie (demande du carnet) : son âge minimum dit à partir de quel âge un enfant compte dans le groupe d'un tarif par tranche (radeaux : 3 ans) ;
+  // sans barème, comme sur le site : à partir de 4 ans.
+  const bareme = d.carnet ? baremeEnfant(trouve.produit, trouve.option) : null;
+  const seuil = bareme ? bareme.min : 4;
+  const groupe = pax.adultes + (d.ages && d.ages.length ? d.ages.filter((a) => a >= seuil).length : pax.enfants);
   const cite = ` ${cleTexte([...(d.lignesService || []), d.vehiculeNom || ""].join(" "))} `;
   const lignes = trouve.option.tarifs;
   const enfants = lignes.filter((t) => LIGNE_ENFANT.test(t.ligne));
@@ -1063,7 +1083,6 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   // l'offre le signale, Nani vérifie avec le partenaire.
   // Les âges de moins de 3 ans sont des bébés (comptés à part par le message, gratuits) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème
   // l'est. Une sortie sans ligne enfant (adulte seul) le dit autrement : cet enfant n'a aucun tarif propre.
-  const bareme = trouve.produit.enfant;
   // Des enfants annoncés sans âge : le tarif enfant dépend de l'âge, on le dit plutôt que de se taire.
   if (bareme && (d.enfants || 0) > (d.ages || []).filter((a) => a >= 3).length) {
     for (const o of offres) (o.avertissement = o.avertissement || "ages_manquants"), (o.bareme = bareme);
@@ -1158,6 +1177,56 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
+// Les extras du site qui ont un tarif de Gestion (EXTRAS_DU_SITE : « Add Koh Kradan » du 4 Islands privé), pour l'option citée par une demande d'une page du carnet : leur ligne
+// s'ajoute au service, une seule fois et au prix d'un bateau (jamais par personne), et leur prix entre dans le total de l'offre. Les mêmes lignes pour tous les chemins (fenêtre de
+// création, réponse, « Modifier »). Seule une demande du carnet (`d.carnet`) les porte : le site Secret ordinaire écrit l'extension à sa façon et Gestion n'y touche pas.
+// Un extra d'une autre option (le join-in ne le propose pas : Kradan y est déjà dans la sortie) ne s'applique pas. Dans une liste de sorties, ce sont les extras de la première
+// sortie, celle qui est préparée (`d.extras`, lu par sortie dans lireSite).
+export function extrasDemandes(d) {
+  if (!d || !d.carnet || !d.extras) return [];
+  const trouve = optionDuSite(d);
+  const demandes = extrasEnElements(d.extras).map((x) => cleTexte(x.texte));
+  // Option non reconnue : aucune ligne ne peut se créer, mais l'extra demandé doit se dire (ajouterExtras le signale) : on rend ceux que le texte nomme, pour n'importe quelle option.
+  return EXTRAS_DU_SITE.filter((x) => (!trouve || (x.produit === trouve.produit.id && x.option === trouve.option.id)) && demandes.includes(cleTexte(x.ligne)));
+}
+// Ce que la confirmation et l'apprentissage des prix retiennent d'un service créé : ses extras ET son total viennent des MÊMES lignes créées (une ligne Kradan supprimée dans la fenêtre
+// ne reste pas dans le total). `base` : titre, date, heure, personnes.
+export function serviceCree(base, lignes, prestations = []) {
+  const chiffrees = (lignes || []).filter((l) => l.kind !== "texte");
+  const somme = chiffrees.reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
+  return { ...base, total: chiffrees.length ? Math.round(somme * 100) / 100 : null, extras: extrasCrees(lignes, prestations) };
+}
+// Les extras qui ont réellement une ligne dans le service créé (la fenêtre a pu en supprimer une) : leur libellé, d'après la clé du tarif de chaque ligne. Sert la réponse de confirmation.
+export function extrasCrees(lignes, prestations = []) {
+  const libelles = [];
+  for (const l of lignes || []) {
+    const p = l.prestation_id ? prestations.find((x) => x.id === l.prestation_id) : null;
+    const x = p && p.details ? EXTRAS_DU_SITE.find((e) => e.cle === p.details.cle_carnet) : null;
+    if (x && !libelles.includes(x.ligne)) libelles.push(x.ligne);
+  }
+  return libelles;
+}
+// Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) : l'offre
+// le dit dans `extrasManquants`, EN PLUS de son avertissement principal (un groupe hors tranche ne cache pas un extra sans tarif).
+function ajouterExtras(offre, voulus, { prestations, partenaires }) {
+  if (!voulus.length) return offre;
+  // Une offre qui n'est pas celle d'une option du site (recouvrement de mots, trajet) ne peut porter aucune ligne d'extra : l'offre le dit, l'extra ne disparaît pas en silence.
+  if (offre.genre !== "prestation" || offre.ligneSite === undefined) return { ...offre, extrasManquants: [...(offre.extrasManquants || []), ...voulus.map((x) => x.ligne)] };
+  let sortie = offre;
+  for (const x of voulus) {
+    const tarif = prestations.find((p) => p.details && p.details.cle_carnet === x.cle && proposable(p, partenaires));
+    if (!tarif) {
+      sortie = { ...sortie, extrasManquants: [...(sortie.extrasManquants || []), x.ligne] };
+      continue;
+    }
+    const deja = tarif.id === sortie.source.id || (sortie.supplement && sortie.supplement.source.id === tarif.id) || (sortie.extras || []).some((e) => e.source.id === tarif.id);
+    if (deja) continue;
+    const prix = tarif.sur_place || tarif.prix_vente === null || tarif.prix_vente === undefined ? null : Number(tarif.prix_vente);
+    sortie = { ...sortie, extras: [...(sortie.extras || []), { source: tarif, qte: 1, ligne: x.ligne }], total: sortie.total === null || sortie.total === undefined || prix === null ? sortie.total : sortie.total + prix };
+  }
+  return sortie;
+}
+
 // Offres de la base qui correspondent à la demande, la plus proche en premier. Au plus six.
 // `nomPartenaire(id)` renvoie le nom du partenaire.
 // `partenaires` : un partenaire masqué ne se propose plus (ses tarifs et trajets non plus).
@@ -1210,7 +1279,8 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   }
-  return offres.map((o) => completerSupplement(completerEnfant(o, pax, prestations), pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  const voulus = extrasDemandes(d);
+  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), voulus, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------
@@ -1249,7 +1319,12 @@ export function notesDemande(d, { surLeVoucher = false } = {}) {
     d.bebes ? `Babies (0-2): ${d.bebes}` : "",
     (d.agesDeclares || d.ages) && (d.agesDeclares || d.ages).length ? `Child ages: ${(d.agesDeclares || d.ages).map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
     d.bagages && !surLeVoucher ? `Bags: ${d.bagages}` : "",
-    d.extras ? `Extras: ${d.extras}` : "",
+    d.formule ? `Formula: ${d.formule}` : "",
+    d.creneau ? `Slot: ${d.creneau}` : "",
+    d.extras || d.extrasListe ? `Extras: ${[d.extrasListe, d.extras].filter(Boolean).join(", ")}` : "",
+    d.transfertHotel ? `Hotel transfer: ${d.transfertHotel}` : "",
+    d.parc ? `Park fee (paid on site): ${d.parc}` : "",
+    d.remarque ? `Client message: ${d.remarque}` : "",
     d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",
     d.jusqua ? `Rental until: ${d.jusqua}` : "",
     d.billet ? `Ticket: ${d.billet}${d.retour ? `, return ${d.retour}` : ""}` : "",
