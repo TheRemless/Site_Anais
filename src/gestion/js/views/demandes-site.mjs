@@ -14,7 +14,7 @@ import { fichesParNumero } from "../demande-calc.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
-  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, titreCanonique, optionsModifiables, optionModifiee, texteDemande, changements, reponseConfirmation, reponseRefus,
+  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, titreCanonique, optionsModifiables, optionModifiee, texteDemande, changements, finalDeConfirmation, reponseConfirmation, reponseRefus,
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
   estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties,
 } from "../demandes-site-calc.mjs";
@@ -125,18 +125,8 @@ async function confirmer_(d, modifs = {}) {
       return null;
     },
     surCree: async ({ dossier, services, total }) => {
-      const s = services[0] || {};
-      // Plusieurs services (liste de sorties) : la réponse les reprend un par un, le total est celui de la facture.
-      const final = {
-        ...(services.length > 1 ? { services: services.map((x) => ({ titre: x.titre, date: x.date, heure: x.heure, adultes: x.adultes, enfants: x.enfants })) } : {}),
-        date: s.date || modifs.date || d.date_service,
-        heure: s.heure || modifs.heure || d.heure,
-        option_titre: modifs.option_titre || titreCanonique(d),
-        adultes: s.adultes ?? d.adultes,
-        enfants: s.enfants ?? d.enfants,
-        total: modifs.prix ?? (total > 0 ? total : null),
-        devise: (etat.db.reglages && etat.db.reglages.devise) || d.devise || "THB",
-      };
+      // Ce que la fenêtre a réellement créé (services, extras compris) : la réponse ne dit que cela (finalDeConfirmation).
+      const final = finalDeConfirmation(d, modifs, { services, total, devise: (etat.db.reglages && etat.db.reglages.devise) || d.devise || "THB" });
       const decision = { changements: changements(d, final), final };
       let confirmee = null;
       try {
@@ -314,6 +304,7 @@ function champsDuCarnet(d) {
     ligne(tr("Enfants"), enfants),
     ligne(tr("Hôtel"), c.hotel),
     ligne(tr("Extras"), c.extras),
+    ligne(tr("Transfert depuis l'hôtel"), c.transfert),
     ligne(tr("Nom"), c.nom || tr("Nom non donné"), !c.nom),
     ligne(tr("WhatsApp"), c.whatsapp ? numeroAffiche(c.whatsapp) : ""),
     ligne(tr("Total estimé"), c.total !== null ? formatMontant(c.total, c.devise) : "")

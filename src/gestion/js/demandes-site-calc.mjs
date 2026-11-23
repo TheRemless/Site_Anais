@@ -2,7 +2,7 @@
 // Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA } from "./carnet-produits.mjs";
+import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
 import { agesDuMessage, ajusterAgesCarnet, sortieParId, resoudreSortie, nomsDeOption, cleTexte } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
@@ -101,22 +101,37 @@ export const prenom = (nom) => String(nom || "").trim().split(/\s+/)[0] || "";
 // ---- Le message à relire ------------------------------------------------------------------------------------------
 // Le message que le site a envoyé à WhatsApp, avec les changements d'Anaïs posés dessus : « Coller une demande » le lit comme d'habitude
 // (même format, mêmes tests), trouve le service dans la base de prix et crée le dossier. Sans message (ancien site), il est reconstruit.
-// Les lignes du récapitulatif de la page (en français) qui n'ont pas de champ dans la demande, reportées dans le message refait : « Formula: », « Slot: », « Extras: » (le transfert
-// depuis l'hôtel, quand le client l'a coché, et les extras déjà écrits à la façon du site), « Park fee: » et « Message: ». Le texte est repris tel que la page l'a écrit.
-// Les extras que le client a demandés : la ligne « Extras: » du message (« Add Koh Kradan »), et le transfert depuis l'hôtel quand le récapitulatif de la page dit « oui ».
-export function extrasDuMessage(message) {
-  const lire = (re) => (re.exec(message || "") || [])[1];
-  const transfert = lire(/^Transfert depuis l.hôtel\s*:\s*(oui.*)$/im);
-  return [lire(/^Extras\s*:\s*(.+)$/im), transfert ? `Hotel transfer ${transfert.trim()}` : ""].filter(Boolean).map((x) => x.trim()).join("; ");
+// Une ligne « Clé : valeur » du message, ou undefined (une seule lecture pour les extras, le transfert et les lignes du récapitulatif).
+const lireLigne = (message, re) => (re.exec(message || "") || [])[1];
+// Les extras que le client a écrits dans la ligne « Extras: » du message (« Add Koh Kradan »). Le transfert depuis l'hôtel n'en fait pas partie : c'est un prix indicatif à confirmer,
+// pas un extra acquis (transfertDuMessage).
+export const extrasDuMessage = (message) => (lireLigne(message, /^Extras\s*:\s*(.+)$/im) || "").trim();
+// Le transfert depuis l'hôtel que le récapitulatif de la page dit « oui » (« oui (1 500 THB par van, indicatif) »), écrit en anglais : « requested (indicative 1 500 THB per van) ».
+// Vide quand le client ne l'a pas coché. Jamais dans « Extras: ».
+export function transfertDuMessage(message) {
+  const v = lireLigne(message, /^Transfert depuis l.hôtel\s*:\s*(oui.*)$/im);
+  if (!v) return "";
+  const prix = /\((.*)\)/.exec(v);
+  const dit = prix ? prix[1].replace(/,\s*indicatif\s*$/i, "").replace(/\bpar\b/gi, "per").trim() : "";
+  return dit ? `requested (indicative ${dit})` : "requested";
 }
+// Les lignes du récapitulatif de la page (en français) qui n'ont pas de champ dans la demande, reportées dans le message refait : « Formula: », « Slot: », « Extras: » (les extras déjà
+// écrits à la façon du site), « Hotel transfer: » (quand le client l'a coché), « Park fee: » et « Message: ». Le texte du client est repris tel que la page l'a écrit.
 function lignesDuRecapitulatif(message) {
-  const lire = (re) => (re.exec(message || "") || [])[1];
+  const lire = (re) => lireLigne(message, re);
   const formule = lire(/^Formule\s*:\s*(.+)$/im);
   const creneau = lire(/^Créneau\s*:\s*(.+)$/im);
   const parc = lire(/^Entrée du parc à payer sur place\s*:\s*(.+)$/im);
   const client = lire(/^Message\s*:\s*(.+)$/im);
   const extras = extrasDuMessage(message);
-  return [formule ? `Formula: ${formule.trim()}` : "", creneau ? `Slot: ${creneau.trim()}` : "", extras ? `Extras: ${extras}` : "", parc ? `Park fee: ${parc.trim()}` : "", client ? `Message: ${client.trim()}` : ""].filter(Boolean);
+  const transfert = transfertDuMessage(message);
+  return [formule ? `Formula: ${formule.trim()}` : "", creneau ? `Slot: ${creneau.trim()}` : "", extras ? `Extras: ${extras}` : "", transfert ? `Hotel transfer: ${transfert}` : "", parc ? `Park fee: ${parc.trim()}` : "", client ? `Message: ${client.trim()}` : ""].filter(Boolean);
+}
+// Les extras d'une ligne « Extras: » qui valent pour l'option finale : un extra connu (EXTRAS_DU_SITE) d'une autre option s'en va (« Add Koh Kradan » n'a pas de sens sur le join-in, où
+// Kradan est déjà dans la sortie), les autres restent. Rend le texte restant, vide s'il ne reste rien.
+export function extrasPourOption(extras, produitId, optionId) {
+  const inapplicables = EXTRAS_DU_SITE.filter((x) => !(x.produit === produitId && x.option === optionId)).map((x) => cleTexte(x.ligne));
+  return String(extras || "").split(/\s*[;|]\s*|,\s*(?=[A-Z])/).map((x) => x.trim()).filter((x) => x && !inapplicables.some((i) => cleTexte(x).includes(i))).join(", ");
 }
 // « 2 adults, 2 children (ages 5 and under 1) » : les invités lus dans le message (agesDuMessage), avec leurs âges, tels que le contrat du site les écrit.
 function invitesAnglais({ adultes = 0, enfants = 0, bebes = 0, ages = [] }) {
@@ -152,7 +167,12 @@ export function texteDemande(d, modifs = {}) {
     if (refait) lignes.push(...lignesDuRecapitulatif(d.message));
   }
   // Le prix annoncé sur la page est celui de l'option demandée : quand l'option change, la ligne ne vaut plus (la fenêtre garde alors le prix de la base).
-  if (m.option_titre && !memeOption(d, m.option_titre)) lignes = lignes.filter((l) => !/^(Estimated total|Price on the site|Price):/i.test(l));
+  if (m.option_titre && !memeOption(d, m.option_titre)) {
+    lignes = lignes.filter((l) => !/^(Estimated total|Price on the site|Price):/i.test(l));
+    // Demande du carnet : l'extension de Kradan n'a de sens que sur la sortie et l'option pour lesquelles elle existe ; le message refait et les notes du dossier n'en gardent que ce qui vaut pour l'option finale.
+    const finale = carnet ? resoudreSortie({ carnet: { produit: d.produit_id, option: "" }, option: m.option_titre }) : null;
+    if (finale) lignes = lignes.map((l) => { const x = /^Extras\s*:\s*(.*)$/i.exec(l); return x ? `Extras: ${extrasPourOption(x[1], finale.produit.id, finale.option.id)}` : l; }).filter((l) => !/^Extras:\s*$/.test(l));
+  }
   // Nouvelle option : la première ligne « … request: Produit – Option » change de fin.
   if (m.option_titre && /^(Booking|Transfer) request:/.test(lignes[0])) {
     const avant = titreOption(d);
@@ -170,6 +190,23 @@ export function texteDemande(d, modifs = {}) {
   if (m.heure) poser("Pickup time:", m.heure, "Date:");
   if (m.adultes !== undefined || m.enfants !== undefined) poser("Guests:", personnesAnglais(e.adultes || 0, e.enfants || 0), "Date:");
   return lignes.join("\n");
+}
+
+// Ce que la confirmation retient de la fenêtre de création : les services réellement créés (`services` : date, heure, personnes, titre, extras de chacun, tels que la fenêtre les rend) et le total
+// de la facture, avec les changements décidés dans « Modifier ». Les extras sont ceux des lignes créées : une ligne supprimée dans la fenêtre n'est pas annoncée au client.
+export function finalDeConfirmation(d, modifs, { services = [], total = null, devise = "THB" } = {}) {
+  const s = services[0] || {};
+  return {
+    ...(services.length > 1 ? { services: services.map((x) => ({ titre: x.titre, date: x.date, heure: x.heure, adultes: x.adultes, enfants: x.enfants, extras: x.extras || [] })) } : {}),
+    date: s.date || (modifs || {}).date || d.date_service,
+    heure: s.heure || (modifs || {}).heure || d.heure,
+    option_titre: (modifs || {}).option_titre || titreCanonique(d),
+    adultes: s.adultes ?? d.adultes,
+    enfants: s.enfants ?? d.enfants,
+    extras: s.extras || [],
+    total: (modifs || {}).prix ?? (total > 0 ? total : null),
+    devise,
+  };
 }
 
 // ---- Changements et réponses ---------------------------------------------------------------------------------------
@@ -230,7 +267,7 @@ export function reponseConfirmation(d, final, { aujourdhui = "" } = {}) {
   const tete = ch.length === 0 ? `Your ${quoi} is confirmed.` : `Your ${quoi} is confirmed with ${ch.length === 1 ? "one change" : "these changes"}:`;
   const titre = [titreDemande(d), final.option_titre || titreCanonique(d)].filter(Boolean).join(" – ");
   const quand = [final.date ? dateAnglaise(final.date, aujourdhui) : "", final.heure ? `pickup ${final.heure}` : ""].filter(Boolean).join(", ");
-  const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0)].filter(Boolean).join(", ");
+  const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0), s.extras && s.extras.length ? `Extras: ${s.extras.join(", ")}` : ""].filter(Boolean).join(", ");
   const total = final.total !== null && final.total !== undefined && final.total !== "" ? `Total: ${montantAnglais(final.total, devise)}` : "";
   const recap = final.services && final.services.length > 1
     ? [...final.services.map(ligneService), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean)
@@ -310,16 +347,14 @@ export function titreCarnet(d) {
   const mots = (cheminPage(d && d.page_url).split("/").filter(Boolean)[1] || "").split("-").filter(Boolean);
   return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(" ");
 }
-// Les autres sorties du même guide que celle de la demande (« Proposer une autre sortie ») : celles du carnet pour une demande du carnet,
-// celles du site pour les autres. Jamais les sorties de Koh Lanta pour un guide de Koh Samui.
 // Le guide d'une page du carnet, d'après le début du nom de la page (« /carnet/koh-samui-… », « /carnet/ao-nang-… », « /carnet/koh-lanta-… ») : « koh-samui », « aonang », « koh-lanta ».
-const GUIDES_PAGES = [["koh-samui", "koh-samui"], ["ao-nang", "aonang"], ["aonang", "aonang"], ["koh-lanta", "koh-lanta"]];
+const GUIDES_PAGES = [[/^koh-samui(-|$)/, "koh-samui"], [/^ao-?nang(-|$)/, "aonang"], [/^koh-lanta(-|$)/, "koh-lanta"]];
 export function guideDeLaPage(d) {
   const nom = cheminPage(d && d.page_url).split("/").filter(Boolean)[1] || "";
-  const g = GUIDES_PAGES.find(([debut]) => nom === debut || nom.startsWith(`${debut}-`));
+  const g = GUIDES_PAGES.find(([re]) => re.test(nom));
   return g ? g[1] : null;
 }
-// Les autres sorties à proposer quand on refuse une demande. Une demande du carnet ne se voit proposer que les sorties de SON guide, jamais celles d'un autre : le guide est celui de la
+// Les autres sorties du même guide que celle de la demande (« Proposer une autre sortie » quand on refuse) : celles du site pour une demande du site. Une demande du carnet ne se voit proposer que les sorties de SON guide, jamais celles d'un autre : le guide est celui de la
 // sortie (carnet : son guide ; guide de Koh Lanta : SORTIES_KOH_LANTA), à défaut celui de la page. Ni l'un ni l'autre : rien à proposer plutôt qu'une sortie d'un autre guide.
 export function autresSorties(d) {
   if (!estCarnet(d)) return PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
@@ -344,6 +379,7 @@ export function champsCarnet(d) {
     nom: d.nom || "",
     whatsapp: numeroWhatsApp(d),
     extras: extrasDuMessage(d.message),
+    transfert: transfertDuMessage(d.message),
     total: d.total_estime ?? null,
     devise: d.devise || "THB",
   };

@@ -10,6 +10,7 @@ export const EN_CARNET = {
   "âges manquants": "ages missing",
   "Extra demandé sans tarif en base : ajoutez-le à la main avec « Ajouter un service ».": "Extra requested with no rate in the base: add it by hand with “Add a service”.",
   "Extras": "Extras",
+  "Transfert depuis l'hôtel": "Hotel transfer",
   "Âges des enfants manquants : le tarif enfant dépend de l'âge. Demandez-les au client.": "Children's ages missing: the child rate depends on age. Ask the client.",
   "Âge d'un enfant hors du barème de cette sortie ({min} à {max} ans) : vérifiez le tarif avec le partenaire.": "A child's age is outside this trip's range ({min} to {max} years): check the rate with the partner.",
 };

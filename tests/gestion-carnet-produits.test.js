@@ -364,7 +364,7 @@ test("demandes du site : une demande du carnet se reconnaît à sa page, jamais 
 });
 
 test("demandes du site : la fiche d'une demande du carnet porte tous les champs reçus, âges des enfants compris", () => {
-  assert.deepEqual(champsCarnet(D), { prestation: "Pig Island and Koh Tan by private longtail, 4 hours – Whole boat", date: "2026-12-20", heure: "", adultes: 2, enfants: 2, ages: [5, 9], hotel: "Hotel Example, Chaweng", nom: "Anna Keller", whatsapp: "+41791234567", extras: "", total: 4500, devise: "THB" });
+  assert.deepEqual(champsCarnet(D), { prestation: "Pig Island and Koh Tan by private longtail, 4 hours – Whole boat", date: "2026-12-20", heure: "", adultes: 2, enfants: 2, ages: [5, 9], hotel: "Hotel Example, Chaweng", nom: "Anna Keller", whatsapp: "+41791234567", extras: "", transfert: "", total: 4500, devise: "THB" });
   assert.equal(champsCarnet({ ...D, message: "", telephone: null, total_estime: null }).whatsapp, "");
   assert.deepEqual(champsCarnet({ ...D, message: "" }).ages, []);
   assert.equal(nomProduit({ produit: "", produit_id: "pig-island-groupe" }), "Pig Island and Koh Tan by big boat");

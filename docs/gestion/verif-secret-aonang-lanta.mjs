@@ -205,14 +205,14 @@ ok(lecture.some((r) => r.libelle === "Charter test faible" && Number(r.commissio
 ok(!lecture.some((r) => Number(r.commission) >= SEUIL), "la lecture seule ne liste que des commissions sous le seuil");
 ok((await prixDe(faible)) === 3010, "le tarif à faible commission n'est pas modifié");
 
-// Gestion retrouve l'extension par sa clé et l'ajoute au tarif du 4 Islands privé, une seule fois, au prix d'un bateau.
+// Gestion retrouve l'extension par sa clé et l'ajoute au tarif du 4 Islands privé d'une demande du carnet, une seule fois, au prix d'un bateau.
 {
   const { lireMessage: lm, offresDuService: od } = await import(SRC + "demande-calc.mjs");
   const cat = await catalogue();
   const rows4 = cles["4-islands|private-longtail"];
   const texte = "Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nExtras: Add Koh Kradan\nName: Test";
   const sans = texte.replace("Extras: Add Koh Kradan\n", "");
-  const offre = (t, n) => { const d = lm(t.replace("2 adults", `${n} adults`), "2026-11-23"); return od(d, t, { phrase: t, date: d.date, adultes: d.adultes, enfants: 0 }, cat)[0]; };
+  const offre = (t, n) => { const d = { ...lm(t.replace("2 adults", `${n} adults`), "2026-11-23"), carnet: { produit: "4-islands", option: "private-longtail" } }; return od(d, t, { phrase: t, date: d.date, adultes: d.adultes, enfants: 0 }, cat)[0]; };
   const base = offre(sans, 2);
   const avec = offre(texte, 2);
   ok(avec.extras && avec.extras.length === 1 && avec.extras[0].source.id === kradan && avec.total === base.total + (await prixDe(kradan)), "avec l'extra demandé : une ligne Kradan, son prix dans le total");

@@ -13,9 +13,9 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { PRODUITS_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
-import { lireMessage, offresDuService, optionDuSite, notesDemande, extrasDemandes } from "../src/gestion/js/demande-calc.mjs";
+import { lireMessage, offresDuService, optionDuSite, notesDemande, extrasDemandes, extrasCrees } from "../src/gestion/js/demande-calc.mjs";
 import { ajusterAgesCarnet, baremeEnfant, sortieParId, resoudreSortie, resoudreProduit, agesDuMessage, lireInvites, lireInvitesFrancais, LIGNE_ENFANT, cleTexte } from "../src/gestion/js/carnet-ages.mjs";
-import { demandeTarifee, autresSorties, guideDeLaPage, champsCarnet, optionsModifiables, optionModifiee, titreCanonique, titreOption, texteDemande, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
+import { demandeTarifee, autresSorties, guideDeLaPage, champsCarnet, optionsModifiables, optionModifiee, titreCanonique, titreOption, texteDemande, changements, reponseConfirmation, finalDeConfirmation, extrasDuMessage, extrasPourOption } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit } from "../src/gestion/js/operations-calc.mjs";
 import { ligneDepuisPrestation } from "../src/gestion/js/partenaires-calc.mjs";
 
@@ -622,22 +622,25 @@ test("message refait pour une demande du carnet : le transfert coché, le messag
   const texte = texteDemande(ligne);
   assert.match(texte, /^Formula: avec kayak$/m);
   assert.match(texte, /^Slot: Matin, 09:00 à 13:00$/m);
-  assert.match(texte, /^Extras: Hotel transfer oui \(1 500 THB par van, indicatif\)$/m);
+  assert.match(texte, /^Hotel transfer: requested \(indicative 1 500 THB per van\)$/m);
+  assert.doesNotMatch(texte, /^Extras:/m, "le transfert est un prix indicatif à confirmer, pas un extra acquis");
   assert.match(texte, /^Park fee: 400 THB$/m);
   assert.match(texte, /^Message: allergie aux arachides$/m);
   // Lu par la fenêtre : le supplément de transfert et la remarque sont dans le dossier (notes).
   const lu = lireMessage(texte, AJD);
-  assert.match(lu.extras, /Hotel transfer oui \(1 500 THB/);
+  assert.equal(lu.extras, "");
+  assert.equal(lu.transfertHotel, "requested (indicative 1 500 THB per van)");
   assert.equal(lu.remarque, "allergie aux arachides");
   assert.equal(lu.parc, "400 THB");
   const notes = notesDemande(lu);
-  assert.match(notes, /Extras: Hotel transfer oui \(1 500 THB par van, indicatif\)/);
+  assert.match(notes, /Hotel transfer: requested \(indicative 1 500 THB per van\)/);
+  assert.doesNotMatch(notes, /Extras:|oui|indicatif/, "aucun mot français du récapitulatif ne passe dans les notes");
   assert.match(notes, /Client message: allergie aux arachides/);
   assert.match(notes, /Park fee \(paid on site\): 400 THB/);
   assert.match(notes, /Formula: avec kayak/);
   // Transfert refusé (« non ») : aucune ligne d'extras ; sans message du client : aucune ligne « Message: ».
   const non = texteDemande(ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { message: "Demande de réservation : x\nPersonnes : 2 adultes\nTransfert depuis l'hôtel : non" }));
-  assert.doesNotMatch(non, /^(Extras|Message|Park fee|Formula|Slot):/m);
+  assert.doesNotMatch(non, /^(Extras|Hotel transfer|Message|Park fee|Formula|Slot):/m);
   // Un message déjà au format du site (guide de Koh Lanta) est gardé tel quel, ses lignes « Extras: » comprises.
   const anglais = "Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nExtras: Add Koh Kradan\nName: Anna";
   assert.equal(texteDemande({ ...ligneSamui("4-islands", "private-longtail", "Private longtail"), message: anglais }), anglais);
@@ -684,8 +687,8 @@ const kradanOffre = (texte, { carnet = true, contexteVoulu = contexte, option = 
   return offresDuService(lu, texte, { phrase: texte, date: lu.date, adultes: lu.adultes, enfants: lu.enfants }, contexteVoulu)[0];
 };
 
-test("Extension Koh Kradan : « Add Koh Kradan » sur le 4 Islands privé ajoute la ligne et son prix au total, une fois, au prix d'un bateau (carnet ET site ordinaire)", () => {
-  for (const carnet of [true, false]) {
+test("Extension Koh Kradan : « Add Koh Kradan » sur le 4 Islands privé d'une demande du carnet ajoute la ligne et son prix au total, une fois, au prix d'un bateau", () => {
+  for (const carnet of [true]) {
     const base = kradanOffre(MSG_KRADAN("2 adults", ""), { carnet });
     assert.equal(base.extras, undefined, "sans l'extra : rien n'est ajouté");
     const avec = kradanOffre(MSG_KRADAN("2 adults"), { carnet });
@@ -722,10 +725,10 @@ test("Extension Koh Kradan : la tranche change avec les personnes, « Modifier �
   assert.equal(quatre.ligneSite, "3 to 4 people");
   assert.equal(quatre.total - deux.total, 6620 - 6110);
   assert.deepEqual([deux.extras[0].source.id, quatre.extras[0].source.id], ["kradan-fictif", "kradan-fictif"]);
-  // « Modifier » : l'option passe du bateau privé au join-in. Le message refait garde la ligne « Extras: », mais le join-in n'a pas d'extension (Kradan y est déjà).
+  // « Modifier » : l'option passe du bateau privé au join-in : le join-in n'a pas d'extension (Kradan y est déjà), le message n'en garde pas la ligne.
   const ligne = { marque: "secret", produit_id: "4-islands", produit: "4 Islands", option_id: "private-longtail", option_titre: "Private longtail", date_service: "2026-12-20", adultes: 2, enfants: 0, nom: "Anna", telephone: null, total_estime: 6887, devise: "THB", page_url: ZTP, message: MSG_KRADAN("2 adults") };
   const vers = texteDemande(ligne, { option_titre: "Join-in longtail" });
-  assert.match(vers, /^Extras: Add Koh Kradan$/m);
+  assert.doesNotMatch(vers, /Extras|Kradan/);
   assert.doesNotMatch(vers, /Estimated total/, "le prix annoncé était celui du bateau privé");
   const joint = kradanOffre(vers, { option: "private-longtail" });
   assert.equal(joint.extras, undefined);
@@ -735,7 +738,7 @@ test("Extension Koh Kradan : la tranche change avec les personnes, « Modifier �
   const retour = kradanOffre(texteDemande(ligneJoint, { option_titre: "Private longtail" }), { option: "join-in-longtail" });
   assert.deepEqual([retour.extras.length, retour.total], [1, 6110 + 777]);
   // Réponse de confirmation : l'extension est dite, le total est celui de la fenêtre.
-  const final = { date: "2026-12-20", option_titre: "Private longtail", adultes: 2, enfants: 0, total: deux.total, extras: deux.extras.map((x) => x.ligne), devise: "THB" };
+  const final = { date: "2026-12-20", option_titre: "Private longtail", adultes: 2, enfants: 0, total: deux.total, extras: ["Add Koh Kradan"], devise: "THB" };
   const reponse = reponseConfirmation(ligne, final, { aujourdhui: AJD });
   assert.match(reponse, /^Extras: Add Koh Kradan$/m);
   assert.match(reponse, new RegExp(`^Total: ${deux.total.toLocaleString("en-US")} THB$`, "m"));
@@ -748,13 +751,13 @@ test("Extension Koh Kradan : la tranche change avec les personnes, « Modifier �
 test("Extension Koh Kradan : sans tarif en base (SQL du guide pas encore passé) l'offre le dit, la tranche reste juste", () => {
   const sansExtension = { ...contexte, prestations: prestations.filter((p) => p.id !== "kradan-fictif") };
   const o = kradanOffre(MSG_KRADAN("2 adults"), { contexteVoulu: sansExtension });
-  assert.equal(o.avertissement, "extra_sans_tarif");
-  assert.equal(o.extraManquant, "Add Koh Kradan");
+  assert.deepEqual(o.extrasManquants, ["Add Koh Kradan"]);
+  assert.equal(o.avertissement, "", "l'avertissement principal n'est pas pris par l'extra : le champ est distinct");
   assert.equal(o.extras, undefined);
   assert.equal(o.total, 6110, "le prix de la tranche seul");
   // Une extension masquée n'est pas proposée non plus.
   const masquee = { ...contexte, prestations: prestations.map((p) => (p.id === "kradan-fictif" ? { ...p, actif: false } : p)) };
-  assert.equal(kradanOffre(MSG_KRADAN("2 adults"), { contexteVoulu: masquee }).avertissement, "extra_sans_tarif");
+  assert.deepEqual(kradanOffre(MSG_KRADAN("2 adults"), { contexteVoulu: masquee }).extrasManquants, ["Add Koh Kradan"]);
   // La clé du module ne dit ni nom ni montant ; le mapping la porte seule.
   assert.deepEqual(EXTRAS_DU_SITE.map((x) => Object.keys(x).sort()), [["cle", "ligne", "option", "produit"]]);
   assert.equal(EXTRAS_DU_SITE[0].ligne, "Add Koh Kradan");
@@ -764,4 +767,153 @@ test("Extension Koh Kradan : sans tarif en base (SQL du guide pas encore passé)
   const vue = lireFichier("src/gestion/js/views/demande.mjs");
   assert.match(vue, /offre\.extras/, "la fenêtre fait une ligne par extra");
   assert.match(vue, /extra_sans_tarif/);
+});
+
+// ---- Quatrième relecture : l'extension Kradan ne vaut que pour le carnet, et de bout en bout ----------------------------------------------------------
+const LIGNE_4I = { marque: "secret", produit_id: "4-islands", produit: "4 Islands", option_id: "private-longtail", option_titre: "Private longtail", date_service: "2026-12-20", adultes: 2, enfants: 0, nom: "Anna", telephone: null, total_estime: 6887, devise: "THB", page_url: ZTP, message: MSG_KRADAN("2 adults") };
+// Les lignes que la fenêtre crée pour une offre, comme demande.mjs les fait (la ligne du tarif, puis une ligne par extra).
+const lignesDeLOffre = (o) => [ligneDepuisPrestation(o.source, null, { langue: "en", qte: 1 }), ...(o.extras || []).map((x) => ligneDepuisPrestation(x.source, null, { langue: "en", qte: x.qte }))];
+
+test("réponse de confirmation : les extras viennent des lignes RÉELLEMENT créées, par finalDeConfirmation (le chemin de confirmer_), jamais d'un final fourni à la main", () => {
+  const offre = kradanOffre(MSG_KRADAN("2 adults"));
+  const lignes = lignesDeLOffre(offre);
+  // La ligne Kradan est créée : la réponse l'annonce, avec le total de la facture.
+  const cree = [{ titre: offre.titre, date: "2026-12-20", heure: "", adultes: 2, enfants: 0, extras: extrasCrees(lignes, prestations) }];
+  assert.deepEqual(cree[0].extras, ["Add Koh Kradan"]);
+  const final = finalDeConfirmation(LIGNE_4I, {}, { services: cree, total: offre.total, devise: "THB" });
+  assert.match(reponseConfirmation(LIGNE_4I, final, { aujourdhui: AJD }), /^Extras: Add Koh Kradan$/m);
+  // Anaïs supprime la ligne Kradan dans la fenêtre avant de créer : l'offre la proposait, mais la réponse ne l'annonce pas.
+  const sansLigne = [{ titre: offre.titre, date: "2026-12-20", adultes: 2, enfants: 0, extras: extrasCrees(lignes.slice(0, 1), prestations) }];
+  assert.deepEqual(sansLigne[0].extras, []);
+  const final2 = finalDeConfirmation(LIGNE_4I, {}, { services: sansLigne, total: 6110, devise: "THB" });
+  assert.doesNotMatch(reponseConfirmation(LIGNE_4I, final2, { aujourdhui: AJD }), /Extras|Kradan/);
+  // Plusieurs services : chacun dit ses extras.
+  const deux = finalDeConfirmation(LIGNE_4I, {}, { services: [cree[0], { ...sansLigne[0], date: "2026-12-22" }], total: 13000, devise: "THB" });
+  const rep = reponseConfirmation(LIGNE_4I, deux, { aujourdhui: AJD });
+  assert.equal((rep.match(/Extras: Add Koh Kradan/g) || []).length, 1);
+  // Une ligne sans tarif connu ou une ligne libre ne devient jamais un extra.
+  assert.deepEqual(extrasCrees([{ prestation_id: "inconnu" }, { prestation_id: null, libelle: "Add Koh Kradan" }], prestations), []);
+  // La vue passe par ces fonctions : le final de confirmer_ n'est plus écrit à la main et les extras des services viennent des lignes.
+  const vue = lireFichier("src/gestion/js/views/demandes-site.mjs");
+  assert.match(vue, /finalDeConfirmation\(d, modifs, /);
+  assert.doesNotMatch(vue, /const final = \{\s*\.\.\.\(services\.length/);
+  const fenetre = lireFichier("src/gestion/js/views/demande.mjs");
+  assert.match(fenetre, /extrasCrees\(b\.lignes\.filter/);
+  assert.doesNotMatch(fenetre, /extras: \(\(etatDe\(sv\)\.offre \|\| \{\}\)\.extras/);
+});
+
+test("extra sans tarif : dit EN PLUS de l'avertissement principal (groupe hors tranche, sur place), jamais caché derrière lui", () => {
+  const sansExtension = { ...contexte, prestations: prestations.filter((p) => p.id !== "kradan-fictif") };
+  const hors = kradanOffre(MSG_KRADAN("8 adults"), { contexteVoulu: sansExtension });
+  assert.equal(hors.avertissement, "groupe_hors_tranche");
+  assert.deepEqual(hors.extrasManquants, ["Add Koh Kradan"]);
+  // Avec le tarif : pas d'extra manquant, l'avertissement du groupe reste seul.
+  assert.equal(kradanOffre(MSG_KRADAN("8 adults")).extrasManquants, undefined);
+  // La fenêtre affiche l'avertissement principal ET celui de l'extra : le second n'est pas dans la chaîne « else if » du premier.
+  const fenetre = lireFichier("src/gestion/js/views/demande.mjs");
+  assert.match(fenetre, /offre\.extrasManquants && offre\.extrasManquants\.length\) alertes\.push\(tr\(AVERTISSEMENTS\.extra_sans_tarif\)\)/);
+  assert.doesNotMatch(fenetre, /else if \(offre && offre\.extrasManquants/);
+});
+
+test("liste de sorties : les extras se lisent dans les lignes de CHAQUE sortie, ceux de la première sont ceux du service préparé", () => {
+  const liste = (a, b) => `Trip list: 2 trips\nGuests: 2 adults\nPickup: Hotel Sunset\nName: Anna\n\nSat 19 Dec 2026\n4 Islands – ${a.titre}\n${a.extras ? `Extras: ${a.extras}\n` : ""}\nSun 20 Dec 2026\n4 Islands – ${b.titre}${b.extras ? `\nExtras: ${b.extras}` : ""}`;
+  const prive = { titre: "Private longtail" };
+  const avec = { titre: "Private longtail", extras: "Add Koh Kradan" };
+  const joint = { titre: "Join-in longtail" };
+  const calc = (texte, option = "private-longtail") => {
+    const d = lireMessage(texte, AJD);
+    const lu = ajusterAgesCarnet({ ...d, carnet: { produit: "4-islands", option } });
+    return { d, offre: offresDuService(lu, texte, { phrase: texte, date: lu.date, adultes: lu.adultes, enfants: lu.enfants }, contexte)[0] };
+  };
+  // Kradan seulement le jour 2 : les 700 ne tombent pas sur le jour 1, et la ligne reste dans les notes de l'autre sortie.
+  const j2 = calc(liste(prive, avec));
+  assert.equal(j2.d.extras, "");
+  assert.equal(j2.offre.extras, undefined);
+  assert.equal(j2.offre.total, 6110);
+  assert.match(notesDemande(j2.d), /Other trips: Sun 20 Dec 2026: 4 Islands – Private longtail \(Extras: Add Koh Kradan\)/);
+  // Kradan seulement le jour 1 : compté sur la sortie préparée.
+  const j1 = calc(liste(avec, prive));
+  assert.equal(j1.d.extras, "Add Koh Kradan");
+  assert.equal(j1.offre.extras.length, 1);
+  assert.equal(j1.offre.total, 6110 + 777);
+  assert.doesNotMatch(notesDemande(j1.d), /Other trips:.*Extras/);
+  // Première sortie d'une autre option, Kradan sur la 2e : jamais compté sur la première (le join-in a déjà Kradan), gardé dans les notes.
+  const autre = calc(liste(joint, avec), "join-in-longtail");
+  assert.equal(autre.offre.extras, undefined);
+  assert.match(notesDemande(autre.d), /\(Extras: Add Koh Kradan\)/);
+  // Message sans liste : inchangé.
+  assert.equal(lireMessage(MSG_KRADAN("2 adults"), AJD).extras, "Add Koh Kradan");
+});
+
+test("transfert depuis l'hôtel du récapitulatif français : ligne distincte « Hotel transfer: », jamais dans les extras ni dans la fiche des extras", () => {
+  const recap = "Demande de réservation : Pig Island\nFormule : avec kayak\nDate : 20 décembre 2026\nPersonnes : 2 adultes\nTransfert depuis l'hôtel : oui (1 500 THB par van, indicatif)\nMessage : allergie aux arachides\nRéf : SAM-AB12";
+  assert.equal(extrasDuMessage(recap), "", "un prix indicatif n'est pas un extra acquis");
+  const ligne = ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { message: recap });
+  const fiche = champsCarnet(ligne);
+  assert.equal(fiche.extras, "");
+  assert.equal(fiche.transfert, "requested (indicative 1 500 THB per van)");
+  const texte = texteDemande(ligne);
+  const lu = lireMessage(texte, AJD);
+  assert.equal(lu.extras, "");
+  assert.equal(extrasDemandes({ ...lu, carnet: { produit: "ang-thong-big-boat", option: "avec-kayak" } }).length, 0);
+  const notes = notesDemande(lu);
+  assert.match(notes, /Hotel transfer: requested \(indicative 1 500 THB per van\)\. Park fee|Hotel transfer: requested \(indicative 1 500 THB per van\)/);
+  assert.match(notes, /Client message: allergie aux arachides/);
+  assert.doesNotMatch(notes, /Extras|oui|indicatif|par van/);
+  // Transfert refusé : aucune ligne. Extras écrits à la façon du site ET transfert : deux lignes séparées.
+  assert.equal(champsCarnet(ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { message: "Demande de réservation : x\nTransfert depuis l'hôtel : non" })).transfert, "");
+  const les2 = texteDemande(ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { message: `${recap}\nExtras: Fishing rod` }));
+  assert.match(les2, /^Extras: Fishing rod$/m);
+  assert.match(les2, /^Hotel transfer: requested/m);
+});
+
+test("« Modifier » vers une option sans l'extension : le message refait et les notes ne gardent que les extras applicables à l'option finale", () => {
+  const avec = (extras) => ({ ...LIGNE_4I, message: MSG_KRADAN("2 adults", extras) });
+  // Bateau privé vers join-in : l'extension s'en va du message et des notes.
+  const vers = texteDemande(avec("Add Koh Kradan"), { option_titre: "Join-in longtail" });
+  assert.doesNotMatch(vers, /Extras|Kradan/);
+  assert.doesNotMatch(notesDemande(lireMessage(vers, AJD)), /Extras|Kradan/);
+  // Même option (nom différent) ou sans changement d'option : l'extension reste.
+  assert.match(texteDemande(avec("Add Koh Kradan"), { option_titre: "Private longtail" }), /^Extras: Add Koh Kradan$/m);
+  assert.match(texteDemande(avec("Add Koh Kradan"), { date: "2026-12-22" }), /^Extras: Add Koh Kradan$/m);
+  // Les autres extras restent, et « per boat » de la refonte du site part avec l'extension.
+  assert.match(texteDemande(avec("Add Koh Kradan; Fishing rod"), { option_titre: "Join-in longtail" }), /^Extras: Fishing rod$/m);
+  assert.match(texteDemande(avec("Fishing rod, Add Koh Kradan, per boat"), { option_titre: "Join-in longtail" }), /^Extras: Fishing rod$/m);
+  assert.equal(extrasPourOption("Add Koh Kradan, per boat", "4-islands", "join-in-longtail"), "");
+  assert.equal(extrasPourOption("Add Koh Kradan, per boat", "4-islands", "private-longtail"), "Add Koh Kradan, per boat");
+  // Message refait (récapitulatif de la page) : même règle.
+  const refait = { ...avec(""), message: "Demande de réservation : x\nExtras: Add Koh Kradan\nPersonnes : 2 adultes" };
+  assert.doesNotMatch(texteDemande(refait, { option_titre: "Join-in longtail" }), /Extras/);
+  assert.match(texteDemande(refait), /^Extras: Add Koh Kradan$/m);
+});
+
+test("l'extension Kradan ne vaut que pour une demande du carnet : le site Secret ordinaire n'est pas touché, et la doc ne dit plus le contraire", () => {
+  const ordinaire = kradanOffre(MSG_KRADAN("2 adults"), { carnet: false });
+  const base = kradanOffre(MSG_KRADAN("2 adults", ""), { carnet: false });
+  assert.equal(ordinaire.extras, undefined);
+  assert.equal(ordinaire.extrasManquants, undefined);
+  assert.equal(ordinaire.total, base.total, "Gestion n'ajoute rien à une demande du site ordinaire");
+  assert.deepEqual(extrasDemandes(lireMessage(MSG_KRADAN("2 adults"), AJD)), []);
+  const doc = lireFichier("docs/gestion/carnet-aonang-lanta.md");
+  assert.doesNotMatch(doc, /même résultat que pour une demande du site Secret ordinaire/);
+  assert.match(doc, /demande du carnet/);
+});
+
+test("sources uniques : extras demandés calculés une fois par proposerOffres, une seule règle pour Ao Nang, un seul lecteur de ligne, commentaires au bon endroit", () => {
+  const dc = lireFichier("src/gestion/js/demande-calc.mjs");
+  assert.equal((dc.match(/(?<!function )extrasDemandes\(/g) || []).length, 1, "extrasDemandes n'est appelé qu'une fois, dans proposerOffres");
+  assert.doesNotMatch(dc, /function ajouterExtras\(offre, d,/);
+  const calc = lireFichier("src/gestion/js/demandes-site-calc.mjs");
+  assert.equal((calc.match(/\[\/\^[a-z?-]+\(-\|\$\)\/, "[a-z-]+"\]/g) || []).length, 3, "trois guides, une règle chacun");
+  assert.equal(guideDeLaPage({ page_url: "https://zwaldtravelplanner.com/carnet/ao-nang-x7k2/" }), "aonang");
+  assert.equal(guideDeLaPage({ page_url: "https://zwaldtravelplanner.com/carnet/aonang-x7k2/" }), "aonang");
+  assert.equal(guideDeLaPage({ page_url: "https://zwaldtravelplanner.com/carnet/aonangement-x7k2/" }), null);
+  assert.doesNotMatch(calc, /const lire = \(re\) => \(re\.exec\(message/, "un seul lecteur de ligne");
+  assert.equal((calc.match(/const lireLigne = /g) || []).length, 1);
+  // Chaque commentaire de tête décrit la fonction qui le suit.
+  const avant = (marque) => calc.slice(0, calc.indexOf(marque)).split("\n").slice(-4).join("\n");
+  assert.match(avant("export function autresSorties"), /Les autres sorties/);
+  assert.doesNotMatch(avant("export function guideDeLaPage"), /Les autres sorties/);
+  assert.match(avant("function lignesDuRecapitulatif"), /lignes du récapitulatif/);
+  assert.doesNotMatch(avant("export const extrasDuMessage"), /lignes du récapitulatif/);
 });

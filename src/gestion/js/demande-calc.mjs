@@ -62,7 +62,7 @@ function lireSite(lignes, aujourdhui) {
   let m = null;
   for (const [re, g] of ENTETES_SITE) if ((m = re.exec(lignes[0]))) { genre = g; break; }
   if (!genre) return null;
-  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", sorties: [] };
+  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", transfertHotel: "", sorties: [] };
   const optionVers = (txt) => {
     if (/join/i.test(txt)) d.mode = "join";
     else if (/private/i.test(txt)) d.mode = "private";
@@ -128,7 +128,8 @@ function lireSite(lignes, aujourdhui) {
     else if (cle === "drop-off") d.dropoff = v;
     else if (cle === "hotel on koh lanta") d.hotel = v;
     else if (cle === "name") d.nom = v;
-    else if (cle === "extras") d.extras = v;
+    else if (cle === "extras") { if (sortie) sortie.extras = v; else d.extras = v; }
+    else if (cle === "hotel transfer") d.transfertHotel = v;
     else if (cle === "formula") d.formule = v;
     else if (cle === "slot") d.creneau = v;
     else if (cle === "park fee") d.parc = v;
@@ -166,7 +167,9 @@ function lireSite(lignes, aujourdhui) {
     d.date = premiere.date;
     d.dateTexte = premiere.texte;
     d.lignesService = premiere.lignes;
-    d.sorties = autres.map((x) => `${x.texte}: ${x.titre}`.trim());
+    // Les extras de la première sortie sont ceux du service préparé ; ceux des autres restent dans leur ligne des notes (ils ne comptent pas dans la première).
+    d.extras = premiere.extras || "";
+    d.sorties = autres.map((x) => `${x.texte}: ${x.titre}${x.extras ? ` (Extras: ${x.extras})` : ""}`.trim());
   }
   // L'hôtel d'un trajet est le bout qui n'est pas un aéroport ou un embarcadère.
   if (!d.hotel && genre !== "tour" && genre !== "liste") {
@@ -1156,23 +1159,37 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
-// Les extras du site qui ont un tarif de Gestion (EXTRAS_DU_SITE : « Add Koh Kradan » du 4 Islands privé), pour l'option citée par la demande : leur ligne s'ajoute au service, une seule
-// fois et au prix d'un bateau (jamais par personne), et leur prix entre dans le total de l'offre. Les mêmes lignes pour tous les chemins (fenêtre de création, réponse, « Modifier »).
-// Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) : l'offre le dit.
-// Un extra d'une autre option (le join-in ne le propose pas : Kradan y est déjà dans la sortie) ne s'applique pas.
+// Les extras du site qui ont un tarif de Gestion (EXTRAS_DU_SITE : « Add Koh Kradan » du 4 Islands privé), pour l'option citée par une demande d'une page du carnet : leur ligne
+// s'ajoute au service, une seule fois et au prix d'un bateau (jamais par personne), et leur prix entre dans le total de l'offre. Les mêmes lignes pour tous les chemins (fenêtre de
+// création, réponse, « Modifier »). Seule une demande du carnet (`d.carnet`) les porte : le site Secret ordinaire écrit l'extension à sa façon et Gestion n'y touche pas.
+// Un extra d'une autre option (le join-in ne le propose pas : Kradan y est déjà dans la sortie) ne s'applique pas. Dans une liste de sorties, ce sont les extras de la première
+// sortie, celle qui est préparée (`d.extras`, lu par sortie dans lireSite).
 export function extrasDemandes(d) {
+  if (!d || !d.carnet || !d.extras) return [];
   const trouve = optionDuSite(d);
-  if (!trouve || !d.extras) return [];
+  if (!trouve) return [];
   const demandes = cleTexte(d.extras);
   return EXTRAS_DU_SITE.filter((x) => x.produit === trouve.produit.id && x.option === trouve.option.id && demandes.includes(cleTexte(x.ligne)));
 }
-function ajouterExtras(offre, d, { prestations, partenaires }) {
-  if (offre.genre !== "prestation" || offre.ligneSite === undefined) return offre;
+// Les extras qui ont réellement une ligne dans le service créé (la fenêtre a pu en supprimer une) : leur libellé, d'après la clé du tarif de chaque ligne. Sert la réponse de confirmation.
+export function extrasCrees(lignes, prestations = []) {
+  const libelles = [];
+  for (const l of lignes || []) {
+    const p = l.prestation_id ? prestations.find((x) => x.id === l.prestation_id) : null;
+    const x = p && p.details ? EXTRAS_DU_SITE.find((e) => e.cle === p.details.cle_carnet) : null;
+    if (x && !libelles.includes(x.ligne)) libelles.push(x.ligne);
+  }
+  return libelles;
+}
+// Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) : l'offre
+// le dit dans `extrasManquants`, EN PLUS de son avertissement principal (un groupe hors tranche ne cache pas un extra sans tarif).
+function ajouterExtras(offre, voulus, { prestations, partenaires }) {
+  if (!voulus.length || offre.genre !== "prestation" || offre.ligneSite === undefined) return offre;
   let sortie = offre;
-  for (const x of extrasDemandes(d)) {
+  for (const x of voulus) {
     const tarif = prestations.find((p) => p.details && p.details.cle_carnet === x.cle && proposable(p, partenaires));
     if (!tarif) {
-      sortie = { ...sortie, avertissement: sortie.avertissement || "extra_sans_tarif", extraManquant: x.ligne };
+      sortie = { ...sortie, extrasManquants: [...(sortie.extrasManquants || []), x.ligne] };
       continue;
     }
     const deja = tarif.id === sortie.source.id || (sortie.supplement && sortie.supplement.source.id === tarif.id) || (sortie.extras || []).some((e) => e.source.id === tarif.id);
@@ -1235,7 +1252,8 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   }
-  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), d, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  const voulus = extrasDemandes(d);
+  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), voulus, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------
@@ -1277,6 +1295,7 @@ export function notesDemande(d, { surLeVoucher = false } = {}) {
     d.formule ? `Formula: ${d.formule}` : "",
     d.creneau ? `Slot: ${d.creneau}` : "",
     d.extras ? `Extras: ${d.extras}` : "",
+    d.transfertHotel ? `Hotel transfer: ${d.transfertHotel}` : "",
     d.parc ? `Park fee (paid on site): ${d.parc}` : "",
     d.remarque ? `Client message: ${d.remarque}` : "",
     d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",
