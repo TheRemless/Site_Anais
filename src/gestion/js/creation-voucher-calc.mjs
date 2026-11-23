@@ -1,7 +1,7 @@
 // Création d'un dossier de Secret ou de Taxi avec tout ce que le voucher dit, service par service (13.11.2026) : la logique pure, sans DOM,
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
-import { reservationsDepuisDocument, typeVoucher, typeTransfert, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle, adresseEstHotel } from "./operations-calc.mjs";
+import { reservationsDepuisDocument, typeVoucher, typeTransfert, champsVoucherDe, bebesDemandes, pickupDepuisLibelle, dropOffDepuisLibelle, adresseEstHotel } from "./operations-calc.mjs";
 import { libelleClient, ligneLibre } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 import { estRetourDepartDetails, libelleRetourDepart, dureeFrancais, erreursTrajet, RETOUR_DEPART } from "./trajet-calc.mjs";
@@ -34,7 +34,7 @@ export function champsCreation(service, { taxi = false } = {}) {
     return ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", ...(sansPersonnes ? ["adultes", "enfants"] : []), "bagages", "sieges", "remarques"];
   }
   const t = service.type;
-  return ["heure", "lieu", ...(t === null || t === "billet" ? ["bebes"] : []), ...champsVoucherDe(t, { trajet: !!service.trajet })];
+  return ["heure", "lieu", ...(bebesDemandes(t, { trajet: !!service.trajet }) ? ["bebes"] : []), ...champsVoucherDe(t, { trajet: !!service.trajet })];
 }
 
 // Garde les valeurs remplies : un champ vide ne s'écrit pas sur la réservation créée.

@@ -71,6 +71,10 @@ test("modèle et type d'un trajet : bateau → billet, minivan partagé → tran
   assert.equal(O.typeTransfert(null, r(TRAJETS.partage), t("partage")), "partage", "un trajet vendu à la place : Shared minivan d'office");
   assert.equal(O.typeTransfert(null, r(TRAJETS.prive), t("prive")), "minivan");
   assert.equal(O.typeTransfert(null, r(TRAJETS.prive), { ...t("prive"), mode: "Private taxi" }), "taxi");
+  assert.equal(O.typeTransfert(null, r(TRAJETS.prive), { ...t("prive"), mode: "Taxi privé jusqu'au quai" }), "taxi");
+  // « Taxi » seul ne rend pas privé (relecture de la PR 337) : un trajet mixte avec un pick-up taxi se partage.
+  assert.equal(O.typeTransfert(null, r(TRAJETS.mixte), { ...t("mixte"), mode: "Minivan + pick-up taxi + longtail" }), "partage");
+  assert.equal(O.typeTransfert(null, r(TRAJETS.partage), { ...t("partage"), mode: "Shared taxi to the pier" }), "partage");
   assert.equal(O.typeTransfert(null, r(TRAJETS.mixte), t("mixte")), "partage");
   // Sans trajet : la règle d'avant (groupe de la prestation et libellé).
   assert.equal(O.typeTransfert({ groupe: "Private Taxi" }, { libelle: "Krabi Airport" }), "taxi");
@@ -83,6 +87,21 @@ test("modèle et type d'un trajet : bateau → billet, minivan partagé → tran
   assert.ok(C.champsCreation(sv).includes("type_transfert"));
 });
 
+test("création d'un trajet du catalogue avec un enfant : bébés demandés, sièges jamais exigés (règle d'avant et de l'Assistant)", () => {
+  const t = { id: "t1", ...TRAJETS.partage };
+  const services = C.servicesCreation([{ id: "l1", kind: "ligne", libelle: "Minivan transfer: Koh Exemple → Parc Exemple", trajet_id: "t1", quantite: 1, prix: 850 }, { id: "l2", kind: "ligne", libelle: "Minivan transfer: Koh Exemple → Parc Exemple (child)", trajet_id: "t1", quantite: 1, prix: 600, enfant: true }], { trajets: [t] });
+  const champs = C.champsCreation(services[0]);
+  assert.ok(champs.includes("bebes"), "le champ bébés reste");
+  assert.ok(!champs.includes("sieges"), "les sièges ne sont pas demandés");
+  assert.ok(!champs.includes("type_trajet"), "pas de retour au point de départ sur un trajet du catalogue");
+  const parService = C.avecSiegesRequis(services, [{ heure: "07:30", lieu: "Resort Exemple", bebes: 0, sieges: 0, details: {}, personnes: { adultes: 1, enfants: 1 } }]);
+  assert.equal(parService[0].siegesRequis, false);
+  assert.equal(C.siegesIncomplets(parService), null, "un enfant sans choix de sièges ne bloque pas la création (e_sieges_choix)");
+  // Un transfert hors trajet garde la règle : avec un enfant, le choix est exigé.
+  const prive = C.avecSiegesRequis([{ type: "transfert", trajet: false }], [{ heure: "", lieu: "", bebes: 0, sieges: 0, details: {}, personnes: { adultes: 1, enfants: 1 } }]);
+  assert.equal(C.siegesIncomplets(prive).code, "e_sieges_choix");
+});
+
 test("voucher : chaque trajet reçoit son modèle et son type, sans rien choisir", () => {
   assert.equal(voucherDe(resa.bateau.id).type, "billet");
   assert.equal(voucherDe(resa.mixte.id).type, "billet");
@@ -92,6 +111,15 @@ test("voucher : chaque trajet reçoit son modèle et son type, sans rien choisir
   assert.deepEqual(typeImprime(voucherDe(resa.partage.id)), ["Shared Minivan"], "le cas réel : Shared minivan d'office");
   assert.deepEqual(typeImprime(voucherDe(resa.prive.id)), ["Private Minivan"]);
   assert.match(texte(renderVoucher(voucherDe(resa.bateau.id))), /Boat Ticket Voucher/);
+});
+
+test("voucher d'un trajet sans heure de pickup : l'heure de départ du trajet s'imprime", async () => {
+  await E.modifier("reservations", resa.partage.id, { heure_pickup: "" });
+  const l = renderVoucher(voucherDe(resa.partage.id)).querySelectorAll("p").find((p) => p.textContent.startsWith("Pickup Time"));
+  assert.ok(l, "la ligne Pickup Time");
+  assert.match(l.textContent, /08:00/);
+  await E.modifier("reservations", resa.partage.id, { heure_pickup: "07:30" });
+  assert.match(renderVoucher(voucherDe(resa.partage.id)).querySelectorAll("p").find((p) => p.textContent.startsWith("Pickup Time")).textContent, /07:30/, "l'heure saisie passe avant");
 });
 
 test("fiche : « Automatique » dit ce qui s'imprime, le choix « Shared minivan » est gardé à l'enregistrement et imprimé", async () => {
@@ -125,7 +153,7 @@ test("fiche : « Automatique » dit ce qui s'imprime, le choix « Shared minivan
 // ---- Carte « dossier » de l'Assistant : un double tap ne crée qu'un dossier -------------------------------------------------------------
 // L'onglet Assistant (views/agent.mjs) tel quel, avec une conversation de test et ses cartes ; la prise d'une carte imite la base
 // (migration 120 : une seule prise tant que la carte est proposée). `prises` : les cartes déjà prises « ailleurs » (autre onglet).
-async function ongletAvec(liste, { prisesAilleurs = new Set() } = {}) {
+async function ongletAvec(liste, { prisesAilleurs = new Set(), echecsDecider = 0 } = {}) {
   await E.enregistrerReglages({ ...E.reglages(), agent_ia: true });
   const conv = { id: `conv-double-${Date.now()}`, entite_id: E.etat.entiteId, user_id: E.etat.moi.user_id, titre: "Double", apercu: "", dossier_id: null, statut: "ouverte", cree_le: new Date().toISOString(), maj_le: new Date().toISOString() };
   const cartes = liste.map((x, i) => ({ ...x, id: `${conv.id}-carte-${i}`, conversation_id: conv.id, statut: "proposee", cree_le: new Date(Date.now() + i).toISOString() }));
@@ -134,12 +162,16 @@ async function ongletAvec(liste, { prisesAilleurs = new Set() } = {}) {
   const origines = Object.fromEntries(noms.map((k) => [k, st[k]]));
   const nos = (id) => id === conv.id || cartes.some((x) => x.id === id);
   const prises = new Set(prisesAilleurs);
-  const appels = { prendre: 0, rendre: 0 };
+  const appels = { prendre: 0, rendre: 0, deciderEchecs: echecsDecider };
   st.agentConversations = async (e) => [...(await origines.agentConversations.call(st, e)), conv];
   st.agentFil = async (id) => (id === conv.id ? { messages: [], cartes: structuredClone(cartes) } : origines.agentFil.call(st, id));
   st.agentAttente = async (e) => [...(await origines.agentAttente.call(st, e)), ...(cartes.some((x) => x.statut === "proposee") ? [{ conversation_id: conv.id }] : [])];
   st.agentCarte = async (id, statut) => {
     if (!nos(id)) return origines.agentCarte.call(st, id, statut);
+    if (statut === "validee" && appels.deciderEchecs > 0) {
+      appels.deciderEchecs--;
+      throw new Error("réseau coupé");
+    }
     const x = cartes.find((y) => y.id === id);
     Object.assign(x, { statut, decide_le: new Date().toISOString() });
     return structuredClone(x);
@@ -160,8 +192,8 @@ async function ongletAvec(liste, { prisesAilleurs = new Set() } = {}) {
   await dom.attendre(30);
   const carteVue = (i) => vue.querySelector(`[data-carte="${cartes[i].id}"]`);
   const principal = (i) => carteVue(i).querySelector("button.principal");
-  const fin = () => (Object.assign(st, origines), vue.remove());
-  return { cartes, carteVue, principal, appels, fin };
+  const fin = () => (Object.assign(st, origines), vue.remove(), dom.document.body.querySelectorAll(".modal-fond").forEach((x) => x.remove()));
+  return { cartes, carteVue, principal, appels, prises, fin };
 }
 let clients = 0;
 async function carteTrajet() {
@@ -236,12 +268,87 @@ test("validation arrêtée (motif) : la carte est rendue à la base et peut êtr
   }
 });
 
-test("magasin de démo : prise de la carte branchée sur la base (migration 120) ; une carte inconnue laisse faire l'écran", async () => {
+test("prise expirée après une création dont la notation a échoué : un nouveau tap ne crée pas de second dossier", async () => {
+  const { carte, nom } = await carteTrajet();
+  const o = await ongletAvec([carte], { echecsDecider: 1 });
+  try {
+    o.principal(0).click();
+    await dom.attendre(200);
+    assert.equal(dossiersDe(nom).length, 1, "le dossier est créé");
+    assert.equal(o.cartes[0].statut, "proposee", "la base n'a pas pu noter la carte validée");
+    // Plus de 2 minutes plus tard, la prise a expiré : la base laisserait reprendre la carte.
+    o.prises.clear();
+    o.principal(0).click();
+    await dom.attendre(200);
+    assert.equal(dossiersDe(nom).length, 1, "aucun second dossier");
+    assert.equal(o.cartes[0].statut, "validee", "le nouveau tap ne fait que noter la carte validée");
+  } finally {
+    o.fin();
+  }
+});
+
+test("« Vérifier avant » : la carte se prend à l'ouverture ; prise ailleurs, la fenêtre ne s'ouvre pas ; fermée sans rien créer, la carte se rend", async () => {
+  const { carte, nom } = await carteTrajet();
+  const o = await ongletAvec([carte], { prisesAilleurs: new Set() });
+  const verifier = () => dom.boutons("Vérifier avant", o.carteVue(0))[0];
+  const fenetres = () => dom.document.body.querySelectorAll(".modal-fond").length;
+  try {
+    await E.etat.store.agentPrendreCarte(o.cartes[0].id);
+    const avant = fenetres();
+    verifier().click();
+    await dom.attendre(60);
+    assert.equal(fenetres(), avant, "prise ailleurs : la fenêtre ne s'ouvre pas");
+    assert.match(o.carteVue(0).textContent, /déjà en cours de validation \(autre onglet ou autre appareil\)/);
+    // Rendue ailleurs : la fenêtre s'ouvre et prend la carte ; un tap sur « Créer le dossier » pendant ce temps ne crée rien.
+    await E.etat.store.agentRendreCarte(o.cartes[0].id);
+    verifier().click();
+    await dom.attendre(80);
+    assert.equal(fenetres(), avant + 1, "la fenêtre s'ouvre");
+    assert.ok(o.prises.has(o.cartes[0].id), "la carte est prise");
+    o.principal(0).click();
+    await dom.attendre(120);
+    assert.equal(dossiersDe(nom).length, 0, "pas de dossier d'un geste pendant que la fenêtre est ouverte");
+    // Fermée sans créer : la carte se rend.
+    const fond = dom.document.body.querySelectorAll(".modal-fond").slice(-1)[0];
+    fond.querySelector(".modal-tete button").click();
+    await dom.attendre(40);
+    assert.ok(!o.prises.has(o.cartes[0].id), "rendue à la fermeture");
+  } finally {
+    o.fin();
+  }
+});
+
+test("magasin de démo : une carte se prend une fois, se reprend après 2 minutes, se rend ; jamais celle d'une autre personne", async () => {
   const st = E.etat.store;
-  assert.equal(await st.agentPrendreCarte("carte-inconnue"), true);
-  const src = (await import("node:fs")).readFileSync(new URL("../src/gestion/js/store-local.mjs", import.meta.url), "utf8");
-  assert.match(src, /c\.statut !== "proposee" \|\| \(c\.prise_le && maintenant - Date\.parse\(c\.prise_le\) < 2 \* 60 \* 1000\)\) return false;/);
-  const sb = (await import("node:fs")).readFileSync(new URL("../src/gestion/js/store-supabase.mjs", import.meta.url), "utf8");
-  assert.match(sb, /sb\.rpc\("prendre_agent_carte", \{ p_carte: id \}\)/);
-  assert.match(sb, /sb\.rpc\("rendre_agent_carte", \{ p_carte: id \}\)/);
+  assert.equal(await st.agentPrendreCarte("carte-inconnue"), true, "une carte que la démo ne garde pas : l'écran garde son verrou");
+  // Une vraie carte de la démo : une brochure jointe fait proposer une carte d'import (store-local.mjs, agentEnvoyer).
+  const cartes = [];
+  const r = await st.agentEnvoyer({ entite_id: E.etat.entiteId, texte: "Brochure du partenaire", fichiers: [{ nom: "tarifs.pdf", media_type: "application/pdf", data: "JVBERi0=" }] }, (ev) => ev.t === "carte" && cartes.push(ev.carte));
+  assert.ok(r.ok && cartes.length === 1, JSON.stringify(r));
+  const id = cartes[0].id;
+  assert.equal(await st.agentPrendreCarte(id), true, "la première prise");
+  assert.equal(await st.agentPrendreCarte(id), false, "une seconde prise est refusée");
+  const vrai = Date.now;
+  try {
+    Date.now = () => vrai() + 90 * 1000;
+    assert.equal(await st.agentPrendreCarte(id), false, "toujours prise après 90 secondes");
+    Date.now = () => vrai() + 2 * 60 * 1000 + 1000;
+    assert.equal(await st.agentPrendreCarte(id), true, "reprise après 2 minutes");
+  } finally {
+    Date.now = vrai;
+  }
+  await st.agentRendreCarte(id);
+  assert.equal(await st.agentPrendreCarte(id), true, "rendue, elle se reprend");
+  await st.agentCarte(id, "validee");
+  await st.agentRendreCarte(id);
+  assert.equal(await st.agentPrendreCarte(id), false, "validée, jamais reprise, même rendue");
+  // Une autre personne de la démo : la carte n'est pas à elle.
+  const moi = E.etat.moi.user_id;
+  const autre = E.etat.brut.profils.find((p) => p.user_id !== moi && p.actif !== false && !p.plateforme);
+  st.changerUtilisateurDemo(autre.user_id);
+  try {
+    await assert.rejects(() => st.agentPrendreCarte(id), /Carte introuvable/);
+  } finally {
+    st.changerUtilisateurDemo(moi);
+  }
 });

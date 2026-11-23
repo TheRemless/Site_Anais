@@ -688,7 +688,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const corps = h("div", { class: "modal-corps demande" });
   // Demande du site : son message reste sous les yeux (il se relit si on le corrige). Carte de l'agent : la demande est déjà lue.
   corps.append(...(depuisSite ? [h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone)] : []), reconnu);
-  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto });
+  // `options.ferme` (carte de l'Assistant, « Vérifier avant ») : appelé à la fermeture de la fiche, créée ou non (la carte se rend si rien n'est créé).
+  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto, ferme: options.ferme || null });
 
   // Hôtels situés (migration 48) : lus en arrière-plan, leurs zones complètent ensuite les propositions de zone de pickup.
   // Une validation d'un geste les attend (leurs zones servent aux zones de pickup), jamais plus de HOTELS_DELAI_MS : une lecture lente ou

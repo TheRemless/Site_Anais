@@ -10,7 +10,7 @@ import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, typeTra
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
 import { siegesLus, siegesTotal, siegesChoisis, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
-import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, bebesDemandes, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
 import { venteDuTarif } from "../demande-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
@@ -541,8 +541,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     legende.textContent = m ? TITRES_VOUCHER[m] : tr("Voucher");
     // Les sièges enfant ou bébé ne s'impriment que sur un voucher de transfert (et la Booking confirmation de Secret, qui en est un) : ailleurs,
     // le champ ne reste visible que tant qu'il a une valeur, pour qu'elle ne se garde jamais sans être vue (relecture de la PR 315).
-    const siegesHorsModele = m && m !== "transfert" && siegesSaisis() > 0;
-    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()), ...(siegesHorsModele ? [CHAMPS.sieges(), h("p", { class: "aide" }, tr("Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus."))] : [])] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
+    const siegesHorsModele = m && !champsVoucherDe(m, { trajet: !!r.trajet_id }).includes("sieges") && siegesSaisis() > 0;
+    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" && blocRetour ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()), ...(siegesHorsModele ? [CHAMPS.sieges(), m === "transfert" ? null : h("p", { class: "aide" }, tr("Les sièges ne s'impriment que sur un voucher de transfert : videz le champ s'ils ne servent plus."))] : [])] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
   };
   modele.addEventListener("change", dessinerModele);
   if (avecVoucher) dessinerModele();
@@ -707,7 +707,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     zonesPickup.noeud,
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
-    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), type === null || type === "billet" ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), bebesDemandes(type, { trajet: !!r.trajet_id }) ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,
