@@ -284,7 +284,8 @@ export function texteCorrection(n, prix = (x) => String(x)) {
 
 // Ce que devient un document du dossier quand le prix du service change. `taxi` : le prix interne d'une course (contenuCourse).
 // Renvoie { contenu: nouveau contenu ou null, raison } ; `raison` dit pourquoi le document garde l'ancien prix :
-//   plusieurs_lignes : le service y est réparti sur plusieurs lignes ; quantite : le prix ne se divise pas juste par la quantité de la ligne ;
+//   plusieurs_lignes : le service y est réparti sur plusieurs lignes (une ligne seule suit toujours : prix unitaire s'il tombe juste, sinon prix
+//   total, 23.11.2026) ;
 //   null : il suit (ou le service n'y figure pas).
 export function suitePrixDocument(doc, r, montant, { taxi = false, options = {} } = {}) {
   const contenu = doc && doc.contenu;
@@ -295,7 +296,7 @@ export function suitePrixDocument(doc, r, montant, { taxi = false, options = {} 
   if (!reste) return { contenu: s.contenu, raison: null };
   const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
   const lignes = (contenu.lignes || []).filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
-  return { contenu: s.contenu, raison: lignes.length > 1 ? "plusieurs_lignes" : "quantite", lignes: lignes.length, qte: lignes.length === 1 ? Number(lignes[0].qte) || null : null };
+  return { contenu: s.contenu, raison: "plusieurs_lignes", lignes: lignes.length, qte: null };
 }
 
 // ---- Revenir à À encaisser depuis un dossier (23.11.2026) ------------------------------------------------------------------------------

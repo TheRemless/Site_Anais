@@ -145,7 +145,7 @@ async function alignerFacture(r, ecart, apres) {
     if (Object.keys(patch).length) await modifier("reservations", r.id, patch);
     // « Facture alignée » seulement si tout a suivi : sinon, ce qui reste et pourquoi (23.11.2026, un prix resté à 2 850 sans un mot).
     const non = raisonsNonAlignees({ nonAlignes: suivi.nonAlignes, reste: suivi.resteFacture, lignes: suivi.lignesService, raisonEnfant: suivi.raisonEnfant });
-    if (non.ecarts.length || non.raisons.length) nonAligne(non, { partiel: suivi.changements.length > 0, documentId: suivi.documentId });
+    if (non.ecarts.length || non.raisons.length) nonAligne(non, { partiel: suivi.factureChangee, documentId: suivi.documentId });
     else toast(tr("Facture alignée sur la réservation."));
     apres();
   } catch (err) {

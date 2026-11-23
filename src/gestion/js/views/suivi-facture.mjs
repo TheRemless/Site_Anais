@@ -121,12 +121,18 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   // Seulement ce que cette modification devait faire suivre (date, personnes, et ce qui a changé dans le service).
   const suivis = new Set(["date_service", "personnes", ...clesService]);
   resultat.ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => suivis.has(c.cle)).map((c) => texteEcart(c, deviseEcart)) : null;
-  // Les mêmes écarts avec leur clé, et ce que la facture n'a pas pu prendre (le tarif n'est pas un écart affiché) : l'alignement dit pourquoi.
-  resultat.nonAlignes = ecart && ecart.champs.length ? ecart.champs.filter((c) => suivis.has(c.cle)).map((c) => ({ cle: c.cle, texte: texteEcart(c, deviseEcart) })) : [];
-  const docRef = principale ? principale.doc : refDoc;
-  resultat.resteFacture = (resultat.restes && docRef && resultat.restes.get(docRef)) || [];
-  resultat.lignesService = refDoc ? lignesDuService(refDoc.contenu, r) : 0;
-  resultat.documentId = (docRef && docRef.id) || null;
+  // Ce qui reste après l'alignement se lit sur la facture (ou la facture locale), même quand seul le devis a changé : la facture telle qu'elle
+  // sera enregistrée, sinon telle qu'elle est. L'alignement dit ce qui n'a pas suivi et pourquoi.
+  const chFacture = resultat.changements.find((x) => x.doc.type !== "devis") || null;
+  const facture = chFacture ? chFacture.doc : documents.find((x) => x.type !== "devis") || null;
+  const contenuFacture = chFacture ? chFacture.suite : facture && facture.contenu;
+  const ecartFacture = !retirer && contenuFacture ? ecartReservation({ ...r, ...valeurs }, { contenu: contenuFacture }) : null;
+  const deviseFacture = (contenuFacture && contenuFacture.devise) || reglages().devise;
+  resultat.nonAlignes = ecartFacture && ecartFacture.champs.length ? ecartFacture.champs.filter((c) => suivis.has(c.cle)).map((c) => ({ cle: c.cle, texte: texteEcart(c, deviseFacture) })) : [];
+  resultat.resteFacture = (resultat.restes && facture && resultat.restes.get(facture)) || [];
+  resultat.lignesService = contenuFacture ? lignesDuService(contenuFacture, r) : 0;
+  resultat.documentId = (facture && facture.id) || null;
+  resultat.factureChangee = !!chFacture;
   if (factureNonSuivie) toast(tr("La facture n'a pas suivi : votre rôle ne permet pas de la modifier."), true);
   // Rien n'a changé sur la facture mais l'enfant n'y est pas : la raison est dite (avant, aucun total ni message ne s'affichait).
   else if (!principale && resultat.raisonEnfant) toast(texteRaisonEnfant(resultat.raisonEnfant), resultat.raisonEnfant !== "prix_global");

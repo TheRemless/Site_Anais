@@ -61,7 +61,6 @@ export const EN_CORRECTION = {
   "Votre rôle ne permet pas de corriger une commission.": "Your role does not allow correcting a commission.",
   "Votre rôle ne permet pas de modifier la facture : elle garde l'ancien prix, à corriger par une personne qui en a le droit.": "Your role does not allow changing the invoice: it keeps the old price, to be corrected by someone who has the right.",
   "{doc} répartit ce service sur {n} lignes : elle garde l'ancien prix, à corriger dans le document.": "{doc} spreads this service over {n} lines: it keeps the old price, to be corrected in the document.",
-  "{doc} compte ce service en {q} unités et le nouveau prix ne se divise pas juste : elle garde l'ancien prix, à corriger dans le document.": "{doc} counts this service in {q} units and the new price does not divide evenly: it keeps the old price, to be corrected in the document.",
   "La facture garde l'ancien prix : corrigez-la dans le document.": "The invoice keeps the old price: correct it in the document.",
   "Ce service a changé depuis l'ouverture (encaissement, saisie ou prix) : rien n'a été corrigé. Vérifiez la liste.": "This service changed since it was opened (payment, entry or price): nothing was corrected. Check the list.",
   "La facture n'a pas pu suivre le nouveau prix : rien n'a été corrigé.": "The invoice could not follow the new price: nothing was corrected.",
@@ -76,4 +75,6 @@ export const EN_CORRECTION = {
   "Ce service a plusieurs lignes adultes sur la facture. Choisissez le tarif de chaque ligne dans la facture.": "This service has several adult lines on the invoice. Choose the rate of each line in the invoice.",
   "Corrigez ce qui reste dans la facture, ou alignez la réservation sur la facture.": "Correct what remains in the invoice, or align the booking with the invoice.",
   "Tarif : celui de la réservation n'est pas sur la facture": "Rate: the booking's rate is not on the invoice",
+  "Total fixe": "Fixed total",
+  "La quantité ne change pas le prix.": "The quantity does not change the price.",
 };
