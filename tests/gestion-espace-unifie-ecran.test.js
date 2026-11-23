@@ -125,7 +125,7 @@ test("Assistant : validation refusée sans rien écrire, écriture dans l'entrep
   assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise \}\);/);
   assert.match(agent, /entreprise_a_choisir: \(\) => tr\("Choisissez Secret ou Taxi"\)/);
   assert.match(agent, /lier: \(a, b\) => lierDossiers\(a, b, modifier\)/, "dossier_lie_id des deux côtés");
-  assert.match(agent, /r = await dansEntreprise\(entiteVisee\(c\), \(\) => enregistrerReservation\(/, "service ajouté au dossier de l'autre entreprise");
+  assert.match(agent, /r = await dansEntreprise\(entiteVisee\(c\), \(\) => ajouterParCarte\(c, /, "service ajouté au dossier de l'autre entreprise");
   assert.match(agent, /if \(!permissionsDe\(id\)\.includes\("dossiers\.ecrire"\)\) return refusDroit\(id\);/);
   assert.match(source("views/demande.mjs"), /let clientId = options\.clientId \|\| "";/, "le second dossier reprend la même fiche");
 });

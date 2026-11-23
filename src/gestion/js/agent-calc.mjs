@@ -193,13 +193,46 @@ export function zoneDuBout(vers, bout) {
   const b = new Set(motsLieu(bout));
   return a.length > 0 && b.size > 0 && a.every((m) => b.has(m));
 }
+// Deux noms du même lieu, l'un plus précis que l'autre (« Koh Lanta » et « Koh Lanta Pier »), dans un sens ou dans l'autre.
+export const memeLieu = (a, b) => zoneDuBout(a, b) || zoneDuBout(b, a);
+// Un aéroport, un embarcadère, une gare, un port : un point d'arrivée ou de départ des voyageurs, jamais leur logement.
+const POINT_DE_PASSAGE = /\b(?:airport|a[eé]roport|kbv|hkt|pier|jetty|embarcad\w*|port|harbou?r|ferry|terminal|station|gare|bus)\b/i;
+export const pointDePassage = (t) => POINT_DE_PASSAGE.test(String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+// Le pickup et le drop-off d'un transfert (relecture de la PR 332) : la règle unique de la fiche de création (carte « dossier », demande du
+// site, message collé) et de la carte « reservation ».
+// `lieuPickup` : celui de la carte ou de la demande ; `de`, `vers` : les bouts lus (carte, message) ; `bouts` : ceux du trajet du catalogue
+// ({ pickup, dropoff }) ; `hotel` : l'hôtel du client (fiche ou carte) ; `lieuHotel` : le lieu du catalogue où il se trouve (hotels_lieux,
+// « Koh Lanta »), "" s'il n'est pas situé ; `boutDepose` : le bout d'arrivée sert de drop-off (Taxi).
+// Pickup : celui de la carte ; sinon le départ du trajet s'il n'est pas du côté de l'hôtel (aéroport, embarcadère, autre lieu) ; l'hôtel
+// seulement quand le trajet part de chez lui (son lieu situé est le départ, ou le trajet va vers un aéroport ou un embarcadère depuis un lieu
+// qui n'en est pas un) ; sinon le départ lu. Drop-off : celui de la carte (dans saisieInitiale ou detailsDeCarte) ; pour une arrivée, l'hôtel ;
+// sinon le bout d'arrivée. Jamais le même lieu en pickup et en drop-off. Rend { pickup, dropoff, cote } (`cote` : "depart", "arrivee" ou "").
+export function lieuxDuTransfert({ lieuPickup = "", de = "", vers = "", bouts = null, hotel = "", lieuHotel = "", boutDepose = false } = {}) {
+  const bp = (bouts && bouts.pickup) || "";
+  const bd = (bouts && bouts.dropoff) || "";
+  // Le départ : le plus précis des deux noms d'un même lieu, sinon celui de la carte.
+  const depart = de && bp ? (zoneDuBout(de, bp) ? bp : de) : de || bp;
+  const arrivee = vers || bd;
+  const h = String(hotel || "").trim();
+  let cote = "";
+  if (h) {
+    if (lieuHotel && depart && memeLieu(depart, lieuHotel)) cote = "depart";
+    else if ((lieuHotel && arrivee && memeLieu(arrivee, lieuHotel)) || (arrivee && memeLieu(arrivee, h))) cote = "arrivee";
+    else if (depart && pointDePassage(depart)) cote = "arrivee";
+    else if (arrivee && pointDePassage(arrivee) && (!depart || !pointDePassage(depart))) cote = "depart";
+  }
+  const dropoff = vers || (cote === "arrivee" ? h : "") || (boutDepose ? bd : "");
+  let pickup = lieuPickup || (depart && cote !== "depart" ? depart : "") || (cote === "depart" ? h : "") || de;
+  if (pickup && dropoff && memeLieu(pickup, dropoff)) pickup = lieuPickup && !memeLieu(lieuPickup, dropoff) ? lieuPickup : cote === "depart" && !memeLieu(h, dropoff) ? h : "";
+  return { pickup, dropoff, cote };
+}
 // La dépose d'un service de carte : « vers » sans lien, sauf une zone que le bout du catalogue précise (`bout`, Taxi seulement).
 export const deposeCarte = (vers, bout = "") => {
   const d = sansLien(vers);
   return bout && zoneDuBout(d, bout) ? String(bout).trim() : d;
 };
-function detailsDeCarte(s, bouts = null) {
-  const depose = deposeCarte(s.vers, bouts && bouts.dropoff);
+function detailsDeCarte(s, bouts = null, deposeTransfert = "") {
+  const depose = deposeTransfert || deposeCarte(s.vers, bouts && bouts.dropoff);
   const details = detailsAvecSieges(
     { ...(depose ? { drop_off: depose } : {}), ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
     siegesDeCarte(s),
@@ -223,13 +256,17 @@ export const payeSurPlaceCarte = ({ taxi = false, partenaire = null, modeDe = ()
 // partenaire (migration 115) la lui montre. Jamais chez Secret ni ZTP (taxi indépendant, aucun partenaire deviné).
 // `surPlace` : une course de Taxi se paie au chauffeur (relecture de la PR 329), comme ligneVoucher et courseTaxi ; sinon le formulaire
 // garde son défaut.
-// `lieuDossier` : le lieu de pickup du dossier (lieuParDefaut : dernier lieu de ses services, sinon l'hôtel du client) ; `bouts` : les deux bouts
-// du trajet du catalogue en Taxi ({ pickup, dropoff }, boutsDuService). Le pickup : celui de la carte, sinon (transfert libre) son départ,
-// sinon le lieu du dossier, sinon le bout du catalogue, sinon le départ lu (relecture de la PR 332), comme une carte « dossier ».
-export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surPlace = false, lieuDossier = "", bouts = null } = {}) {
+// `lieuDossier` : le lieu de pickup du dossier (lieuParDefaut : dernier lieu de ses services, sinon l'hôtel du client) ; `hotel` et `lieuHotel` :
+// l'hôtel du client du dossier et le lieu du catalogue où il se trouve ; `bouts` : les deux bouts du trajet du catalogue ({ pickup, dropoff },
+// boutsDuService) ; `transfert` : le service est un transfert (trajet, prestation de la famille « transfert », ou hors catalogue) ; `taxi` :
+// le bout d'arrivée sert de drop-off. Un transfert prend ses lieux par lieuxDuTransfert, comme dans la fiche de création ; un autre service,
+// celui de la carte, sinon le lieu du dossier, sinon le départ lu.
+export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surPlace = false, lieuDossier = "", hotel = "", lieuHotel = "", bouts = null, transfert = false, taxi = false } = {}) {
   const s = donnees.service || {};
   const de = sansLien(s.de);
-  const libre = !s.offre;
+  // Une dépose de zone ne cède la place au bout du catalogue que chez Taxi (le bout d'arrivée n'y est imprimé que là).
+  const boutDepose = taxi && bouts ? bouts.dropoff : "";
+  const lieux = transfert ? lieuxDuTransfert({ lieuPickup: s.lieu_pickup || "", de, vers: deposeCarte(s.vers, boutDepose), bouts, hotel, lieuHotel, boutDepose: taxi }) : null;
   return {
     ...(partenaireId ? { partenaire_id: partenaireId } : {}),
     ...(surPlace ? { paye_sur_place: true } : {}),
@@ -237,14 +274,14 @@ export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surP
     libelle: s.libelle || s.texte || "",
     date_service: s.date || "",
     heure_pickup: s.heure_pickup || "",
-    lieu_pickup: s.lieu_pickup || (libre && de) || lieuDossier || (bouts && bouts.pickup) || de,
+    lieu_pickup: lieux ? lieux.pickup : s.lieu_pickup || lieuDossier || de,
     personnes: { adultes: s.adultes || 0, enfants: s.enfants || 0 },
     montant_vente: s.prix ?? null,
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
     // L'origine d'un prix repris du client sans correction de Nani (revue de la PR 307) : relue par le contrôle (dossierPourControle).
     // Tout ce qui sert au client et au chauffeur va sur le voucher (22.11.2026) : vol, sièges par type, bagages, remarque en anglais.
-    ...detailsDeCarte(s, bouts),
+    ...detailsDeCarte(s, boutDepose ? bouts : null, lieux && lieux.dropoff),
     notes: noteCarte(s),
   };
 }

@@ -2,7 +2,7 @@
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
 import { reservationsDepuisDocument, typeVoucher, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle, adresseEstHotel } from "./operations-calc.mjs";
-import { zoneDuBout } from "./agent-calc.mjs";
+import { zoneDuBout, memeLieu, deposeCarte, lieuxDuTransfert } from "./agent-calc.mjs";
 import { libelleClient, ligneLibre } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 import { estRetourDepartDetails, libelleRetourDepart, dureeFrancais, erreursTrajet, RETOUR_DEPART } from "./trajet-calc.mjs";
@@ -56,6 +56,23 @@ export function boutsDuTrajet(s, service, { lieu = true } = {}) {
   const zoneCarte = !!s.dropoffCarte && details.drop_off === s.dropoffCarte && zoneDuBout(details.drop_off, service.dropoff);
   if (service.dropoff && !estRetourDepartDetails(details) && (!(details.drop_off || "").trim() || details.drop_off === auto.drop_off || zoneCarte)) details.drop_off = service.dropoff;
   s.auto = { lieu: lieu ? service.pickup : auto.lieu, drop_off: service.dropoff };
+  return s;
+}
+
+// Le pickup et le drop-off d'un transfert de la fiche de création (lieuxDuTransfert, relecture de la PR 332), posés comme boutsDuTrajet :
+// seulement dans un champ vide ou encore à sa valeur posée d'office ; ce que la personne a tapé reste. `service` : { pickup, dropoff } du
+// trajet du catalogue (servicesCreation). `taxi` : le bout d'arrivée sert de drop-off, et une dépose de zone lui cède la place.
+export function poserLieuxTransfert(s, service, { lieuPickup = "", de = "", hotel = "", lieuHotel = "", taxi = false, poserLieu = true } = {}) {
+  const auto = s.auto || {};
+  const details = s.details || (s.details = {});
+  const actuel = String(details.drop_off || "").trim();
+  const deCarte = !!s.dropoffCarte && details.drop_off === s.dropoffCarte;
+  const libre = !actuel || details.drop_off === auto.drop_off || deCarte;
+  const vers = deCarte ? deposeCarte(s.dropoffCarte, taxi ? service.dropoff : "") : libre ? "" : actuel;
+  const l = lieuxDuTransfert({ lieuPickup: lieuPickup || (s.lieu !== auto.lieu ? s.lieu || "" : ""), de, vers, bouts: { pickup: service.pickup || "", dropoff: service.dropoff || "" }, hotel, lieuHotel, boutDepose: taxi });
+  if (poserLieu && (!(s.lieu || "").trim() || s.lieu === auto.lieu)) s.lieu = l.pickup;
+  if (!estRetourDepartDetails(details) && libre) details.drop_off = l.dropoff;
+  s.auto = { lieu: poserLieu ? l.pickup : auto.lieu, drop_off: l.dropoff };
   return s;
 }
 
@@ -213,6 +230,8 @@ export function saisieInitiale(sv = {}, { d = {}, excursions = false, sd = { sie
   }
   if (sv.transfertLibre) {
     saisie.lieu = sv.transfertLibre.de || d.hotel || "";
+    // Un lieu qui ne vient pas du pickup de la carte est posé d'office : une ligne prise ensuite dans la base peut le remplacer.
+    if (saisie.lieu && saisie.lieu !== sv.hotelDepart) saisie.auto = { ...(saisie.auto || {}), lieu: saisie.lieu };
     saisie.details = { ...nonVides({ ...saisie.details, drop_off: sv.transfertLibre.vers || sv.dropoff || "" }) };
     saisie.ouvert = true;
   }
@@ -270,6 +289,16 @@ export function boutsDuService(r = {}, { prestations = [], trajets = [] } = {}) 
   return { pickup: libelleClient(pickupDepuisLibelle(base, prestation, trajet)), dropoff: libelleClient(dropOffDepuisLibelle(base, prestation, trajet)) };
 }
 
+// Le lieu de pickup écrit : celui du service, sinon celui que la création a posé (lieuParDefaut), sinon le secours ; jamais le lieu du drop-off
+// (relecture de la PR 332 : une arrivée ne part jamais de l'hôtel où elle dépose). Rend le patch du lieu.
+function lieuEcrit(r, lieu, secours, depose) {
+  const pose = String(r.lieu_pickup || "").trim();
+  const voulu = lieu || pose || secours || "";
+  if (!depose || !voulu || !memeLieu(voulu, depose)) return lieu ? { lieu_pickup: lieu } : !pose && secours ? { lieu_pickup: secours } : {};
+  const autre = [secours].find((x) => x && !memeLieu(x, depose)) || "";
+  return autre !== pose ? { lieu_pickup: autre } : {};
+}
+
 // Ce que creerDossierExcursions écrit sur une réservation qui vient d'être créée (`r`), depuis l'entrée `parService` de son service :
 // heure, lieu de pickup, dépose, vol, bagages, sièges, bébés, zone de pickup et champs du voucher. Rend le patch (vide : rien à écrire).
 export function champsReservation(r, { heure = "", lieu = "", lieuSecours = "", bebes = 0, dropoff = "", vol = "", bagages = 0, sieges = 0, personnes = null, zonePickup = null, statut = "", details: saisis = {} } = {}) {
@@ -283,7 +312,7 @@ export function champsReservation(r, { heure = "", lieu = "", lieuSecours = "", 
   return {
     ...(statut ? { statut } : {}),
     ...(heure ? { heure_pickup: heure } : {}),
-    ...(lieu ? { lieu_pickup: lieu } : lieuSecours && !String(r.lieu_pickup || "").trim() ? { lieu_pickup: lieuSecours } : {}),
+    ...lieuEcrit(r, lieu, lieuSecours, details.drop_off || (r.details || {}).drop_off || ""),
     ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(propres ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
     ...(Object.keys(details).length || detailsBase !== (r.details || {}) ? { details: { ...detailsBase, ...details } } : {}),
   };

@@ -4,7 +4,7 @@
 // par le code habituel de l'outil (fiche de création du dossier, confirmation de course, formulaire de réservation), sans le réécrire : la
 // fenêtre ne s'ouvre que s'il manque quelque chose ; la carte garde alors le motif. « Tout valider » fait de même pour toutes les cartes.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
-import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe } from "../etat.mjs";
+import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe, chargerHotelsLieux } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte } from "../agent-calc.mjs";
@@ -29,7 +29,7 @@ import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, qu
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { boutonPasBien } from "./agent-retour.mjs";
 import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
-import { preparation, optionsCarte, enregistrerReservation, validerUnifie } from "./agent-valider.mjs";
+import { preparation, optionsCarte, enregistrerReservation, ajouterParCarte, validerUnifie } from "./agent-valider.mjs";
 import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
 const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
@@ -1189,7 +1189,8 @@ export async function vueAgent(idOuvert = "") {
   // fermeture. Refus sans rien ouvrir si la personne n'écrit pas de dossiers dans l'entreprise visée.
   function dansFenetre(id, ouvrir) {
     if (id && id !== etat.entiteId && !permissionsDe(id).includes("dossiers.ecrire")) return void toast(refusDroit(id).motif, true);
-    return ouvrirDansEntreprise({ id, origine: etat.entiteId, changer: changerSansNaviguer, charger: () => import("./reservations.mjs"), ouvrir });
+    // Les hôtels situés de l'entreprise d'abord : la carte « reservation » d'un transfert en lit le lieu (optionsCarte, relecture de la PR 332).
+    return ouvrirDansEntreprise({ id, origine: etat.entiteId, changer: changerSansNaviguer, charger: () => chargerHotelsLieux().catch(() => null).then(() => import("./reservations.mjs")), ouvrir });
   }
 
   // ---- Valider d'un geste ---------------------------------------------------------------------------------------------------------
@@ -1214,7 +1215,7 @@ export async function vueAgent(idOuvert = "") {
       else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
-      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), tr("Service ajouté au dossier.")));
+      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte(c, tr("Service ajouté au dossier.")));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
