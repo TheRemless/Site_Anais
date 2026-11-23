@@ -16,9 +16,9 @@ export const ORIGINES_CARNET = ["https://zwaldtravelplanner.com", "https://www.z
 // Le guide de Koh Lanta n'a pas de copie ici : il envoie les identifiants des sorties du site Secret (site-produits.mjs). Voici celles qu'il propose, dans l'ordre du tableau
 // de docs/gestion/carnet-aonang-lanta.md (« Proposer une autre sortie » ne liste que celles-là pour une demande de ce guide ; un test tient le tableau et cette liste égaux).
 export const SORTIES_KOH_LANTA = ["4-islands", "koh-rok-koh-haa", "koh-phi-phi", "mangroves", "fishing-trip", "sunrise-raft", "sunset-dinner-raft", "atv", "batik", "cooking-class", "elephant-sanctuary", "go-kart", "kayak", "mangrove-kayaking", "scuba-diving", "rental", "speedboat-ferry"];
-// Le préfixe de la référence que chaque guide met dans son message (« Ref: SAM-AB12 », « Réf : AON-… », `prefixeRef` de src/carnet/*.11tydata.js) et le guide qu'il désigne. LA table : un message
-// collé qui porte l'un de ces préfixes vient d'une page du carnet (carnet-colle.mjs) ; un autre préfixe, ou aucun, n'en vient pas. Un test la compare aux fichiers des guides.
-export const REFS_CARNET = { SAM: "koh-samui", AON: "aonang", LAN: "koh-lanta" };
+// Le préfixe de la référence que chaque guide met dans son message (« Ref: SAM-AB12 », « Réf : AON-… », `prefixeRef` de src/carnet/*.11tydata.js) et le guide qu'il désigne : LA table, définie une seule fois
+// dans page-carnet.mjs (copie identique de supabase/functions/agent/page-carnet.js, le module qui reconnaît le bloc d'une page côté fonction et côté Gestion). Un test la compare aux fichiers des guides.
+export { REFS_CARNET } from "./page-carnet.mjs";
 // Les extras du site (ligne « Extras: » du message) qui ont un tarif de Gestion : les sorties pour lesquelles l'extra est possible (`produits`) et l'option, le libellé exact de l'extra tel que
 // la page l'écrit (`en`), la clé qui désigne sa prestation et son mode de prix (`par` : « bateau », une seule ligne, ou « personne », une quantité égale à toutes les personnes, adultes, enfants
 // et bébés, au moins une, comme l'estimation de la page). Un même libellé peut avoir plusieurs lignes, une par famille de sorties (la lunch box d'Ao Nang : VIP et Mini Luxury d'un côté, économique de l'autre). Un extra

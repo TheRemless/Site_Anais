@@ -29,7 +29,7 @@ import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, qu
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { boutonPasBien } from "./agent-retour.mjs";
 import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
-import { preparation, optionsCarte, enregistrerReservation, ajouterParCarte, validerUnifie } from "./agent-valider.mjs";
+import { preparation, preparationComplete, optionsCarte, enregistrerReservation, ajouterParCarte, validerUnifie } from "./agent-valider.mjs";
 import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
 import { suivreFil } from "../fil-defilement.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
@@ -1359,7 +1359,7 @@ export async function vueAgent(idOuvert = "") {
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
       else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise });
-      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
       else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier.")));
@@ -1499,7 +1499,7 @@ export async function vueAgent(idOuvert = "") {
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     // `services` : ce que l'écran a fait de chaque service (prix tapé à la place de celui du catalogue), pour les apprentissages.
-    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }), ferme: rendreSiRien(c) });
+    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }), ferme: rendreSiRien(c) });
     if (!ouverte) rendreSiRien(c)();
   }
   async function ouvrirCourse(c) {

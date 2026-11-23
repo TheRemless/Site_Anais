@@ -6,7 +6,8 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET, EXTRAS_DU_SITE, guideDeSortie, extrasDuGuide } from "./carnet-produits.mjs";
-import { carnetDuMessage } from "./carnet-colle.mjs";
+import { carnetDuMessage, refDeLaPage } from "./carnet-colle.mjs";
+import { estCarnet } from "./demandes-site-calc.mjs";
 import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, estLExtra, LIGNE_ENFANT } from "./carnet-ages.mjs";
 import { sansLien } from "./agent-calc.mjs";
 
@@ -484,8 +485,8 @@ export function lireLibre(texte, aujourdhui) {
 // Un message qui porte la référence d'une page du carnet (« Ref: AON-… », « Réf : SAM-… », table REFS_CARNET) se lit comme une demande de cette page : la sortie et l'option se retrouvent
 // par leur nom dans le message (carnet-colle.mjs), `d.carnet` les porte, les âges sont réglés comme pour une demande du site (enfant plus âgé que le barème = adulte), et le seuil de groupe
 // et les extras suivent. Sans cette référence, ou avec un nom de sortie inconnu, rien ne change. `detecterCarnet: false` pour une demande du site, dont le contexte exact est déjà connu.
-export function lireMessage(texte, aujourdhui, { detecterCarnet = true } = {}) {
-  const c = detecterCarnet ? carnetDuMessage(texte) : null;
+export function lireMessage(texte, aujourdhui, { detecterCarnet = true, demande = null } = {}) {
+  const c = detecterCarnet ? carnetDuMessage(texte, { demande }) : null;
   const lu = lireDemande(c ? c.texte : texte, aujourdhui) || lireLibre(texte, aujourdhui);
   const d = lu && c ? ajusterAgesCarnet({ ...lu, carnet: c.carnet }) : lu;
   // Hors formulaire du site (lireSite a déjà son Pickup et son Drop-off) : les lignes étiquetées du message, recopiées (lireLieuxEtiquetes),
@@ -1316,11 +1317,24 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
-// Le texte que la fenêtre de création lit (la seule fonction qu'elle appelle pour lire un message) : une demande du site du carnet connaît déjà sa sortie et son option (`depuisSite.carnet`),
-// la référence du message n'est pas relue ; tout autre texte (collé à la main, ou demande du site ordinaire) est lu avec la détection par la référence de la page.
-export function lireDuTexte(texte, aujourdhui, depuisSite = null) {
+// La demande que la page du carnet a enregistrée pour ce texte : celle dont la référence est la dernière ligne du bloc collé (« Réf : AON-AB12 »), la plus récente si la page l'a envoyée deux
+// fois. `demandes` : les demandes du site que l'utilisateur peut déjà lire (ses droits, rien de plus) ; `entiteId` : l'entreprise du dossier en cours, la seule dont une demande compte
+// (la référence d'une demande d'une autre entreprise n'est jamais reprise). null sans référence de la page, ou sans demande enregistrée.
+export function demandeEnregistree(texte, demandes = [], { entiteId = null } = {}) {
+  const ref = refDeLaPage(texte);
+  if (!ref) return null;
+  const memes = (demandes || []).filter((x) => x && estCarnet(x) && String(x.ref || "").toUpperCase() === ref && (!entiteId || x.entite_id === entiteId));
+  return memes.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0] || null;
+}
+// Le texte que la fenêtre de création lit (la seule fonction qu'elle appelle pour lire un message). Trois cas :
+//   1. une demande du site du carnet connaît déjà sa sortie et son option (`depuisSite.carnet`) : la référence du message n'est pas relue ;
+//   2. un texte collé se lit TOUJOURS d'après son propre contenu : la sortie par le titre de l'offre (carnet-colle.mjs), puis personnes, âges, date, pickup, extras, estimation et nom du texte ;
+//   3. quand le titre ne suffit pas (la page l'a renommé depuis), la demande enregistrée pour la même référence (`demandes`, de l'entreprise `entiteId`) dit seulement la sortie et l'option,
+//      et seulement si le texte et elle disent la même date et le même nombre de personnes (carnetDuMessage) ; sinon elle est ignorée.
+export function lireDuTexte(texte, aujourdhui, depuisSite = null, { demandes = [], entiteId = null } = {}) {
   const carnet = depuisSite && depuisSite.carnet ? depuisSite.carnet : null;
-  const lu = lireMessage(texte, aujourdhui, { detecterCarnet: !carnet });
+  const demande = carnet ? null : demandeEnregistree(texte, demandes, { entiteId });
+  const lu = lireMessage(texte, aujourdhui, { detecterCarnet: !carnet, demande });
   return lu && carnet ? ajusterAgesCarnet({ ...lu, carnet }) : lu;
 }
 

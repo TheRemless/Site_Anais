@@ -10,6 +10,7 @@ export const EN_CARNET = {
   "âges manquants": "ages missing",
   "Extra demandé mais aucune ligne créée (tarif absent de la base ou extra impossible pour cette sortie). Vérifiez, puis ajoutez-le à la main avec « Ajouter un service » si besoin.": "Extra requested but no line created (no rate in the base or the extra is not possible for this trip). Check, then add it by hand with “Add a service” if needed.",
   "Extras": "Extras",
+  "Le message de la page du client n'a pas pu être rattaché à un service de la carte : vérifiez la sortie, les personnes et les extras dans son message.": "The client's page message could not be matched to a service on the card: check the trip, the guests and the extras in their message.",
   "Transfert depuis l'hôtel": "Hotel transfer",
   "Âges des enfants manquants : le tarif enfant dépend de l'âge. Demandez-les au client.": "Children's ages missing: the child rate depends on age. Ask the client.",
   "Âge d'un enfant hors du barème de cette sortie ({min} à {max} ans) : vérifiez le tarif avec le partenaire.": "A child's age is outside this trip's range ({min} to {max} years): check the rate with the partner.",

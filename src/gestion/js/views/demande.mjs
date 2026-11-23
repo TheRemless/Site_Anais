@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireDuTexte, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireDuTexte, demandeEnregistree, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, lieuParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -23,7 +23,8 @@ import { badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
-import { imposerTotal } from "../demandes-site-calc.mjs";
+import { imposerTotal, estCarnet } from "../demandes-site-calc.mjs";
+import { refDeLaPage } from "../carnet-colle.mjs";
 
 // Le plus long qu'une validation d'un geste attend la liste des hôtels situés avant de créer le dossier.
 export const HOTELS_DELAI_MS = 3000;
@@ -284,6 +285,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // Un extra demandé qui ne crée aucune ligne (sans tarif en base, ou impossible pour la sortie) : dit EN PLUS de l'avertissement ci-dessus (un groupe hors tranche ne le cache pas).
     if (offre && offre.extrasManquants && offre.extrasManquants.length) alertes.push(tr(AVERTISSEMENTS.extra_sans_tarif));
     if (sv.copie) alertes.push(tr("Même service, autre date."));
+    // Le message de la page du client n'a été rattaché à aucun service de la carte (carteAvecLaPage) : la carte reste celle du modèle, à vérifier avec le message.
+    if (sv.avertissementPage) alertes.push(tr("Le message de la page du client n'a pas pu être rattaché à un service de la carte : vérifiez la sortie, les personnes et les extras dans son message."));
     // Plus de sièges que d'enfants et de bébés : à vérifier avant de créer (relecture de la PR 315).
     const saisie = sv.saisie || {};
     if (siegesEnTrop({ sieges: siegesTotal(siegesLus({ ...(saisie.details || {}), sieges: saisie.sieges })), enfants: sv.enfants, bebes: saisie.bebes })) alertes.push(tr("Plus de sièges que d'enfants et de bébés : vérifiez."));
@@ -629,6 +632,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       fermer();
       return { ok: false, motif };
     }
+    // Une recherche de la demande enregistrée est en cours : la création attend sa réponse, puis crée d'après la fiche telle qu'elle est alors.
+    if (recherche) await recherche;
     erreur.textContent = "";
     // `options.clientAVenir` (passe à blanc du second dossier d'une carte mixte) : la fiche viendra du premier dossier, pas de contrôle de fiche.
     const nouveauClient = !clientId && !options.clientAVenir;
@@ -733,6 +738,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function poserLesBoutons() {
     const ecrit = peut("dossiers.ecrire");
     bouton = h("button", { class: "principal", type: "button", onclick: (e) => creerMaintenant(e.currentTarget) });
+    bouton.disabled = !!recherche;
     const marque = (d.marque || "").toLowerCase();
     const mauvaise = marque && !entiteActive().nom.toLowerCase().includes(marque.split(" ")[0]);
     const sitesLignes = lignesSite(d);
@@ -753,18 +759,63 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     );
   }
 
+  // Les demandes que la page du carnet a enregistrées et que l'utilisateur peut lire (la liste de l'écran, ses droits), plus celle que la base a rendue pour la référence du texte.
+  let demandeDeLaBase = null;
+  const demandesLues = () => [...(etat.db.demandes_site || []), ...(demandeDeLaBase ? [demandeDeLaBase] : [])];
+  // La fiche telle qu'elle est : tout ce qu'une personne peut y avoir corrigé (client, services, dates, personnes, prix, offre choisie). Une réponse tardive de la base la compare à celle
+  // du départ : changée, elle n'écrase rien.
+  const empreinte = () => {
+    try {
+      return JSON.stringify([clientId, d && [d.nom, d.telephone, d.hotel], services.map((sv) => [sv.coche, sv.phrase, sv.date, sv.heure, sv.adultes, sv.enfants, sv.offreId, !!sv.lignesCustom, sv.lignesCustom && sv.lignesCustom.length, sv.saisie])]);
+    } catch {
+      return `inconnue-${Math.random()}`;
+    }
+  };
+  let sequence = 0;
+  let recherche = null;
+  const bloquerBouton = (oui) => { if (bouton) bouton.disabled = oui; };
+  // Un texte collé que son titre ne suffit pas à identifier et qui porte la référence d'une page du carnet : la demande enregistrée par la page (même référence, même entreprise) est lue en base
+  // quand la liste de l'écran ne l'a pas (les droits de la personne s'appliquent). Elle ne dit que la sortie et l'option (carnet-colle.mjs, lireParDemande). La réponse n'écrase JAMAIS une
+  // saisie : ignorée si un autre texte a été lu entre-temps (jeton) ou si la fiche a été touchée ; sinon la fiche est refaite avec l'identification, et rien d'autre. Le bouton « Créer » attend la réponse.
+  function chercherLaDemande(t) {
+    const ref = refDeLaPage(t);
+    if (!ref || demandeEnregistree(t, demandesLues(), { entiteId: etat.entiteId }) || !etat.store.demandeSiteParRef) return;
+    const mien = sequence;
+    const depart = empreinte();
+    bloquerBouton(true);
+    const p = (async () => {
+      const trouvee = await etat.store.demandeSiteParRef(ref, etat.entiteId).catch(() => null);
+      if (mien !== sequence || texte !== t || !trouvee || !estCarnet(trouvee) || empreinte() !== depart) return;
+      const lu = lireDuTexte(t, aujourdhui(), depuisSite, { demandes: [trouvee], entiteId: etat.entiteId });
+      if (!lu || !lu.carnet || (d && d.carnet)) return;
+      demandeDeLaBase = trouvee;
+      appliquer(lu, decouperServices(t, lu, contexte(), aujourdhui()));
+    })().finally(() => {
+      if (recherche === p) {
+        recherche = null;
+        bloquerBouton(false);
+      }
+    });
+    recherche = p;
+  }
+
   // Relire le texte : tout ce qui avait été corrigé à la main est perdu, c'est un autre message.
   function lire(valeur) {
     texte = valeur;
+    sequence++;
     erreur.textContent = "";
-    // Demande d'une page du carnet : sa sortie et son option sont connues ; un texte collé à la main est lu avec la détection par la référence de la page (lireDuTexte).
-    // Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
-    const lu = texte.trim() ? lireDuTexte(texte, aujourdhui(), depuisSite) : null;
-    if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
-    d = null;
-    vider();
-    corps.classList.remove("lu");
-    if (texte.trim()) reconnu.append(h("p", { class: "erreur-form", role: "alert" }, tr("Rien de reconnu dans ce texte. Collez le message du client tel qu'il est arrivé sur WhatsApp.")));
+    // Demande d'une page du carnet : sa sortie et son option sont connues ; un texte collé à la main se lit d'après son propre contenu (sortie par son titre), avec la détection par la référence
+    // de la page (lireDuTexte). Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
+    const lu = texte.trim() ? lireDuTexte(texte, aujourdhui(), depuisSite, { demandes: demandesLues(), entiteId: etat.entiteId }) : null;
+    if (lu) appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
+    else {
+      d = null;
+      vider();
+      corps.classList.remove("lu");
+      if (texte.trim()) reconnu.append(h("p", { class: "erreur-form", role: "alert" }, tr("Rien de reconnu dans ce texte. Collez le message du client tel qu'il est arrivé sur WhatsApp.")));
+    }
+    // La recherche de la demande enregistrée part de la fiche telle qu'elle vient d'être posée (son empreinte sert à reconnaître une saisie faite depuis).
+    if (texte.trim() && !(lu && lu.carnet) && !(depuisSite && depuisSite.carnet)) chercherLaDemande(texte);
   }
 
   function vider() {
@@ -820,7 +871,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   if (depuisItineraire) {
     zone.value = depuisItineraire.texte || "";
     texte = zone.value;
-    appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => ({ ...s, offresIA: s.offres })));
+    appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => (s.depuisPage ? s : { ...s, offresIA: s.offres })));
     // D'un geste : la création attend les hôtels situés, au plus HOTELS_DELAI_MS.
     if (auto) return hotelsLus.then(() => creerMaintenant(bouton, { auto: true }));
     return Promise.resolve({ ok: false, ouverte: true });

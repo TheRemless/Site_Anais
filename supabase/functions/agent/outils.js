@@ -33,6 +33,7 @@ import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage
 import { apporteurDeCarte } from "./apporteur.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
 import { contientLien, lieuSansLien, sansLiens, sessionMaps } from "./maps.js";
+import { messageDeLaPage } from "./page-carnet.js";
 import { NOM_OUTIL_VOUCHERS, OUTIL_VOUCHERS, criteresVouchers, trouverVouchers as trouverVouchersLus, vouchersPermis } from "./vouchers.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
@@ -1929,6 +1930,9 @@ export async function proposer(nom, e, ctx, memo) {
     // Mode unifié : les entreprises de la demande (deux pour une demande mixte, qui donnera deux dossiers liés).
     const entreprises = estUnifie(ctx) ? ENTREPRISES_UNIFIEES.filter((slug) => services.some((x) => x.entreprise === slug)) : null;
     const avert = avertissementsEntreprise(services);
+    // Le message d'une page du carnet (page-carnet.js : il commence par sa ligne de demande et finit par sa référence), joint tel que le client l'a écrit : chaque ligne nettoyée comme
+    // les autres champs de la carte (espaces normalisés, lien retiré de la ligne qui en porte un, le reste de la ligne intact), une seule fois. Les messages d'un client lus dans WhatsApp viennent de memo.textesPage (texte brut des messages).
+    const page = messageDeLaPage(memo.textes || [], { client: memo.textesPage || [] }).split("\n").map((l) => texte(contientLien(l) ? sansLiens(l) : l, 400)).filter(Boolean).join("\n").slice(0, 2000);
     // Contact WhatsApp de type « apporteur » (apporteur.js, PR D) : la fiche de chaque entreprise, posée d'office même si le modèle oublie le
     // champ ; une référence qui n'est pas celle du contact est ignorée, avec un avertissement. Hors de ce contexte, rien n'est posé.
     const entitesCarte = estUnifie(ctx) ? services.map((x) => x.entite_id) : ctx.apporteur && ctx.apporteur.entites && ctx.apporteur.entites[0] ? [ctx.apporteur.entites[0].id] : [];
@@ -1936,7 +1940,7 @@ export async function proposer(nom, e, ctx, memo) {
     if (app.avertissement) avert.push(app.avertissement);
     // Un enfant ou un bébé sur un transfert sans choix des sièges : la carte ne se valide pas, la question est à poser au client.
     if (siegesAChoisirServices(services, { enfants: entier(e.enfants), bebes: entier(e.bebes, 10) })) avert.push("sieges_a_choisir");
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
@@ -2116,9 +2120,9 @@ export async function executer(nom, entree, ctx, memo) {
 // dans ses blocs <conversation> sont alors admis comme prix (memo.nani, montantsDeNani). `clientProbable` : ce client n'est que probable
 // (clientProbable, pas encore de fiche) ; ses prix repris sont marqués à vérifier. `conversationLiee` : son id, seule lecture de la
 // boîte qui donne aussi des prix de Nani (retenirLecture).
-export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, clientProbable = false, conversationLiee = null } = {}) {
+export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, clientProbable = false, conversationLiee = null, textesPage = [] } = {}) {
   // refs : les prestations et trajets rendus par les outils ; nets et servicesEnCours : posés par la fonction (netsPourControle, dossier relié).
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, clientProbable: conversationClient === true && clientProbable === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, clientProbable: conversationClient === true && clientProbable === true, conversationLiee, textesPage: (textesPage || []).map((t) => String(t || "")), signer, prestataires, entreprise, entreprises, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;

@@ -1,10 +1,12 @@
 // Assistant IA, côté outil : la logique pure (sans écran) qui transforme ce que la fonction « assistant » renvoie en demande à vérifier,
 // et qui prépare les faits envoyés pour rédiger une réponse. Les prix viennent toujours de la base chargée dans l'outil, avec les mêmes
 // calculs que la lecture par règles (demande-calc.mjs) : Claude choisit une ligne du catalogue, il ne donne jamais un prix.
-import { prixPrestation, prixTrajet, completerEnfant, completerSupplement, separerNom, lireMessage, offresPour } from "./demande-calc.mjs";
+import { prixPrestation, prixTrajet, completerEnfant, completerSupplement, separerNom, lireMessage, offresPour, lireDuTexte, decouperServices } from "./demande-calc.mjs";
 import { libelleClient, libelleUnite, proposable } from "./partenaires-calc.mjs";
 import { horairesTexte, dureeTexte, fraisDeParc } from "./operations-calc.mjs";
 import { sansLien } from "./agent-calc.mjs";
+import { cleTexte, resoudreSortie } from "./carnet-ages.mjs";
+import { blocDeLaPage } from "./page-carnet.mjs";
 
 // L'assistant est éteint tant que l'entreprise ne l'a pas allumé dans Réglages (case « Assistant IA »).
 export const assistantActif = (regl) => !!(regl && regl.assistant_ia === true);
@@ -143,6 +145,37 @@ export function propositionVersDemande(p, contexte) {
     remarquesIA: p.remarques || "",
   };
   return { d, services };
+}
+
+// Une carte « dossier » dont la fonction a joint le message d'une page du carnet (`message_page`, le bloc de la page tel que le client l'a écrit) : ce message est lu comme dans la fiche de création
+// d'une demande collée (lireDuTexte : sa sortie par son titre, sinon par la demande enregistrée par la page quand elle concorde), et SON service remplace UNIQUEMENT le service de la carte qui
+// désigne la même sortie : celui dont le tarif choisi par le modèle est un tarif de la sortie de la page (ou porte le même titre), à la même date s'il y en a plusieurs. Il prend les offres, les
+// extras (Kradan, lunch box, VIP Set), les âges réglés et le prix de la page. Aucun service ne correspond sûrement (deux excursions identiques, un transfert, une autre sortie) : rien n'est
+// remplacé, et le premier service de la carte porte un avertissement visible dans la fiche (`avertissementPage`). Jamais dans l'étape d'une entreprise de taxi (`taxi`). Sans message de la
+// page, ou s'il n'est pas reconnu : la carte n'est pas changée.
+const premiereExcursion = (services) => Math.max(0, services.findIndex((s) => { const o = (s.offres || [])[0]; return !!o && o.genre === "prestation" && !!o.source && o.source.famille === "excursion"; }));
+export function carteAvecLaPage(prep, messagePage, contexte, { demandes = [], aujourdhui = "", entiteId = null, taxi = false } = {}) {
+  if (taxi || typeof messagePage !== "string" || !blocDeLaPage(messagePage)) return prep;
+  const lu = lireDuTexte(messagePage, aujourdhui, null, { demandes, entiteId });
+  const services = prep.services || [];
+  if (!services.length) return prep;
+  // Le message de la page est là mais sa sortie ne se reconnaît pas (titre renommé sans demande enregistrée qui concorde) : la carte reste celle du modèle, et le dit.
+  const [page] = lu && lu.carnet ? decouperServices(messagePage, lu, contexte, aujourdhui) : [];
+  if (!page) return { ...prep, services: services.map((s, k) => (k === premiereExcursion(services) ? { ...s, avertissementPage: "page_non_rattachee" } : s)) };
+  const resolu = resoudreSortie(lu);
+  const tarifs = new Set([...(resolu ? resolu.option.tarifs.map((t) => t.prestation) : []), ...((page.offres || [])[0] ? [page.offres[0].id] : [])]);
+  const titrePage = cleTexte(((page.offres || [])[0] || {}).titre);
+  const designe = (s) => { const o = (s.offres || [])[0]; return !!o && o.genre === "prestation" && (tarifs.has(o.id) || (!!titrePage && cleTexte(o.titre) === titrePage)); };
+  let candidats = services.map((s, j) => j).filter((j) => designe(services[j]));
+  if (candidats.length > 1 && page.date) candidats = candidats.filter((j) => services[j].date === page.date);
+  if (candidats.length !== 1) {
+    return { ...prep, services: services.map((s, k) => (k === premiereExcursion(services) ? { ...s, avertissementPage: "page_non_rattachee" } : s)) };
+  }
+  const i = candidats[0];
+  const base = services[i];
+  const service = { ...base, phrase: page.phrase, date: page.date || base.date || "", heure: base.heure || page.heure || "", adultes: page.adultes, enfants: page.enfants, offres: page.offres, inconnu: !(page.offres || []).length, confiance: (page.offres || []).length ? "haute" : "basse", depuisPage: true };
+  const d = { ...prep.d, ...lu, nom: prep.d.nom || lu.nom || "", telephone: prep.d.telephone || "", hotel: prep.d.hotel || lu.hotel || "", langue: prep.d.langue || "", remarquesIA: prep.d.remarquesIA || "", ia: true, libre: false };
+  return { ...prep, texte: messagePage, d, services: services.map((s, j) => (j === i ? service : s)) };
 }
 
 // Faits envoyés pour rédiger une réponse : le prénom, chaque service avec l'offre retenue et son prix de vente, les horaires et frais de la base.

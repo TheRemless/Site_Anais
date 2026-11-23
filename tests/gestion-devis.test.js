@@ -264,7 +264,7 @@ test("dossier = devis : 11 personnes et 2 minivans au devis donnent 2 véhicules
 test("dossier = devis : la carte, la validation et la fiche de création reprennent le devis", () => {
   const agent = lire("views/agent.mjs");
   assert.match(agent, /const donneesCarte = \(c\) => donneesAvecDevis\(c\.id, .*\{ marque: marqueFil\(\) \}\);/);
-  assert.match(agent, /preparation\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\)/);
+  assert.match(agent, /preparationComplete\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\)/);
   assert.match(agent, /blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil \}\)/);
   assert.match(lire("views/demande.mjs"), /qte: offre\.vehicules \|\| \(offre\.enfant/);
   assert.match(lire("views/devis-carte.mjs"), /noter\(CLE_DEVIS, id, resumeDevis\(devis, \{ marque \}\)\)/);
