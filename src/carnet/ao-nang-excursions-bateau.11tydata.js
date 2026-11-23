@@ -15,10 +15,10 @@ const reglages = {
 };
 
 // Entrée du parc national, TOUJOURS en plus du prix, payée sur place en espèces, jamais dans l'estimation. Enfant de 3 à 14 ans, gratuit avant 3 ans.
-// Montants affichés « à confirmer au moment de la réservation » (confirmer).
-const parc = (adulte, enfant) => ({ adulte, enfant, enfantMin: 3, enfantMax: 14, regle: "de 3 à 14 ans", confirmer: true });
+// Barème officiel du parc (tarif étranger) : enfant de 3 à 14 ans, gratuit avant 3 ans. `approx` : la ligne du message à Gestion dit « about ».
+const parc = (adulte, enfant) => ({ adulte, enfant, enfantMin: 3, enfantMax: 14, regle: "de 3 à 14 ans", approx: true, fixe: true });
 const PARC_4_ISLANDS = parc(200, 100);
-const PARC_HONG = parc(300, 100);
+const PARC_HONG = parc(300, 150);
 const PARC_PHI_PHI = parc(400, 200);
 
 const NOTE_HOTEL = "Le transfert aller-retour est compris pour les hôtels du centre d’Ao Nang. Pour un autre hôtel, Anaïs confirme au cas par cas sur WhatsApp.";
@@ -134,7 +134,7 @@ const guide = {
           liste: [
             "Le transfert aller-retour est compris pour les hôtels du centre d’Ao Nang. Pour un hôtel plus loin, je confirme au cas par cas sur WhatsApp.",
             "Le prix est celui d’un bateau, de 1 à 4 personnes sur les options VIP, Mini Luxury et Luxury, de 1 à 6 sur les autres. Pour un groupe plus grand, il faut plusieurs bateaux : je vous réponds sur WhatsApp.",
-            "Les frais d’entrée du parc national se paient sur place en espèces et ne sont jamais dans le prix. Je les confirme au moment de la réservation."
+            "Le droit d’entrée du parc national est fixé par le parc : il se règle sur place en espèces et n’est jamais dans le prix."
           ]
         }
       ],

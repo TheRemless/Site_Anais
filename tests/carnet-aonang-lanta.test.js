@@ -77,8 +77,9 @@ test("Ao Nang : lunch box 80 par personne, « VIP Set » 1 000 par bateau, droit
   const eco = B.estimate(cfgAo.offres["ao-nang-economique"], { ...BASE, variante: "4-islands", extras: ["lunch-box", "vip-set"] });
   assert.equal(eco.total, 2900 + 2 * 80 + 1000);
   const parc = B.parkFee(cfgAo.offres["ao-nang-vip"], { ...BASE, variante: "hong-islands", adults: 2, ages: ["6"] });
-  assert.equal(parc.amount, 2 * 300 + 100, "Hong : 300 par adulte, 100 par enfant");
-  assert.equal(parc.confirmer, true, "montants à confirmer au moment de la réservation");
+  assert.equal(parc.amount, 2 * 300 + 150, "Hong : 300 par adulte, 150 par enfant (barème officiel)");
+  assert.equal(parc.approx, true, "la ligne du message dit « about »");
+  assert.equal(B.parkFee(cfgAo.offres["ao-nang-vip"], { ...BASE, variante: "4-islands", adults: 2, ages: ["6"] }).amount, 2 * 200 + 100);
   assert.equal(B.parkFee(cfgAo.offres["ao-nang-luxe"], { ...BASE, variante: "phi-phi", adults: 2, ages: ["2"] }).amount, 800, "moins de 3 ans : gratuit");
   assert.equal(B.parkFee(cfgAo.offres["ao-nang-luxe"], { ...BASE, variante: "phi-phi", adults: 2, ages: ["3"] }).amount, 1000, "dès 3 ans : tarif enfant");
 });
@@ -116,7 +117,7 @@ test("Ao Nang : message envoyé à Gestion au format du site, heure de départ, 
   assert.ok(lignes.includes("Guests: 2 adults, 1 child (age 7)"));
   assert.ok(lignes.includes("Extras: Lunch box"));
   assert.ok(lignes.includes("Estimated total: 4,840 THB"));
-  assert.ok(lignes.some((l) => /^Park fee: about 700 THB$/.test(l)));
+  assert.ok(lignes.some((l) => /^Park fee: about 750 THB$/.test(l)));
   assert.ok(Buffer.byteLength(f.calls[0].opts.body) <= 4096);
   for (const re of privees.motifs() || []) assert.ok(!re.test(f.calls[0].opts.body), "nom de la liste privée dans le corps envoyé");
 });
@@ -418,13 +419,13 @@ test("message Gestion : le transfert depuis l'hôtel n'est jamais un extra, une 
   assert.doesNotMatch(sans, /Hotel transfer/);
 });
 
-test("Phi Phi : droits du parc 400 / 200 sans âge ni gratuité affichés, montants à confirmer, la ligne du message ne présume pas d'âge", () => {
+test("Phi Phi : droits du parc 400 / 200 sans âge ni gratuité affichés, la ligne du message ne présume pas d'âge", () => {
   for (const id of ["koh-phi-phi--join-in-speedboat", "koh-phi-phi--sunset"]) {
     const o = cfgLa.offres[id];
     assert.equal(o.parc.enfantMin, undefined, id);
     const fee = B.parkFee(o, { ...BASE, adults: 2, ages: ["2", "7"] });
     assert.equal(fee.amount, 2 * 400 + 2 * 200, id + " : aucun enfant gratuit présumé");
-    assert.equal(fee.confirmer, true);
+    assert.equal(fee.approx, true);
     const f = fakeFetch();
     B.submitRequest(cfgLa, id, { ...BASE, adults: 2, ages: ["7"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/x-abc123/", rand: () => 0 });
     assert.ok(JSON.parse(f.calls[0].opts.body).message.split("\n").includes("Park fee: about 1,000 THB"));
@@ -432,8 +433,8 @@ test("Phi Phi : droits du parc 400 / 200 sans âge ni gratuité affichés, monta
   const doc = read(PAGE_LA);
   const carte = doc.slice(doc.indexOf('id="offre-koh-phi-phi--sunset"'), doc.indexOf("</article>", doc.indexOf('id="offre-koh-phi-phi--sunset"')));
   const droits = carte.match(/<p class="cg-droits">Entrée du parc[^<]*<\/p>/)[0];
-  assert.match(droits, /400&nbsp;THB par adulte, 200&nbsp;THB par enfant\. À payer sur place, en espèces, au parc\. Montants à confirmer au moment de la réservation\./);
-  assert.doesNotMatch(droits, /ans|gratuit/i);
+  assert.match(droits, /400&nbsp;THB par adulte, 200&nbsp;THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.<\/p>$/);
+  assert.doesNotMatch(droits, /\d ans|gratuit/i);
   // Koh Rok et 4 Islands : le site publie l'âge (4 à 11 ans, gratuit avant 4 ans)
   assert.match(texteVisible(read(PAGE_LA)).replace(/\s+/g, " "), /Entrée du parc, en plus du prix : 400 THB par adulte, 200 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/);
 });
@@ -477,13 +478,13 @@ test("Park fee : la page écrit la clé exacte « Park fee: » et Gestion la lit
   const f = fakeFetch();
   B.submitRequest(cfgAo, "ao-nang-vip", { ...BASE, variante: "hong-islands", creneau: "matin", adults: 2, ages: ["7", "9"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/ao-nang-excursions-bateau-6ee244/", rand: () => 0 });
   const message = JSON.parse(f.calls[0].opts.body).message;
-  assert.ok(message.split("\n").includes("Park fee: about 800 THB"), message); // pas de « paid on site » : Gestion l'ajoute lui-même
+  assert.ok(message.split("\n").includes("Park fee: about 900 THB"), message); // pas de « paid on site » : Gestion l'ajoute lui-même
   const contrat = contratChemin();
   const calc = contrat && path.join(path.dirname(contrat), "..", "..", "src", "gestion", "js", "demande-calc.mjs");
   if (!calc || !fs.existsSync(calc)) { t.skip("demande-calc.mjs de Gestion absent : lecture de la ligne non vérifiée"); return; }
   const { lireDemande } = await import(calc);
   const d = lireDemande(message, "2026-11-23");
-  assert.equal(d.parc, "about 800 THB", "Gestion range la ligne dans d.parc");
+  assert.equal(d.parc, "about 900 THB", "Gestion range la ligne dans d.parc");
   assert.doesNotMatch(message, /Park fee:.*(paid|total)/);
   assert.equal(d.adultes, 2);
   assert.equal(d.enfants, 2);
@@ -596,7 +597,7 @@ test("offres sur demande d'un parc : les droits d'entrée sont dits comme sur le
     assert.match(carte(id), /Prix sur demande/, id);
   }
   assert.match(carte("4-islands--private-speedboat"), /200 THB par adulte, 100 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/);
-  assert.match(carte("koh-phi-phi--private-speedboat"), /400 THB par adulte, 200 THB par enfant\. À payer sur place.*Montants à confirmer/);
+  assert.match(carte("koh-phi-phi--private-speedboat"), /400 THB par adulte, 200 THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\./);
   assert.doesNotMatch(carte("koh-phi-phi--private-speedboat"), /\d ans|gratuit/, "aucun âge présumé pour Phi Phi");
   const f = fakeFetch();
   B.submitRequest(cfgLa, "4-islands--private-speedboat", { ...BASE, adults: 2, ages: ["6"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/x-abc123/", rand: () => 0 });
@@ -611,6 +612,32 @@ test("quantités : modifier une ligne n'efface que son propre message (source), 
   assert.match(js, /\["cg-err-ligne-" \+ ligne, "cg-err-lignes"\]/);
   assert.match(js, /\} else if \(field\) Array\.prototype\.forEach\.call\(field\.querySelectorAll\("\.cg-err"\)/);
   assert.match(js, /i\.validity && i\.validity\.badInput \? "\?" : i\.value/);
+});
+
+test("droits du parc : phrase vendeur unique, plus aucun « à confirmer » sur les droits, Hong enfant 150, la ligne du message ne change pas", () => {
+  const SENTENCE = "Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces.";
+  for (const f of [PAGE_AO, PAGE_LA]) {
+    const t = texteVisible(read(f)).replace(/\s+/g, " ");
+    assert.ok(t.includes(SENTENCE), f);
+    assert.doesNotMatch(t, /montants? à confirmer|à confirmer au moment de la réservation|tarif étranger/i, f);
+    const droits = [...read(f).matchAll(/<p class="cg-droits">(Entrée du parc[^<]*)<\/p>/g)].map((m) => m[1]);
+    assert.ok(droits.length >= 5, f);
+    for (const d of droits) assert.match(d, /Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.$/, f);
+  }
+  const ao = texteVisible(read(PAGE_AO)).replace(/\s+/g, " ");
+  assert.match(ao, /Hong Islands, 300 THB par adulte et 150 THB par enfant/);
+  assert.match(ao, /4 Islands, 200 THB par adulte et 100 THB par enfant/);
+  assert.match(ao, /Phi Phi Islands, 400 THB par adulte et 200 THB par enfant/);
+  assert.match(ao, /enfant de 3 à 14 ans, gratuit avant 3 ans/);
+  // tout enfant de Hong : 150, dans toutes les formules qui y vont
+  for (const o of Object.values(cfgAo.offres)) for (const v of o.variantes) if (/hong/.test(v.id)) { assert.deepEqual([v.parc.adulte, v.parc.enfant], [300, 150], v.id); assert.equal(v.parc.fixe, true); }
+  // l'estimation de la feuille n'a plus la mention, la ligne du message garde « about N THB »
+  const js = read("src/js/carnet-booking.js");
+  assert.doesNotMatch(js, /Montants à confirmer/);
+  assert.match(js, /Droit d" \+ APOS \+ "entrée du parc national, fixé par le parc, à régler sur place en espèces, hors estimation : /);
+  const f = fakeFetch();
+  B.submitRequest(cfgAo, "ao-nang-luxe", { ...BASE, variante: "hong-islands", adults: 2, ages: ["5"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/ao-nang-excursions-bateau-6ee244/", rand: () => 0 });
+  assert.ok(JSON.parse(f.calls[0].opts.body).message.split("\n").includes("Park fee: about 750 THB"));
 });
 
 // ---------- Pages construites ----------
@@ -670,7 +697,7 @@ test("pages : la phrase de haute saison est près des prix, les droits du parc s
   const ao = texteVisible(read(PAGE_AO)).replace(/\s+/g, " ");
   assert.match(ao, /transfert aller-retour est compris pour les hôtels du centre d’Ao Nang/i);
   assert.match(ao, /plusieurs bateaux/i);
-  assert.match(ao, /à confirmer au moment de la réservation/i);
+  assert.match(ao, /Le droit d’entrée du parc national est fixé par le parc : il se règle sur place en espèces et n’est jamais dans le prix\./);
 });
 
 test("pages : JSON de configuration échappé, aucune requête externe, une seule adresse de fonction", () => {
