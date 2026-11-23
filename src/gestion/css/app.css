@@ -2043,6 +2043,10 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-services li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); }
 .agent-services li > span:first-child { display: grid; gap: 2px; min-width: 0; }
 .agent-services small { color: var(--texte-2); }
+/* Relecture de la PR 332 : le pickup ou le drop-off qu'une carte n'a pas, à remplir sous le service (cible tactile de 44 px). */
+.agent-services li.agent-lieux { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding-top: 0; border-top: 0; }
+.agent-lieu-saisie { display: grid; gap: 4px; font-size: 0.875rem; color: var(--texte-2); }
+.agent-lieu-champ { min-height: 44px; width: 100%; box-sizing: border-box; }
 .agent-prix { flex: none; display: grid; justify-items: end; font-weight: 700; font-variant-numeric: tabular-nums; }
 .agent-prix small { font-weight: 400; font-size: 0.8125rem; }
 .agent-prix.vide { padding: 1px 8px; border-radius: 999px; border: 1px dashed var(--bord-fort); color: var(--texte-2); font-weight: 600; font-size: 0.86rem; }

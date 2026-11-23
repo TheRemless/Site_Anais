@@ -1,10 +1,10 @@
 // Création d'un dossier de Secret ou de Taxi avec tout ce que le voucher dit, service par service (13.11.2026) : la logique pure, sans DOM,
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
-import { reservationsDepuisDocument, typeVoucher, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle } from "./operations-calc.mjs";
+import { reservationsDepuisDocument, typeVoucher, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle, adresseEstHotel } from "./operations-calc.mjs";
 import { libelleClient, ligneLibre } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
-import { estRetourDepartDetails, libelleRetourDepart, dureeFrancais, erreursTrajet } from "./trajet-calc.mjs";
+import { estRetourDepartDetails, libelleRetourDepart, dureeFrancais, erreursTrajet, RETOUR_DEPART } from "./trajet-calc.mjs";
 import { tr } from "./i18n.mjs";
 import { SIEGES_MAX, siegesLus, siegesTotal, siegesAChoisir } from "./sieges-calc.mjs";
 
@@ -174,5 +174,101 @@ export function courseHorsCatalogue(v, { id, partenaireId = null }) {
     ligne: ligneVoucher(x, { id, partenaireId }),
     // Une course saisie à la main est déjà convenue avec le chauffeur (décision de Jérémy, 13.11.2026) : confirmée dès sa création.
     saisie: { ...saisieVide(), heure: r.heure, lieu: r.lieu, sieges: r.sieges, personnes: r.personnes, statut: r.statut, details: nonVides({ drop_off: r.dropoff, vol: r.vol, bagages: r.bagages, ...(r.details || {}) }) },
+  };
+}
+
+// ---- Fiche de création (views/demande.mjs) : la saisie de départ d'un service et ce qui part sur sa réservation ----------------------
+// Sorties de la fiche pour être testées de bout en bout (carte « dossier » de l'Assistant jusqu'à la réservation, 23.11.2026 : un service
+// du catalogue venu d'une carte perdait sa dépose).
+
+// Un service lu (par règles, par l'Assistant, ou une carte « dossier » par propositionVersDemande) tel que la fiche le crée (nouveauService).
+export const serviceDeLecture = (t = {}) => ({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", dropoff: t.dropoff || "", sieges: Number(t.sieges) || 0, voucherCarte: t.voucherCarte || null, siegesRequis: t.siegesRequis === true, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+
+// La saisie de départ d'un service : ce que la demande ou la carte dit déjà pour le voucher, modifiable dans la fenêtre.
+// `d` : la demande lue ; `excursions` : Secret ou Taxi (sièges) ; `sd` : les sièges du formulaire du site (siegesDemande).
+// `sv.dropoff` : la dépose de la carte de l'Assistant (« vers », sans lien), pour un service du catalogue comme pour un transfert libre.
+export function saisieInitiale(sv = {}, { d = {}, excursions = false, sd = { sieges: 0, sieges_bebe: 0 } } = {}) {
+  const site = d.type === "transfer";
+  // Les sièges du service (carte de l'Assistant, 22.11.2026) passent avant ceux du formulaire du site. Jamais chez ZTP.
+  const carteSieges = Number(sv.sieges) > 0 || !!(sv.voucherCarte && (sv.voucherCarte.sieges_bebe || sv.voucherCarte.sans_siege));
+  const saisie = {
+    ...saisieVide(),
+    bebes: d.bebes || 0,
+    sieges: excursions ? Number(sv.sieges) || (carteSieges ? 0 : sd.sieges) : 0,
+    details: { ...(site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "" }) : {}), ...(excursions ? nonVides({ bagages: d.bagages ? String(d.bagages) : "", sieges_bebe: carteSieges ? 0 : sd.sieges_bebe }) : site ? nonVides({ bagages: d.bagages ? String(d.bagages) : "" }) : {}) },
+  };
+  // Trajet venu de « Prix et horaires », ou lieu de pickup de la carte : le pickup se fait là.
+  if (sv.hotelDepart) saisie.lieu = sv.hotelDepart;
+  // Numéro de vol et dépose lus par l'Assistant (carte « dossier ») : dans le bloc du voucher, comme ceux du formulaire du site.
+  if (sv.vol) saisie.details = { ...saisie.details, vol: sv.vol };
+  if (sv.dropoff) saisie.details = { ...saisie.details, drop_off: sv.dropoff };
+  // Sièges bébé, « aucun siège », bagages et remarque du voucher de la carte (22.11.2026) : sur le voucher. Les sièges jamais chez ZTP.
+  if (sv.voucherCarte) {
+    const { sieges_bebe, sans_siege, ...autres } = sv.voucherCarte;
+    saisie.details = { ...saisie.details, ...autres, ...(excursions ? nonVides({ sieges_bebe: sieges_bebe || 0, sans_siege: sans_siege === true ? true : "" }) : {}) };
+  }
+  if (sv.transfertLibre) {
+    saisie.lieu = sv.transfertLibre.de || d.hotel || "";
+    saisie.details = { ...nonVides({ ...saisie.details, drop_off: sv.transfertLibre.vers || sv.dropoff || "" }) };
+    saisie.ouvert = true;
+  }
+  if (sv.retourDepart) {
+    saisie.details = { ...nonVides({ ...saisie.details, drop_off: "" }), type_trajet: RETOUR_DEPART, ...nonVides({ programme_trajet: sv.retourDepart.programme || "", duree_h: sv.retourDepart.duree || "" }) };
+    saisie.lieu = (site && d.pickup) || d.hotel || "";
+    saisie.ouvert = true;
+  }
+  return saisie;
+}
+
+// L'entrée `parService` d'un service (creerDossierExcursions) depuis sa saisie : les champs du voucher remplis l'emportent, un lieu vide
+// reste `lieuFinal` (celui de la demande). `garderVol` : faux pour une excursion hors Taxi (un vol ne reste que sur un transfert).
+// `prixClient` : un prix repris du client sans correction de Nani (revue de la PR 307), gardé dans details.prix_origine.
+export function entreeParService(sv = {}, v = saisieVide(), { lieuFinal = "", garderVol = true, prixClient = false, siegesRequis = false } = {}) {
+  const details = nonVides(v.details);
+  if (prixClient) details.prix_origine = "client_non_corrige";
+  if (details.vol && !garderVol) delete details.vol;
+  return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details, zonePickup: sv.zonePickup || null, siegesRequis };
+}
+
+// L'hôtel de la fiche client (« Hotel Sunset, Room 12 » → « Hotel Sunset »), pour l'entreprise `entiteId`. Une fiche partagée par une autre
+// entreprise (ZTP) porte une adresse postale : pas d'hôtel.
+export const hotelDuClient = (c, entiteId) => (c && !adresseEstHotel(c, entiteId) ? "" : ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim());
+// Un transfert : une demande de trajet du site, un trajet du catalogue, ou une prestation de la famille « transfert ».
+export const estTransfertOffre = (d = {}, offre = null) => d.type === "transfer" || !!(offre && (offre.genre === "trajet" || (offre.source && offre.source.famille === "transfert")));
+// L'entrée `parService` d'un service de la fiche de création (views/demande.mjs, preparer) : heure, lieu de pickup, dépose, vol, bagages.
+// Un trajet du site donne ses deux bouts. `d` : la demande lue ; `client` : la fiche retenue (ou null) ; `taxi` : modeTaxi() ; `entiteId` :
+// l'entreprise active (hotelDuClient).
+export function reservationDuService(sv = {}, offre = null, { d = {}, client = null, taxi = false, entiteId = null } = {}) {
+  const lieu = d.type === "transfer" ? d.pickup || "" : offre && !estTransfertOffre(d, offre) && d.hotel && d.hotel !== hotelDuClient(client, entiteId) ? d.hotel : "";
+  // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
+  const hotelPickup = sv.hotelDepart || d.hotel;
+  const lieuFinal = lieu || (sv.zonePickup && hotelPickup ? hotelPickup : "");
+  // Un numéro de vol ne reste que sur un transfert : une offre changée pour une excursion ne le garde pas caché.
+  // Un prix repris du client sans correction de Nani (revue de la PR 307) : la réservation le garde (details.prix_origine).
+  // `siegesRequis` : un transfert dont la fiche montre les sièges (Taxi, Secret) : avec un enfant ou un bébé, le choix est obligatoire.
+  return entreeParService(sv, sv.saisie || saisieVide(), {
+    lieuFinal,
+    garderVol: taxi || !!sv.transfertLibre || !!sv.retourDepart || !offre || estTransfertOffre(d, offre),
+    prixClient: !!((offre && offre.prixCarte !== undefined && offre.prixOrigine === "client_non_corrige") || (sv.transfertLibre && sv.prixOrigine === "client_non_corrige")),
+    siegesRequis: !!sv.siegesVisibles,
+  });
+}
+
+// Ce que creerDossierExcursions écrit sur une réservation qui vient d'être créée (`r`), depuis l'entrée `parService` de son service :
+// heure, lieu de pickup, dépose, vol, bagages, sièges, bébés, zone de pickup et champs du voucher. Rend le patch (vide : rien à écrire).
+export function champsReservation(r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, sieges = 0, personnes = null, zonePickup = null, statut = "", details: saisis = {} } = {}) {
+  // `zonePickup` : la zone de l'hôtel choisie sur la grille du partenaire, gardée pour proposer la même zone au prochain séjour dans cet hôtel.
+  const details = { ...nonVides(saisis), ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}), ...(sieges ? { sieges: Number(sieges) } : {}), ...(zonePickup ? { pickup_zone: zonePickup } : {}) };
+  // Des personnes reprises du dossier (Adultes et Enfants du Nouveau dossier) cèdent la place à celles que le service donne lui-même.
+  const repris = !!(r.details && r.details.personnes_du_dossier);
+  const dejaDesGens = !repris && ((r.personnes || {}).adultes || (r.personnes || {}).enfants);
+  const propres = !!personnes && !dejaDesGens;
+  const detailsBase = propres && repris ? Object.fromEntries(Object.entries(r.details || {}).filter(([k]) => k !== "personnes_du_dossier")) : r.details || {};
+  return {
+    ...(statut ? { statut } : {}),
+    ...(heure ? { heure_pickup: heure } : {}),
+    ...(lieu ? { lieu_pickup: lieu } : {}),
+    ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(propres ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
+    ...(Object.keys(details).length || detailsBase !== (r.details || {}) ? { details: { ...detailsBase, ...details } } : {}),
   };
 }

@@ -121,6 +121,49 @@ export function siegesAVerifier(carte) {
     return n > 0 && n > petitsDe(s, d);
   });
 }
+// Les lieux qu'un service d'une carte doit avoir (relecture de la PR 332 : rien n'est deviné, ni l'hôtel du client ni le nom du tarif), comme la
+// fonction (outils.js, lieuxExigesService). Un transfert (hors catalogue, un trajet, une prestation de la famille « transfert ») : pickup et
+// drop-off. Chez Taxi (`taxi`, ou un service de l'entreprise Taxi dans l'espace unifié), toute course est un transfert, sauf une excursion
+// (famille « excursion », un aller-retour) : le pickup seul. Ailleurs : rien. Rend { pickup, dropoff }.
+export function lieuxExiges(s = {}, { prestations = [], taxi = false } = {}) {
+  const o = s && s.offre;
+  const p = o && o.genre === "prestation" ? prestations.find((x) => x.id === o.id) || null : null;
+  // Espace unifié : l'entreprise du service décide (un tour de Secret dans une carte mixte n'est pas une course).
+  const course = s && s.entreprise ? s.entreprise === "taxi" : taxi;
+  const transfert = !o || o.genre === "trajet" || !!(p && p.famille === "transfert");
+  if (transfert || (course && !(p && p.famille === "excursion"))) return { pickup: true, dropoff: true };
+  return course ? { pickup: true, dropoff: false } : { pickup: false, dropoff: false };
+}
+// Les lieux qui manquent, service par service : [{ index, pickup, dropoff }] (vrai : à remplir). Une carte décidée ou une course : rien.
+export function lieuxManquants(carte, options = {}) {
+  if (!carte || carte.statut !== "proposee" || (carte.donnees && carte.donnees.course)) return [];
+  return servicesDeCarte(carte)
+    .map((s, index) => {
+      const e = lieuxExiges(s, options);
+      return { index, pickup: e.pickup && !String((s && s.lieu_pickup) || "").trim(), dropoff: e.dropoff && !sansLien(s && s.vers) };
+    })
+    .filter((m) => m.pickup || m.dropoff);
+}
+// Les codes des lieux qui manquent à une carte « dossier » ou « reservation » : ["pickup_a_verifier", "dropoff_a_verifier"]. La carte les
+// affiche, montre un champ à remplir sous le service, et ne se valide pas tant qu'ils manquent ; aussi pour les cartes faites avant.
+export function lieuxAVerifier(carte, options = {}) {
+  const m = lieuxManquants(carte, options);
+  return [...(m.some((x) => x.pickup) ? ["pickup_a_verifier"] : []), ...(m.some((x) => x.dropoff) ? ["dropoff_a_verifier"] : [])];
+}
+// La carte avec les lieux remplis sur elle par la personne (`saisis` : index du service -> { lieu_pickup, vers }), sans lien. Un lieu que la
+// carte donne déjà n'est jamais remplacé : seul un champ vide se remplit.
+export function avecLieuxSaisis(donnees, genre, saisis = {}) {
+  if (!donnees || !saisis || !Object.keys(saisis).length) return donnees;
+  const remplir = (s, i) => {
+    const x = saisis[i];
+    if (!x || !s) return s;
+    const pickup = sansLien(x.lieu_pickup);
+    const vers = sansLien(x.vers);
+    return { ...s, ...(pickup && !String(s.lieu_pickup || "").trim() ? { lieu_pickup: pickup } : {}), ...(vers && !sansLien(s.vers) ? { vers } : {}) };
+  };
+  if (genre === "reservation") return { ...donnees, service: remplir(donnees.service, 0) };
+  return { ...donnees, services: (donnees.services || []).map(remplir) };
+}
 // Un transfert (sieges_requis, posé par la fonction) avec au moins un enfant ou un bébé, sans siège ni « aucun siège » (Jérémy, 22.11.2026) :
 // la carte ne se valide pas, ni d'un geste ni par « Vérifier avant » sans que le choix soit fait dans la fiche.
 export function siegesAChoisir(carte) {
@@ -149,8 +192,9 @@ export function propositionDepuisCarte(donnees = {}) {
       // Les bagages et la remarque du voucher (22.11.2026) : sur le voucher (details.bagages, details.remarques), plus dans les notes.
       bagages: bagagesCarte(s),
       remarque_voucher: String(s.remarque_voucher || "").trim(),
-      de: s.de || "",
-      vers: s.vers || "",
+      // Le départ et la dépose, sans lien (la fonction les retire déjà) : la dépose finit dans details.drop_off, comme pour une carte « reservation ».
+      de: sansLien(s.de),
+      vers: sansLien(s.vers),
       prive: true,
       hors_catalogue: !s.offre,
       offre: s.offre || null,
@@ -218,6 +262,7 @@ export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surP
     libelle: s.libelle || s.texte || "",
     date_service: s.date || "",
     heure_pickup: s.heure_pickup || "",
+    // Le pickup de la carte, tel quel ; sans pickup, rien n'est deviné : la carte le signale (lieuxAVerifier).
     lieu_pickup: s.lieu_pickup || "",
     personnes: { adultes: s.adultes || 0, enfants: s.enfants || 0 },
     montant_vente: s.prix ?? null,

@@ -83,7 +83,8 @@ test("carte modification : annulation d'un service par le formulaire habituel (s
 test("Assistant seule entrée : validation d'un geste par le code habituel, Tout valider, passage à l'entreprise de taxi", async () => {
   const { readFileSync } = await import("node:fs");
   const lire = (f) => readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
-  const agent = lire("views/agent.mjs");
+  // La validation des cartes est dans views/agent-valider.mjs depuis la relecture de la PR 332.
+  const agent = lire("views/agent.mjs") + lire("views/agent-valider.mjs");
   // Le devis calculé sur la carte passe par donneesCarte (« Calculer le devis », 22.11.2026).
   assert.match(agent, /ouvrirDemande\(null, preparation\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\} \}\)/, "dossier : la fiche de création, cachée");
   assert.match(agent, /formulaireReservation\(valeurs, /, "service et modification : le formulaire de réservation habituel");

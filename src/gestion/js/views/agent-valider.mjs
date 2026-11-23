@@ -1,0 +1,119 @@
+// Validation des cartes de l'onglet Assistant (sorti de views/agent.mjs, relecture de la PR 332, pour que les tests passent par ce code) :
+// la préparation d'une carte « dossier » pour la fiche de création, le chauffeur, le règlement et le lieu d'une carte « reservation »,
+// l'enregistrement d'une réservation par la fenêtre habituelle (cachée), et la carte « dossier » de l'espace unifié (deux dossiers liés).
+import { etat, reglages, nomPartenaire, modeTaxi, modifier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis } from "../etat.mjs";
+import { modal, toast } from "../ui.mjs";
+import { tr } from "../i18n.mjs";
+import { propositionDepuisCarte, reservationDepuisCarte, chauffeurCarte, payeSurPlaceCarte } from "../agent-calc.mjs";
+import { propositionVersDemande } from "../assistant-calc.mjs";
+import { modeParDefaut } from "../operations-calc.mjs";
+import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
+import { planCreation, creerDossiersLies, lierDossiers } from "../espace-unifie-calc.mjs";
+
+const changerSansNaviguer = (id) => etat.entiteId !== id && changerEntite(id, { naviguer: false });
+
+export const preparation = (c) => {
+  const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
+  return { texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) };
+};
+
+// Le chauffeur d'une course ajoutée par carte (22.11.2026) : appelé une fois dans l'entreprise du dossier (dansEntreprise, dansFenetre).
+export const chauffeurDeLaCarte = (c) => chauffeurCarte((c.donnees || {}).service, { taxi: modeTaxi(), defaut: modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null, prestations: etat.db.prestations, trajets: etat.db.trajets });
+// Le chauffeur et le règlement sur place d'une course ajoutée par carte (relecture de la PR 329 : une course de Taxi se paie au chauffeur).
+export const optionsCarte = (c) => {
+  const partenaireId = chauffeurDeLaCarte(c);
+  const partenaire = partenaireId ? etat.db.partenaires.find((p) => p.id === partenaireId) || null : null;
+  return { partenaireId, surPlace: payeSurPlaceCarte({ taxi: modeTaxi(), partenaire, modeDe: modeParDefaut }) };
+};
+
+export async function enregistrerReservation(valeurs, message, ancienne = null) {
+  const { formulaireReservation } = await import("./reservations.mjs");
+  return new Promise((fin) => {
+    let fini = false;
+    let minuterie = null;
+    let ferme = () => {};
+    const terminer = (r) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(minuterie);
+      ferme();
+      fin(r);
+    };
+    const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }), { base: ancienne || valeurs });
+    ferme = modal(tr("Réservation"), form, { cache: true });
+    minuterie = setTimeout(() => terminer({ ok: false, motif: tr("Rien n'a été enregistré : ouvrez « Vérifier avant ».") }), 60_000);
+    form.requestSubmit();
+    // Les contrôles du formulaire passent avant tout enregistrement : un champ en erreur arrête tout de suite.
+    queueMicrotask(() => {
+      const refus = form.querySelector('[aria-invalid="true"]');
+      if (refus) terminer({ ok: false, motif: tr("À corriger : {champ}.", { champ: ((form.querySelector(`label[for="${refus.id}"]`) || {}).textContent || "").trim() || tr("un champ") }) });
+    });
+  });
+}
+// Carte « dossier » de l'espace unifié (migration 63) : un dossier par entreprise, chacun avec sa numérotation et ses règles (Taxi sans
+// facture, avec Booking confirmation), la même fiche client (créée dans l'entreprise active, puis utilisée dans l'autre par le partage
+// réciproque), et dossier_lie_id des deux côtés. Tout est vérifié AVANT d'écrire : un service sans entreprise, un droit manquant ou une
+// fiche qui ne peut pas passer dans l'autre entreprise arrêtent tout, rien n'est créé à moitié.
+const MOTIFS_UNIFIE = (libelleEntreprise) => ({
+  entreprise_a_choisir: () => tr("Choisissez Secret ou Taxi"),
+  droit_dossier: (id) => tr("Votre rôle ne permet pas de créer un dossier chez {nom}. Rien n'a été créé.", { nom: libelleEntreprise(id) }),
+  droit_client: (id) => tr("Votre rôle ne permet pas de créer la fiche client chez {nom}. Rien n'a été créé.", { nom: libelleEntreprise(id) }),
+  partage: (id) => tr("La fiche client ne peut pas être utilisée chez {nom} : les fiches de Secret et de Taxi ne sont pas partagées pour vous. Rien n'a été créé.", { nom: libelleEntreprise(id) }),
+  aucun_service: () => tr("Aucun service à créer."),
+});
+// `donnees` : la carte avec ses corrections d'un tap et son devis (donneesCarte de l'écran) ; `libelleEntreprise(id)` : « Secret » ou « Taxi ».
+export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise = (id) => id } = {}) {
+  const motifs = MOTIFS_UNIFIE(libelleEntreprise);
+  const plan = planCreation({ services: donnees.services || [], activeId: etat.entiteId, permissionsDe, nouveauClient: false, partagePermis: (a, b) => partageClientsPermis(a, b) });
+  if (!plan.ok) {
+    const [code, id] = String(plan.motif).split(":");
+    return { ok: false, motif: (motifs[code] || motifs.aucun_service)(id) };
+  }
+  const origine = etat.entiteId;
+  const { ouvrirDemande } = await import("./demande.mjs");
+  // Chaque étape se prépare dans son entreprise (catalogue, numérotation, règles), par la fiche habituelle cachée.
+  const dans = async (id, fn) => {
+    changerSansNaviguer(id);
+    try {
+      return await fn();
+    } finally {
+      changerSansNaviguer(origine);
+    }
+  };
+  const sous = (e) => ({ ...c, donnees: { ...donnees, services: e.services } });
+  const r = await creerDossiersLies({
+    etapes: plan.etapes,
+    // Passe à blanc : préparation et contrôles de chaque dossier (prix à fixer, service introuvable, numéro), rien n'est écrit.
+    essayer: (e, i) => dans(e.entite_id, () => ouvrirDemande(null, preparation(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre })),
+    creer: (e, i, clientId) => dans(e.entite_id, () => ouvrirDemande(null, preparation(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId })),
+    // Un dossier ne passe pas : ceux déjà créés vont à la corbeille (la suppression habituelle), dans leur entreprise.
+    defaire: async (crees) => {
+      for (const d of crees) await dans(d.entite_id, () => supprimerLigne("dossiers", d.id));
+      return true;
+    },
+    lier: (a, b) => lierDossiers(a, b, modifier),
+  });
+  if (!r.ok) {
+    const motif = r.motif || tr("Rien n'a été enregistré.");
+    if (!r.ecrit) return { ok: false, motif };
+    const premier = r.crees[0];
+    const pourquoi = motif.replace(/[.\s]+$/, "");
+    return {
+      ok: false,
+      motif: r.defait
+        ? tr("Le dossier chez {nom} n'a pas pu être créé ({motif}). Le dossier {ref} déjà créé a été mis à la corbeille : rien n'est gardé, la carte reste à valider.", { nom: libelleEntreprise(plan.etapes[r.etape].entite_id), motif: pourquoi, ref: premier.ref || "" })
+        : tr("Le dossier chez {nom} n'a pas pu être créé ({motif}). Le dossier {ref} n'a pas pu être mis à la corbeille : supprimez-le depuis sa fiche avant de valider à nouveau.", { nom: libelleEntreprise(plan.etapes[r.etape].entite_id), motif: pourquoi, ref: premier.ref || "" }),
+    };
+  }
+  const crees = r.crees;
+  if (crees.length === 2) {
+    if (r.lies) toast(tr("Deux dossiers liés créés : {a} et {b}.", { a: crees[0].ref || "", b: crees[1].ref || "" }));
+    else toast(tr("Les deux dossiers sont créés, mais le lien entre eux n'a pas pu être posé : {a} et {b}.", { a: crees[0].ref || "", b: crees[1].ref || "" }), true);
+  }
+  const ici = crees.find((x) => x.entite_id === origine) || crees[0];
+  return { ok: true, dossier: ici, dossiers: crees };
+}
+
+
+// Carte « reservation » validée d'un geste : la fenêtre habituelle, cachée, avec le chauffeur et le règlement de la course.
+export const ajouterParCarte = (c, message) => enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), message);

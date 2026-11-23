@@ -73,7 +73,7 @@ test("Assistant : lire_dossier montre les sièges, proposer_modification les cha
   assert.match(lire("supabase/functions/agent/index.ts"), /sieges:details->>sieges/);
 });
 
-test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusqu'au service de la fiche de création, puis à la réservation", () => {
+test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusqu'au service de la fiche de création, puis à la réservation", async () => {
   const donneesCarte = { client: { nom: "Test" }, adultes: 2, enfants: 2, services: [{ texte: "Transfert", offre: null, date: "2026-12-03", de: "Koh Lanta", vers: "Krabi Airport", adultes: 2, enfants: 2, sieges: 2 }, { texte: "Retour", offre: null, date: "2026-12-10", de: "Krabi Airport", vers: "Koh Lanta", adultes: 2, enfants: 2 }] };
   const prop = propositionDepuisCarte(donneesCarte);
   assert.deepEqual(prop.services.map((s) => s.sieges), [2, 0]);
@@ -82,10 +82,16 @@ test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusq
   // Fiche de création (views/demande.mjs) : le service garde ses sièges dans sa saisie, posée sur la réservation (creation-excursions.mjs).
   const demande = lire("src/gestion/js/views/demande.mjs");
   // Les sièges de la carte passent avant ceux de la demande (formulaire du site ou message collé, siegesDemande), jamais chez ZTP.
-  assert.match(demande, /sieges: modeExcursions\(\) \? Number\(sv\.sieges\) \|\| \(carteSieges \? 0 : sd\.sieges\) : 0/, "plus seulement pour une demande du site");
-  assert.match(demande, /vol: t\.vol \|\| "", sieges: Number\(t\.sieges\) \|\| 0,/, "le service de l'Assistant porte ses sièges");
-  assert.match(demande, /sieges: v\.sieges, details/, "la réservation reçoit la saisie");
-  assert.match(lire("src/gestion/js/views/creation-excursions.mjs"), /\.\.\.\(sieges \? \{ sieges: Number\(sieges\) \} : \{\}\)/);
+  const { saisieInitiale } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  assert.equal(saisieInitiale({ sieges: 2 }, { excursions: true, sd: { sieges: 1, sieges_bebe: 0 } }).sieges, 2, "plus seulement pour une demande du site");
+  assert.equal(saisieInitiale({}, { excursions: true, sd: { sieges: 1, sieges_bebe: 0 } }).sieges, 1);
+  assert.equal(saisieInitiale({ sieges: 2 }, { excursions: false }).sieges, 0, "jamais chez ZTP");
+  assert.match(demande, /sv\.saisie = saisieInitiale\(sv, \{ d, excursions: modeExcursions\(\), sd: siegesDemande\(d\) \}\);/);
+  assert.equal((await import("../src/gestion/js/creation-voucher-calc.mjs")).serviceDeLecture({ sieges: "2" }).sieges, 2, "le service de l'Assistant porte ses sièges");
+  assert.match(demande, /nouveauService\(serviceDeLecture\(t\)\)/);
+  const { entreeParService, champsReservation } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  assert.equal(entreeParService({}, { ...saisieInitiale({ sieges: 2 }, { excursions: true }) }).sieges, 2, "la réservation reçoit la saisie");
+  assert.deepEqual(champsReservation({}, { sieges: 2 }).details, { sieges: 2 });
   // « Vérifier avant » : même fiche, champ visible et modifiable pour un transfert.
   const parService = parServiceCreation([{ ligneIds: ["l1"] }], new Map([["l1", saisieDepuisDemande({ sieges: 2 })]]));
   assert.equal(parService[0].sieges, 2);
@@ -129,7 +135,7 @@ test("relecture 2 : un service du catalogue (offre non nulle) garde ses sièges 
   assert.equal(services[0].sieges, 2, "et les sièges aussi");
 });
 
-test("relecture 3 et 7 : le champ sièges suit l'impression (transfert chez Secret, toujours chez Taxi, jamais chez ZTP) et reste visible tant qu'il a une valeur", () => {
+test("relecture 3 et 7 : le champ sièges suit l'impression (transfert chez Secret, toujours chez Taxi, jamais chez ZTP) et reste visible tant qu'il a une valeur", async () => {
   const vue = lire("src/gestion/js/views/reservations.mjs");
   // Taxi : la Booking confirmation imprime toujours les sièges.
   assert.match(vue, /CHAMPS\.vol\(\), CHAMPS\.bagages\(\), CHAMPS\.sieges\(\)\), CHAMPS\.remarques\(\)\)/);
@@ -142,7 +148,8 @@ test("relecture 3 et 7 : le champ sièges suit l'impression (transfert chez Secr
   assert.doesNotMatch(vue, /type === "location" \? null : CHAMPS\.sieges\(\)/);
   // ZTP : pas de voucher, pas de champ ; et la fiche de création n'y reprend jamais de sièges.
   assert.match(vue, /const avecVoucher = modeExcursions\(\) && !modeTaxi\(\);/);
-  assert.match(lire("src/gestion/js/views/demande.mjs"), /sieges: modeExcursions\(\) \? Number\(sv\.sieges\)/);
+  assert.equal((await import("../src/gestion/js/creation-voucher-calc.mjs")).saisieInitiale({ sieges: 2 }, { excursions: false }).sieges, 0);
+  assert.match(lire("src/gestion/js/views/demande.mjs"), /saisieInitiale\(sv, \{ d, excursions: modeExcursions\(\)/);
   // Fiche de création : des sièges saisis restent visibles même si le modèle n'en imprime pas.
   assert.match(lire("src/gestion/js/views/champs-voucher.mjs"), /siegesTotal\(siegesLus\(\{ \.\.\.\(s\.details \|\| \{\}\), sieges: s\.sieges \}\)\) > 0 && !base\.includes\("sieges"\) \? \["sieges"\] : \[\]/);
 });
@@ -181,7 +188,7 @@ test("relecture 5 et 6 : la duplication garde les sièges ; une modification se 
   assert.match(vue, /modifierProtege\("reservations", r\.id, valeurs, \{ base, arbitrer/);
   const agent = lire("src/gestion/js/views/agent.mjs");
   assert.match(agent, /\}, \{ base: r \}\), \{ ferme: revenir \}\);/, "Vérifier avant d'une modification");
-  assert.match(agent, /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
+  assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
 });
 
 test("fiche de réservation : le champ « Sièges enfant ou bébé » existe et la carte de l'Assistant dit les sièges", () => {

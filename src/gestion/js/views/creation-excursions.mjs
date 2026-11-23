@@ -6,7 +6,7 @@ import { aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero } from "../calc.m
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService, langueClient, nomSansEnfant } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
-import { nonVides } from "../creation-voucher-calc.mjs";
+import { champsReservation } from "../creation-voucher-calc.mjs";
 import { verifierTelephoneClient } from "../client-calc.mjs";
 import { tr } from "../i18n.mjs";
 
@@ -64,27 +64,11 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   await creerReservations(doc, { silencieux, personnesDossier: personnes });
   // Heure, lieu de pickup, dépose, vol, bagages et bébés donnés par le client : posés sur les réservations qui viennent d'être créées
   // (la dépose, le vol et les bagages sont les champs du voucher de transfert).
-  const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, sieges = 0, personnes = null, zonePickup = null, statut = "", details: saisis = {} }) => {
-    // `zonePickup` : la zone de l'hôtel choisie sur la grille du partenaire, gardée pour proposer la même zone au prochain séjour dans cet hôtel.
-    const details = { ...nonVides(saisis), ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}), ...(sieges ? { sieges: Number(sieges) } : {}), ...(zonePickup ? { pickup_zone: zonePickup } : {}) };
-    // Des personnes reprises du dossier (Adultes et Enfants du Nouveau dossier) cèdent la place à celles que le service donne lui-même.
-    const repris = !!(r.details && r.details.personnes_du_dossier);
-    const dejaDesGens = !repris && ((r.personnes || {}).adultes || (r.personnes || {}).enfants);
-    const propres = !!personnes && !dejaDesGens;
-    const detailsBase = propres && repris ? Object.fromEntries(Object.entries(r.details || {}).filter(([k]) => k !== "personnes_du_dossier")) : r.details || {};
-    return {
-      ...(statut ? { statut } : {}),
-      ...(heure ? { heure_pickup: heure } : {}),
-      ...(lieu ? { lieu_pickup: lieu } : {}),
-      ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(propres ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
-      ...(Object.keys(details).length || detailsBase !== (r.details || {}) ? { details: { ...detailsBase, ...details } } : {}),
-    };
-  };
   const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id);
   for (const r of reservations) {
     const lies = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]);
     const propre = parService ? parService.find((sv) => sv.ligneIds.some((id) => lies.has(id))) : reservation;
-    const champs = propre ? patch(r, propre) : {};
+    const champs = propre ? champsReservation(r, propre) : {};
     if (Object.keys(champs).length) await modifier("reservations", r.id, champs);
   }
   return d;

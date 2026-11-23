@@ -90,8 +90,9 @@ test("contrôle : chaque champ voucher saisi par l'Assistant arrive sur la Booki
   assert.equal(services[0].siegesRequis, true);
   // La fiche pose voucherCarte dans la saisie du service, que la création écrit dans `details` (creation-excursions.mjs, nonVides).
   const demande = lire("src/gestion/js/views/demande.mjs");
-  assert.match(demande, /voucherCarte: t\.voucherCarte \|\| null/);
-  assert.match(demande, /if \(sv\.voucherCarte\) \{/);
+  assert.deepEqual((await import("../src/gestion/js/creation-voucher-calc.mjs")).serviceDeLecture(services[0]).voucherCarte, services[0].voucherCarte);
+  const { saisieInitiale } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  assert.deepEqual(saisieInitiale(services[0], { excursions: true }).details, { vol: "FD3217", drop_off: "Krabi Airport", sans_siege: true, bagages: "2", remarques: REMARQUE });
   const details = detailsAvecSieges({ vol: "FD3217", bagages: "2", remarques: REMARQUE }, siegesLus(services[0].voucherCarte));
   assert.match(booking({ date_service: "2026-12-03", personnes: { adultes: 2, enfants: 1 }, details })[T("b_passagers")], /1 child \(no child seat needed\)/);
   // Les deux rendus de la Booking confirmation lisent bien ces clés de la réservation.
@@ -270,8 +271,10 @@ test("relecture 5 : demande collée et formulaire du site, « Baby seat needed �
   assert.match(notes, /Pickup time: 14:30/);
   assert.match(notesDemande(d), /Bags: 3/, "ZTP (pas de voucher pour cela) : notes comme avant");
   const demande = lire("src/gestion/js/views/demande.mjs");
-  assert.match(demande, /const sd = siegesDemande\(d\);/);
-  assert.match(demande, /nonVides\(\{ bagages: d\.bagages \? String\(d\.bagages\) : "", sieges_bebe: carteSieges \? 0 : sd\.sieges_bebe \}\)/);
+  assert.match(demande, /sd: siegesDemande\(d\)/);
+  const { saisieInitiale } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  assert.deepEqual(saisieInitiale({}, { d, excursions: true, sd: siegesDemande(d) }).details, { bagages: "3", sieges_bebe: 1 });
+  assert.equal(saisieInitiale({}, { d, excursions: true, sd: siegesDemande(d) }).sieges, 1);
   assert.match(demande, /notesDemande\(plusieurs \? \{ \.\.\.d, heure: "" \} : d, \{ surLeVoucher: modeExcursions\(\) \}\)/);
 });
 

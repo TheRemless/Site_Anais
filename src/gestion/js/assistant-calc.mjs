@@ -4,6 +4,7 @@
 import { prixPrestation, prixTrajet, completerEnfant, completerSupplement, separerNom, lireMessage, offresPour } from "./demande-calc.mjs";
 import { libelleClient, libelleUnite, proposable } from "./partenaires-calc.mjs";
 import { horairesTexte, dureeTexte, fraisDeParc } from "./operations-calc.mjs";
+import { sansLien } from "./agent-calc.mjs";
 
 // L'assistant est éteint tant que l'entreprise ne l'a pas allumé dans Réglages (case « Assistant IA »).
 export const assistantActif = (regl) => !!(regl && regl.assistant_ia === true);
@@ -91,7 +92,13 @@ export function propositionVersDemande(p, contexte) {
     const pax = paxDe(s.adultes || s.enfants ? s : c);
     // Transfert privé hors catalogue (« Lanta Sand → The Scene, Ao Nang ») : pas de ligne de la base, un prix à taper dans l'écran.
     // Carte de l'agent : un prix tapé par la personne (prix_libre) et le lieu de pickup proposé (lieu_pickup) passent à la fiche.
+    // La dépose (« vers ») va dans le drop-off du voucher, que le service soit du catalogue ou un transfert libre (23.11.2026 : un service du
+    // catalogue venu d'une carte « dossier » perdait sa dépose). Jamais un lien. Le pickup de la carte est recopié tel quel ; rien n'est
+    // déduit quand la carte n'en a pas (relecture de la PR 332 : la carte le signale, lieuxAVerifier).
     const lieu = s.lieu_pickup ? { hotelDepart: s.lieu_pickup } : {};
+    const de = sansLien(s.de);
+    const depose = sansLien(s.vers);
+    const dropoff = depose ? { dropoff: depose } : {};
     // Le numéro de vol de la carte (21.11.2026) : il rejoint le bloc du voucher du service, modifiable.
     const vol = s.vol ? { vol: s.vol } : {};
     // Les sièges enfant ou bébé de la carte (22.11.2026) : dans le bloc du voucher du service, puis sur la réservation.
@@ -103,11 +110,11 @@ export function propositionVersDemande(p, contexte) {
       ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}),
     };
     const sieges = { ...(Number(s.sieges) > 0 ? { sieges: Number(s.sieges) } : {}), ...(Object.keys(voucherCarte).length ? { voucherCarte } : {}), ...(s.sieges_requis === true ? { siegesRequis: true } : {}) };
-    if (s.hors_catalogue) return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol };
+    if (s.hors_catalogue) return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.lieu_pickup || de, vers: depose }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol, ...dropoff };
     // La première offre garde le prix de la carte quand il vient de la conversation (prix_carte) ; les autres restent au catalogue.
     // Elle garde aussi les véhicules du devis (s.vehicules, « Calculer le devis ») : le dossier reprend le devis.
     const offres = [s.offre, ...(s.alternatives || [])].map((r, i) => (i === 0 ? avecVehicules(auPrixCarte(offreDepuisBase(r, pax, contexte), s.prix_carte, { pax, origine: s.prix_origine || null }), s.vehicules, pax) : offreDepuisBase(r, pax, contexte))).filter(Boolean);
-    return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu, ...vol };
+    return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu, ...vol, ...dropoff };
   });
   const premier = services[0] || {};
   const d = {
