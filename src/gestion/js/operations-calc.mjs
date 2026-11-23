@@ -1201,13 +1201,8 @@ export function sansMentionParPersonne(intro, en) {
   if (!MENTIONS_PAR_PERSONNE.test(t)) return intro;
   return /enfant|child/i.test(t) ? (en ? "(child)" : "(enfant)") : "";
 }
-// La mention à remettre quand la ligne repasse au prix unitaire : l'unité du tarif du catalogue, sinon celle de la ligne (`par`), sinon adulte ou
-// enfant pour un trajet. Null quand on ne la connaît pas (ligne libre) : rien n'est inventé.
-export function mentionParPersonne(l, prestation, en) {
-  const enfant = estLigneEnfant(l);
-  const code = prestation && ["pp", "ad", "ch"].includes(prestation.unite) ? prestation.unite : ["pp", "ad", "ch"].includes(l.par) ? l.par : l.trajet_id ? (enfant ? "ch" : "ad") : null;
-  return code ? `(${libelleUnite(enfant ? "ch" : code, en)})` : null;
-}
+// La mention retirée est gardée sur la ligne (`mention_retiree`, jamais imprimée ni comparée) et revient seule quand la ligne repasse au prix
+// unitaire : une intro vide au départ (facture Secret, ligne libre) reste vide, rien n'est déduit du catalogue (relecture de la PR 336).
 
 // ---- Libellé, partenaire, tarif ou prix changés depuis la réservation ----------------------------------------------
 // Les lignes du document qui correspondent à la réservation suivent ce qui a changé (16.11.2026 : Anaïs avait pris le tarif d'un autre partenaire,
@@ -1270,6 +1265,8 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
       const p = pid ? prestationDe(pid) : null;
       Object.assign(n, { prestation_id: pid, trajet_id: tid });
       delete n.libre;
+      // Un autre tarif : la mention gardée d'un prix total (`mention_retiree`) était celle de l'ancien.
+      delete n.mention_retiree;
       const net = p ? netDe(p) : undefined;
       n.net = net === undefined || net === null ? null : Number(net);
       if (p) {
@@ -1289,7 +1286,7 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
   // devient un prix total (23.11.2026 : 2 900 pour 3 passagers à 950 ne donne pas un prix unitaire juste, la facture gardait 2 850 sans rien dire).
   // Prix total : la quantité reste (elle compte les personnes, « 3 passengers » reste dans le libellé), le prix unitaire et la mention « (par personne) »
   // s'effacent, le montant porte le total. Jamais de prix unitaire arrondi : 3 × 966,67 ferait 2 900,01. Un prix total qui redevient divisible
-  // (4 personnes, 3 800) repasse au prix unitaire, avec sa mention. Plusieurs lignes (adulte, enfant) : la répartition serait devinée, le prix
+  // (4 personnes, 3 800) repasse au prix unitaire, avec la mention qu'il avait (`mention_retiree`), et seulement celle-là. Plusieurs lignes (adulte, enfant) : la répartition serait devinée, le prix
   // reste dans `reste`.
   if (cible.montant_vente !== undefined && cible.montant_vente !== null && cible.montant_vente !== "" && Number.isFinite(Number(cible.montant_vente))) {
     const montant = arr(Number(cible.montant_vente));
@@ -1298,18 +1295,19 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
       const n = seule ? nouvelles.get(seule) : null;
       const q = n && n.qte !== null && n.qte !== undefined && n.qte !== "" ? Number(n.qte) : null;
       if (n && q !== null && q > 0 && arr(arr(montant / q) * q) === montant) {
-        const etaitTotal = estPrixTotal(n);
         n.unite = arr(montant / q);
         if (n.montant !== null && n.montant !== undefined && n.montant !== "") n.montant = null;
-        if (etaitTotal) {
-          const mention = mentionParPersonne(n, prestationDe(n.prestation_id), en);
-          if (mention && (!n.intro || /^\((child|enfant)\)$/i.test(n.intro))) n.intro = mention;
+        if (n.mention_retiree !== undefined) {
+          n.intro = n.mention_retiree;
+          delete n.mention_retiree;
         }
       } else if (n) {
         n.montant = montant;
         if (q !== null) {
           n.unite = null;
-          n.intro = sansMentionParPersonne(n.intro, en);
+          const intro = sansMentionParPersonne(n.intro, en);
+          if (intro !== n.intro && n.mention_retiree === undefined) n.mention_retiree = n.intro;
+          n.intro = intro;
         }
       } else reste.push({ cle: "montant_vente", reservation: montant, facture: total });
     }

@@ -73,7 +73,7 @@ test("un prix qui tombe juste garde le prix unitaire (3 × 1 000)", () => {
 });
 
 test("une ligne au prix total qui retombe juste repasse au prix unitaire, et un montant fixe sans quantité suit comme avant", () => {
-  const forfait = facture([ligne({ unite: null, montant: 2900, intro: "" })]);
+  const forfait = facture([ligne({ unite: null, montant: 2900, intro: "", mention_retiree: "(per person)" })]);
   const s = contenuAvecService(forfait, resa({ montant_vente: 3000 }), { montant_vente: 3000 }, { prestationDe });
   assert.deepEqual([s.contenu.lignes[0].unite, s.contenu.lignes[0].qte, s.contenu.lignes[0].montant, s.contenu.lignes[0].intro], [1000, 3, null, "(per person)"]);
   const toujours = contenuAvecService(forfait, resa({ montant_vente: 3100 }), { montant_vente: 3100 }).contenu.lignes[0];
@@ -109,6 +109,34 @@ test("la mention par personne part sans `par`, en français (ZTP) comme en angla
   const st = contenuAvecService({ langue: "", lignes: [trajet] }, resa(), { montant_vente: 2900 }).contenu;
   assert.deepEqual([st.lignes[0].intro, totaux(st).net], ["", 2900]);
   assert.equal(contenuAvecService(st, resa(), { montant_vente: 3000 }).contenu.lignes[0].intro, "(par adulte)");
+});
+
+test("Secret, intro vide au départ : l'aller-retour 2 900 puis 3 000 n'ajoute aucune mention ; seule la mention retirée revient", async () => {
+  // Facture Secret créée avec une intro vide (excursions : nom court + description), et une ligne libre : rien à retirer, rien à remettre.
+  for (const depart of [ligne({ intro: "" }), { id: "l1", kind: "ligne", libre: true, libelle: "Tour Exemple", intro: "", puces: [], unite: 950, qte: 3, montant: null, partenaire_id: null, net: null }]) {
+    const aller = contenuAvecService(facture([depart]), resa(), { montant_vente: 2900 }, { prestationDe }).contenu.lignes[0];
+    assert.deepEqual([aller.intro, aller.unite, aller.montant, "mention_retiree" in aller], ["", null, 2900, false]);
+    const retour = contenuAvecService(facture([aller]), resa({ montant_vente: 3000 }), { montant_vente: 3000 }, { prestationDe }).contenu.lignes[0];
+    assert.deepEqual([retour.intro, retour.unite, retour.montant, "mention_retiree" in retour], ["", 1000, null, false], "pas de « (per person) » inventé");
+  }
+  // Avec une mention au départ : elle est gardée sur la ligne pendant le prix total, puis remise telle quelle et effacée.
+  const aller = contenuAvecService(facture([ligne()]), resa(), { montant_vente: 2900 }).contenu;
+  assert.deepEqual([aller.lignes[0].intro, aller.lignes[0].mention_retiree], ["", "(per person)"]);
+  // Un deuxième prix total ne l'écrase pas.
+  const encore = contenuAvecService(aller, resa({ montant_vente: 3100 }), { montant_vente: 3100 }).contenu;
+  assert.equal(encore.lignes[0].mention_retiree, "(per person)");
+  const retour = contenuAvecService(encore, resa({ montant_vente: 3000 }), { montant_vente: 3000 }).contenu.lignes[0];
+  assert.deepEqual([retour.intro, retour.unite, "mention_retiree" in retour], ["(per person)", 1000, false]);
+  // Jamais comparée : la réservation et la facture au prix total ne montrent aucun écart à cause d'elle.
+  assert.equal(ecartReservation(resa(), { contenu: aller }), null);
+  assert.equal(ecartReservation(resa({ montant_vente: 3100 }), { contenu: encore }), null);
+  // Jamais imprimée : le document rendu ne la contient pas.
+  const { renderDocument } = await import("../src/gestion/js/document.mjs");
+  const page = renderDocument({ type: "facture", doc: { contenu: { ...E.reglages().defauts_document, ...aller, colonnes: "detail" } }, dossier: { ref: "AF-1" }, client: { prenom: "Client", nom: "Exemple" }, reglages: E.reglages(), recu: 0 });
+  const texte = page.textContent;
+  assert.match(texte, /3 passengers/);
+  assert.match(texte, /2'900/);
+  assert.doesNotMatch(texte, /per person|mention_retiree/);
 });
 
 test("un prix total suit les personnes : 3 personnes à 2 900, puis 4 adultes (2 900, « 4 passengers »), puis 3 800 (4 × 950)", () => {
