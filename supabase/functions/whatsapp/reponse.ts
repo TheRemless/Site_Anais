@@ -13,7 +13,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
-import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef } from "../agent/outils.js";
+import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef, prixEcritParNani } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { lireApprentissages } from "../agent/apprentissages.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
@@ -350,6 +350,8 @@ async function preparer(
     // Une conversation de client : les montants écrits par Nani (messages sortants, app ou Gestion) sont des prix de vente donnés au client
     // (21.11.2026). Jamais ceux du client, jamais chez un partenaire ou un apporteur (conversationDeClient).
     for (const n of montantsSortants(messages, conv)) memo.nani.add(n);
+    // Un prix déjà écrit par Nani, client confirmé ou non : le modèle de réponse de prix ne s'impose plus (agent/modele-prix.js).
+    if (prixEcritParNani(messages)) memo.prixDonne = true;
     const r = await tourner({
       anthropic,
       modele: Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT,

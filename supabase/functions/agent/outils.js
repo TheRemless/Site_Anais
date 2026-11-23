@@ -1796,8 +1796,12 @@ export function montantsDuTexte(t) {
   return out;
 }
 
-// Modèle de réponse de prix (modele-prix.js) : jamais pour un partenaire, un chauffeur (type « partenaire ») ni le personnel.
-export const CONTACTS_SANS_MODELE = ["partenaire", "personnel"];
+// Modèle de réponse de prix (modele-prix.js) : jamais pour un partenaire, un chauffeur (type « partenaire »), un apporteur ni le personnel
+// (deuxième relecture de la PR 342 : un apporteur relaie le prix à son client, il ne reçoit pas le texte de Taxi).
+export const CONTACTS_SANS_MODELE = ["partenaire", "apporteur", "personnel"];
+// Un prix déjà écrit au client par Nani (messages sortants, app ou Gestion) : un montant avec sa devise (« 2,500 THB », « ฿900 »), que le
+// client soit confirmé ou non. Seul le drapeau en dépend : memo.nani reste la source de prix des seuls clients confirmés (montantsSortants).
+export const prixEcritParNani = (messages = []) => (messages || []).some((m) => m && m.sens === "sortant" && ["app", "gestion"].includes(m.origine) && !m.supprime_le && m.texte && montantsDePrix(String(m.texte), new Set()).length > 0);
 // Un prix déjà donné au client : écrit par Nani dans la conversation, ou dans une réponse déjà proposée (historique, ou plus tôt dans l'échange).
 export const prixDejaDonne = (memo) => !!memo && (memo.prixDonne === true || (memo.nani instanceof Set && memo.nani.size > 0));
 // Les prix de vente rendus par les outils, par entreprise (espace unifié : champ « entreprise » des lignes, « Secret » ou « Taxi »).
@@ -2238,11 +2242,12 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
       }
     }
   }
-  // Une réponse au client déjà proposée avec un prix (échange précédent) : le prix est donné, le modèle ne s'impose plus.
+  // Une réponse au client déjà proposée avec un prix (échange précédent) : le prix est donné, le modèle ne s'impose plus. Un prix, pas un
+  // nombre : sourcé ou collé à une devise (« TG 255 » n'en est pas un, deuxième relecture de la PR 342).
   // Un appel refusé (résultat en erreur) ne compte pas.
   const refuses = new Set();
   for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "user" && b && b.type === "tool_result" && b.is_error) refuses.add(b.tool_use_id);
-  for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "assistant" && b && b.type === "tool_use" && b.name === "proposer_reponse" && !refuses.has(b.id) && b.input && montantsDuTexte(String(b.input.message || "")).some((n) => n > 0)) memo.prixDonne = true;
+  for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "assistant" && b && b.type === "tool_use" && b.name === "proposer_reponse" && !refuses.has(b.id) && b.input && montantsDePrix(String(b.input.message || ""), new Set([...memo.prix, ...memo.tapes])).length > 0) memo.prixDonne = true;
   // Les heures tapées par la personne sont admises aussi (« vol à 19:30 »), et ses durées (« compte 2h30 »).
   for (const m of messages) {
     const t = sansResume(m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "");

@@ -56,21 +56,40 @@ export function remplirModelePrix(modele, { total = "", prenom = "", entreprise 
 const comparable = (t) => propre(t).replace(/\s+/g, " ").trim();
 export const memeTexte = (a, b) => comparable(a) === comparable(b);
 
-// Les questions du brouillon qui ne sont ni dans le modèle ni déjà dans la suite (hôtel, heure, sièges, bagages) : elles ne se perdent pas
-// quand le modèle remplace le brouillon. Une ligne qui porte un montant reste dehors (le prix est dans le modèle).
-export function questionsEnPlus(brouillon, { modele = "", suite = "", lireMontants = () => [] } = {}) {
-  const deja = comparable(`${modele}\n${suite}`).toLowerCase();
-  return propre(brouillon)
+// Les phrases du brouillon absentes du modèle et de la suite, question ou information (« What time does your flight land? », « We have
+// child seats. ») : elles ne se perdent pas quand le modèle remplace le brouillon (deuxième relecture de la PR 342 : par phrase, pas par
+// ligne). Restent dehors : une phrase qui porte un montant (le prix est dans le modèle), les formules que le modèle dit déjà ou qui n'apportent
+// rien (salutation, remerciement : la plupart de leurs mots sont dans le modèle) et une formule de fin ou une signature.
+const FORMULE_DE_FIN = /\b(?:have a (?:nice|great|lovely|good|wonderful) (?:day|evening|trip)|kind regards|best regards|cheers|belle journée|bonne journée|cordialement|à bientôt)\b/i;
+const mots = (t) => sansAccentsMin(t).match(/[a-z0-9]+/g) || [];
+const sansAccentsMin = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+export const phrasesDe = (t) =>
+  propre(t)
     .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => /\?\s*\S{0,3}$/.test(l) && !lireMontants(l).some((n) => n > 0) && !deja.includes(comparable(l).toLowerCase()));
+    .flatMap((l) => l.split(/(?<=[.!?…])\s+(?=\S)/u))
+    .map((p) => p.replace(/^[\s→•*-]+/u, "").trim())
+    .filter((p) => /[\p{L}\p{N}]/u.test(p));
+export function phrasesEnPlus(brouillon, { modele = "", suite = "", entreprise = "", lireMontants = () => [] } = {}) {
+  const deja = sansAccentsMin(comparable(`${modele}\n${suite}`));
+  const motsModele = new Set(mots(modele));
+  const nom = sansAccentsMin(entreprise).trim();
+  const vues = new Set();
+  return phrasesDe(brouillon).filter((p) => {
+    const m = mots(p);
+    const cle = sansAccentsMin(comparable(p));
+    if (!m.length || vues.has(cle)) return false;
+    vues.add(cle);
+    if (deja.includes(cle) || lireMontants(p).some((n) => n > 0)) return false;
+    if (FORMULE_DE_FIN.test(p) || (nom && cle.includes(nom))) return false;
+    return m.filter((x) => motsModele.has(x)).length / m.length < 0.6;
+  });
 }
 
 // L'entrée de proposer_reponse vue par le modèle de prix. Rend { message, avertissements } ou { erreur, conseil }.
 //   - `controle` faux (réponse à un partenaire, un chauffeur, au personnel ou à l'apporteur lui-même ; ou un prix déjà donné au client) :
 //     rien n'est imposé, le message reste tel quel ;
 //   - modele_prix = un id de modèle de prix de l'entreprise, dans la langue de la réponse : le message devient le modèle rempli, quoi qu'ait
-//     écrit l'Assistant, suivi de `suite` (et des questions du brouillon) en message séparé. Hors des cas couverts (plusieurs montants ou
+//     écrit l'Assistant, suivi de `suite` (et des phrases du brouillon absentes du modèle) en message séparé. Hors des cas couverts (plusieurs montants ou
 //     plusieurs prix, prix par personne, trajet partagé, prix hors du catalogue de l'entreprise en espace unifié), le brouillon reste (la
 //     voix) avec un avertissement « hors_modele_prix ». Le total doit être un prix de vente sourcé, jamais un montant interne ;
 //   - modele_prix = « aucun » : hors_modele dit pourquoi en une ligne, montrée à la personne (« hors_modele_prix ») ; le message reste ;
@@ -112,7 +131,7 @@ export function appliquerModelePrix(e, { reglages = null, entreprise = "", monta
   if (r.erreur) return r;
   const suite = propre(e.suite).trim();
   if (suite.length > SUITE_MAX) return { erreur: "suite_trop_longue", conseil: "La suite est un court message séparé (une question, une information) : raccourcis-la." };
-  const enPlus = questionsEnPlus(message, { modele: r.message, suite, lireMontants });
+  const enPlus = phrasesEnPlus(message, { modele: r.message, suite, entreprise, lireMontants });
   const reste = [suite, ...enPlus].filter(Boolean).join("\n");
   const avert = [`${memeTexte(message, r.message) ? "modele_prix" : "modele_prix_remplace"}:${modele.titre}`];
   return { message: reste ? `${r.message}\n\n${reste}` : r.message, avertissements: avert };

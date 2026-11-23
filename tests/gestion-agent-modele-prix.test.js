@@ -4,8 +4,9 @@
 // partenaire, un chauffeur ni un prix d'une autre entreprise. Conversation et données inventées, aucun appel réseau.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appliquerModelePrix, consignesModelesPrix, formatTotal, modelesPrix, remplirModelePrix, USAGE_PRIX, voixCopieModele } from "../supabase/functions/agent/modele-prix.js";
-import { OUTILS, executer, memoDepuis, montantsDePrix, montantsDuTexte, normaliserEntree, outilsDuContexte, prixDejaDonne } from "../supabase/functions/agent/outils.js";
+import { readFileSync } from "node:fs";
+import { appliquerModelePrix, phrasesDe, phrasesEnPlus, consignesModelesPrix, formatTotal, modelesPrix, remplirModelePrix, USAGE_PRIX, voixCopieModele } from "../supabase/functions/agent/modele-prix.js";
+import { OUTILS, executer, memoDepuis, montantsDePrix, montantsDuTexte, normaliserEntree, outilsDuContexte, prixDejaDonne, prixEcritParNani } from "../supabase/functions/agent/outils.js";
 import { consignes, voixPour, voixSansSignature } from "../supabase/functions/agent/prompt.js";
 import { proposerReglage, lireReglages } from "../supabase/functions/agent/ameliorer.js";
 import { tourner } from "../supabase/functions/agent/boucle.js";
@@ -89,6 +90,11 @@ test("cas 1, question en plus du prix : le modèle mot pour mot, puis la questio
   const brouillon = "Hello,\n\n→ Krabi Town: 2,500 THB\n\nWhat time does your flight land?\nDo you need a child seat?";
   const q = await reponse({ message: brouillon, modele_prix: "perso-demo01", total: "2,500 THB" });
   assert.equal(q.carte.donnees.message, `${rempli("2,500 THB")}\n\nWhat time does your flight land?\nDo you need a child seat?`);
+  // Par phrase, pas par ligne : une information aussi (« We have child seats. »), même collée au prix sur la même ligne.
+  const info = await reponse({ message: "Hello, thank you for your message 😊 Krabi Town is 2,500 THB. We have child seats. Is it for tomorrow?\n\nHave a nice day, Taxi Démo", modele_prix: "perso-demo01", total: "2,500 THB" });
+  assert.equal(info.carte.donnees.message, `${rempli("2,500 THB")}\n\nWe have child seats.\nIs it for tomorrow?`);
+  assert.deepEqual(phrasesDe("Hi Tom. We have child seats! Ok?\n→ Ao Nang"), ["Hi Tom.", "We have child seats!", "Ok?", "Ao Nang"]);
+  assert.deepEqual(phrasesEnPlus("Thank you for your message. Kind regards, Taxi Démo", { modele: MODELE.corps, entreprise: "Taxi Démo" }), []);
   // Une question déjà dans suite n'est pas répétée.
   const deux = await reponse({ message: brouillon, modele_prix: "perso-demo01", total: "2,500 THB", suite: "What time does your flight land?" });
   assert.equal(deux.carte.donnees.message.match(/What time does your flight land\?/g).length, 1);
@@ -160,6 +166,15 @@ test("cas 4, confirmation au deuxième message : le prix est déjà donné, rien
   assert.equal(un.carte.donnees.message, rempli("2,500 THB"));
   const suite = await reponse({ message: "And Ao Nang would be 2,700 THB." }, TAXI, memo);
   assert.equal(suite.carte.donnees.message, "And Ao Nang would be 2,700 THB.");
+  // Un numéro de vol dans une réponse déjà proposée n'est pas un prix donné ; un prix avec sa devise, si.
+  const vol = (message) => memoDepuis([{ role: "assistant", content: [{ type: "tool_use", id: "v1", name: "proposer_reponse", input: { titre: "R", langue: "en", ...VIDE, message } }] }]);
+  assert.equal(prixDejaDonne(vol("Your flight TG 255 lands at 14:05, see you there.")), false);
+  assert.equal(prixDejaDonne(vol("Hello, the transfer is 2,500 THB.")), true);
+  // WhatsApp : un prix écrit par Nani avec sa devise, client confirmé ou non ; jamais un numéro de vol, un message du client ou effacé.
+  assert.equal(prixEcritParNani([{ sens: "sortant", origine: "app", texte: "It's 2,500 THB for the private car" }]), true);
+  assert.equal(prixEcritParNani([{ sens: "sortant", origine: "gestion", texte: "Flight TG 255 noted, pickup 09:00" }]), false);
+  assert.equal(prixEcritParNani([{ sens: "entrant", origine: "app", texte: "Is 2,500 THB ok?" }]), false);
+  assert.equal(prixEcritParNani([{ sens: "sortant", origine: "app", texte: "2,500 THB", supprime_le: "2026-11-23" }]), false);
   // Un appel refusé dans l'historique ne compte pas comme prix donné.
   const refuse = memoDepuis([historique[0], historique[1], { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "{}", is_error: true }] }]);
   assert.equal(prixDejaDonne(refuse), false);
@@ -182,8 +197,16 @@ test("cas 4, partenaires : jamais à un chauffeur, au personnel ni à l'apporteu
   const ctxA = ctxDe(TAXI, { apporteur: { id: "x", nom: "Agence Démo" } });
   const versApporteur = await reponse({ message: chauffeur, modele_prix: "perso-demo01", total: "2,500 THB", destinataire: "apporteur" }, TAXI, memoDe({ contact: "apporteur", heures: new Set(["09:00"]) }), ctxA);
   assert.equal(versApporteur.carte.donnees.message, chauffeur);
-  const versClient = await reponse({ message: "", modele_prix: "perso-demo01", total: "2,500 THB", destinataire: "client" }, TAXI, memoDe({ contact: "apporteur" }), ctxA);
-  assert.equal(versClient.carte.donnees.message, rempli("2,500 THB"));
+  // Une conversation d'apporteur : jamais le modèle, même pour un message que l'apporteur relaiera à son client (deuxième relecture).
+  for (const destinataire of ["client", ""]) {
+    const relais = await reponse({ message: "For your guest: 2,500 THB", modele_prix: "perso-demo01", total: "2,500 THB", destinataire }, TAXI, memoDe({ contact: "apporteur" }), ctxA);
+    assert.equal(relais.carte.donnees.message, "For your guest: 2,500 THB", destinataire);
+    assert.ok(!relais.carte.avertissements.some((a) => a.includes("modele")), destinataire);
+  }
+  // Une conversation WhatsApp typée apporteur, sans fiche reliée : pareil.
+  const sansFiche = await reponse({ message: "For your guest: 2,500 THB" }, TAXI, memoDe({ contact: "apporteur" }));
+  assert.equal(sansFiche.carte.donnees.message, "For your guest: 2,500 THB");
+  assert.deepEqual(sansFiche.carte.avertissements, []);
   // Un prix sans choix de modèle : la réponse passe, avec une information pour Nani.
   const sansChoix = await reponse({ message: DANS_LA_VOIX });
   assert.equal(sansChoix.carte.donnees.message.startsWith("Hello, thank you for your message"), true);
@@ -288,6 +311,10 @@ test("outils et écran : champs du modèle partout, usage « Réponse de prix »
   for (const mode of ["sur_mesure", "excursions", "taxi"]) assert.ok(usagesProposes(mode).some((x) => x.cle === "prix"), mode);
   for (const code of ["modele_prix:Prix", "modele_prix_remplace:Prix", "hors_modele_prix:Deux destinations", "modele_prix_a_choisir:Prix"]) assert.equal(libelleAvertissement(code).niveau, "info", code);
   for (const k of ["Réponse de prix (Assistant)", "Modèle de prix « {v} » repris mot pour mot.", "La réponse s'écartait du modèle de prix « {v} » : le modèle rempli la remplace.", "Modèle de prix non suivi : {v}", "La réponse donne un prix sans le modèle « {v} » : vérifiez si le modèle convenait.", "Modèle de prix « {valeur} » repris mot pour mot.", "La réponse s'écartait du modèle de prix « {valeur} » : le modèle rempli la remplace.", "Modèle de prix non suivi : {valeur}", "La réponse donne un prix sans le modèle « {valeur} » : vérifiez si le modèle convenait."]) assert.ok(EN[k], k);
+  // La boîte WhatsApp pose le drapeau et passe le type du contact (lu dans le code, la fonction Deno ne se lance pas ici).
+  const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.match(wa, /if \(prixEcritParNani\(messages\)\) memo\.prixDonne = true;/);
+  assert.match(wa, /contact: partenaire \? "partenaire" : typeof conv\.type_contact === "string" \? conv\.type_contact : ""/);
   // La fonction pure, sans outils : contrôle éteint, rien ne change.
   assert.deepEqual(appliquerModelePrix({ message: "x", modele_prix: "perso-demo01" }, { reglages: TAXI, controle: false }), { message: "x", avertissements: [] });
   assert.deepEqual(montantsDuTexte("2500"), [2500]);
