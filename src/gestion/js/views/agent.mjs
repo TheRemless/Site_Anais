@@ -550,9 +550,10 @@ export async function vueAgent(idOuvert = "") {
   }
   // Défilement (23.11.2026, fil-defilement.mjs) : le fil reste en bas pendant que les cartes et les images de voucher arrivent, tant que la
   // personne n'a pas fait défiler elle-même. Si elle lit plus haut, la réponse qui arrive ne la déplace pas : « Nouveaux messages ↓ ».
-  const boutonNouveaux = h("button", { class: "agent-nouveaux", type: "button", hidden: true }, tr("Nouveaux messages"), " ↓");
+  const boutonNouveaux = h("button", { class: "agent-nouveaux", type: "button", hidden: true }, tr("Nouveaux messages"), h("span", { "aria-hidden": "true" }, " ↓"));
   const suiviFil = () => {
-    if (!suiviAgent || suiviAgent.zone !== zoneFil) {
+    // Un suivi arrêté (la zone a quitté la page un instant) est refait.
+    if (!suiviAgent || suiviAgent.zone !== zoneFil || suiviAgent.ctrl.arrete) {
       if (suiviAgent) suiviAgent.ctrl.arreter();
       suiviAgent = { zone: zoneFil, ctrl: suivreFil(zoneFil, { bouton: boutonNouveaux }) };
     }

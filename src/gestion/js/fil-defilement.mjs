@@ -19,10 +19,12 @@ export const estEnBas = (position, cible, seuil = SEUIL_BAS) => position >= cibl
 // Ce que fait le fil quand l'écran change :
 // - « bas » : à l'ouverture, quand la personne vient d'écrire, ou si elle était déjà en bas ;
 // - « annoncer » : un message est arrivé alors qu'elle lit plus haut (position gardée, bouton « Nouveaux messages ») ;
-// - « garder » : rien de neuf, la position ne bouge pas.
+// - « garder » : rien de neuf et Nani lit plus haut, la position ne bouge pas.
+// Un redessin sans message neuf (statut « lu », réponse préparée, synchronisation) laisse en bas une personne qui y était : sinon le message
+// suivant du client ne ferait plus descendre le fil (relecture de la PR 339).
 export function decisionArrivee({ premiere = false, nouveau = false, colle = true, deMoi = false } = {}) {
   if (premiere) return "bas";
-  if (!nouveau) return "garder";
+  if (!nouveau) return colle ? "bas" : "garder";
   if (colle || deMoi) return "bas";
   return "annoncer";
 }
@@ -150,13 +152,20 @@ export function suivreFil(zone, { cibleFenetre = null, bouton = null } = {}) {
     else repere = lireRepere();
     return r.corriger;
   };
+  // La zone n'est plus dans la page (autre écran, conversation refaite) : les écouteurs partent avec elle.
+  const horsPage = () => {
+    if (arrete) return true;
+    if (zone.isConnected) return false;
+    arreter();
+    return true;
+  };
   const coller = () => {
     if (arrete || !zone.isConnected) return;
     aller(cible() + ecart);
   };
   const surGeste = () => (geste = Date.now());
   const surDefilement = () => {
-    if (arrete || !zone.isConnected) return;
+    if (horsPage()) return;
     if (synchroniser()) coller();
   };
   // Une image, une carte ou une police qui change la hauteur : en bas, on y reste ; plus haut, l'élément lu ne bouge pas.
@@ -164,7 +173,7 @@ export function suivreFil(zone, { cibleFenetre = null, bouton = null } = {}) {
   const ro =
     typeof ResizeObserver === "function"
       ? new ResizeObserver(() => {
-          if (arrete || !zone.isConnected) return;
+          if (horsPage()) return;
           synchroniser();
           if (colle) coller();
           else tenirRepere();
@@ -176,6 +185,15 @@ export function suivreFil(zone, { cibleFenetre = null, bouton = null } = {}) {
     for (const n of observe) if (n !== zone && n.parentNode !== zone) (observe.delete(n), ro.unobserve(n));
     for (const n of [zone, ...zone.children]) if (!observe.has(n)) (observe.add(n), ro.observe(n));
   };
+  function arreter() {
+    if (arrete) return;
+    arrete = true;
+    if (ro) ro.disconnect();
+    observe.clear();
+    for (const g of GESTES) window.removeEventListener(g, surGeste, { capture: true });
+    zone.removeEventListener("scroll", surDefilement);
+    window.removeEventListener("scroll", surDefilement);
+  }
   observer();
   for (const g of GESTES) window.addEventListener(g, surGeste, { capture: true, passive: true });
   zone.addEventListener("scroll", surDefilement, { passive: true });
@@ -197,10 +215,14 @@ export function suivreFil(zone, { cibleFenetre = null, bouton = null } = {}) {
       const rang = enfants.findIndex((x) => x === r.el || x.contains(r.el));
       return { position: position(), message: r.el.dataset ? r.el.dataset.message || "" : "", rang, decalage: r.decalage };
     },
-    // À l'ouverture ou quand la personne vient d'écrire : tout en bas, et on y reste.
-    bas() {
+    // Distance sous la position voulue (téléphone : Nani lit la réponse préparée sous le dernier message).
+    get ecart() {
+      return ecart;
+    },
+    // À l'ouverture ou quand la personne vient d'écrire : tout en bas, et on y reste. `ecart` : garder la distance d'avant un redessin.
+    bas({ ecart: e = 0 } = {}) {
       colle = true;
-      ecart = 0;
+      ecart = e;
       repere = null;
       montrerBouton(false);
       observer();
@@ -219,13 +241,9 @@ export function suivreFil(zone, { cibleFenetre = null, bouton = null } = {}) {
     },
     // Des éléments ajoutés dans la zone (bulle, carte, image) : observés eux aussi.
     observer,
-    arreter() {
-      if (arrete) return;
-      arrete = true;
-      if (ro) ro.disconnect();
-      for (const g of GESTES) window.removeEventListener(g, surGeste, { capture: true });
-      zone.removeEventListener("scroll", surDefilement);
-      window.removeEventListener("scroll", surDefilement);
+    arreter,
+    get arrete() {
+      return arrete;
     },
   };
 }

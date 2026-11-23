@@ -1299,13 +1299,15 @@ export async function vueWhatsApp() {
     const meme = !!avant && avant.dataset.conversation === ouverte.id;
     const zone = noeud.querySelector(".wa-messages");
     const ancienneZone = meme ? avant.querySelector(".wa-messages") : null;
-    const precedent = meme && suiviFil && suiviFil.zone === ancienneZone ? suiviFil : null;
+    const precedent = meme && suiviFil && suiviFil.zone === ancienneZone && !suiviFil.ctrl.arrete ? suiviFil : null;
     const nouveau = meme && avant.dataset.dernier !== dernier;
     const decision = decisionArrivee({ premiere: !precedent, nouveau, colle: precedent ? precedent.ctrl.colle : true, deMoi: nouveau && messages.length > 0 && messages[messages.length - 1].sens === "sortant" && messages[messages.length - 1].origine === "gestion" });
     // Ce que Nani lit, relevé sur l'écran encore affiché : la bulle lue est retrouvée après le redessin.
     const lectureAvant = precedent ? precedent.ctrl.instantane() : null;
+    // Redessin sans message neuf, Nani en bas : elle y reste, à la même distance sous le dernier message (téléphone).
+    const ecartAvant = precedent && !nouveau ? precedent.ctrl.ecart : 0;
     const dejaAnnonce = !!(precedent && precedent.bouton && !precedent.bouton.hidden);
-    const bouton = h("button", { class: "wa-nouveaux", type: "button", hidden: true }, tr("Nouveaux messages"), " ↓");
+    const bouton = h("button", { class: "wa-nouveaux", type: "button", hidden: true }, tr("Nouveaux messages"), h("span", { "aria-hidden": "true" }, " ↓"));
     zone.append(bouton);
     // Le message cité par l'adresse (PR B), montré une seule fois pour cette adresse : un redessin ne ramène pas Nani dessus.
     const cible = messageCible(lireAdresse(location.hash));
@@ -1336,7 +1338,7 @@ export async function vueWhatsApp() {
         history.replaceState(null, "", adresseConversation(ouverte));
         return void ctrl.garder(ctrl.instantane());
       }
-      if (decision === "bas") ctrl.bas();
+      if (decision === "bas") ctrl.bas({ ecart: ecartAvant });
       else ctrl.garder(lectureAvant, { annoncer: decision === "annoncer" || dejaAnnonce });
     };
   } else {

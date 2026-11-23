@@ -2311,10 +2311,11 @@ button.agent-joint { cursor: pointer; }
 .wa-image, .wa-fichier { margin: 0 0 6px; }
 .wa-image figcaption, .wa-fichier figcaption { margin-top: 4px; font-size: 0.92rem; white-space: pre-wrap; }
 .wa-vignette { display: block; padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; min-height: 0; }
-/* Place réservée avant le chargement (23.11.2026) : la boîte a les proportions de la photo quand on les connaît (--ratio), sinon un carré,
-   et garde la même taille avec ou sans image. Plus aucun saut quand les photos arrivent. */
+/* Place réservée avant le chargement (23.11.2026) : la boîte a les proportions de la photo quand on les connaît (--ratio, relevées par le
+   webhook), sinon un carré fixe, et garde la même taille avec ou sans image. Plus aucun saut quand les photos arrivent. La photo est
+   toujours entière (contain) sur un fond neutre : une ancienne photo sans dimensions ou une capture très haute n'est jamais coupée. */
 .wa-vignette-boite { display: block; width: min(260px, 62vw, calc(320px * var(--ratio, 1))); aspect-ratio: var(--ratio, 1); border-radius: 10px; overflow: hidden; background: var(--surface-2); }
-.wa-vignette-boite img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.wa-vignette-boite img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .wa-vignette-boite .wa-vignette-vide { width: 100%; height: 100%; border-radius: 0; }
 /* « Nouveaux messages ↓ » : Nani lit plus haut, un message arrive. Collé en bas du fil (bureau), au-dessus de la barre d'action (téléphone). */
 /* Le repère de lecture est tenu par fil-defilement.mjs, comme sur Safari : pas d'ancrage du navigateur en plus (Chrome). */

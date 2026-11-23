@@ -13,8 +13,8 @@ const D = () => import("../src/gestion/js/fil-defilement.mjs");
 test("décision à l'arrivée : en bas à l'ouverture, quand on écrit ou si on y était ; sinon position gardée et annonce", async () => {
   const { decisionArrivee } = await D();
   assert.equal(decisionArrivee({ premiere: true, colle: false }), "bas", "ouverture d'une conversation");
-  assert.equal(decisionArrivee({ nouveau: false, colle: false }), "garder", "redessin sans message neuf");
-  assert.equal(decisionArrivee({ nouveau: false, colle: true }), "garder");
+  assert.equal(decisionArrivee({ nouveau: false, colle: false }), "garder", "redessin sans message neuf, Nani lit plus haut");
+  assert.equal(decisionArrivee({ nouveau: false, colle: true }), "bas", "redessin sans message neuf (statut « lu », synchronisation), Nani en bas : elle y reste");
   assert.equal(decisionArrivee({ nouveau: true, colle: true }), "bas", "Nani était en bas : elle voit le message");
   assert.equal(decisionArrivee({ nouveau: true, colle: false }), "annoncer", "Nani lit plus haut : on ne la déplace pas");
   assert.equal(decisionArrivee({ nouveau: true, colle: false, deMoi: true }), "bas", "Nani vient d'envoyer : son message en vue");
@@ -42,7 +42,8 @@ test("place réservée : les proportions du média, bornées, sinon un carré ; 
   assert.equal(ratioMedia({ largeur: 4000, hauteur: 500 }), 1.7778, "panorama : borné à 16/9");
   const css = source("src/gestion/css/app.css");
   assert.match(css, /\.wa-vignette-boite \{[^}]*aspect-ratio: var\(--ratio, 1\)/, "la boîte prend les proportions avant l'image");
-  assert.match(css, /\.wa-vignette-boite img \{[^}]*object-fit: cover/);
+  assert.match(css, /\.wa-vignette-boite img \{[^}]*object-fit: contain/, "photo entière, jamais recadrée");
+  assert.doesNotMatch(css, /\.wa-vignette-boite img \{[^}]*cover/);
   assert.match(css, /\.agent-voucher-apercu \{[^}]*aspect-ratio: 1588 \/ 1900/, "aperçu du voucher de l'Assistant : place d'un voucher dès le départ");
   assert.doesNotMatch(css, /\.agent-voucher-apercu \{[^}]*min-height: 96px/, "plus de boîte de 96 px qui grandit à l'arrivée de l'image");
   assert.match(css, /\.wa-messages, \.agent-messages \{ overflow-anchor: none; \}/);
@@ -185,6 +186,54 @@ test("contrôleur : un défilement venu d'ailleurs (pas de geste) est corrigé t
   assert.equal(bouton.hidden, true);
 });
 
+test("contrôleur : redessin sans message neuf (statut « lu »), puis message du client : le fil reste en bas (relecture de la PR 339)", async () => {
+  const { suivreFil, decisionArrivee } = await D();
+  const g = installerGlobaux();
+  const bouton = { hidden: true, addEventListener() {} };
+  // Premier rendu : ouverture.
+  let { zone } = zoneSimulee();
+  let ctrl = suivreFil(zone, { bouton });
+  assert.equal(decisionArrivee({ premiere: true }), "bas");
+  ctrl.bas();
+  // Redessin pour un statut « lu » : nouvelle zone, même hauteur, pas de message neuf.
+  let d = decisionArrivee({ nouveau: false, colle: ctrl.colle });
+  ctrl.arreter();
+  ({ zone } = zoneSimulee());
+  ctrl = suivreFil(zone, { bouton });
+  assert.equal(d, "bas");
+  ctrl.bas({ ecart: 0 });
+  assert.equal(ctrl.colle, true, "toujours collée après le redessin");
+  // Le client écrit : la zone grandit d'un message.
+  d = decisionArrivee({ nouveau: true, colle: ctrl.colle });
+  ctrl.arreter();
+  ({ zone } = zoneSimulee({ hauteur: 3300 }));
+  ctrl = suivreFil(zone, { bouton });
+  assert.equal(d, "bas", "le message suivant fait descendre le fil");
+  ctrl.bas();
+  assert.equal(zone.scrollTop, 2800);
+  assert.equal(bouton.hidden, true);
+  void g;
+});
+
+test("contrôleur : la zone quitte la page (autre écran) : les écouteurs partent au premier défilement ou redimensionnement", async () => {
+  const { suivreFil } = await D();
+  const g = installerGlobaux();
+  const retires = [];
+  window.removeEventListener = (n) => retires.push(n);
+  const { zone } = zoneSimulee();
+  const ctrl = suivreFil(zone, {});
+  ctrl.bas();
+  zone.isConnected = false;
+  g.redimension();
+  assert.equal(ctrl.arrete, true);
+  assert.ok(retires.includes("scroll") && retires.includes("wheel") && retires.includes("touchstart"), "fenêtre libérée");
+  const autre = zoneSimulee().zone;
+  const ctrl2 = suivreFil(autre, {});
+  autre.isConnected = false;
+  autre.defiler(10);
+  assert.equal(ctrl2.arrete, true, "aussi depuis un défilement");
+});
+
 test("contrôleur : les éléments retirés du fil ne sont plus observés (zone de l'Assistant réutilisée)", async () => {
   const { suivreFil } = await D();
   const g = installerGlobaux();
@@ -220,11 +269,13 @@ test("écrans : WhatsApp sans « min-width: 900px » pour descendre, bulles repr
   assert.match(wa, /if \(agrandissement\) return;/, "un second toucher n'ouvre pas une deuxième photo");
   assert.match(wa, /messages\[messages\.length - 1\]\.origine === "gestion"/, "seul un envoi depuis Gestion ramène en bas une lecture plus haut");
   assert.match(source("src/gestion/js/visionneuse.mjs"), /if \(ouverte\) return ouverte;/);
+  assert.match(wa, /tr\("Nouveaux messages"\), h\("span", \{ "aria-hidden": "true" \}, " ↓"\)/, "la flèche n'est pas lue à voix haute");
   assert.doesNotMatch(wa, /zone\.replaceWith\(h\("img"/, "plus de zone d'attente remplacée par une image de taille inconnue");
   const app = source("src/gestion/js/app.mjs");
   assert.match(app, /if \(typeof noeud\.apresInsertion === "function"\) noeud\.apresInsertion\(\);/);
   const ag = source("src/gestion/js/views/agent.mjs");
   assert.match(ag, /suivreFil\(zoneFil, \{ bouton: boutonNouveaux \}\)/);
+  assert.match(ag, /tr\("Nouveaux messages"\), h\("span", \{ "aria-hidden": "true" \}, " ↓"\)/);
   assert.doesNotMatch(ag, /zoneFil\.scrollTop = zoneFil\.scrollHeight/, "plus de descente forcée à chaque morceau de réponse");
   assert.match(ag, /descendre\(\{ forcer: true \}\);\n/, "la personne vient d'écrire : en bas");
 });
@@ -247,4 +298,34 @@ test("démonstration : une conversation de 18 photos dessinées, numéro de fict
 test("textes anglais : les nouveaux libellés sont traduits", async () => {
   const { EN } = await import("../src/gestion/js/i18n-en.mjs");
   for (const k of ["Nouveaux messages", "Ouvrir l'original", "Photo envoyée par le client", "Fermer", "Photo"]) assert.ok(EN[k], k);
+});
+
+// ---- Webhook : dimensions relevées à la réception (relecture de la PR 339) -----------------------------------------------------------
+function jpeg({ largeur, hauteur, orientation = null, intel = false }) {
+  const o = [0xff, 0xd8];
+  if (orientation) {
+    const b16 = (v) => (intel ? [v & 0xff, v >> 8] : [v >> 8, v & 0xff]);
+    const b32 = (v) => (intel ? [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, v >>> 24] : [v >>> 24, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff]);
+    const tiff = [...(intel ? [0x49, 0x49] : [0x4d, 0x4d]), ...b16(42), ...b32(8), ...b16(1), ...b16(0x0112), ...b16(3), ...b32(1), ...b16(orientation), 0, 0, ...b32(0)];
+    const corps = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+    o.push(0xff, 0xe1, (corps.length + 2) >> 8, (corps.length + 2) & 0xff, ...corps);
+  }
+  o.push(0xff, 0xc0, 0, 17, 8, hauteur >> 8, hauteur & 0xff, largeur >> 8, largeur & 0xff, 3, ...new Array(9).fill(0));
+  o.push(0xff, 0xda, 0, 2);
+  return Uint8Array.from(o);
+}
+test("webhook : largeur et hauteur d'une photo lues dans l'en-tête, orientation EXIF comprise", async () => {
+  const { dimensionsImage, orientationJpeg } = await import("../supabase/functions/whatsapp-envoi/calc.js");
+  assert.deepEqual(dimensionsImage(jpeg({ largeur: 1600, hauteur: 1200 })), { largeur: 1600, hauteur: 1200 });
+  assert.equal(orientationJpeg(jpeg({ largeur: 1600, hauteur: 1200, orientation: 6 })), 6);
+  assert.deepEqual(dimensionsImage(jpeg({ largeur: 1600, hauteur: 1200, orientation: 6 })), { largeur: 1200, hauteur: 1600 }, "photo de téléphone tenue droite : affichée en portrait");
+  assert.deepEqual(dimensionsImage(jpeg({ largeur: 1600, hauteur: 1200, orientation: 8, intel: true })), { largeur: 1200, hauteur: 1600 }, "ordre des octets Intel");
+  assert.deepEqual(dimensionsImage(jpeg({ largeur: 1600, hauteur: 1200, orientation: 3 })), { largeur: 1600, hauteur: 1200 }, "retournée : mêmes proportions");
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 2, 0xd0, 0, 0, 6, 0x18, 8, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0, 0, 0, 0]);
+  assert.deepEqual(dimensionsImage(png), { largeur: 720, hauteur: 1560 }, "capture d'écran PNG");
+  assert.equal(dimensionsImage(Uint8Array.from([1, 2, 3, 4])), null, "pas une image");
+  assert.equal(dimensionsImage(new TextEncoder().encode("%PDF-1.7 ...")), null);
+  const index = source("supabase/functions/whatsapp/index.ts");
+  assert.match(index, /const dims = mime\.startsWith\("image\/"\) \? dimensionsImage\(octets\) : null;/);
+  assert.match(index, /mediaCopie\(m, \{ statut: "copie", chemin, taille: octets\.length, mime, \.\.\.\(dims \|\| \{\}\) \}\)/);
 });
