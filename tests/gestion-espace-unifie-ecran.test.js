@@ -279,7 +279,7 @@ test("4. « Vérifier avant » : jamais pour une carte unifiée avec un service 
   const agent = source("views/agent.mjs");
   assert.match(agent, /const aChoisir = u && \(du\.services \|\| \[\]\)\.some\(\(s\) => !s\.entite_id\);/);
   assert.match(agent, /puis: mixte \|\| ailleurs \|\| aChoisir \? null :/);
-  assert.match(agent, /const vue = \{ \.\.\.c, donnees: donneesCarte\(c\) \};\n(?:\s+\/\/[^\n]*\n)?\s+\(await import\("\.\/demande\.mjs"\)\)\.ouvrirDemande\(null, preparation\(vue\)/);
+  assert.match(agent, /const vue = \{ \.\.\.c, donnees: donneesCarte\(c\) \};\n(?:\s+\/\/[^\n]*\n)?\s+(?:const ouverte = )?\(await import\("\.\/demande\.mjs"\)\)\.ouvrirDemande\(null, preparation\(vue\)/);
 });
 
 test("5. lien des deux côtés ou pas du tout", async () => {

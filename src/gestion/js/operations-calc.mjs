@@ -520,7 +520,13 @@ export const CHAMPS_VOUCHER = {
 // Un billet lié à un trajet de la base en tire le départ, l'arrivée, les horaires et le bateau : ces champs ne se demandent que pour un billet
 // saisi à la main (partenaire ajouté sans trajet, Jérémy le 14.11.2026 : « un intitulé Route mais je ne vois pas où mettre le départ et l'arrivée »).
 const DU_TRAJET = ["de", "vers", "depart", "arrivee", "bateau"];
-export const champsVoucherDe = (type, { trajet = false } = {}) => (CHAMPS_VOUCHER[type] || []).filter((c) => !(type === "billet" && trajet && DU_TRAJET.includes(c)));
+// Un trajet du catalogue par la route (voucher de transfert depuis la PR 337) garde la règle de son ancien billet et celle de l'Assistant
+// (siegesRequisDuService, agent/outils.js) : pas de sièges exigés, pas de « retour au point de départ » (le trajet a ses deux bouts).
+// Décision de la relecture de la PR 337 (23.11.2026). Le nombre de bébés reste demandé (bebesDemandes).
+const HORS_TRAJET_ROUTE = ["type_trajet", "programme_trajet", "duree_h", "sieges"];
+export const champsVoucherDe = (type, { trajet = false } = {}) => (CHAMPS_VOUCHER[type] || []).filter((c) => !(trajet && ((type === "billet" && DU_TRAJET.includes(c)) || (type === "transfert" && HORS_TRAJET_ROUTE.includes(c)))));
+// Le nombre de bébés se demande pour un billet de bateau, et pour tout trajet du catalogue (même passé en transfert par la route).
+export const bebesDemandes = (type, { trajet = false } = {}) => type === null || type === "billet" || (trajet && type === "transfert");
 // Les deux bouts d'un transfert d'après son trajet, sinon d'après le libellé « A → B » (de la prestation, sinon de la réservation) :
 // ce que le voucher et la Booking confirmation impriment quand le pickup ou le drop-off n'a pas été saisi.
 export const dropOffDepuisLibelle = (r, p, trajet) => (estRetourDepart(r) ? "" : trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
@@ -640,16 +646,31 @@ export const modeleChoisi = (reservation) => {
   return m === SANS_VOUCHER || MODELES_VOUCHER.includes(m) ? m : "";
 };
 
+// Le mode d'un trajet du catalogue, d'après son champ « mode » (« Speedboat », « Minivan + minivan (departs Krabi Town at 11:30) »,
+// « Shared van + speedboat ») : « bateau » (que de l'eau), « route » (minivan, bus, taxi, sans bateau), « mixte » (les deux), "" (inconnu).
+// INV-2026-047 (23.11.2026) : un trajet Lanta → Khao Sok en minivans recevait un billet de bateau parce que tout trajet en était un.
+const EAU = /speed ?boat|ferry|\bboat|catamaran|longtail|long-tail|bateau|express boat|ship/i;
+const ROUTE = /mini ?van|\bvan\b|mini ?bus|\bbus\b|taxi|\bcar\b|pick-?up|voiture|songthaew|sawngthaew/i;
+export function modeTrajet(trajet) {
+  const m = String((trajet && trajet.mode) || "");
+  const eau = EAU.test(m);
+  const route = ROUTE.test(m);
+  return eau && route ? "mixte" : eau ? "bateau" : route ? "route" : "";
+}
+
 // `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (points d'embarquement sur sa fiche), un billet.
-export function typeVoucher(reservation, prestation, partenaire = null) {
+// `trajet` (facultatif) : le trajet de la base lié à la réservation, pour un trajet par la route (voucher de transfert, pas un billet de bateau).
+export function typeVoucher(reservation, prestation, partenaire = null, trajet = null) {
   const choisi = modeleChoisi(reservation);
   if (choisi) return choisi === SANS_VOUCHER ? null : choisi;
-  return typeVoucherDeduit(reservation, prestation, partenaire);
+  return typeVoucherDeduit(reservation, prestation, partenaire, trajet);
 }
 
 // La déduction d'avant (prestation, trajet, mots du libellé) : la valeur par défaut du menu « Modèle de voucher ».
-export function typeVoucherDeduit(reservation, prestation, partenaire = null) {
-  if (reservation.trajet_id) return "billet";
+// Un trajet de la base : un billet de bateau, sauf un trajet tout par la route (minivan, bus) qui reçoit le voucher de transfert. Un trajet
+// mixte (bateau puis minivan, ou l'inverse) garde le billet : le client embarque et le check-in au quai s'imprime. Trajet inconnu : billet.
+export function typeVoucherDeduit(reservation, prestation, partenaire = null, trajet = null) {
+  if (reservation.trajet_id) return trajet && modeTrajet(trajet) === "route" ? "transfert" : "billet";
   if (!prestation && partenaire && ((partenaire.regles && partenaire.regles.points_embarquement && partenaire.regles.points_embarquement.length) || /speed ?boat|ferry/i.test(partenaire.nom || ""))) return "billet";
   const f = prestation ? prestation.famille : "";
   const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
@@ -845,8 +866,16 @@ export function dureeTexte(duree) {
 export const venduParPersonne = (prestation) => !prestation || !prestation.unite || ["pp", "ad", "ch", "pers"].includes(prestation.unite);
 
 
-// Type de transfert d'après le groupe de la prestation.
-export function typeTransfert(prestation, reservation) {
+// Type de transfert d'après le trajet de la base, sinon le groupe de la prestation et le libellé.
+// Un trajet du catalogue se vend à la place (prix par adulte) : un minivan partagé, sauf si son mode dit « private », « privé » ou « charter »
+// (INV-2026-047, 23.11.2026 : « Minivan + minivan » s'imprimait « Private minivan »). « Taxi » seul ne rend pas privé (« Minivan + pick-up
+// taxi + longtail » se partage) : seulement « private taxi » ou « taxi privé » (relecture de la PR 337).
+export function typeTransfert(prestation, reservation, trajet = null) {
+  if (trajet && reservation && reservation.trajet_id) {
+    const m = String(trajet.mode || "");
+    if (/priv|charter/i.test(m)) return /\bpriv(?:ate|é|e)?\s+(?:taxi|car)\b|\b(?:taxi|voiture)\s+priv/i.test(m) ? "taxi" : "minivan";
+    return "partage";
+  }
   const t = `${(prestation && prestation.groupe) || ""} ${(reservation && reservation.libelle) || ""}`;
   if (/partag|shared|navette|join/i.test(t)) return "partage";
   if (/taxi|berline|voiture|car\b/i.test(t)) return "taxi";

@@ -577,7 +577,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   }
 
   // Ouvre l'écran « Nouveau dossier » déjà rempli, pour vérifier ou compléter avant de créer.
+  // Jamais depuis une carte de l'Assistant (`options.surCree`, relecture de la PR 337) : « Nouveau dossier » créerait le dossier sans que la
+  // carte soit notée, et « Tout valider » pourrait en créer un second. La fiche de la carte crée elle-même, avec la carte prise.
   function verifierAvant() {
+    if (options.surCree) return;
     const b = preparer();
     if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque && b.manque.transfertLibre) return (erreur.textContent = tr("Indiquez le prix du transfert privé, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
@@ -637,7 +640,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
         h("button", { class: "secondaire petit", type: "button", onclick: () => { const sv = nouveauService({ phrase: tr("Service ajouté") }); choisirDansBase(sv); } }, tr("Ajouter un service")),
         totalBloc,
         erreur,
-        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
+        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite && !options.surCree ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
     );
   }
@@ -687,7 +690,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const corps = h("div", { class: "modal-corps demande" });
   // Demande du site : son message reste sous les yeux (il se relit si on le corrige). Carte de l'agent : la demande est déjà lue.
   corps.append(...(depuisSite ? [h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone)] : []), reconnu);
-  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto });
+  // `options.ferme` (carte de l'Assistant, « Vérifier avant ») : appelé à la fermeture de la fiche, créée ou non (la carte se rend si rien n'est créé).
+  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto, ferme: options.ferme || null });
 
   // Hôtels situés (migration 48) : lus en arrière-plan, leurs zones complètent ensuite les propositions de zone de pickup.
   // Une validation d'un geste les attend (leurs zones servent aux zones de pickup), jamais plus de HOTELS_DELAI_MS : une lecture lente ou

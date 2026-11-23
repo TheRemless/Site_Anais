@@ -4662,3 +4662,7 @@ for (const [k, v] of Object.entries(EN_CARNET)) if (!(k in EN)) EN[k] = v;
 // Sièges par type, bagages et remarques des cartes de l'Assistant (22.11.2026) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_VOUCHER } from "./i18n-en-voucher.mjs";
 for (const [k, v] of Object.entries(EN_VOUCHER)) if (!(k in EN)) EN[k] = v;
+
+// Type de transfert automatique et carte de l'Assistant validée une seule fois (INV-2026-047, 23.11.2026).
+import { EN_TRANSFERT } from "./i18n-en-transfert.mjs";
+for (const [k, v] of Object.entries(EN_TRANSFERT)) if (!(k in EN)) EN[k] = v;
