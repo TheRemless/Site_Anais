@@ -75,7 +75,7 @@ La page d'Ao Nang écrit les extras cochés dans la ligne `Extras:` de son messa
 | `Lunch box` | option économique (3 sorties) | `aonang-option-lunch-box\|standard\|Per person, Economy boat` | par personne |
 | `VIP Set` | option économique (3 sorties) | `aonang-option-vip-set\|standard\|Per boat` | par bateau |
 
-La lunch box compte une quantité égale aux personnes qui paient, adultes et enfants, jamais les bébés (une seule ligne de cette quantité) ; le VIP Set vaut une fois par bateau. Un extra impossible pour la sortie (VIP Set hors de l'économique, lunch box sur Luxury qui l'inclut et sur Prestige qui n'en propose pas) n'est jamais ajouté : l'offre le signale (`extrasManquants`, affiché par la fenêtre de création) et « Modifier » le retire du message refait. Exemple de contrôle : Hong Islands VIP, 2 adultes et 1 enfant, `Extras: Lunch box` = prix du bateau + 3 lunch box. La ligne du VIP Set côté partenaire se complète par un SQL privé de correctif (hors dépôt).
+La lunch box compte une quantité égale à toutes les personnes, adultes, enfants et bébés, au moins une (comme l'estimation de la page ; une seule ligne de cette quantité) ; le VIP Set vaut une fois par bateau. Un extra impossible pour la sortie (VIP Set hors de l'économique, lunch box sur Luxury qui l'inclut et sur Prestige qui n'en propose pas) n'est jamais ajouté : l'offre le signale (`extrasManquants`, affiché par la fenêtre de création) et « Modifier » le retire du message refait. Exemple de contrôle : Hong Islands VIP, 2 adultes et 1 enfant, `Extras: Lunch box` = prix du bateau + 3 lunch box. La ligne du VIP Set côté partenaire se complète par un SQL privé de correctif (hors dépôt).
 
 ## Message collé et Assistant
 

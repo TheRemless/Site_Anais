@@ -1285,3 +1285,19 @@ test("fichiers suivis du lot : aucune marge ni valeur de net ou de commission di
   }
   assert.match(lireFichier("docs/gestion/verif-secret-aonang-lanta.mjs"), /option sans net posé/);
 });
+
+test("estimation écrite avec l'apostrophe typographique de la page (« 5’000 », « 12’345,50 ») ; doc et alerte à jour (lunch box de toutes les personnes, style de Jérémy)", () => {
+  assert.equal(montantFrancais("5\u2019000"), 5000);
+  assert.equal(montantFrancais("12\u2019345,50"), 12345.5);
+  const recap = (v) => `Demande de réservation : Ang Thong en big boat, journée en groupe\nFormule : avec kayak\nPersonnes : 2 adultes\nEstimation : ${v} THB, à payer sur place après confirmation\nRéf : SAM-AB12`;
+  assert.equal(lireDuTexte(recap("5\u2019000"), AJD).prixSite, "5,000 THB");
+  assert.equal(lireDuTexte(recap("12\u2019345,50"), AJD).prixSite, "12,345.50 THB");
+  // La doc et le commentaire disent comme le code : toutes les personnes, bébés compris.
+  assert.doesNotMatch(lireFichier("docs/gestion/carnet-aonang-lanta.md"), /jamais les bébés|bébés exclus/);
+  assert.doesNotMatch(lireFichier("src/gestion/js/carnet-produits.mjs"), /bébés exclus/);
+  // Alerte « extra sans ligne » : pas de virgule avant « et », pas de deux-points, la traduction suit.
+  const vue = lireFichier("src/gestion/js/views/demande.mjs");
+  const cle = /extra_sans_tarif: N_\("([^"]+)"\)/.exec(vue)[1];
+  assert.doesNotMatch(cle, /, et |:/);
+  assert.match(lireFichier("src/gestion/js/i18n-en-carnet.mjs"), new RegExp(`"${cle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}": "[^"]+"`));
+});

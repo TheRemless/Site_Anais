@@ -31,7 +31,7 @@ const sortiesDuGuide = (guide) => (guide === "koh-lanta" ? SORTIES_KOH_LANTA.map
 
 // Un montant écrit par la page ou à la main, en THB : « 5 000 », « 1 250,50 », « 1.250 » (point ou virgule suivis de trois chiffres : milliers), « 250.5 » (décimale). 0 si illisible.
 export function montantFrancais(v) {
-  const t = String(v ?? "").replace(/[\s\u00a0\u202f']/g, "");
+  const t = String(v ?? "").replace(/[\s\u00a0\u202f'\u2019]/g, "");
   if (/^\d{1,3}([.,]\d{3})+([.,]\d{1,2})?$/.test(t)) {
     const decimale = /[.,]\d{1,2}$/.exec(t);
     const entier = decimale ? t.slice(0, decimale.index) : t;
@@ -51,7 +51,7 @@ function anglaisDuRecapitulatif(texte, produit, option, ref) {
   const lire = (re) => ((re.exec(texte) || [])[1] || "").trim();
   const iso = dateFrancaise(lire(/^Date\s*:\s*(.+)$/im));
   const personnes = lire(/^Personnes\s*:\s*(.+)$/im);
-  const total = montantFrancais((/^Estimation\s*:\s*([\d\s\u00a0\u202f.,]+?)\s*THB/im.exec(texte) || [])[1]);
+  const total = montantFrancais((/^Estimation\s*:\s*([\d\s\u00a0\u202f'\u2019.,]+?)\s*THB/im.exec(texte) || [])[1]);
   const pickup = lire(/^Prise en charge\s*:\s*(.+)$/im);
   const nom = lire(/^Nom\s*:\s*(.+)$/im);
   return [

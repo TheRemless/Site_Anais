@@ -50,7 +50,7 @@ const AVERTISSEMENTS = {
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
   // Revue de la PR 307 : le prix de la carte valait pour d'autres personnes.
-  extra_sans_tarif: N_("Extra demandé sans ligne créée (tarif absent de la base, ou extra impossible pour cette sortie) : vérifiez, et ajoutez-le à la main avec « Ajouter un service » si besoin."),
+  extra_sans_tarif: N_("Extra demandé mais aucune ligne créée (tarif absent de la base ou extra impossible pour cette sortie). Vérifiez, puis ajoutez-le à la main avec « Ajouter un service » si besoin."),
   prix_carte_personnes: N_("Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation."),
 };
 

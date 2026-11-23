@@ -20,8 +20,8 @@ export const SORTIES_KOH_LANTA = ["4-islands", "koh-rok-koh-haa", "koh-phi-phi",
 // collé qui porte l'un de ces préfixes vient d'une page du carnet (carnet-colle.mjs) ; un autre préfixe, ou aucun, n'en vient pas. Un test la compare aux fichiers des guides.
 export const REFS_CARNET = { SAM: "koh-samui", AON: "aonang", LAN: "koh-lanta" };
 // Les extras du site (ligne « Extras: » du message) qui ont un tarif de Gestion : les sorties pour lesquelles l'extra est possible (`produits`) et l'option, le libellé exact de l'extra tel que
-// la page l'écrit (`en`), la clé qui désigne sa prestation et son mode de prix (`par` : « bateau », une seule ligne, ou « personne », une quantité égale aux personnes qui paient, enfants
-// compris, bébés exclus). Un même libellé peut avoir plusieurs lignes, une par famille de sorties (la lunch box d'Ao Nang : VIP et Mini Luxury d'un côté, économique de l'autre). Un extra
+// la page l'écrit (`en`), la clé qui désigne sa prestation et son mode de prix (`par` : « bateau », une seule ligne, ou « personne », une quantité égale à toutes les personnes, adultes, enfants
+// et bébés, au moins une, comme l'estimation de la page). Un même libellé peut avoir plusieurs lignes, une par famille de sorties (la lunch box d'Ao Nang : VIP et Mini Luxury d'un côté, économique de l'autre). Un extra
 // qui n'est pas possible pour la sortie de la demande (VIP Set hors de l'économique, lunch box sur Luxury qui l'inclut ou sur Prestige) n'est jamais ajouté : l'offre le dit (extrasManquants).
 // Gestion retrouve la prestation de l'extension de Koh Kradan par `details.cle_carnet` (écrit sur la ligne par le SQL privé du guide) et celles d'Ao Nang par leur identifiant de tarif du
 // carnet (md5 de la clé, les mêmes que PRODUITS_CARNET) : jamais par un identifiant ni un nom écrit ici.
