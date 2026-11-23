@@ -46,6 +46,12 @@ export const EN = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose (agent.mjs, lieuxAVerifier).
   "Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service.": "Pickup to check: the card has no pickup place. Fill it in under the service.",
   "Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service.": "Drop-off to check: the card has no drop-off place. Fill it in under the service.",
+  // Message collé chez Taxi sans pickup ou sans drop-off lisible (views/demande.mjs, LIEUX_A_VERIFIER, ERREURS_LIEUX).
+  "Pickup à vérifier : le message ne dit pas d'où part la course.": "Pickup to check: the message does not say where the ride starts.",
+  "Drop-off à vérifier : le message ne dit pas où va la course.": "Drop-off to check: the message does not say where the ride goes.",
+  "Pickup à vérifier : remplissez le lieu de pickup du service avant de créer.": "Pickup to check: fill in the service's pickup place before creating.",
+  "Drop-off à vérifier : remplissez le drop-off du service avant de créer.": "Drop-off to check: fill in the service's drop-off before creating.",
+  "Recopié du message quand il le dit, sinon à remplir.": "Copied from the message when it says so, otherwise fill it in.",
   "Pickup ou drop-off à compléter : remplissez le champ sur la carte.": "Pickup or drop-off missing: fill in the field on the card.",
   "Remplissez le pickup ou le drop-off ci-dessus pour valider.": "Fill in the pickup or drop-off above to confirm.",
   "Hôtel, aéroport, embarcadère": "Hotel, airport, pier",

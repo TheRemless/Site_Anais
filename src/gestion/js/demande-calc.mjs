@@ -7,6 +7,7 @@ import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from ".
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET } from "./carnet-produits.mjs";
 import { lireInvites, ajusterAgesCarnet } from "./carnet-ages.mjs";
+import { sansLien } from "./agent-calc.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -455,7 +456,82 @@ export function lireLibre(texte, aujourdhui) {
 
 // Lecture d'un message : le formulaire des sites d'abord (lecture exacte), sinon le message libre.
 export function lireMessage(texte, aujourdhui) {
-  return lireDemande(texte, aujourdhui) || lireLibre(texte, aujourdhui);
+  const d = lireDemande(texte, aujourdhui) || lireLibre(texte, aujourdhui);
+  // Le sens de la course, tel que le message l'écrit (lireSens). Un formulaire du site a déjà son Pickup et son Drop-off (lireSite).
+  if (d && !d.site) d.sens = lireSens(texte);
+  return d;
+}
+
+// ---- Le sens d'une course écrit dans un message (relecture de la PR 332) ----------------------------------------------------------
+// « from Krabi Airport to Resort Exemple », « Pickup: … » et « Drop-off: … », « Krabi Airport → Resort Exemple », « Taxi Krabi Airport to
+// Resort Exemple », « pick us up at … », « drop us at … », « de l'aéroport de Krabi à l'hôtel … », « depuis … vers … ». Chaque bout est
+// recopié tel quel, sans lien (sansLien) ; rien n'est déduit : un bout que le message ne dit pas, ou qu'il dit sans le nommer (« our hotel »,
+// « the airport »), reste vide, et la fiche Taxi le signale (« Pickup à vérifier », « Drop-off à vérifier »). Rend { pickup, dropoff }.
+const ESP = "[ \\t]+";
+// Ce qui suit un lieu et n'en fait plus partie : une ponctuation, une date, une heure, le nombre de personnes, une formule.
+const FIN_LIEU = `(?=$|[.,;!?\\n]|${ESP}(?:(?:on|for|tomorrow|today|tonight|next|this|with|please|by|and|around|le|pour|avec|demain|ce|cet|cette|et|svp|merci|thanks?)\\b|(?:at|vers|à|a)[ \\t]+\\d)|${ESP}\\d{1,2}[ \\t]*(?:adults?|adultes?|pax|people|persons?|personnes?)\\b)`;
+// Un bout seul (« from … ») s'arrête aussi devant « to » : « from the airport to our hotel » ne donne pas « the airport to our hotel ».
+const FIN_BOUT = `(?=${ESP}(?:(?:to|vers)\\b|→|->)|${FIN_LIEU.slice(3)}`;
+const LIEU = "([^\\n.,;!?]+?)";
+const MOTS_COURSE = "taxi|transfer|transfert|ride|car|minivan|van|course|navette|trajet|voiture|bateau|boat|speedboat|ferry|aller|go|going|drive";
+// Un bout qui ne nomme aucun lieu : il ne se recopie pas (« our hotel » n'est pas une adresse de dépose).
+const LIEU_VAGUE = /^(?:(?:our|my|your|the|this|that|notre|mon|ma|votre|l['’]|le|la|cet|cette)[ \t]*)?(?:hotel|hôtel|hotels|resort|villa|place|accommodation|room|house|home|airport|aéroport|aeroport|pier|port|jetty|harbou?r|embarcad[èe]re|station|gare|terminal|beach|plage)?$|^(?:here|there|ici|là|la|chez nous)$/iu;
+function nettoyerLieu(x) {
+  let t = sansLien(x).replace(new RegExp(`^(?:(?:private|shared|priv[ée]e?)${ESP})?(?:${MOTS_COURSE})(?:${ESP}|$)`, "iu"), "").replace(/^(?:the|a)[ \t]+(?=\p{Lu})/u, "").replace(/[ \t]*(?:please|svp|s'il vous plaît|stp)$/iu, "").replace(/[ \t:–-]+$/u, "").trim();
+  if (!t || LIEU_VAGUE.test(t) || /^\d/.test(t) || lireHeureLibre(t) || lireDateLibre(t, "2026-01-01")) return "";
+  return t;
+}
+export function lireSens(texte) {
+  // Un lien coupe la phrase (il ne fait jamais partie d'un lieu) : « to Resort Exemple https://maps… » donne « Resort Exemple ».
+  const brut = String(texte || "").replace(/(?:\bhttps?:\/\/|\bwww\.)\S+/gi, "\n");
+  const out = { pickup: "", dropoff: "" };
+  const poser = (cle, v) => {
+    const l = nettoyerLieu(v || "");
+    if (l && !out[cle]) out[cle] = l;
+  };
+  // 1. Une ligne étiquetée : « Pickup: … », « Pick-up location: … », « Drop-off: … », « Prise en charge : … », « Dépose : … ».
+  for (const l of String(texte || "").split(/\r?\n/)) {
+    let m;
+    if ((m = /^[ \t]*(?:pick[- ]?up(?:[ \t]+(?:place|location|point|address))?|prise en charge|lieu de (?:prise en charge|pickup)|from)[ \t]*:[ \t]*(.+)$/iu.exec(l))) poser("pickup", m[1]);
+    else if ((m = /^[ \t]*(?:drop[- ]?off(?:[ \t]+(?:place|location|point|address))?|d[ée]pose|lieu de d[ée]pose|destination|to)[ \t]*:[ \t]*(.+)$/iu.exec(l))) poser("dropoff", m[1]);
+  }
+  // 2. Les deux bouts dans une phrase. Le premier sens lu fait foi.
+  const paires = [
+    // « from Krabi Airport to Resort Exemple », « from Krabi Airport → … »
+    new RegExp(`\\bfrom${ESP}${LIEU}${ESP}(?:to|→|->)${ESP}${LIEU}${FIN_LIEU}`, "giu"),
+    // « depuis l'aéroport de Krabi jusqu'à l'hôtel … », « taxi de l'aéroport de Krabi à l'hôtel … »
+    new RegExp(`(?:\\bdepuis|\\b(?:${MOTS_COURSE})${ESP}(?:priv[ée]e?${ESP})?(?:de|du|des|d['’]))[ \\t]*${LIEU}${ESP}(?:à|a|au|aux|vers|jusqu['’]à|jusqu['’]au|→|->)${ESP}${LIEU}${FIN_LIEU}`, "giu"),
+    // « Krabi Airport → Resort Exemple », « Krabi Airport -> Resort Exemple »
+    new RegExp(`(?:^|[:\\n]|\\b(?:${MOTS_COURSE})\\b)[ \\t]*${LIEU}[ \\t]*(?:→|->)[ \\t]*${LIEU}${FIN_LIEU}`, "giu"),
+    // « Taxi Krabi Airport to Resort Exemple », « Krabi Airport to Resort Exemple tomorrow » : deux noms propres, en tête de ligne ou après un mot de course.
+    new RegExp(`(?:^|[:\\n]|\\b(?:${MOTS_COURSE})${ESP})[ \\t]*((?:\\p{Lu}[\\p{L}\\d'’()&-]*[ \\t]+){0,5}\\p{Lu}[\\p{L}\\d'’()&-]*)${ESP}to${ESP}((?:the${ESP})?(?:\\p{Lu}[\\p{L}\\d'’()&-]*)(?:[ \\t]+(?:\\p{Lu}[\\p{L}\\d'’()&-]*|de|du|of|la|le))*)${FIN_LIEU}`, "gmu"),
+  ];
+  for (const re of paires) {
+    if (out.pickup && out.dropoff) break;
+    for (const m of brut.matchAll(re)) {
+      const de = nettoyerLieu(m[1]);
+      const vers = nettoyerLieu(m[2]);
+      if (!de && !vers) continue;
+      if (!out.pickup && !out.dropoff) {
+        out.pickup = de;
+        out.dropoff = vers;
+      } else {
+        if (!out.pickup) out.pickup = de;
+        if (!out.dropoff) out.dropoff = vers;
+      }
+      break;
+    }
+  }
+  // 3. Un seul bout dit : « pick us up at … », « pickup from … », « from … » ; « drop us at … », « taxi to … ».
+  if (!out.pickup) {
+    const m = new RegExp(`\\bpick(?:[- ]?up|${ESP}(?:me|us|them)${ESP}up)${ESP}(?:at|from)${ESP}${LIEU}${FIN_LIEU}`, "iu").exec(brut) || new RegExp(`\\bfrom${ESP}${LIEU}${FIN_BOUT}`, "iu").exec(brut);
+    if (m) poser("pickup", m[1]);
+  }
+  if (!out.dropoff) {
+    const m = new RegExp(`\\bdrop(?:[- ]?off)?(?:${ESP}(?:me|us|them)(?:${ESP}off)?)?${ESP}(?:at|in)${ESP}${LIEU}${FIN_LIEU}`, "iu").exec(brut) || new RegExp(`\\b(?:${MOTS_COURSE})${ESP}(?:back${ESP})?to${ESP}${LIEU}${FIN_LIEU}`, "iu").exec(brut);
+    if (m) poser("dropoff", m[1]);
+  }
+  return out;
 }
 
 // Koh Lanta est le point de départ implicite d'un transfert (« un taxi vers l'aéroport de Phuket ») : ces mots ne sont pas exigés dans la phrase.

@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, lireSens, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -15,7 +15,8 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, serviceDeLecture, saisieInitiale, reservationDuService, hotelDuClient as hotelDuClientCalc, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive, champsCreation } from "../creation-voucher-calc.mjs";
+import { servicesCreation, serviceDeLecture, saisieInitiale, reservationDuService, hotelDuClient as hotelDuClientCalc, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive, champsCreation, avecSensLu, lieuxAVerifierFiche } from "../creation-voucher-calc.mjs";
+import { lieuxExiges } from "../agent-calc.mjs";
 import { siegesLus, siegesTotal, siegesAChoisir } from "../sieges-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
@@ -51,6 +52,18 @@ const AVERTISSEMENTS = {
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
   // Revue de la PR 307 : le prix de la carte valait pour d'autres personnes.
   prix_carte_personnes: N_("Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation."),
+};
+
+// Message collé chez Taxi sans pickup ou sans drop-off lisible (relecture de la PR 332) : rien n'est deviné, ni l'hôtel ni le nom du tarif.
+// Sous le service, tant que le lieu manque :
+const LIEUX_A_VERIFIER = {
+  pickup_a_verifier: N_("Pickup à vérifier : le message ne dit pas d'où part la course."),
+  dropoff_a_verifier: N_("Drop-off à vérifier : le message ne dit pas où va la course."),
+};
+// À la création, quand le lieu manque toujours (le champ du bloc du voucher prend le focus) :
+const ERREURS_LIEUX = {
+  pickup_a_verifier: N_("Pickup à vérifier : remplissez le lieu de pickup du service avant de créer."),
+  dropoff_a_verifier: N_("Drop-off à vérifier : remplissez le drop-off du service avant de créer."),
 };
 
 // Quantité d'une prestation selon son unité (les bébés ne comptent pas).
@@ -145,6 +158,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const erreur = h("p", { class: "erreur-form", role: "alert" });
 
   const clefOffre = (o) => `${o.genre}:${o.id}`;
+  const familleDesLignes = (ls) => {
+    const l = ls.find((x) => x.prestation_id);
+    return (l && (etat.db.prestations.find((p) => p.id === l.prestation_id) || {}).famille) || "";
+  };
   const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
   const clientsConnus = () => (d ? clientsProches(d, clientsProposes()).filter((x) => !refuse.has(x.client.id)) : []);
 
@@ -156,7 +173,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const sommeCustom = (sv) => sv.lignesCustom.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
   // Ce que le service donne : son offre choisie, ou les lignes prises à la main dans la base.
   function etatDe(sv) {
-    if (sv.lignesCustom) return { offre: { genre: "prestation", id: sv.id, titre: sv.lignesCustom.filter((l) => l.kind !== "texte").map((l) => l.libelle).join(" + ") || tr("Service choisi"), total: sommeCustom(sv), source: { libelle: sv.lignesCustom.map((l) => l.libelle).join(" + ") } }, offres: [] };
+    // Chez Taxi, la famille du tarif pris dans la base suit l'offre : une excursion garde l'hôtel en pickup, une course jamais (reservationDuService).
+    // Secret et ZTP ne changent pas.
+    if (sv.lignesCustom) return { offre: { genre: "prestation", id: sv.id, titre: sv.lignesCustom.filter((l) => l.kind !== "texte").map((l) => l.libelle).join(" + ") || tr("Service choisi"), total: sommeCustom(sv), source: { libelle: sv.lignesCustom.map((l) => l.libelle).join(" + "), ...(modeTaxi() ? { famille: familleDesLignes(sv.lignesCustom) } : {}) } }, offres: [] };
     const offres = offresDe(sv);
     return { offre: choisie(sv, offres), offres };
   }
@@ -170,6 +189,15 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
 
   // Réservation de ce service : heure, lieu de prise en charge, dépose, vol, bagages (creation-voucher-calc.mjs, reservationDuService).
   const reservationDe = (sv, offre) => reservationDuService(sv, offre, { d, client: clientId ? clientParId(clientId) : null, taxi: modeTaxi(), entiteId: etat.entiteId });
+  // Chez Taxi, les lieux qu'une course doit avoir (agent-calc.mjs, lieuxExiges, la règle des cartes de l'Assistant) : un transfert, le pickup et
+  // le drop-off ; une excursion (aller-retour) ou un retour au point de départ, le pickup seul. Ailleurs : rien (Secret et ZTP ne changent pas).
+  function lieuxAVerifierDe(sv, offre) {
+    if (!modeTaxi()) return [];
+    const ligne = sv.lignesCustom ? sv.lignesCustom.find((l) => l.prestation_id) : null;
+    const o = sv.transfertLibre ? null : ligne ? { genre: "prestation", id: ligne.prestation_id } : offre ? { genre: offre.genre, id: offre.id } : null;
+    const exiges = sv.retourDepart ? { pickup: true, dropoff: false } : lieuxExiges({ offre: o }, { prestations: etat.db.prestations, taxi: true });
+    return lieuxAVerifierFiche(reservationDe(sv, offre), exiges);
+  }
 
   const coches = () => services.filter((sv) => sv.coche);
   function totalGeneral() {
@@ -200,6 +228,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const saisie = sv.saisie || {};
     if (siegesEnTrop({ sieges: siegesTotal(siegesLus({ ...(saisie.details || {}), sieges: saisie.sieges })), enfants: sv.enfants, bebes: saisie.bebes })) alertes.push(tr("Plus de sièges que d'enfants et de bébés : vérifiez."));
     // Un enfant ou un bébé sans choix des sièges (22.11.2026) : à faire avant de créer.
+    // Un lieu que le message ne dit pas (relecture de la PR 332) : jamais l'hôtel par défaut, Nani le remplit dans le bloc du voucher.
+    for (const code of lieuxAVerifierDe(sv, offre)) alertes.push(tr(LIEUX_A_VERIFIER[code]));
     if (sv.siegesVisibles && siegesAChoisir({ enfants: sv.enfants, bebes: saisie.bebes, sieges: siegesLus({ ...(saisie.details || {}), sieges: saisie.sieges }) })) alertes.push(tr("Enfant ou bébé : choisissez child seat, baby seat ou aucun siège."));
     n.alertes.replaceChildren(...alertes.map((a) => h("span", { class: "demande-attention" }, a)));
     n.alertes.hidden = !alertes.length;
@@ -228,7 +258,6 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const service = servicesCreation(lignesDuService(sv, offre), { prestations: etat.db.prestations, partenaires: etat.db.partenaires, trajets: etat.db.trajets })[0] || null;
     // Les sièges se choisissent là où la fiche les montre (transfert de Secret, Taxi ; jamais ZTP).
     sv.siegesVisibles = !!service && modeExcursions() && champsCreation(service, { taxi: modeTaxi() }).includes("sieges");
-    majAlertes(sv, offre);
     n.li.classList.toggle("decoche", !sv.coche);
     // Le bloc du voucher suit le modèle du service choisi (billet de bateau, excursion, transfert…) ; la saisie, elle, est gardée.
     const cle = service ? `${service.type}|${service.personnes.adultes + service.personnes.enfants > 0}|${service.pickup}|${service.dropoff}` : "";
@@ -237,7 +266,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       // Taxi : sans lieu donné par la demande, le pickup et le drop-off montrent les deux bouts du trajet choisi, dans un champ vide seulement
       // (un lieu de la carte ou saisi par Nani n'est jamais remplacé).
       if (service && modeTaxi()) boutsDuTrajet(sv.saisie, service, { lieu: !(d.type === "transfer" && d.pickup) });
-      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false, surSaisie: (s) => {
+      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: modeTaxi() ? tr("Recopié du message quand il le dit, sinon à remplir.") : tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false, surSaisie: (s) => {
         // Les sièges choisis effacent l'alerte « child seat, baby seat ou aucun siège ».
         majAlertes(sv);
         // Repassé en aller simple : ce n'est plus un retour au départ, les offres de la base et le cas général reviennent.
@@ -249,6 +278,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
         if (sv.transfertLibre) (majLigneLibre(sv), majTitreLibre(sv));
       } })].filter(Boolean) : []));
     }
+    // Les alertes après le bloc du voucher : les bouts d'un trajet viennent d'y être posés (lieux à vérifier).
+    majAlertes(sv, offre);
     // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.
     const pid = partenaireDeOffre(sv, offre);
     if (sv.zones && pid !== sv.partenaireId) {
@@ -264,6 +295,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // l'Assistant sa dépose, son vol, ses sièges, ses bagages et sa remarque), modifiable dans la fenêtre : creation-voucher-calc.mjs.
     // Formulaire du site et message collé (relecture de la PR 327) : « Child seat needed » ou « Baby seat needed » sans nombre donnent un siège.
     sv.saisie = saisieInitiale(sv, { d, excursions: modeExcursions(), sd: siegesDemande(d) });
+    // Message collé chez Taxi : le pickup et le drop-off qu'il écrit (« from Krabi Airport to … »), recopiés dans un champ vide seulement.
+    if (modeTaxi() && !sv.transfertLibre) avecSensLu(sv.saisie, sv.sensLu);
     const champ4 = (cle, libelle, valeur, opts = {}) => {
       const input = h("input", { id: `svc${sv.id}-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => ((sv[cle] = opts.type === "number" ? entier(e.target.value) : e.target.value), majService(sv), majTotal()) });
       return champ(libelle, input);
@@ -489,6 +522,11 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // Retour au point de départ sans programme : on ne crée pas, le champ est montré.
     const incomplet = trajetIncomplet(parService) || siegesIncomplets(parService);
     if (incomplet) return { incomplet: coches()[incomplet.index], code: incomplet.code, champ: incomplet.champ };
+    // Chez Taxi, un pickup ou un drop-off que le message ne dit pas : rien n'est créé, le champ est montré (relecture de la PR 332).
+    for (const sv of coches()) {
+      const [code] = lieuxAVerifierDe(sv, etatDe(sv).offre);
+      if (code) return { incomplet: sv, code, champ: code === "pickup_a_verifier" ? "lieu" : "drop_off" };
+    }
     const plusieurs = parService.length > 1;
     // Prix convenu dans « Modifier » (un seul service) : la facture prend ce total, l'écart va sur la première ligne.
     const finales = prixImpose !== null && !plusieurs ? imposerTotal(lignes, prixImpose) : lignes;
@@ -497,9 +535,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
 
   // Un retour au point de départ sans programme (ou à durée illisible) : le bloc du service se déplie et le champ prend le focus.
   function montrerIncomplet(b) {
-    erreur.textContent = tr(ERREURS_TRAJET[b.code]);
+    erreur.textContent = tr(ERREURS_TRAJET[b.code] || ERREURS_LIEUX[b.code]);
     const sv = b.incomplet;
-    const champ_ = document.getElementById(`svc${sv.id}-v-${b.champ === "duree_h" ? "duree-h" : b.champ === "sieges" ? "sieges" : "programme-trajet"}`);
+    const champ_ = document.getElementById(`svc${sv.id}-v-${{ duree_h: "duree-h", sieges: "sieges", lieu: "lieu", drop_off: "drop" }[b.champ] || "programme-trajet"}`);
     if (!champ_) return;
     const bloc = champ_.closest("details");
     if (bloc) bloc.open = true;
@@ -670,8 +708,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     poserLesBoutons();
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
-    if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService(serviceDeLecture(t));
+    // Le sens de la course lu dans le message (d.sens) ; plusieurs services : celui de la phrase de chacun, jamais celui d'un autre.
+    const sensDe = (phrase) => (!d.sens ? null : trouves.length > 1 ? lireSens(phrase || "") : d.sens);
+    if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "", sensLu: sensDe("") });
+    for (const t of trouves) nouveauService({ ...serviceDeLecture(t), sensLu: sensDe(t.phrase) });
     dessinerClient();
     majTotal();
   }
