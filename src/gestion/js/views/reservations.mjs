@@ -24,7 +24,7 @@ import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, 
 import { prestataires } from "../apporteurs-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
-import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
+import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier, raisonsNonAlignees } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire } from "./prestataire.mjs";
@@ -143,11 +143,30 @@ async function alignerFacture(r, ecart, apres) {
     // Une ligne enfant ajoutée à la facture devient une ligne de la réservation, et son prix entre dans le montant vendu.
     const patch = { ...(valeurs.details ? { details: valeurs.details } : {}), ...(suivi.montantVente !== null ? { montant_vente: suivi.montantVente } : {}) };
     if (Object.keys(patch).length) await modifier("reservations", r.id, patch);
-    toast(tr("Facture alignée sur la réservation."));
+    // « Facture alignée » seulement si tout a suivi : sinon, ce qui reste et pourquoi (23.11.2026, un prix resté à 2 850 sans un mot).
+    const non = raisonsNonAlignees({ nonAlignes: suivi.nonAlignes, reste: suivi.resteFacture, lignes: suivi.lignesService, raisonEnfant: suivi.raisonEnfant });
+    if (non.ecarts.length || non.raisons.length) nonAligne(non, { partiel: suivi.factureChangee, documentId: suivi.documentId });
+    else toast(tr("Facture alignée sur la réservation."));
     apres();
   } catch (err) {
     toast(tr("Alignement impossible : {message}", { message: err.message }), true);
   }
+}
+
+// Fenêtre « ce qui n'a pas suivi » : les écarts qui restent, pourquoi, et un lien vers la facture pour les corriger.
+function nonAligne({ ecarts, raisons }, { partiel, documentId }) {
+  const fermer = modal(
+    partiel ? tr("Facture alignée en partie") : tr("La facture n'a pas changé"),
+    h(
+      "div",
+      { class: "modal-corps", role: "alert" },
+      h("p", null, partiel ? tr("Ces points restent différents entre la réservation et la facture.") : tr("Rien n'a pu être reporté sur la facture. Ces points restent différents.")),
+      ecarts.length ? h("ul", null, ecarts.map((x) => h("li", null, x))) : null,
+      raisons.map((x) => h("p", null, x)),
+      h("div", { class: "actions colonne" }, documentId && peut("documents.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => (fermer(), naviguer(`#/doc/${documentId}`)) }, tr("Ouvrir la facture")) : null, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Fermer")))
+    ),
+    { protege: false }
+  );
 }
 
 // Remet la réservation d'après les lignes de la facture : date, adultes et enfants (les bébés restent), montant vendu.

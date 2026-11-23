@@ -111,5 +111,14 @@ const suivant = await essaie(U.admin, "select prochain_numero_ref($1, 2026, 9) n
 ok(suivant.ok && suivant.rows[0].n === 50, "le dossier suivant prend bien le numéro 50");
 ok((await un("select count(*)::int n from journal where table_name = 'reglages' and details ? 'prochain_numero'")).n === 1, "le changement de numérotation est au journal");
 
+console.log("== prix total d'une ligne (Mettre la facture comme la réservation, 23.11.2026)");
+// 2 900 pour 3 passagers ne donne pas un prix unitaire juste : la ligne garde sa quantité, perd son prix unitaire et porte le total.
+const forfait = { lignes: [{ id: "l1", kind: "ligne", libelle: "Tour Exemple, 3 passengers", par: "pp", unite: null, qte: 3, montant: 2900 }] };
+ok(Number((await un("select total_document($1::jsonb) t", [JSON.stringify(forfait)])).t) === 2900, "une ligne au prix total compte son montant, pas 3 × rien");
+const avant = { lignes: [{ id: "l1", kind: "ligne", libelle: "Tour Exemple, 3 passengers", par: "pp", unite: 950, qte: 3 }] };
+ok(Number((await un("select total_document($1::jsonb) t", [JSON.stringify(avant)])).t) === 2850, "avant l'alignement : 3 × 950");
+const remise = { lignes: [...forfait.lignes, { id: "r1", kind: "remise", pct: 10 }] };
+ok(Number((await un("select total_document($1::jsonb) t", [JSON.stringify(remise)])).t) === 2610, "une remise de 10 % porte sur le prix total (2 900 − 290)");
+
 console.log(echecs ? `${echecs} échec(s)` : "Tout est bon.");
 process.exit(echecs ? 1 : 0);

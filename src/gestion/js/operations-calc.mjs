@@ -1153,7 +1153,9 @@ export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant =
   // Seulement quand le tarif n'a pas de prix enfant, ou que les enfants viennent du dossier (revue de la PR 217) : sinon l'enfant ajouté reçoit
   // sa ligne enfant (contenuAvecEnfants), au lieu d'un adulte de plus.
   const sansPrixEnfant = (l) => { const t = tarifEnfant ? tarifEnfant(l) : undefined; return t === null || (!!t && (t.unite === null || t.unite === undefined || t.unite === "")); };
-  const enfantsAuPrixAdulte = !!seuleAdulte && nb(avant.personnes && avant.personnes.enfants) > 0 && parPersonne(seuleAdulte) && seuleAdulte.unite !== null && seuleAdulte.unite !== undefined && seuleAdulte.unite !== "" && qte(seuleAdulte) === total(avant.personnes) && (!!(r.details && r.details.personnes_du_dossier) || sansPrixEnfant(seuleAdulte));
+  // Une ligne au prix total (estPrixTotal) suit aussi les personnes : sa quantité et son libellé changent, son montant non.
+  const compteLesPersonnes = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== "") || estPrixTotal(l);
+  const enfantsAuPrixAdulte = !!seuleAdulte && nb(avant.personnes && avant.personnes.enfants) > 0 && parPersonne(seuleAdulte) && compteLesPersonnes(seuleAdulte) && qte(seuleAdulte) === total(avant.personnes) && (!!(r.details && r.details.personnes_du_dossier) || sansPrixEnfant(seuleAdulte));
   if (enfantsAuPrixAdulte) {
     if (total(apres.personnes) !== total(avant.personnes) && total(apres.personnes) > 0) modif(seuleAdulte, { qte: total(apres.personnes) });
     if (!miseAJour.size) return { contenu: null, reste };
@@ -1165,7 +1167,7 @@ export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant =
     const anciens = nb(avant.personnes && avant.personnes[cle]);
     const nouveaux = nb(apres.personnes && apres.personnes[cle]);
     if (anciens === nouveaux) continue;
-    const proportionnelles = groupe.filter((l) => l.unite !== null && l.unite !== undefined && l.unite !== "" && parPersonne(l) && qte(l) === anciens);
+    const proportionnelles = groupe.filter((l) => compteLesPersonnes(l) && parPersonne(l) && qte(l) === anciens);
     if (groupe.length === 1 && proportionnelles.length === 1 && nouveaux > 0) modif(proportionnelles[0], { qte: nouveaux });
     else reste.push({ cle, reservation: nouveaux, facture: groupe.reduce((somme, l) => somme + (qte(l) || 0), 0) });
   }
@@ -1186,6 +1188,21 @@ export function avecDescription(avant, apres, langue = "") {
   if (ancienne === null || avant.libelle !== ancienne) return apres;
   return { ...apres, libelle: descriptionGeneree(apres, langue) };
 }
+
+// ---- Ligne au prix total (23.11.2026) -----------------------------------------------------------------------------
+// Une ligne au prix total : une quantité (les personnes), pas de prix unitaire, un montant. Elle s'imprime sans « 3 × … ».
+const vide = (v) => v === null || v === undefined || v === "";
+export const estPrixTotal = (l) => !!l && vide(l.unite) && !vide(l.montant) && !vide(l.qte);
+// La mention d'un prix par personne (catalogue « (par personne) », « (par adulte) », « (par enfant) », trajet « (per adult) », en français comme en
+// anglais) ne va pas sur un prix total. Celle d'un enfant devient « (enfant) » : la ligne reste une ligne enfant (estLigneEnfant lit l'intro).
+const MENTIONS_PAR_PERSONNE = /^\((?:par|per) (?:personne|person|adulte|adult|enfant|child)\)$/i;
+export function sansMentionParPersonne(intro, en) {
+  const t = String(intro || "").trim();
+  if (!MENTIONS_PAR_PERSONNE.test(t)) return intro;
+  return /enfant|child/i.test(t) ? (en ? "(child)" : "(enfant)") : "";
+}
+// La mention retirée est gardée sur la ligne (`mention_retiree`, jamais imprimée ni comparée) et revient seule quand la ligne repasse au prix
+// unitaire : une intro vide au départ (facture Secret, ligne libre) reste vide, rien n'est déduit du catalogue (relecture de la PR 336).
 
 // ---- Libellé, partenaire, tarif ou prix changés depuis la réservation ----------------------------------------------
 // Les lignes du document qui correspondent à la réservation suivent ce qui a changé (16.11.2026 : Anaïs avait pris le tarif d'un autre partenaire,
@@ -1248,6 +1265,8 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
       const p = pid ? prestationDe(pid) : null;
       Object.assign(n, { prestation_id: pid, trajet_id: tid });
       delete n.libre;
+      // Un autre tarif : la mention gardée d'un prix total (`mention_retiree`) était celle de l'ancien.
+      delete n.mention_retiree;
       const net = p ? netDe(p) : undefined;
       n.net = net === undefined || net === null ? null : Number(net);
       if (p) {
@@ -1263,16 +1282,34 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
     } else reste.push({ cle: "prestation_id", reservation: pid, facture: premiere.prestation_id || null });
   }
 
-  // Prix : le montant vendu de la réservation devient celui de la ligne (prix unitaire = montant / quantité, seulement s'il tombe juste).
+  // Prix : le montant vendu de la réservation devient celui de la ligne. Prix unitaire = montant / quantité quand il tombe juste ; sinon la ligne
+  // devient un prix total (23.11.2026 : 2 900 pour 3 passagers à 950 ne donne pas un prix unitaire juste, la facture gardait 2 850 sans rien dire).
+  // Prix total : la quantité reste (elle compte les personnes, « 3 passengers » reste dans le libellé), le prix unitaire et la mention « (par personne) »
+  // s'effacent, le montant porte le total. Jamais de prix unitaire arrondi : 3 × 966,67 ferait 2 900,01. Un prix total qui redevient divisible
+  // (4 personnes, 3 800) repasse au prix unitaire, avec la mention qu'il avait (`mention_retiree`), et seulement celle-là. Plusieurs lignes (adulte, enfant) : la répartition serait devinée, le prix
+  // reste dans `reste`.
   if (cible.montant_vente !== undefined && cible.montant_vente !== null && cible.montant_vente !== "" && Number.isFinite(Number(cible.montant_vente))) {
     const montant = arr(Number(cible.montant_vente));
     const total = arr(cibles.reduce((s, l) => s + (brut(nouvelles.get(l)) || 0), 0));
     if (total !== montant || cibles.every((l) => brut(nouvelles.get(l)) === null)) {
       const n = seule ? nouvelles.get(seule) : null;
       const q = n && n.qte !== null && n.qte !== undefined && n.qte !== "" ? Number(n.qte) : null;
-      if (n && q !== null && q > 0 && arr(arr(montant / q) * q) === montant) n.unite = arr(montant / q);
-      else if (n && q === null) n.montant = montant;
-      else reste.push({ cle: "montant_vente", reservation: montant, facture: total });
+      if (n && q !== null && q > 0 && arr(arr(montant / q) * q) === montant) {
+        n.unite = arr(montant / q);
+        if (n.montant !== null && n.montant !== undefined && n.montant !== "") n.montant = null;
+        if (n.mention_retiree !== undefined) {
+          n.intro = n.mention_retiree;
+          delete n.mention_retiree;
+        }
+      } else if (n) {
+        n.montant = montant;
+        if (q !== null) {
+          n.unite = null;
+          const intro = sansMentionParPersonne(n.intro, en);
+          if (intro !== n.intro && n.mention_retiree === undefined) n.mention_retiree = n.intro;
+          n.intro = intro;
+        }
+      } else reste.push({ cle: "montant_vente", reservation: montant, facture: total });
     }
   }
 
