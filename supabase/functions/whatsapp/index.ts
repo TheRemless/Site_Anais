@@ -470,7 +470,13 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
       const { error } = await db.storage.from("whatsapp").upload(chemin, octets, { contentType: mime, upsert: true });
       if (error) throw new Error(error.message);
       // Largeur et hauteur lues dans l'en-tête (23.11.2026) : Gestion réserve la place de la vignette avant son chargement.
-      const dims = mime.startsWith("image/") ? dimensionsImage(octets) : null;
+      // Un en-tête mal formé ne met jamais le média en erreur : la photo est gardée, sans dimensions (boîte carrée dans Gestion).
+      let dims = null;
+      try {
+        dims = mime.startsWith("image/") ? dimensionsImage(octets) : null;
+      } catch {
+        dims = null;
+      }
       resultat.push(mediaCopie(m, { statut: "copie", chemin, taille: octets.length, mime, ...(dims || {}) }));
     } catch (err) {
       // Délai dépassé, réseau ou stockage : passager, la source reste pour un nouvel essai.

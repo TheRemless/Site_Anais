@@ -326,6 +326,22 @@ test("webhook : largeur et hauteur d'une photo lues dans l'en-tête, orientation
   assert.equal(dimensionsImage(Uint8Array.from([1, 2, 3, 4])), null, "pas une image");
   assert.equal(dimensionsImage(new TextEncoder().encode("%PDF-1.7 ...")), null);
   const index = source("supabase/functions/whatsapp/index.ts");
-  assert.match(index, /const dims = mime\.startsWith\("image\/"\) \? dimensionsImage\(octets\) : null;/);
+  assert.match(index, /try \{\n\s+dims = mime\.startsWith\("image\/"\) \? dimensionsImage\(octets\) : null;\n\s+\} catch \{\n\s+dims = null;\n\s+\}/, "un en-tête mal formé ne met jamais le média en erreur");
   assert.match(index, /mediaCopie\(m, \{ statut: "copie", chemin, taille: octets\.length, mime, \.\.\.\(dims \|\| \{\}\) \}\)/);
+});
+
+test("Assistant : aucun « null » écrit sous les cartes de voucher (relecture de la PR 339)", async () => {
+  // replaceChildren, append, before, after et replaceWith écrivent null en texte : la carte n'en passe jamais.
+  const src = source("src/gestion/js/views/agent-cartes-voucher.mjs");
+  assert.match(src, /\.\.\.\(absents \? \[h\("p", \{ class: "aide" \}/);
+  assert.doesNotMatch(src, /absents \? h\(/);
+  // Dans le DOM : le même appel avec et sans service absent.
+  const { installerDom } = await import("./aides-dom.mjs");
+  installerDom();
+  const zone = document.createElement("div");
+  const carte = document.createElement("section");
+  const absents = false;
+  zone.replaceChildren(carte, ...(absents ? [document.createElement("p")] : []));
+  assert.equal(zone.childNodes.length, 1);
+  assert.doesNotMatch(zone.textContent, /null/);
 });
