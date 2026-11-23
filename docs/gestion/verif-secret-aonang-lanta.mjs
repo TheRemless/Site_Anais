@@ -191,6 +191,8 @@ const resultats = await db.exec(SQL.LANTA);
 ok((await prixDe(kradan)) === NOUVEAU && (await netKradan()) === netAvant, "l'extension Kradan du bon partenaire change de prix, son net est inchangé");
 ok((await prixDe(kradanAutre)) === ANCIEN, "la ligne de même libellé d'un autre partenaire n'est pas touchée");
 ok((await un("select details->>'prix_avant_guide_lanta' m from prestations where id = $1", [kradan])).m === String(ANCIEN), "la ligne modifiée est marquée de son prix d'avant");
+const { EXTRAS_DU_SITE } = await import(SRC + "carnet-produits.mjs");
+ok((await un("select details->>'cle_carnet' c from prestations where id = $1", [kradan])).c === EXTRAS_DU_SITE[0].cle && (await un("select details ? 'cle_carnet' c from prestations where id = $1", [kradanAutre])).c === false, "la ligne modifiée porte la clé stable de l'extra du site (celle du module), pas la ligne d'un autre partenaire");
 const nouvelles = await tous("select p.id, p.prix_vente::float8 v, p.details, p.partenaire_id, p.groupe, p.libelle, x.net::float8 n from prestations p left join prestations_nets x on x.prestation_id = p.id where p.id = any($1::uuid[]) order by p.prix_vente", [tranches.map((t) => t.prestation)]);
 ok(nouvelles.length === 2 && voulues.every((t) => nouvelles.some((x) => x.id === t.prestation && x.v === t.vente && x.n === t.net)), "les deux tranches de Koh Rok sont écrites avec le prix et le net du SQL");
 ok(nouvelles.every((x) => x.v - x.n >= SEUIL), "chaque nouvelle tranche garde au moins la commission minimale que le SQL contrôle");
@@ -202,6 +204,22 @@ const lecture = resultats.map((r) => r.rows).filter((r) => r && r.length && "com
 ok(lecture.some((r) => r.libelle === "Charter test faible" && Number(r.commission) < SEUIL), "la lecture seule liste le tarif privé à faible commission");
 ok(!lecture.some((r) => Number(r.commission) >= SEUIL), "la lecture seule ne liste que des commissions sous le seuil");
 ok((await prixDe(faible)) === 3010, "le tarif à faible commission n'est pas modifié");
+
+// Gestion retrouve l'extension par sa clé et l'ajoute au tarif du 4 Islands privé, une seule fois, au prix d'un bateau.
+{
+  const { lireMessage: lm, offresDuService: od } = await import(SRC + "demande-calc.mjs");
+  const cat = await catalogue();
+  const rows4 = cles["4-islands|private-longtail"];
+  const texte = "Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nExtras: Add Koh Kradan\nName: Test";
+  const sans = texte.replace("Extras: Add Koh Kradan\n", "");
+  const offre = (t, n) => { const d = lm(t.replace("2 adults", `${n} adults`), "2026-11-23"); return od(d, t, { phrase: t, date: d.date, adultes: d.adultes, enfants: 0 }, cat)[0]; };
+  const base = offre(sans, 2);
+  const avec = offre(texte, 2);
+  ok(avec.extras && avec.extras.length === 1 && avec.extras[0].source.id === kradan && avec.total === base.total + (await prixDe(kradan)), "avec l'extra demandé : une ligne Kradan, son prix dans le total");
+  ok(offre(texte, 4).extras.length === 1 && offre(texte, 4).total - offre(sans, 4).total === (await prixDe(kradan)), "le prix d'un bateau, jamais par personne");
+  ok(!offre(sans, 2).extras && base.total === offre(sans, 2).total, "sans l'extra : rien n'est ajouté");
+  ok(rows4.length === 3, "le mapping du 4 Islands privé garde ses trois tranches");
+}
 
 console.log("== Koh Lanta : rejeu ==");
 const photo = JSON.stringify([await tous("select id, prix_vente::float8 v, details from prestations where entite_id = $1 order by id", [ent.secret]), await tous("select prestation_id, net::float8 n from prestations_nets order by prestation_id")]);
@@ -234,6 +252,7 @@ await db.query("update prestations set details = details - 'prix_avant_guide_lan
 await db.exec(SQL.RETOUR_LANTA);
 ok((await prixDe(kradan)) === ANCIEN && (await un("select details ? 'prix_avant_guide_lanta' m from prestations where id = $1", [kradan])).m === false, "l'extension repasse à son prix d'avant et perd sa marque");
 ok((await prixDe(kradanAutre)) === ANCIEN, "la ligne de l'autre partenaire est restée telle quelle");
+ok((await un("select details ? 'cle_carnet' c from prestations where id = $1", [kradan])).c === false, "l'extension perd aussi sa clé d'extra");
 ok((await n("select count(*) n from prestations where id = any($1::uuid[])", [tranches.map((t) => t.prestation)])) === 0 && (await n("select count(*) n from prestations_nets where prestation_id = any($1::uuid[])", [tranches.map((t) => t.prestation)])) === 0, "les deux tranches et leurs nets sont retirés");
 ok(JSON.stringify(JSON.parse(await instantane())) === avantLanta, "il reste exactement l'état d'avant");
 await db.exec(SQL.RETOUR_LANTA);

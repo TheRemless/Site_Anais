@@ -59,4 +59,8 @@ Le guide envoie les identifiants du **site Secret** (`product_id` = identifiant 
 | `rental` | `cars-and-pick-ups`, `big-bikes`, `scooters-and-small-bikes` |
 | `speedboat-ferry` |  |
 
+Extension de Koh Kradan sur le **4 Islands privé** (`4-islands`, option `private-longtail`) : la page l'envoie dans la ligne `Extras: Add Koh Kradan` du message (libellé exact du site). Gestion ajoute alors la ligne de l'extension au dossier et à son total, une seule fois et au prix d'un bateau (jamais par personne), avec le même résultat que pour une demande du site Secret ordinaire. Elle ne s'applique pas aux autres options (le join-in a déjà Kradan dans la sortie) ni aux autres sorties. Tant que le tarif n'est pas en base, la fenêtre de création le dit et l'extra s'ajoute à la main.
+
+Nom de la page : le début de son nom dit son guide (`koh-samui-…`, `ao-nang-…`, `koh-lanta-…` dans `/carnet/<guide>-<code>/`). Gestion s'en sert pour « Proposer une autre sortie » quand l'identifiant d'une sortie est inconnu : il ne propose alors que les sorties de ce guide.
+
 Pas dans le mapping du site (Gestion ne trouve aucun tarif tout seul, la fenêtre de création propose « Choisir dans la base ») : `koh-talabeng-koh-bubu`, `island-day-tour`. Les options sans barème (quad, kart, cours de cuisine, location, bateaux privés) ne contrôlent pas l'âge des enfants.

@@ -5,7 +5,7 @@ import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSu
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET } from "./carnet-produits.mjs";
+import { PRODUITS_CARNET, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
 import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, LIGNE_ENFANT } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -129,6 +129,10 @@ function lireSite(lignes, aujourdhui) {
     else if (cle === "hotel on koh lanta") d.hotel = v;
     else if (cle === "name") d.nom = v;
     else if (cle === "extras") d.extras = v;
+    else if (cle === "formula") d.formule = v;
+    else if (cle === "slot") d.creneau = v;
+    else if (cle === "park fee") d.parc = v;
+    else if (cle === "message") d.remarque = v;
     else if (cle === "departure") { d.depart = v; if (genre === "speedboat") d.heure = heureDe(v) || d.heure; }
     else if (cle === "ticket") d.billet = /^return/i.test(v) ? "return" : "one way";
     else if (cle === "return") d.retour = v;
@@ -1152,6 +1156,33 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
+// Les extras du site qui ont un tarif de Gestion (EXTRAS_DU_SITE : « Add Koh Kradan » du 4 Islands privé), pour l'option citée par la demande : leur ligne s'ajoute au service, une seule
+// fois et au prix d'un bateau (jamais par personne), et leur prix entre dans le total de l'offre. Les mêmes lignes pour tous les chemins (fenêtre de création, réponse, « Modifier »).
+// Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) : l'offre le dit.
+// Un extra d'une autre option (le join-in ne le propose pas : Kradan y est déjà dans la sortie) ne s'applique pas.
+export function extrasDemandes(d) {
+  const trouve = optionDuSite(d);
+  if (!trouve || !d.extras) return [];
+  const demandes = cleTexte(d.extras);
+  return EXTRAS_DU_SITE.filter((x) => x.produit === trouve.produit.id && x.option === trouve.option.id && demandes.includes(cleTexte(x.ligne)));
+}
+function ajouterExtras(offre, d, { prestations, partenaires }) {
+  if (offre.genre !== "prestation" || offre.ligneSite === undefined) return offre;
+  let sortie = offre;
+  for (const x of extrasDemandes(d)) {
+    const tarif = prestations.find((p) => p.details && p.details.cle_carnet === x.cle && proposable(p, partenaires));
+    if (!tarif) {
+      sortie = { ...sortie, avertissement: sortie.avertissement || "extra_sans_tarif", extraManquant: x.ligne };
+      continue;
+    }
+    const deja = tarif.id === sortie.source.id || (sortie.supplement && sortie.supplement.source.id === tarif.id) || (sortie.extras || []).some((e) => e.source.id === tarif.id);
+    if (deja) continue;
+    const prix = tarif.sur_place || tarif.prix_vente === null || tarif.prix_vente === undefined ? null : Number(tarif.prix_vente);
+    sortie = { ...sortie, extras: [...(sortie.extras || []), { source: tarif, qte: 1, ligne: x.ligne }], total: sortie.total === null || sortie.total === undefined || prix === null ? sortie.total : sortie.total + prix };
+  }
+  return sortie;
+}
+
 // Offres de la base qui correspondent à la demande, la plus proche en premier. Au plus six.
 // `nomPartenaire(id)` renvoie le nom du partenaire.
 // `partenaires` : un partenaire masqué ne se propose plus (ses tarifs et trajets non plus).
@@ -1204,7 +1235,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   }
-  return offres.map((o) => completerSupplement(completerEnfant(o, pax, prestations), pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), d, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------
@@ -1243,7 +1274,11 @@ export function notesDemande(d, { surLeVoucher = false } = {}) {
     d.bebes ? `Babies (0-2): ${d.bebes}` : "",
     (d.agesDeclares || d.ages) && (d.agesDeclares || d.ages).length ? `Child ages: ${(d.agesDeclares || d.ages).map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
     d.bagages && !surLeVoucher ? `Bags: ${d.bagages}` : "",
+    d.formule ? `Formula: ${d.formule}` : "",
+    d.creneau ? `Slot: ${d.creneau}` : "",
     d.extras ? `Extras: ${d.extras}` : "",
+    d.parc ? `Park fee (paid on site): ${d.parc}` : "",
+    d.remarque ? `Client message: ${d.remarque}` : "",
     d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",
     d.jusqua ? `Rental until: ${d.jusqua}` : "",
     d.billet ? `Ticket: ${d.billet}${d.retour ? `, return ${d.retour}` : ""}` : "",

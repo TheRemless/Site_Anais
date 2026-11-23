@@ -12,7 +12,7 @@ import { origineAdmise, originesAdmises, origineCarnet, estPageCarnet, sansCodeC
 import { PRODUITS_CARNET, CHEMIN_CARNET } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
 import { lireMessage, ajusterAgesCarnet, offresDuService, clientsProches, indexClientsParTelephone, clientParTelephone, fichesParNumero, optionDuSite, notesDemande } from "../src/gestion/js/demande-calc.mjs";
-import { estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties, produitSite, texteDemande, nomProduit, titreOption, optionsProduit, demandeTarifee, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
+import { estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties, texteDemande, nomProduit, titreOption, optionsProduit, demandeTarifee, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit, commissionPrevue, fraisDeParc } from "../src/gestion/js/operations-calc.mjs";
 
 const AJD = "2026-11-22";
@@ -364,7 +364,7 @@ test("demandes du site : une demande du carnet se reconnaît à sa page, jamais 
 });
 
 test("demandes du site : la fiche d'une demande du carnet porte tous les champs reçus, âges des enfants compris", () => {
-  assert.deepEqual(champsCarnet(D), { prestation: "Pig Island and Koh Tan by private longtail, 4 hours – Whole boat", date: "2026-12-20", heure: "", adultes: 2, enfants: 2, ages: [5, 9], hotel: "Hotel Example, Chaweng", nom: "Anna Keller", whatsapp: "+41791234567", total: 4500, devise: "THB" });
+  assert.deepEqual(champsCarnet(D), { prestation: "Pig Island and Koh Tan by private longtail, 4 hours – Whole boat", date: "2026-12-20", heure: "", adultes: 2, enfants: 2, ages: [5, 9], hotel: "Hotel Example, Chaweng", nom: "Anna Keller", whatsapp: "+41791234567", extras: "", total: 4500, devise: "THB" });
   assert.equal(champsCarnet({ ...D, message: "", telephone: null, total_estime: null }).whatsapp, "");
   assert.deepEqual(champsCarnet({ ...D, message: "" }).ages, []);
   assert.equal(nomProduit({ produit: "", produit_id: "pig-island-groupe" }), "Pig Island and Koh Tan by big boat");
@@ -378,7 +378,7 @@ test("demandes du site : « autre sortie » d'une demande du carnet ne propose q
   assert.ok(autres.every((p) => p.guide === "koh-samui" && p.id !== D.produit_id));
   const site = autresSorties({ ...D, page_url: "https://secrettravelandtour.com/tours/4-islands/", produit_id: "4-islands" });
   assert.ok(site.length > 5 && site.every((p) => PRODUITS_SITE.includes(p)));
-  assert.equal(produitSite("pig-island-groupe").guide, "koh-samui");
+  assert.equal(PRODUITS_CARNET.find((p) => p.id === "pig-island-groupe").guide, "koh-samui");
 });
 
 test("demandes du site : le message de la demande se relit tel quel, et la fiche ZTP est retrouvée par le numéro WhatsApp", () => {

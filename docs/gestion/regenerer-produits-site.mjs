@@ -105,7 +105,8 @@ const produits = fichiers.filter((f) => !f.startsWith(`${DOSSIER_TAXI}/`)).map((
         .filter((x) => x.cle && x.cle.prestation)
         .map((x) => ({ ligne: x.ligne, prestation: x.cle.prestation, libelle: x.cle.gestion || "" }));
       // Barème d'âge de l'option : tiré de TOUTES ses lignes enfant, reliées à Gestion ou non (bareme-enfant-site.mjs) ; une ligne enfant sans âge fait échouer la génération.
-      const { bareme, ambigu } = baremeDeOption(o.prices, `${p.slug} / ${o.id}`);
+      const { bareme, ambigu, avertissements } = baremeDeOption(o.prices, `${p.slug} / ${o.id}`, { reliee: (label) => !!(cles[`${p.slug}|${titre}|${label}`] && cles[`${p.slug}|${titre}|${label}`].prestation) });
+      for (const a of avertissements) console.warn(a);
       if (ambigu) console.warn(`${p.slug} / ${o.id} : des lignes enfant d'âges différents, aucun barème d'âge n'est écrit.`);
       // Option sans ligne de prix reliée : la clé d'option de Gestion. Une option qui a ses lignes garde celles du site.
       const cleOption = clesOptions[`${p.slug}|${o.id}`];

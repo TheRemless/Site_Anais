@@ -11,12 +11,13 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { PRODUITS_CARNET, SORTIES_KOH_LANTA } from "../src/gestion/js/carnet-produits.mjs";
+import { PRODUITS_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
-import { lireMessage, offresDuService, optionDuSite } from "../src/gestion/js/demande-calc.mjs";
-import { ajusterAgesCarnet, baremeEnfant, sortieParId, resoudreSortie, resoudreProduit, agesDuMessage, LIGNE_ENFANT, cleTexte } from "../src/gestion/js/carnet-ages.mjs";
-import { demandeTarifee, autresSorties, produitSite, texteDemande, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
+import { lireMessage, offresDuService, optionDuSite, notesDemande, extrasDemandes } from "../src/gestion/js/demande-calc.mjs";
+import { ajusterAgesCarnet, baremeEnfant, sortieParId, resoudreSortie, resoudreProduit, agesDuMessage, lireInvites, lireInvitesFrancais, LIGNE_ENFANT, cleTexte } from "../src/gestion/js/carnet-ages.mjs";
+import { demandeTarifee, autresSorties, guideDeLaPage, champsCarnet, optionsModifiables, optionModifiee, titreCanonique, titreOption, texteDemande, changements, reponseConfirmation } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit } from "../src/gestion/js/operations-calc.mjs";
+import { ligneDepuisPrestation } from "../src/gestion/js/partenaires-calc.mjs";
 
 const AJD = "2026-11-23";
 const md5uuid = (s) => { const h = createHash("md5").update(s).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`; };
@@ -39,6 +40,9 @@ const prestations = [
   ...PRODUITS_SITE.find((p) => p.id === "fishing-trip").options[0].tarifs.slice(0, 1).map((t) => ({ id: t.prestation, partenaire_id: "p-c", famille: "excursion", groupe: "Private", libelle: t.libelle, libelle_en: t.libelle, prix_vente: 2330, unite: "boat", details: {}, actif: true })),
   ...PRODUITS_SITE.find((p) => p.id === "4-islands").options.filter((o) => o.id.startsWith("join-in")).flatMap((o) => o.tarifs.map((t, i) => ({ id: t.prestation, partenaire_id: "p-c", famille: "excursion", groupe: "Join-in", libelle: t.libelle, libelle_en: t.libelle, prix_vente: i === 0 ? 1010 : 610, unite: i === 0 ? "pp" : "ch", details: {}, actif: true }))),
 ];
+// L'extension de Koh Kradan du catalogue fictif : une ligne du partenaire des tranches, au prix FICTIF d'un bateau, que Gestion retrouve par sa clé stable (details.cle_carnet).
+const KRADAN = { id: "kradan-fictif", partenaire_id: "p-c", famille: "excursion", groupe: "Option", libelle: "Extension fictive", libelle_en: "Extension", prix_vente: 777, unite: "boat", details: { cle_carnet: EXTRAS_DU_SITE[0].cle }, sur_place: false, actif: true };
+prestations.push(KRADAN);
 const contexte = { prestations, trajets: [], partenaires: [{ id: "p-a", actif: true }, { id: "p-b", actif: true }, { id: "p-c", actif: true }], nomPartenaire: () => "" };
 
 // Une demande d'une page du carnet : le message que la page envoie, relu comme la fenêtre de création le fait (âges réglés).
@@ -102,7 +106,7 @@ test("Ao Nang : une demande du carnet se retrouve par identifiant, jamais par un
   assert.equal(optionDuSite(lu), null, "un message collé sans identifiant ne retrouve pas une sortie du carnet");
   assert.equal(optionDuSite({ ...lu, carnet: { produit: "aonang-vip-4-islands", option: "standard" } }).produit.id, "aonang-vip-4-islands");
   assert.deepEqual(autresSorties({ page_url: "https://zwaldtravelplanner.com/carnet/ao-nang/", marque: "secret", produit_id: "aonang-vip-hong" }).every((p) => p.guide === "aonang"), true);
-  assert.equal(produitSite("aonang-prestige-phi-phi").guide, "aonang");
+  assert.equal(sortieParId("aonang-prestige-phi-phi").guide, "aonang");
 });
 
 // ---- Koh Lanta : les identifiants du site Secret, demandés par une page du carnet -------------------------------------------------------
@@ -191,23 +195,38 @@ test("Koh Lanta : chaque option du site avec une ligne « Child » reliée a un 
   assert.deepEqual(baremeEnfant(p, { ...o, tarifs: o.tarifs.map((t) => (/^child/i.test(t.ligne) ? { ...t, ligne: "Kids, as shown" } : t)) }), { min: 4, max: 11 });
 });
 
-test("génération du barème d'âge d'une option du site : toutes les lignes enfant comptent, reliées à Gestion ou non ; une ligne sans âge fait échouer", async () => {
-  const { baremeDeOption } = await import("../docs/gestion/bareme-enfant-site.mjs");
+test("génération du barème d'âge d'une option du site : toutes les lignes enfant comptent, « Child seat » et la gratuité ne comptent pas, un cas sans âge ne casse pas tout", async () => {
+  const { baremeDeOption, estLigneEnfant } = await import("../docs/gestion/bareme-enfant-site.mjs");
   // Une ligne enfant que le site ne relie à aucun tarif de Gestion garde son barème.
-  assert.deepEqual(baremeDeOption([{ label: "Adult", amount: 1000 }, { label: "Child, 4 to 11", amount: 600, ages: { min: 4, max: 11 } }, { label: "Child under 4", amount: 0, ages: { max: 3 } }]), { bareme: { min: 4, max: 11 }, ambigu: false });
+  assert.deepEqual(baremeDeOption([{ label: "Adult", amount: 1000 }, { label: "Child, 4 to 11", amount: 600, ages: { min: 4, max: 11 } }, { label: "Child under 4", amount: 0, ages: { max: 3 } }]).bareme, { min: 4, max: 11 });
   assert.deepEqual(baremeDeOption([{ label: "Child 3 to 9, per person", ages: { min: 3, max: 9 } }]).bareme, { min: 3, max: 9 });
-  // Plusieurs lignes d'un même âge : un seul barème.
   assert.deepEqual(baremeDeOption([{ label: "Child rider", ages: { min: 5, max: 12 } }, { label: "Child passenger", ages: { min: 5, max: 12 } }]).bareme, { min: 5, max: 12 });
   // Des âges différents : aucun barème, et la génération le dit.
-  assert.deepEqual(baremeDeOption([{ label: "Child rider", ages: { min: 5, max: 12 } }, { label: "Child passenger", ages: { min: 3, max: 12 } }]), { bareme: null, ambigu: true, lignes: 2 });
-  // Pas de ligne enfant (bateau privé) : rien.
+  const quad = baremeDeOption([{ label: "Child rider", ages: { min: 5, max: 12 } }, { label: "Child passenger", ages: { min: 3, max: 12 } }]);
+  assert.deepEqual([quad.bareme, quad.ambigu], [null, true]);
   assert.equal(baremeDeOption([{ label: "1 to 2 people" }]).bareme, null);
   assert.equal(baremeDeOption(undefined).bareme, null);
-  // Une ligne enfant sans âge : la génération échoue, avec la ligne en cause.
-  assert.throws(() => baremeDeOption([{ label: "Child, 4 to 11", amount: 600 }], "4-islands / join-in-longtail"), /4-islands \/ join-in-longtail : la ligne enfant « Child, 4 to 11 » n'a pas d'âge/);
-  // Le script de génération s'en sert, et le fichier généré porte `enfant` sur les options, plus d'`ages` sur les lignes de prix.
+  // Cas 1 : « Child seat », « Child menu » ne sont pas des lignes de tarif enfant : ignorées, la génération ne casse pas.
+  assert.doesNotThrow(() => baremeDeOption([{ label: "Adult", amount: 1000 }, { label: "Child seat", amount: 100 }, { label: "Child menu", amount: 200 }, { label: "Child, 4 to 11", amount: 600, ages: { min: 4, max: 11 } }]));
+  assert.deepEqual(baremeDeOption([{ label: "Child seat", amount: 100 }, { label: "Child menu", amount: 200 }]).bareme, null);
+  assert.equal(estLigneEnfant({ label: "Child seat" }), false);
+  assert.equal(estLigneEnfant({ label: "Child seat", ages: { min: 2, max: 5 } }), true, "une ligne qui porte des âges est une ligne enfant");
+  assert.equal(estLigneEnfant({ label: "Adult, from age 12", ages: { min: 12 } }), false, "une ligne adulte n'est jamais une ligne enfant");
+  assert.equal(estLigneEnfant({ label: "Child" }), true);
+  assert.equal(estLigneEnfant({ label: "Child, 4 to 11" }), true);
+  assert.equal(estLigneEnfant({ label: "Child 3 to 9, per person" }), true);
+  // Cas 2 : une ligne de gratuité à deux bornes (prix 0, âges 0 à 3) n'est jamais un barème.
+  assert.equal(baremeDeOption([{ label: "Child under 4", amount: 0, ages: { min: 0, max: 3 } }]).bareme, null);
+  assert.deepEqual(baremeDeOption([{ label: "Child, 4 to 11", amount: 600, ages: { min: 4, max: 11 } }, { label: "Child under 4", amount: 0, ages: { min: 0, max: 3 } }]).bareme, { min: 4, max: 11 });
+  // Cas 3 : une ligne enfant sans âge. Non reliée à Gestion : un avertissement clair, pas d'échec. Reliée : échec avec la ligne en cause.
+  const sans = baremeDeOption([{ label: "Child, 4 to 11", amount: 600 }], "4-islands / join-in-longtail");
+  assert.equal(sans.bareme, null);
+  assert.match(sans.avertissements[0], /4-islands \/ join-in-longtail : la ligne enfant « Child, 4 to 11 » n'a pas d'âge .* aucun tarif de Gestion/);
+  assert.throws(() => baremeDeOption([{ label: "Child, 4 to 11", amount: 600 }], "4-islands / join-in-longtail", { reliee: () => true }), /la ligne enfant « Child, 4 to 11 » n'a pas d'âge .* reliée à un tarif de Gestion/);
+  // Le script de génération s'en sert et le fichier généré porte `enfant` sur les options, plus d'`ages` sur les lignes de prix.
   const script = lireFichier("docs/gestion/regenerer-produits-site.mjs");
   assert.match(script, /baremeDeOption\(o\.prices/);
+  assert.match(script, /reliee:/);
   for (const p of PRODUITS_SITE) for (const o of p.options) for (const t of o.tarifs || []) assert.equal(t.ages, undefined, `${p.id} / ${o.id}`);
 });
 
@@ -304,6 +323,9 @@ test("SQL privé de Koh Lanta : ligne Kradan ciblée par partenaire et marquée,
   assert.match(retour, /get diagnostics touchees = row_count;\s+if touchees <> 1 then\s+raise exception/);
   assert.match(retour, /if marquees > 1 then\s+raise exception/);
   assert.match(retour, /details->>'prix_avant_guide_lanta'/);
+  // La clé stable de l'extra du site (celle du module) est écrite sur la ligne marquée et retirée par le retour.
+  assert.ok(donnees.includes(`'cle_carnet', '${EXTRAS_DU_SITE[0].cle}'`), "la clé de l'extra du module est celle du SQL");
+  assert.match(retour, /details - 'prix_avant_guide_lanta' - 'cle_carnet'/);
   assert.match(retour, /details \? 'prix_avant_guide_lanta'/, "le retour ne touche que la ligne marquée");
   assert.match(SQL_LANTA, /raise exception 'Tranche de départ de Koh Rok introuvable/);
   assert.match(SQL_LANTA, /for update/);
@@ -374,29 +396,37 @@ test("une seule recherche des sorties : le carnet d'abord, aucun identifiant du 
   PRODUITS_SITE.push(faux);
   try {
     assert.equal(sortieParId("aonang-vip-hong").guide, "aonang", "le carnet d'abord");
-    assert.equal(produitSite("aonang-vip-hong"), sortieParId("aonang-vip-hong"), "la liste des demandes cherche comme le tarif");
+    assert.equal(sortieParId("aonang-vip-hong").guide, "aonang", "la liste des demandes cherche comme le tarif");
     assert.equal(resoudreSortie({ carnet: { produit: "aonang-vip-hong", option: "standard" }, option: "" }).produit.guide, "aonang");
     assert.equal(optionDuSite({ ...lireMessage("Booking request: x – y\nGuests: 1 adult", AJD), carnet: { produit: "aonang-vip-hong", option: "standard" } }).produit.guide, "aonang");
   } finally {
     PRODUITS_SITE.splice(PRODUITS_SITE.indexOf(faux), 1);
   }
   // Les pages du site, y compris celles de VIP Taxi Lanta, se retrouvent comme avant.
-  assert.equal(produitSite("4-islands").id, "4-islands");
+  assert.equal(sortieParId("4-islands").id, "4-islands");
   const taxi = PRODUITS_SITE.find((p) => p.marque === "taxi");
-  assert.equal(produitSite(taxi.id), taxi);
-  assert.equal(produitSite("n-existe-pas"), null);
+  assert.equal(sortieParId(taxi.id), taxi);
+  assert.equal(sortieParId("n-existe-pas"), null);
 });
 
 test("« Proposer une autre sortie » : le guide de Koh Lanta a sa propre liste, comme les autres guides", () => {
   const ligne = { page_url: ZTP, marque: "secret", produit_id: "4-islands" };
   assert.deepEqual(autresSorties(ligne).map((p) => p.id), SORTIES_KOH_LANTA.filter((id) => id !== "4-islands"));
   assert.ok(!autresSorties(ligne).some((p) => p.id === "shared-minivan"), "un transfert du site n'est pas une sortie de ce guide");
-  // Un identifiant que ni le carnet ni le guide ne connaissent (une sortie que le site n'a pas, un guide futur) : la liste de la marque, comme avant, jamais une liste vide.
-  for (const inconnu of ["koh-talabeng-koh-bubu", "island-day-tour", "shared-minivan", "un-guide-futur"]) {
-    const liste = autresSorties({ ...ligne, produit_id: inconnu });
-    assert.deepEqual(liste.map((p) => p.id), PRODUITS_SITE.filter((p) => p.marque === "secret" && p.id !== inconnu).map((p) => p.id), inconnu);
-    assert.ok(liste.length > 0, inconnu);
+  // Un identifiant que ni le carnet ni le guide de Koh Lanta ne connaissent : les sorties du guide de la PAGE (jamais celles d'un autre guide), sinon rien.
+  const page = (slug) => `https://zwaldtravelplanner.com/carnet/${slug}-abc/`.replace("-abc/", "/");
+  for (const inconnu of ["koh-talabeng-koh-bubu", "island-day-tour", "un-guide-futur"]) {
+    assert.deepEqual(autresSorties({ ...ligne, page_url: page("koh-lanta-excursions-bateau"), produit_id: inconnu }).map((p) => p.id), SORTIES_KOH_LANTA, `${inconnu} depuis le guide de Koh Lanta`);
+    assert.deepEqual(autresSorties({ ...ligne, page_url: page("koh-samui-excursions-bateau"), produit_id: inconnu }).map((p) => p.guide), Array(9).fill("koh-samui"), `${inconnu} depuis le guide de Koh Samui : jamais une sortie de Koh Lanta`);
+    assert.deepEqual([...new Set(autresSorties({ ...ligne, page_url: page("ao-nang-excursions-bateau"), produit_id: inconnu }).map((p) => p.guide))], ["aonang"], `${inconnu} depuis le guide d'Ao Nang`);
+    assert.deepEqual(autresSorties({ ...ligne, page_url: page("un-autre-guide"), produit_id: inconnu }), [], `${inconnu} depuis une page de guide inconnue : rien plutôt qu'un autre guide`);
   }
+  assert.equal(guideDeLaPage({ page_url: page("koh-samui-excursions-bateau") }), "koh-samui");
+  assert.equal(guideDeLaPage({ page_url: page("ao-nang-bateau") }), "aonang");
+  assert.equal(guideDeLaPage({ page_url: page("koh-lanta-bateau") }), "koh-lanta");
+  assert.equal(guideDeLaPage({ page_url: page("koh-lantana") }), null, "le début du nom, pas un préfixe de lettres");
+  // Un produit du site que le guide de Koh Lanta ne propose pas (shared-minivan) : la liste du guide.
+  assert.deepEqual(autresSorties({ ...ligne, produit_id: "shared-minivan" }).map((p) => p.id), SORTIES_KOH_LANTA);
   // Une demande du site Secret (pas du carnet) : toutes les sorties du site, comme avant.
   const site = autresSorties({ ...ligne, page_url: "https://secrettravelandtour.com/tours/4-islands/" });
   assert.ok(site.some((p) => p.id === "shared-minivan") && site.every((p) => PRODUITS_SITE.includes(p)));
@@ -508,9 +538,15 @@ test("une seule définition : ligne enfant, normalisation du texte, recherche d'
   assert.equal(LIGNE_ENFANT.test("Children's seat"), false);
   const bandeau = await import("../src/gestion/js/bandeau-calc.mjs");
   const liste = await import("../src/gestion/js/demandes-site-calc.mjs");
-  assert.equal(bandeau.produitSite, sortieParId);
-  assert.equal(liste.produitSite, sortieParId);
+  assert.equal(liste.produitSite, undefined, "demandes-site-calc.mjs n'a plus d'alias de la recherche");
+  // Le bandeau ne vise que des pages du site : jamais une sortie du carnet.
   assert.equal(bandeau.produitSite("4-islands").id, "4-islands");
+  assert.equal(bandeau.produitSite("aonang-vip-hong"), null);
+  assert.equal(bandeau.produitSite("ang-thong-big-boat"), null);
+  assert.equal(bandeau.produitSite(PRODUITS_SITE.find((p) => p.marque === "taxi").id).marque, "taxi");
+  // Les noms d'une option, normalisés, sont une seule liste.
+  const { nomsDeOption } = await import("../src/gestion/js/carnet-ages.mjs");
+  assert.deepEqual(nomsDeOption({ id: "with-kayak", titre: "With kayak", alias: ["avec-kayak", "Avec kayak"] }), ["with kayak", "with kayak", "avec kayak", "avec kayak"]);
 });
 
 test("identifiants des sorties : aucune sortie du carnet (Koh Samui, Ao Nang) ni du guide de Koh Lanta n'entre en collision avec un identifiant du site Secret ou du carnet", () => {
@@ -528,4 +564,204 @@ test("identifiants des sorties : aucune sortie du carnet (Koh Samui, Ao Nang) ni
     assert.equal(sortieParId(id).guide, undefined, `${id} : se résout vers le site`);
   }
   for (const p of PRODUITS_CARNET) assert.equal(sortieParId(p.id), p, `${p.id} : se résout vers le carnet`);
+});
+
+// ---- Troisième relecture de la PR 333 -----------------------------------------------------------------------------------------------------
+const SAMUI = "https://zwaldtravelplanner.com/carnet/koh-samui-excursions-bateau/";
+const ligneSamui = (produit_id, option_id, option_titre, extra = {}) => ({ marque: "secret", produit_id, produit: "x", option_id, option_titre, date_service: "2026-12-20", adultes: 2, enfants: 0, nom: "Anna", pickup: "Hotel Example", telephone: null, total_estime: 5000, devise: "THB", page_url: SAMUI,
+  message: "Demande de réservation : x\nPersonnes : 2 adultes", ...extra });
+
+test("« Modifier » : pas de doublon d'option, choisir la même option n'est pas un changement (Koh Samui avec/sans kayak, créneau, site Secret ordinaire)", () => {
+  // Ang Thong en big boat, option « avec kayak » (libellé de la page) : la liste a deux options, pas trois, départ sous le titre canonique.
+  const kayak = ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak");
+  const { options, courante } = optionsModifiables(kayak);
+  assert.deepEqual(options.map((o) => o.titre), ["With kayak", "Without kayak"]);
+  assert.equal(courante, "With kayak");
+  assert.equal(titreCanonique(kayak), "With kayak");
+  // Choisir la même option (sous son titre canonique, son libellé de la page ou son identifiant) : aucun titre posé dans les changements.
+  for (const choix of ["With kayak", "avec kayak", "Avec-Kayak", "  with   kayak ", "avec-kayak"]) assert.equal(optionModifiee(kayak, choix), null, choix);
+  assert.equal(optionModifiee(kayak, "Without kayak"), "Without kayak");
+  assert.equal(optionModifiee(kayak, "sans kayak"), "sans kayak", "une autre option sous son nom de page est bien un changement");
+  assert.equal(optionModifiee(kayak, ""), null);
+  // Aucune annonce « Option: With kayak instead of avec kayak » : la confirmation sans changement d'option ne parle pas d'option.
+  const final = { date: "2026-12-20", option_titre: titreCanonique(kayak), adultes: 2, enfants: 0, total: 5000, devise: "THB" };
+  assert.equal(changements(kayak, final).find((c) => c.champ === "option"), undefined);
+  assert.doesNotMatch(reponseConfirmation(kayak, final, { aujourdhui: AJD }), /Option:|instead of/);
+  assert.match(reponseConfirmation(kayak, final, { aujourdhui: AJD }), /x – With kayak/, "le titre canonique, pas « avec kayak »");
+  // Changer vraiment d'option : « Without kayak instead of With kayak ».
+  const sans = changements(kayak, { ...final, option_titre: "Without kayak" }).find((c) => c.champ === "option");
+  assert.deepEqual(sans, { champ: "option", avant: "With kayak", apres: "Without kayak" });
+  // Créneau : la page envoie l'identifiant et le libellé du créneau, la sortie n'a qu'une option (« Whole boat »).
+  const creneau = ligneSamui("ang-thong-speedboat-prive", "journee", "Journée, 09:00 à 17:00");
+  const c = optionsModifiables(creneau);
+  assert.deepEqual([c.options.map((o) => o.titre), c.courante], [["Whole boat"], "Whole boat"]);
+  assert.equal(optionModifiee(creneau, "Whole boat"), null);
+  assert.equal(changements(creneau, { date: "2026-12-20", option_titre: "Whole boat", adultes: 2, enfants: 0, devise: "THB" }).find((x) => x.champ === "option"), undefined);
+  // Site Secret ordinaire : option sous son titre, ou sous un ancien titre, sans doublon non plus.
+  const site = { marque: "secret", produit_id: "koh-rok-koh-haa", option_id: "join-in-speedboat", option_titre: "Join-in speedboat", page_url: "https://secrettravelandtour.com/tours/koh-rok-koh-haa/", message: "" };
+  const s1 = optionsModifiables(site);
+  assert.equal(s1.options.length, sortieParId("koh-rok-koh-haa").options.length, "aucun doublon avec l'ancien titre");
+  assert.equal(s1.courante, "Day trip");
+  assert.equal(optionModifiee(site, "Day trip"), null);
+  assert.equal(optionModifiee(site, "Sunset trip"), "Sunset trip");
+  // Option qui ne se reconnaît pas (nom changé depuis sur le site) : elle s'ajoute en tête, comme avant.
+  const perdu = { ...site, option_id: "disparue", option_titre: "Ancien nom" };
+  assert.equal(optionsModifiables(perdu).options[0].titre, "Ancien nom");
+  assert.equal(optionsModifiables(perdu).courante, "Ancien nom");
+  assert.equal(optionModifiee(perdu, "Ancien nom"), null);
+  // La vue : liste et choix passent par ces fonctions, plus de comparaison de texte.
+  const vue = lireFichier("src/gestion/js/views/demandes-site.mjs");
+  assert.match(vue, /optionsModifiables\(d\)/);
+  assert.match(vue, /optionModifiee\(d, option\.value\)/);
+  assert.doesNotMatch(vue, /option\.value\.trim\(\) !== titreOption\(d\)/);
+});
+
+test("message refait pour une demande du carnet : le transfert coché, le message du client et le droit de parc arrivent jusqu'au dossier", () => {
+  const recap = "Demande de réservation : Pig Island\nFormule : avec kayak\nDate : 20 décembre 2026\nCréneau : Matin, 09:00 à 13:00\nPersonnes : 2 adultes\nPrise en charge : Hotel Example\nTransfert depuis l'hôtel : oui (1 500 THB par van, indicatif)\nEstimation : 5 000 THB, à payer sur place après confirmation\nEntrée du parc à payer sur place : 400 THB\nNom : Anna\nWhatsApp : +41791234567\nMessage : allergie aux arachides\nRéf : SAM-AB12";
+  const ligne = ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { message: recap });
+  const texte = texteDemande(ligne);
+  assert.match(texte, /^Formula: avec kayak$/m);
+  assert.match(texte, /^Slot: Matin, 09:00 à 13:00$/m);
+  assert.match(texte, /^Extras: Hotel transfer oui \(1 500 THB par van, indicatif\)$/m);
+  assert.match(texte, /^Park fee: 400 THB$/m);
+  assert.match(texte, /^Message: allergie aux arachides$/m);
+  // Lu par la fenêtre : le supplément de transfert et la remarque sont dans le dossier (notes).
+  const lu = lireMessage(texte, AJD);
+  assert.match(lu.extras, /Hotel transfer oui \(1 500 THB/);
+  assert.equal(lu.remarque, "allergie aux arachides");
+  assert.equal(lu.parc, "400 THB");
+  const notes = notesDemande(lu);
+  assert.match(notes, /Extras: Hotel transfer oui \(1 500 THB par van, indicatif\)/);
+  assert.match(notes, /Client message: allergie aux arachides/);
+  assert.match(notes, /Park fee \(paid on site\): 400 THB/);
+  assert.match(notes, /Formula: avec kayak/);
+  // Transfert refusé (« non ») : aucune ligne d'extras ; sans message du client : aucune ligne « Message: ».
+  const non = texteDemande(ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { message: "Demande de réservation : x\nPersonnes : 2 adultes\nTransfert depuis l'hôtel : non" }));
+  assert.doesNotMatch(non, /^(Extras|Message|Park fee|Formula|Slot):/m);
+  // Un message déjà au format du site (guide de Koh Lanta) est gardé tel quel, ses lignes « Extras: » comprises.
+  const anglais = "Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nExtras: Add Koh Kradan\nName: Anna";
+  assert.equal(texteDemande({ ...ligneSamui("4-islands", "private-longtail", "Private longtail"), message: anglais }), anglais);
+});
+
+test("« Estimated total » du message refait : écrit tant que l'option est celle demandée, retiré quand « Modifier » change l'option (kayak vers sans kayak, site Secret ordinaire aussi)", () => {
+  const ligne = ligneSamui("ang-thong-big-boat", "avec-kayak", "avec kayak", { total_estime: 6000 });
+  assert.match(texteDemande(ligne), /^Estimated total: 6,000 THB$/m);
+  assert.match(texteDemande(ligne, { date: "2026-12-22" }), /^Estimated total: 6,000 THB$/m, "la date ne change pas le prix");
+  assert.match(texteDemande(ligne, { option_titre: "With kayak" }), /^Estimated total: 6,000 THB$/m, "la même option sous un autre nom : le prix vaut encore");
+  const sans = texteDemande(ligne, { option_titre: "Without kayak" });
+  assert.match(sans, /^Booking request: Ang Thong Marine Park by big boat – Without kayak$/m);
+  assert.doesNotMatch(sans, /Estimated total|Price on the site/);
+  assert.equal(lireMessage(sans, AJD).prixSite, "", "la fenêtre ne porte plus le prix de l'ancienne option");
+  // Site Secret ordinaire, message au format du site avec son prix : même règle.
+  const ordinaire = { marque: "secret", produit_id: "4-islands", option_id: "join-in-longtail", option_titre: "Join-in longtail", page_url: "https://secrettravelandtour.com/tours/4-islands/", message: "Booking request: 4 Islands – Join-in longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nEstimated total: 2,000 THB\nName: Anna" };
+  assert.match(texteDemande(ordinaire), /^Estimated total: 2,000 THB$/m);
+  assert.doesNotMatch(texteDemande(ordinaire, { option_titre: "Join-in speedboat" }), /Estimated total/);
+});
+
+test("invités : une seule règle pour toutes les langues, et noms d'option normalisés une seule fois (« Avec-Kayak », espaces, casse)", () => {
+  // Mêmes âges dits en anglais et en français : même résultat.
+  assert.deepEqual(lireInvites("2 adults, 3 children (ages under 1, 3 and 10)"), lireInvitesFrancais("2 adultes, 3 enfants (moins d'1 an, 3 ans, 10 ans)"));
+  assert.deepEqual(lireInvites("2 adults, 2 children"), lireInvitesFrancais("2 adultes, 2 enfants"), "âges absents : on garde le nombre");
+  assert.deepEqual(lireInvites("1 adult"), lireInvitesFrancais("1 adulte"));
+  const code = lireFichier("src/gestion/js/carnet-ages.mjs").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert.equal((code.match(/ages\.filter\(\(a\) => a >= 3\)/g) || []).length, 1, "la règle des 3 ans n'est écrite qu'une fois");
+  assert.match(code, /function invitesDe\(/);
+  // Un seul nomsDeOption pour le tarif, l'âge et le titre.
+  for (const option of [" Avec-Kayak ", "AVEC KAYAK", "avec_kayak", "With   Kayak"]) assert.equal(resoudreSortie({ carnet: { produit: "ang-thong-big-boat", option }, option: "" }).option.id, "with-kayak", option);
+  assert.equal(resoudreSortie({ carnet: { produit: "ang-thong-big-boat", option: "" }, option: "  SANS-Kayak " }).option.id, "without-kayak");
+  assert.equal(titreOption({ produit_id: "ang-thong-big-boat", option_id: "AVEC-KAYAK" }), "With kayak");
+  assert.equal(titreOption({ produit_id: "ang-thong-big-boat", option_id: " Avec Kayak ".trim() }), "With kayak");
+  const calc = lireFichier("src/gestion/js/demandes-site-calc.mjs");
+  assert.doesNotMatch(calc, /\.alias \|\| \[\]\)\.includes/, "titreOption ne compare plus les alias à la main");
+  assert.match(calc, /nomsDeOption\(x\)/);
+});
+
+// ---- Extension Koh Kradan du 4 Islands privé -------------------------------------------------------------------------------------------------
+const MSG_KRADAN = (invites, extras = "Add Koh Kradan") => `Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: ${invites}\n${extras ? `Extras: ${extras}\n` : ""}Name: Anna`;
+const kradanOffre = (texte, { carnet = true, contexteVoulu = contexte, option = "private-longtail" } = {}) => {
+  const d = lireMessage(texte, AJD);
+  const lu = carnet ? ajusterAgesCarnet({ ...d, carnet: { produit: "4-islands", option } }) : d;
+  return offresDuService(lu, texte, { phrase: texte, date: lu.date, adultes: lu.adultes, enfants: lu.enfants }, contexteVoulu)[0];
+};
+
+test("Extension Koh Kradan : « Add Koh Kradan » sur le 4 Islands privé ajoute la ligne et son prix au total, une fois, au prix d'un bateau (carnet ET site ordinaire)", () => {
+  for (const carnet of [true, false]) {
+    const base = kradanOffre(MSG_KRADAN("2 adults", ""), { carnet });
+    assert.equal(base.extras, undefined, "sans l'extra : rien n'est ajouté");
+    const avec = kradanOffre(MSG_KRADAN("2 adults"), { carnet });
+    assert.equal(avec.total, base.total + 777, `carnet=${carnet} : le total reprend l'extension`);
+    assert.deepEqual(avec.extras.map((x) => [x.source.id, x.qte, x.ligne]), [["kradan-fictif", 1, "Add Koh Kradan"]]);
+    assert.equal(avec.id, base.id, "la tranche ne change pas");
+    // Un prix par bateau, jamais par personne : de 2 à 6 personnes, une seule extension, le même supplément.
+    for (const n of [2, 3, 4, 5, 6]) {
+      const sans = kradanOffre(MSG_KRADAN(`${n} adults`, ""), { carnet });
+      const kr = kradanOffre(MSG_KRADAN(`${n} adults`), { carnet });
+      assert.equal(kr.extras.length, 1, `${n} personnes`);
+      assert.equal(kr.total - sans.total, 777, `${n} personnes : le prix d'un bateau`);
+    }
+    // La ligne de la facture : un prix, une quantité de 1, jamais les personnes.
+    const ligne = ligneDepuisPrestation(avec.extras[0].source, null, { langue: "en", qte: avec.extras[0].qte });
+    assert.deepEqual([ligne.unite, ligne.qte, ligne.par, ligne.prestation_id], [777, 1, "boat", "kradan-fictif"]);
+  }
+  // Pas deux fois : l'extra dit deux fois, ou en minuscules, ou avec d'autres extras.
+  for (const extras of ["Add Koh Kradan, Add Koh Kradan", "add koh kradan; Add Koh Kradan", "Add Koh Kradan | Other thing"]) assert.equal(kradanOffre(MSG_KRADAN("2 adults", extras)).extras.length, 1, extras);
+  assert.equal(extrasDemandes({ ...lireMessage(MSG_KRADAN("2 adults"), AJD), carnet: { produit: "4-islands", option: "private-longtail" } }).length, 1);
+  // Un autre extra, une autre option ou une autre sortie : rien.
+  assert.equal(kradanOffre(MSG_KRADAN("2 adults", "Fishing rod")).extras, undefined);
+  assert.equal(kradanOffre(MSG_KRADAN("2 adults").replace("Private longtail", "Join-in longtail"), { option: "join-in-longtail" }).extras, undefined, "le join-in a Kradan dans la sortie");
+  const koh = "Booking request: Koh Rok & Koh Haa – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nExtras: Add Koh Kradan\nName: Anna";
+  const lu = lireMessage(koh, AJD);
+  assert.equal(offresDuService({ ...lu, carnet: { produit: "koh-rok-koh-haa", option: "private-longtail" } }, koh, { phrase: koh, date: lu.date, adultes: 2, enfants: 0 }, contexte)[0].extras, undefined);
+});
+
+test("Extension Koh Kradan : la tranche change avec les personnes, « Modifier » vers une autre option retire l'extra, le retour la remet, la réponse la dit", () => {
+  // Kradan + tranche changée : 2 personnes (tranche 1-2) puis 4 personnes (tranche 3-4) : la tranche et le prix de la tranche changent, l'extension reste la même.
+  const deux = kradanOffre(MSG_KRADAN("2 adults"));
+  const quatre = kradanOffre(MSG_KRADAN("2 adults, 2 children (ages 5 and 9)"));
+  assert.equal(deux.ligneSite, "1 to 2 people");
+  assert.equal(quatre.ligneSite, "3 to 4 people");
+  assert.equal(quatre.total - deux.total, 6620 - 6110);
+  assert.deepEqual([deux.extras[0].source.id, quatre.extras[0].source.id], ["kradan-fictif", "kradan-fictif"]);
+  // « Modifier » : l'option passe du bateau privé au join-in. Le message refait garde la ligne « Extras: », mais le join-in n'a pas d'extension (Kradan y est déjà).
+  const ligne = { marque: "secret", produit_id: "4-islands", produit: "4 Islands", option_id: "private-longtail", option_titre: "Private longtail", date_service: "2026-12-20", adultes: 2, enfants: 0, nom: "Anna", telephone: null, total_estime: 6887, devise: "THB", page_url: ZTP, message: MSG_KRADAN("2 adults") };
+  const vers = texteDemande(ligne, { option_titre: "Join-in longtail" });
+  assert.match(vers, /^Extras: Add Koh Kradan$/m);
+  assert.doesNotMatch(vers, /Estimated total/, "le prix annoncé était celui du bateau privé");
+  const joint = kradanOffre(vers, { option: "private-longtail" });
+  assert.equal(joint.extras, undefined);
+  assert.equal(joint.total, 2 * 1010);
+  // Et dans l'autre sens : un message du join-in modifié vers le bateau privé reçoit l'extension.
+  const ligneJoint = { ...ligne, option_id: "join-in-longtail", option_titre: "Join-in longtail", message: MSG_KRADAN("2 adults").replace("Private longtail", "Join-in longtail") };
+  const retour = kradanOffre(texteDemande(ligneJoint, { option_titre: "Private longtail" }), { option: "join-in-longtail" });
+  assert.deepEqual([retour.extras.length, retour.total], [1, 6110 + 777]);
+  // Réponse de confirmation : l'extension est dite, le total est celui de la fenêtre.
+  const final = { date: "2026-12-20", option_titre: "Private longtail", adultes: 2, enfants: 0, total: deux.total, extras: deux.extras.map((x) => x.ligne), devise: "THB" };
+  const reponse = reponseConfirmation(ligne, final, { aujourdhui: AJD });
+  assert.match(reponse, /^Extras: Add Koh Kradan$/m);
+  assert.match(reponse, new RegExp(`^Total: ${deux.total.toLocaleString("en-US")} THB$`, "m"));
+  assert.doesNotMatch(reponseConfirmation(ligne, { ...final, extras: [] }, { aujourdhui: AJD }), /Extras:/);
+  // La fiche de la liste dit l'extra demandé.
+  assert.equal(champsCarnet(ligne).extras, "Add Koh Kradan");
+  assert.equal(champsCarnet({ ...ligne, message: MSG_KRADAN("2 adults", "") }).extras, "");
+});
+
+test("Extension Koh Kradan : sans tarif en base (SQL du guide pas encore passé) l'offre le dit, la tranche reste juste", () => {
+  const sansExtension = { ...contexte, prestations: prestations.filter((p) => p.id !== "kradan-fictif") };
+  const o = kradanOffre(MSG_KRADAN("2 adults"), { contexteVoulu: sansExtension });
+  assert.equal(o.avertissement, "extra_sans_tarif");
+  assert.equal(o.extraManquant, "Add Koh Kradan");
+  assert.equal(o.extras, undefined);
+  assert.equal(o.total, 6110, "le prix de la tranche seul");
+  // Une extension masquée n'est pas proposée non plus.
+  const masquee = { ...contexte, prestations: prestations.map((p) => (p.id === "kradan-fictif" ? { ...p, actif: false } : p)) };
+  assert.equal(kradanOffre(MSG_KRADAN("2 adults"), { contexteVoulu: masquee }).avertissement, "extra_sans_tarif");
+  // La clé du module ne dit ni nom ni montant ; le mapping la porte seule.
+  assert.deepEqual(EXTRAS_DU_SITE.map((x) => Object.keys(x).sort()), [["cle", "ligne", "option", "produit"]]);
+  assert.equal(EXTRAS_DU_SITE[0].ligne, "Add Koh Kradan");
+  assert.doesNotMatch(JSON.stringify(EXTRAS_DU_SITE), /\d{3}|villa|net/i);
+  const doc = lireFichier("docs/gestion/carnet-aonang-lanta.md");
+  assert.match(doc, /Add Koh Kradan/);
+  const vue = lireFichier("src/gestion/js/views/demande.mjs");
+  assert.match(vue, /offre\.extras/, "la fenêtre fait une ligne par extra");
+  assert.match(vue, /extra_sans_tarif/);
 });
