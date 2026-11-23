@@ -6,7 +6,7 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
-import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, LIGNE_ENFANT } from "./carnet-ages.mjs";
+import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, LIGNE_ENFANT } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -57,12 +57,13 @@ function trajetDe(texte) {
   return m ? { de: m[1].trim(), vers: m[2].trim() } : { de: "", vers: texte.trim() };
 }
 
-function lireSite(lignes, aujourdhui) {
+// `apresVide` : les rangs des lignes précédées d'une ligne vide dans le message (le pied d'une liste de sorties s'y reconnaît).
+function lireSite(lignes, aujourdhui, apresVide = new Set()) {
   let genre = "";
   let m = null;
   for (const [re, g] of ENTETES_SITE) if ((m = re.exec(lignes[0]))) { genre = g; break; }
   if (!genre) return null;
-  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", transfertHotel: "", sorties: [] };
+  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", transfertHotel: "", extrasListe: "", sorties: [] };
   const optionVers = (txt) => {
     if (/join/i.test(txt)) d.mode = "join";
     else if (/private/i.test(txt)) d.mode = "private";
@@ -107,7 +108,7 @@ function lireSite(lignes, aujourdhui) {
   let sortie = null;
   // Les lignes du service lu (la demande, ou la première sortie d'une liste) : elles disent quelle ligne de prix du site a été choisie (tarifsDuSite).
   d.lignesService = genre === "liste" ? [] : lignes.slice(1);
-  for (const l of lignes.slice(1)) {
+  for (const [rang, l] of lignes.slice(1).entries()) {
     if (genre === "liste") {
       const jour = /^(?:[A-Za-z]{3} \d{1,2} [A-Za-z]{3} \d{4}|Date to choose)$/.exec(l);
       if (jour) { sortie = { date: /^Date/.test(l) ? "" : lireDate(l, aujourdhui), texte: l, titre: "", lignes: [] }; sorties.push(sortie); continue; }
@@ -128,7 +129,12 @@ function lireSite(lignes, aujourdhui) {
     else if (cle === "drop-off") d.dropoff = v;
     else if (cle === "hotel on koh lanta") d.hotel = v;
     else if (cle === "name") d.nom = v;
-    else if (cle === "extras") { if (sortie) sortie.extras = v; else d.extras = v; }
+    else if (cle === "extras") {
+      // Liste de sorties : l'extra d'une sortie est dans ses lignes ; celui d'en-tête (avant la première date) ou de pied (après une ligne vide) est à la liste entière.
+      if (genre === "liste" && (!sortie || apresVide.has(rang + 1))) d.extrasListe = [d.extrasListe, v].filter(Boolean).join(", ");
+      else if (sortie) sortie.extras = v;
+      else d.extras = v;
+    }
     else if (cle === "hotel transfer") d.transfertHotel = v;
     else if (cle === "formula") d.formule = v;
     else if (cle === "slot") d.creneau = v;
@@ -171,6 +177,7 @@ function lireSite(lignes, aujourdhui) {
     d.extras = premiere.extras || "";
     d.sorties = autres.map((x) => `${x.texte}: ${x.titre}${x.extras ? ` (Extras: ${x.extras})` : ""}`.trim());
   }
+  if (genre === "liste" && !sorties.length && d.extrasListe) [d.extras, d.extrasListe] = [d.extrasListe, ""];
   // L'hôtel d'un trajet est le bout qui n'est pas un aéroport ou un embarcadère.
   if (!d.hotel && genre !== "tour" && genre !== "liste") {
     const bouts = [d.pickup, d.dropoff].filter(Boolean);
@@ -182,9 +189,20 @@ function lireSite(lignes, aujourdhui) {
 
 // Lit le message d'un formulaire. Renvoie null si le texte ne ressemble à aucune demande.
 export function lireDemande(texte, aujourdhui) {
-  const lignes = String(texte || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lignes = [];
+  const apresVide = new Set();
+  let vide = false;
+  for (const brute of String(texte || "").split(/\r?\n/)) {
+    const l = brute.trim();
+    if (!l) vide = true;
+    else {
+      if (vide && lignes.length) apresVide.add(lignes.length);
+      lignes.push(l);
+      vide = false;
+    }
+  }
   if (!lignes.length) return null;
-  const site = lireSite(lignes, aujourdhui);
+  const site = lireSite(lignes, aujourdhui, apresVide);
   if (site) return site;
   const d = { marque: "", type: "", nom: "", prestation: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, hotel: "" };
   for (const l of lignes) {
@@ -1167,9 +1185,16 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
 export function extrasDemandes(d) {
   if (!d || !d.carnet || !d.extras) return [];
   const trouve = optionDuSite(d);
-  if (!trouve) return [];
-  const demandes = cleTexte(d.extras);
-  return EXTRAS_DU_SITE.filter((x) => x.produit === trouve.produit.id && x.option === trouve.option.id && demandes.includes(cleTexte(x.ligne)));
+  const demandes = extrasEnElements(d.extras).map((x) => cleTexte(x.texte));
+  // Option non reconnue : aucune ligne ne peut se créer, mais l'extra demandé doit se dire (ajouterExtras le signale) : on rend ceux que le texte nomme, pour n'importe quelle option.
+  return EXTRAS_DU_SITE.filter((x) => (!trouve || (x.produit === trouve.produit.id && x.option === trouve.option.id)) && demandes.includes(cleTexte(x.ligne)));
+}
+// Ce que la confirmation et l'apprentissage des prix retiennent d'un service créé : ses extras ET son total viennent des MÊMES lignes créées (une ligne Kradan supprimée dans la fenêtre
+// ne reste pas dans le total). `base` : titre, date, heure, personnes.
+export function serviceCree(base, lignes, prestations = []) {
+  const chiffrees = (lignes || []).filter((l) => l.kind !== "texte");
+  const somme = chiffrees.reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
+  return { ...base, total: chiffrees.length ? Math.round(somme * 100) / 100 : null, extras: extrasCrees(lignes, prestations) };
 }
 // Les extras qui ont réellement une ligne dans le service créé (la fenêtre a pu en supprimer une) : leur libellé, d'après la clé du tarif de chaque ligne. Sert la réponse de confirmation.
 export function extrasCrees(lignes, prestations = []) {
@@ -1184,7 +1209,9 @@ export function extrasCrees(lignes, prestations = []) {
 // Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) : l'offre
 // le dit dans `extrasManquants`, EN PLUS de son avertissement principal (un groupe hors tranche ne cache pas un extra sans tarif).
 function ajouterExtras(offre, voulus, { prestations, partenaires }) {
-  if (!voulus.length || offre.genre !== "prestation" || offre.ligneSite === undefined) return offre;
+  if (!voulus.length) return offre;
+  // Une offre qui n'est pas celle d'une option du site (recouvrement de mots, trajet) ne peut porter aucune ligne d'extra : l'offre le dit, l'extra ne disparaît pas en silence.
+  if (offre.genre !== "prestation" || offre.ligneSite === undefined) return { ...offre, extrasManquants: [...(offre.extrasManquants || []), ...voulus.map((x) => x.ligne)] };
   let sortie = offre;
   for (const x of voulus) {
     const tarif = prestations.find((p) => p.details && p.details.cle_carnet === x.cle && proposable(p, partenaires));
@@ -1294,7 +1321,7 @@ export function notesDemande(d, { surLeVoucher = false } = {}) {
     d.bagages && !surLeVoucher ? `Bags: ${d.bagages}` : "",
     d.formule ? `Formula: ${d.formule}` : "",
     d.creneau ? `Slot: ${d.creneau}` : "",
-    d.extras ? `Extras: ${d.extras}` : "",
+    d.extras || d.extrasListe ? `Extras: ${[d.extrasListe, d.extras].filter(Boolean).join(", ")}` : "",
     d.transfertHotel ? `Hotel transfer: ${d.transfertHotel}` : "",
     d.parc ? `Park fee (paid on site): ${d.parc}` : "",
     d.remarque ? `Client message: ${d.remarque}` : "",

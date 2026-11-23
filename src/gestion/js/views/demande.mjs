@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, ajusterAgesCarnet, extrasCrees, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, ajusterAgesCarnet, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, adresseEstHotel } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -579,10 +579,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
       // prix_saisi : la personne a remplacé ici le prix de l'offre du catalogue par un prix à elle (onglet Assistant, agent-apprendre.mjs).
-      // Les extras de chaque service sont ceux de ses lignes réellement créées (une ligne supprimée dans la fenêtre n'est pas annoncée au client).
+      // Les extras et le total de chaque service sont ceux de ses lignes réellement créées (une ligne supprimée dans la fenêtre n'est ni annoncée au client ni comptée).
       const finals = coches().map((sv, i) => {
         const ids = new Set((b.parService[i] || {}).ligneIds || []);
-        return { date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null, extras: extrasCrees(b.lignes.filter((l) => ids.has(l.id)), etat.db.prestations), prix_saisi: prixSaisiIci(sv) };
+        return { ...serviceCree({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "" }, b.lignes.filter((l) => ids.has(l.id)), etat.db.prestations), prix_saisi: prixSaisiIci(sv) };
       });
       const somme = b.lignes.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
       fermer();

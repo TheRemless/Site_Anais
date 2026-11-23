@@ -43,6 +43,19 @@ export const sortieParId = (id) => PRODUITS_CARNET.find((p) => p.id === id) || P
 
 // Un texte comparé sans accents ni casse (« Join-in longtail » = « join in longtail », « & » = « and ») : la seule définition (demande-calc.mjs l'importe).
 export const cleTexte = (s) => String(s === null || s === undefined ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+// Les extras d'une ligne « Extras: » du message : un extra par élément séparé par « , », « ; » ou « | », avec le séparateur qui le précède (rendu tel quel quand on en retire). Le « per boat »
+// que la refonte du site écrit après « Add Koh Kradan » est une précision de l'extra qui le précède, pas un extra. Un élément est comparé ENTIER (cleTexte), jamais par morceau.
+export function extrasEnElements(texte) {
+  const morceaux = String(texte || "").split(/(\s*[,;|]\s*)/);
+  const elements = [];
+  for (let i = 0; i < morceaux.length; i += 2) {
+    const t = morceaux[i].trim();
+    if (!t) continue;
+    if (/^per (boat|van|person)$/i.test(t) && elements.length) elements[elements.length - 1].precisions.push({ texte: t, sep: morceaux[i - 1] || ", " });
+    else elements.push({ texte: t, sep: i ? morceaux[i - 1] : "", precisions: [] });
+  }
+  return elements;
+}
 // Une ligne de prix « enfant » du site (« Child, 4 to 11 », « Child rider ») : la seule définition (demande-calc.mjs l'importe).
 export const LIGNE_ENFANT = /^child\b/i;
 

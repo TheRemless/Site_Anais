@@ -14,7 +14,7 @@ import { fichesParNumero } from "../demande-calc.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
-  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, titreCanonique, optionsModifiables, optionModifiee, texteDemande, changements, finalDeConfirmation, reponseConfirmation, reponseRefus,
+  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, optionsModifiables, optionModifiee, texteDemande, changements, finalDeConfirmation, reponseConfirmation, reponseRefus,
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
   estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties,
 } from "../demandes-site-calc.mjs";

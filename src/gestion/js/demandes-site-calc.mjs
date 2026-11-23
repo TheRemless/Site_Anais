@@ -3,7 +3,7 @@
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
-import { agesDuMessage, ajusterAgesCarnet, sortieParId, resoudreSortie, nomsDeOption, cleTexte } from "./carnet-ages.mjs";
+import { agesDuMessage, ajusterAgesCarnet, sortieParId, resoudreSortie, nomsDeOption, cleTexte, extrasEnElements } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
@@ -106,14 +106,26 @@ const lireLigne = (message, re) => (re.exec(message || "") || [])[1];
 // Les extras que le client a écrits dans la ligne « Extras: » du message (« Add Koh Kradan »). Le transfert depuis l'hôtel n'en fait pas partie : c'est un prix indicatif à confirmer,
 // pas un extra acquis (transfertDuMessage).
 export const extrasDuMessage = (message) => (lireLigne(message, /^Extras\s*:\s*(.+)$/im) || "").trim();
-// Le transfert depuis l'hôtel que le récapitulatif de la page dit « oui » (« oui (1 500 THB par van, indicatif) »), écrit en anglais : « requested (indicative 1 500 THB per van) ».
-// Vide quand le client ne l'a pas coché. Jamais dans « Extras: ».
+// Le transfert depuis l'hôtel que le récapitulatif de la page dit « oui », écrit en anglais, sans mot français. Les formes de la page : « oui (1 500 THB par van, indicatif) », « par personne »,
+// « par bateau », « oui (1 500 THB, indicatif) », « oui (indicatif) » et « oui » seul. Une forme inconnue est rendue telle quelle entre guillemets. Vide quand le client ne l'a pas coché.
+const UNITES_TRANSFERT = { "par van": "per van", "par personne": "per person", "par pers": "per person", "/pers": "per person", "par bateau": "per boat", "par groupe": "per group", "par vehicule": "per vehicle", "par voiture": "per car" };
 export function transfertDuMessage(message) {
   const v = lireLigne(message, /^Transfert depuis l.hôtel\s*:\s*(oui.*)$/im);
   if (!v) return "";
-  const prix = /\((.*)\)/.exec(v);
-  const dit = prix ? prix[1].replace(/,\s*indicatif\s*$/i, "").replace(/\bpar\b/gi, "per").trim() : "";
-  return dit ? `requested (indicative ${dit})` : "requested";
+  const reste = v.replace(/^oui\s*/i, "").trim();
+  if (!reste) return "requested";
+  const dedans = /^\((.*)\)$/.exec(reste);
+  if (!dedans) return `requested, "${v.trim()}"`;
+  const indicatif = /(?:^|,)\s*indicatif\s*$/i.test(dedans[1]);
+  const corps = dedans[1].replace(/(?:^|,)\s*indicatif\s*$/i, "").trim();
+  let dit = "";
+  if (corps) {
+    const m = /^(.*?\bTHB)\s*(.*)$/i.exec(corps.replace(/\s+/g, " "));
+    const unite = m ? (m[2] ? UNITES_TRANSFERT[cleTexte(m[2]).replace(/^par (\w+)$/, "par $1").replace(/^pers$/, "/pers")] || UNITES_TRANSFERT[m[2].toLowerCase()] : "") : undefined;
+    if (!m || unite === undefined) return `requested, "${v.trim()}"`;
+    dit = [m[1], unite].filter(Boolean).join(" ");
+  }
+  return `requested (${[indicatif ? "indicative" : "", dit].filter(Boolean).join(" ")})`;
 }
 // Les lignes du récapitulatif de la page (en français) qui n'ont pas de champ dans la demande, reportées dans le message refait : « Formula: », « Slot: », « Extras: » (les extras déjà
 // écrits à la façon du site), « Hotel transfer: » (quand le client l'a coché), « Park fee: » et « Message: ». Le texte du client est repris tel que la page l'a écrit.
@@ -128,10 +140,14 @@ function lignesDuRecapitulatif(message) {
   return [formule ? `Formula: ${formule.trim()}` : "", creneau ? `Slot: ${creneau.trim()}` : "", extras ? `Extras: ${extras}` : "", transfert ? `Hotel transfer: ${transfert}` : "", parc ? `Park fee: ${parc.trim()}` : "", client ? `Message: ${client.trim()}` : ""].filter(Boolean);
 }
 // Les extras d'une ligne « Extras: » qui valent pour l'option finale : un extra connu (EXTRAS_DU_SITE) d'une autre option s'en va (« Add Koh Kradan » n'a pas de sens sur le join-in, où
-// Kradan est déjà dans la sortie), les autres restent. Rend le texte restant, vide s'il ne reste rien.
+// Kradan est déjà dans la sortie), avec sa précision (« per boat »). Un extra se compare ENTIER (« Add Koh Kradan sunset dinner » n'est pas « Add Koh Kradan »), les autres restent avec
+// leurs séparateurs d'origine. Rien à retirer : le texte est rendu tel quel. Vide s'il ne reste rien.
 export function extrasPourOption(extras, produitId, optionId) {
   const inapplicables = EXTRAS_DU_SITE.filter((x) => !(x.produit === produitId && x.option === optionId)).map((x) => cleTexte(x.ligne));
-  return String(extras || "").split(/\s*[;|]\s*|,\s*(?=[A-Z])/).map((x) => x.trim()).filter((x) => x && !inapplicables.some((i) => cleTexte(x).includes(i))).join(", ");
+  const elements = extrasEnElements(extras);
+  const gardes = elements.filter((e) => !inapplicables.includes(cleTexte(e.texte)));
+  if (gardes.length === elements.length) return String(extras || "");
+  return gardes.map((e, i) => (i ? e.sep : "") + e.texte + e.precisions.map((p) => p.sep + p.texte).join("")).join("");
 }
 // « 2 adults, 2 children (ages 5 and under 1) » : les invités lus dans le message (agesDuMessage), avec leurs âges, tels que le contrat du site les écrit.
 function invitesAnglais({ adultes = 0, enfants = 0, bebes = 0, ages = [] }) {
