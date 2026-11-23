@@ -94,7 +94,14 @@ test("cas 1, question en plus du prix : le modèle mot pour mot, puis la questio
   const info = await reponse({ message: "Hello, thank you for your message 😊 Krabi Town is 2,500 THB. We have child seats. Is it for tomorrow?\n\nHave a nice day, Taxi Démo", modele_prix: "perso-demo01", total: "2,500 THB" });
   assert.equal(info.carte.donnees.message, `${rempli("2,500 THB")}\n\nWe have child seats.\nIs it for tomorrow?`);
   assert.deepEqual(phrasesDe("Hi Tom. We have child seats! Ok?\n→ Ao Nang"), ["Hi Tom.", "We have child seats!", "Ok?", "Ao Nang"]);
+  assert.deepEqual(phrasesDe("Dear Mr. Smith, Dr. Lee will drive. Ok?"), ["Dear Mr. Smith, Dr. Lee will drive.", "Ok?"]);
   assert.deepEqual(phrasesEnPlus("Thank you for your message. Kind regards, Taxi Démo", { modele: MODELE.corps, entreprise: "Taxi Démo" }), []);
+  // Une salutation seule sur sa ligne ou une formule de fin seule ne part jamais derrière le modèle : seule la question suit.
+  const salue = await reponse({ message: "Hello Tom,\nThe total for a private transfer to Krabi Town is 2,500 THB, all fees included.\nCould you send me the name of your hotel?\nThank you ✨\nMerci !\nCheers\nBest regards", modele_prix: "perso-demo01", total: "2,500 THB" });
+  assert.equal(salue.carte.donnees.message, `${rempli("2,500 THB")}\n\nCould you send me the name of your hotel?`);
+  for (const p of ["Hello Tom,", "Hi there", "Dear Mr. Smith,", "Bonjour Claire,", "Thank you ✨", "Thanks again!", "Merci beaucoup", "Cheers", "Kind regards,"]) assert.deepEqual(phrasesEnPlus(p, { modele: MODELE.corps }), [], p);
+  // Une phrase qui commence par une salutation mais dit autre chose reste (« Hi, we have child seats. » n'est pas une salutation seule).
+  assert.deepEqual(phrasesEnPlus("Hi, we have child seats.", { modele: MODELE.corps }), ["Hi, we have child seats."]);
   // Une question déjà dans suite n'est pas répétée.
   const deux = await reponse({ message: brouillon, modele_prix: "perso-demo01", total: "2,500 THB", suite: "What time does your flight land?" });
   assert.equal(deux.carte.donnees.message.match(/What time does your flight land\?/g).length, 1);

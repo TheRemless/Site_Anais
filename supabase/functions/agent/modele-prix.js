@@ -60,13 +60,17 @@ export const memeTexte = (a, b) => comparable(a) === comparable(b);
 // child seats. ») : elles ne se perdent pas quand le modèle remplace le brouillon (deuxième relecture de la PR 342 : par phrase, pas par
 // ligne). Restent dehors : une phrase qui porte un montant (le prix est dans le modèle), les formules que le modèle dit déjà ou qui n'apportent
 // rien (salutation, remerciement : la plupart de leurs mots sont dans le modèle) et une formule de fin ou une signature.
+// Une salutation (« Hello Tom, ») ou une formule de fin seule (« Thank you ✨ », « Merci ! », « Cheers », « Regards ») : jamais derrière le
+// modèle (troisième relecture de la PR 342).
+const SALUTATION = /^(hello|hi|dear|bonjour)\b(?:[^.!?]|\b(?:Mr|Mrs|Ms|Mme|Mlle|Dr)\.)*$/i;
+const FORMULE_SEULE = /^(?:many\s+)?(?:thank\s+you|thanks|merci|cheers|(?:kind\s+|best\s+|warm\s+)?regards)(?:\s+(?:so\s+much|very\s+much|a\s+lot|beaucoup|again|encore))?[^\p{L}\p{N}]*$/iu;
 const FORMULE_DE_FIN = /\b(?:have a (?:nice|great|lovely|good|wonderful) (?:day|evening|trip)|kind regards|best regards|cheers|belle journée|bonne journée|cordialement|à bientôt)\b/i;
 const mots = (t) => sansAccentsMin(t).match(/[a-z0-9]+/g) || [];
 const sansAccentsMin = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 export const phrasesDe = (t) =>
   propre(t)
     .split("\n")
-    .flatMap((l) => l.split(/(?<=[.!?…])\s+(?=\S)/u))
+    .flatMap((l) => l.split(/(?<=[.!?…])(?<!\b(?:Mr|Mrs|Ms|Mme|Mlle|Dr|St|Mt)\.)\s+(?=\S)/u))
     .map((p) => p.replace(/^[\s→•*-]+/u, "").trim())
     .filter((p) => /[\p{L}\p{N}]/u.test(p));
 export function phrasesEnPlus(brouillon, { modele = "", suite = "", entreprise = "", lireMontants = () => [] } = {}) {
@@ -80,7 +84,7 @@ export function phrasesEnPlus(brouillon, { modele = "", suite = "", entreprise =
     if (!m.length || vues.has(cle)) return false;
     vues.add(cle);
     if (deja.includes(cle) || lireMontants(p).some((n) => n > 0)) return false;
-    if (FORMULE_DE_FIN.test(p) || (nom && cle.includes(nom))) return false;
+    if (SALUTATION.test(p) || FORMULE_SEULE.test(p) || FORMULE_DE_FIN.test(p) || (nom && cle.includes(nom))) return false;
     return m.filter((x) => motsModele.has(x)).length / m.length < 0.6;
   });
 }
