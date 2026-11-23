@@ -349,6 +349,18 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   partenaire.value = r.partenaire_id || "";
   const date = h("input", { id: "r-date", type: "date", value: r.date_service || "" });
   const heure = h("input", { id: "r-heure", type: "time", value: r.heure_pickup || "" });
+  // Trajet du catalogue sans heure de pickup (contre-relecture de la PR 337) : le voucher imprime l'heure de départ à part, jamais comme pickup.
+  const departTrajetR = (r.trajet_id && (etat.db.trajets.find((t) => t.id === r.trajet_id) || {}).depart) || "";
+  const alerteHeure = h("p", { class: "aide alerte-heure", role: "status" });
+  const majAlerteHeure = () => {
+    const manque = !!r.trajet_id && !heure.value;
+    alerteHeure.hidden = !manque;
+    alerteHeure.textContent = manque ? (departTrajetR ? tr("Heure de pickup à vérifier : le voucher n'imprime que le départ du trajet ({heure}).", { heure: departTrajetR }) : tr("Heure de pickup à vérifier : rien ne s'imprime sur le voucher.")) : "";
+  };
+  heure.addEventListener("input", majAlerteHeure);
+  heure.addEventListener("change", majAlerteHeure);
+  majAlerteHeure();
+  const avecAlerte = (c, aide) => (c.append(aide), c);
   const lieu = h("input", { id: "r-lieu", value: r.lieu_pickup || "", placeholder: tr("Hôtel, chambre, vol") });
   const adultes = saisie(h("input", { id: "r-ad", value: p.adultes ?? 1 }), "entier");
   const enfants = saisie(h("input", { id: "r-enf", value: p.enfants ?? 0 }), "entier");
@@ -703,7 +715,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     champ(tr("Prestation"), libelle),
     // La référence s'imprime sur le voucher de Secret (« Operator ref. » dans Remarks, audit n° 61) ; Taxi ne l'imprime pas.
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champTarif, champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference, modeExcursions() && !modeTaxi() ? tr("Imprimée sur le voucher, dans Remarks (« Operator ref. »).") : null)),
-    h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
+    h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), avecAlerte(champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), alerteHeure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
     zonesPickup.noeud,
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.

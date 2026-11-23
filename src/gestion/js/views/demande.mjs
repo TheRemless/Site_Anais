@@ -577,7 +577,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   }
 
   // Ouvre l'écran « Nouveau dossier » déjà rempli, pour vérifier ou compléter avant de créer.
+  // Jamais depuis une carte de l'Assistant (`options.surCree`, relecture de la PR 337) : « Nouveau dossier » créerait le dossier sans que la
+  // carte soit notée, et « Tout valider » pourrait en créer un second. La fiche de la carte crée elle-même, avec la carte prise.
   function verifierAvant() {
+    if (options.surCree) return;
     const b = preparer();
     if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque && b.manque.transfertLibre) return (erreur.textContent = tr("Indiquez le prix du transfert privé, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
@@ -637,7 +640,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
         h("button", { class: "secondaire petit", type: "button", onclick: () => { const sv = nouveauService({ phrase: tr("Service ajouté") }); choisirDansBase(sv); } }, tr("Ajouter un service")),
         totalBloc,
         erreur,
-        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
+        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite && !options.surCree ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
     );
   }

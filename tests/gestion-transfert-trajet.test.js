@@ -113,13 +113,53 @@ test("voucher : chaque trajet reçoit son modèle et son type, sans rien choisir
   assert.match(texte(renderVoucher(voucherDe(resa.bateau.id))), /Boat Ticket Voucher/);
 });
 
-test("voucher d'un trajet sans heure de pickup : l'heure de départ du trajet s'imprime", async () => {
+test("voucher d'un trajet sans heure de pickup : « Pickup Time » reste vide, le départ s'imprime à part, la fiche le signale", async () => {
+  const lignes = () => renderVoucher(voucherDe(resa.partage.id)).querySelectorAll("p").map((p) => p.textContent.replace(/\s+/g, " ").trim());
   await E.modifier("reservations", resa.partage.id, { heure_pickup: "" });
-  const l = renderVoucher(voucherDe(resa.partage.id)).querySelectorAll("p").find((p) => p.textContent.startsWith("Pickup Time"));
-  assert.ok(l, "la ligne Pickup Time");
-  assert.match(l.textContent, /08:00/);
+  const sans = lignes();
+  const pickup = sans.find((l) => l.startsWith("Pickup Time"));
+  assert.ok(pickup, "la ligne Pickup Time reste, à remplir");
+  assert.doesNotMatch(pickup, /\d{2}:\d{2}/, "jamais l'heure de départ à la place du pickup");
+  assert.ok(sans.some((l) => /^Departure Time: ?08:00/.test(l)), sans.join(" | "));
+  // La fiche le signale.
+  const form = formulaireReservation(E.etat.db.reservations.find((r) => r.id === resa.partage.id), () => {});
+  dom.document.body.append(form);
+  await dom.attendre(5);
+  const alerte = form.querySelector(".alerte-heure");
+  assert.equal(alerte.hidden, false);
+  assert.match(alerte.textContent, /Heure de pickup à vérifier.*08:00/);
+  dom.saisir(form.querySelector("#r-heure"), "07:15");
+  assert.equal(alerte.hidden, true, "l'alerte tombe dès qu'une heure est saisie");
+  form.remove();
+  // Pickup à 07:15 et départ à 08:00 (cas d'INV-2026-047) : les deux, chacun sur sa ligne.
+  await E.modifier("reservations", resa.partage.id, { heure_pickup: "07:15" });
+  const avec = lignes();
+  assert.ok(avec.some((l) => /^Pickup Time: ?07:15/.test(l)));
+  assert.ok(avec.some((l) => /^Departure Time: ?08:00/.test(l)));
+  // Hors trajet : pas de ligne Departure.
+  assert.ok(!renderVoucher(voucherDe(resa.bateau.id)).querySelectorAll("p").some((p) => p.textContent.startsWith("Departure Time") && /Transfer/.test(p.textContent)));
   await E.modifier("reservations", resa.partage.id, { heure_pickup: "07:30" });
-  assert.match(renderVoucher(voucherDe(resa.partage.id)).querySelectorAll("p").find((p) => p.textContent.startsWith("Pickup Time")).textContent, /07:30/, "l'heure saisie passe avant");
+});
+
+test("fiche « Vérifier avant » d'une carte : pas de lien « Vérifier avant de créer » vers « Nouveau dossier »", async () => {
+  const { carte } = await carteTrajet();
+  const o = await ongletAvec([carte]);
+  try {
+    dom.boutons("Vérifier avant", o.carteVue(0))[0].click();
+    await dom.attendre(80);
+    const fond = dom.document.body.querySelectorAll(".modal-fond").slice(-1)[0];
+    assert.ok(fond, "la fiche est ouverte");
+    assert.ok(dom.boutons("Créer", fond).length, "la fiche crée elle-même");
+    assert.equal(dom.boutons("Vérifier avant de créer", fond).length, 0, "le lien est masqué");
+    fond.querySelector(".modal-tete button").click();
+    await dom.attendre(20);
+  } finally {
+    o.fin();
+  }
+  // Ailleurs (demande collée hors carte), le lien reste : la règle tient dans la condition du bouton et dans verifierAvant.
+  const src = (await import("node:fs")).readFileSync(new URL("../src/gestion/js/views/demande.mjs", import.meta.url), "utf8");
+  assert.match(src, /ecrit && !depuisSite && !options\.surCree \? h\("button", \{ class: "lien", type: "button", onclick: \(\) => verifierAvant\(\) \}, tr\("Vérifier avant de créer"\)\)/);
+  assert.match(src, /function verifierAvant\(\) \{\n\s+if \(options\.surCree\) return;/);
 });
 
 test("fiche : « Automatique » dit ce qui s'imprime, le choix « Shared minivan » est gardé à l'enregistrement et imprimé", async () => {
