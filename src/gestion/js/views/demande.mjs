@@ -782,7 +782,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // Les lignes étiquetées (« Pickup: », « Drop-off: ») se recopient quand le message n'a qu'un service ; les trajets du texte libre se
     // proposent, dans l'ordre, un par service, et seulement si leur nombre est celui des services (sinon rien n'est proposé).
     // Une phrase qui n'est qu'une ligne étiquetée (« Pickup: Krabi Airport ») n'est pas un service à part chez Taxi : elle part décochée.
-    const ligneEtiquetee = (t) => modeTaxi() && !!d.sens && (d.sens.pickup || d.sens.dropoff) && ETIQUETTE_LIEU.test(t.phrase || "");
+    const ligneEtiquetee = (t) => modeTaxi() && ((!!d.sens && !!(d.sens.pickup || d.sens.dropoff)) || !!(d.trajetsLus || []).length) && ETIQUETTE_LIEU.test(t.phrase || "");
     const reels = trouves.map((t, i) => i).filter((i) => !ligneEtiquetee(trouves[i]));
     const nb = Math.max(reels.length, 1);
     const sensLu = nb === 1 ? d.sens || null : null;

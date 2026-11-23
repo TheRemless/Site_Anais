@@ -492,18 +492,57 @@ function nettoyerLieu(x, { libre = false } = {}) {
   return t;
 }
 
-// Les lignes étiquetées : rend { pickup, dropoff }, vide quand le message n'a pas la ligne.
+// La valeur d'une ligne étiquetée : coupée à la virgule (« Resort Exemple, room 12 » → « Resort Exemple »), sans lien. Écartée si elle porte
+// une adresse e-mail (« John Smith <john@…> ») ou un verbe ou un pronom (« Germany and want »).
+function valeurEtiquetee(v) {
+  const t = sansLien(v).split(",")[0];
+  if (/[@＠]/.test(t)) return "";
+  return nettoyerLieu(t, { libre: true });
+}
+// Les lignes étiquetées sûres, recopiées sans clic : « Pickup: », « Pick-up: », « Pick-up location: », « Drop-off: », « Dropoff: »,
+// « Prise en charge : », « Dépose : ». Rend { pickup, dropoff }, vide quand le message n'a pas la ligne.
+const ETIQUETTE_PICKUP = /^[ \t]*(?:pick[- ]?up(?:[ \t]+(?:location|place|point|address))?|(?:lieu de )?prise en charge)[ \t]*:[ \t]*(.+)$/iu;
+const ETIQUETTE_DROPOFF = /^[ \t]*(?:drop[- ]?off(?:[ \t]+(?:location|place|point|address))?|(?:lieu de )?d[ée]pose)[ \t]*:[ \t]*(.+)$/iu;
 export function lireLieuxEtiquetes(texte) {
   const out = { pickup: "", dropoff: "" };
   for (const l of String(texte || "").split(/\r?\n/)) {
     let m;
-    if ((m = /^[ \t]*(?:pick[- ]?up(?:[ \t]+(?:place|location|point|address))?|from|prise en charge|lieu de (?:prise en charge|pickup)|d[ée]part)[ \t]*:[ \t]*(.+)$/iu.exec(l))) {
-      if (!out.pickup) out.pickup = nettoyerLieu(m[1]);
-    } else if ((m = /^[ \t]*(?:drop[- ]?off(?:[ \t]+(?:place|location|point|address))?|to|d[ée]pose|lieu de d[ée]pose|destination)[ \t]*:[ \t]*(.+)$/iu.exec(l))) {
-      if (!out.dropoff) out.dropoff = nettoyerLieu(m[1]);
-    }
+    if ((m = ETIQUETTE_PICKUP.exec(l))) out.pickup = out.pickup || valeurEtiquetee(m[1]);
+    else if ((m = ETIQUETTE_DROPOFF.exec(l))) out.dropoff = out.dropoff || valeurEtiquetee(m[1]);
   }
   return out;
+}
+
+// « From: », « To: », « Départ : », « Destination: » : trop souvent autre chose qu'un lieu (en-tête d'un e-mail transféré, signature,
+// « Destination: Thailand holiday »). Ils ne remplissent rien : ils font un trajet proposé (« Utiliser »). Un « From: » ou un « To: » dans un
+// bloc d'en-têtes (des lignes qui se suivent avec « Subject: », « Date: » ou « Sent: ») est ignoré. Rend { pickup, dropoff, debut } ou null.
+function trajetDesEtiquettes(texte) {
+  const lignes = String(texte || "").split(/\r?\n/);
+  // Les blocs de lignes qui se suivent sans ligne vide : un bloc avec Subject, Date ou Sent est un en-tête d'e-mail.
+  const enTete = new Set();
+  let debutBloc = 0;
+  for (let i = 0; i <= lignes.length; i++) {
+    if (i === lignes.length || !lignes[i].trim()) {
+      const bloc = lignes.slice(debutBloc, i);
+      if (bloc.some((l) => /^[ \t]*(?:subject|objet|date|sent|envoyé)[ \t]*:/iu.test(l))) for (let k = debutBloc; k < i; k++) enTete.add(k);
+      debutBloc = i + 1;
+    }
+  }
+  const t = { pickup: "", dropoff: "", debut: -1 };
+  let position = 0;
+  lignes.forEach((l, i) => {
+    let m;
+    const depart = /^[ \t]*(from|d[ée]part)[ \t]*:[ \t]*(.+)$/iu.exec(l);
+    const arrivee = !depart && /^[ \t]*(to|destination)[ \t]*:[ \t]*(.+)$/iu.exec(l);
+    if ((m = depart || arrivee) && !(enTete.has(i) && /^(?:from|to)$/i.test(m[1]))) {
+      const v = valeurEtiquetee(m[2]);
+      if (v && depart && !t.pickup) t.pickup = v;
+      if (v && arrivee && !t.dropoff) t.dropoff = v;
+      if (v && t.debut < 0) t.debut = position;
+    }
+    position += l.length + 1;
+  });
+  return t.pickup || t.dropoff ? t : null;
 }
 
 // Les trajets écrits en texte libre, dans l'ordre du message : [{ pickup, dropoff }] (un bout peut manquer). Une paire « de … à … » n'est lue
@@ -534,6 +573,9 @@ export function lireTrajetsLibres(texte) {
       const fin = m.index + m[0].length;
       if ((pickup || dropoff) && !trouves.some((t) => t.debut < fin && m.index < t.fin)) trouves.push({ pickup, dropoff, debut: m.index, fin });
     }
+  // Les lignes « From: », « To: », « Départ : », « Destination: » : un trajet proposé de plus, à sa place dans le message.
+  const etiquettes = trajetDesEtiquettes(texte);
+  if (etiquettes) trouves.push({ ...etiquettes, fin: etiquettes.debut });
   if (trouves.length) return trouves.sort((a, b) => a.debut - b.debut).map(({ pickup, dropoff }) => ({ pickup, dropoff }));
   const un = { pickup: "", dropoff: "" };
   const premier = (res, { libre: l = true } = {}) => {

@@ -521,12 +521,21 @@ Remarks: ${REMARQUE}`;
 // création. Un lieu tapé par Nani n'est jamais vidé ni remplacé.
 const { lireLieuxEtiquetes, lireTrajetsLibres, lireMessage: lireMsg } = await import("../src/gestion/js/demande-calc.mjs");
 
-test("9. lireLieuxEtiquetes : seules les lignes étiquetées se recopient, sans lien", () => {
+test("9. lireLieuxEtiquetes : seules Pickup, Pick-up, Drop-off, Dropoff, Prise en charge et Dépose se recopient, sans lien ni piège", () => {
   const cas = [
     ["Transfer request: exemple\nPickup: Hotel A Exemple\nDrop-off: Hotel B Exemple https://maps.app.goo.gl/exemple1", "Hotel A Exemple", "Hotel B Exemple"],
     ["Pick-up location: Krabi Airport (KBV)\nDropoff: Resort Exemple", "Krabi Airport (KBV)", "Resort Exemple"],
-    ["From: Pakbara Pier\nTo: Villa Exemple", "Pakbara Pier", "Villa Exemple"],
+    ["Pick-up: Villa Exemple\nDrop-off: Krabi Airport", "Villa Exemple", "Krabi Airport"],
     ["Prise en charge : Resort Exemple\nDépose : Krabi Airport", "Resort Exemple", "Krabi Airport"],
+    // La valeur est coupée à la virgule.
+    ["Pickup: Resort Exemple, room 12\nDrop-off: Krabi Airport, domestic terminal", "Resort Exemple", "Krabi Airport"],
+    // Les pièges de la relecture : rien ne se recopie sans clic.
+    ["From: Pakbara Pier\nTo: Villa Exemple", "", ""],
+    ["---------- Forwarded message ---------\nFrom: John Smith <john@exemple.test>\nDate: Mon, 23 Nov 2026 at 10:00\nSubject: Taxi\nTo: info@exemple.test", "", ""],
+    ["Hi, we land on 15 December.\nFrom: Germany\nThanks\nTo: Nani", "", ""],
+    ["Destination: Thailand holiday\nDépart : Villa Exemple", "", ""],
+    ["Pickup: john@exemple.test\nDrop-off: info＠exemple.test", "", ""],
+    ["Pickup: we will tell you later\nDrop-off: I need to check", "", ""],
     ["Hello, taxi from Krabi Airport to Resort Exemple on 15 December", "", ""],
     ["Pickup: our hotel\nDrop-off: the airport", "", ""],
   ];
@@ -559,6 +568,13 @@ test("9. lireTrajetsLibres : un trajet lu après un mot de course ou en début d
     ["We are from 10 to 12 people, need a van", []],
     ["Taxi from the airport to our hotel please", []],
     ["Can you take us to Ao Nang? We are at Resort Exemple", []],
+    // « From: », « To: », « Départ : », « Destination: » : proposés, jamais recopiés ; un en-tête d'e-mail transféré ne propose rien.
+    ["From: Pakbara Pier\nTo: Villa Exemple\n2 adults", [["Pakbara Pier", "Villa Exemple"]]],
+    ["Départ : Villa Exemple\nDestination : Krabi Airport", [["Villa Exemple", "Krabi Airport"]]],
+    ["Destination: Thailand holiday", [["", "Thailand holiday"]]],
+    ["---------- Forwarded message ---------\nFrom: John Smith <john@exemple.test>\nDate: Mon, 23 Nov 2026 at 10:00\nSubject: Taxi\nTo: info@exemple.test\n\nHi, we need a taxi on 15 December, 2 adults.", []],
+    ["From: Client Exemple\nSent: Monday\nTo: Agence Exemple\nSubject: Taxi\n\nTaxi from Krabi Airport to Resort Exemple please", [["Krabi Airport", "Resort Exemple"]]],
+    ["From: John Smith <john＠exemple.test>\nTo: info＠exemple.test", []],
   ];
   for (const [texte, attendu] of cas) assert.deepEqual(lireTrajetsLibres(texte), attendu.map(([pickup, dropoff]) => ({ pickup, dropoff })), texte);
 });
@@ -690,6 +706,26 @@ test("9. Taxi, cas de la relecture : « I'm from Germany… », « hearing from 
     }
     assert.equal(await f.creer(), null, texte);
   }
+});
+
+test("9. Taxi, e-mail transféré et lignes From/To : rien de prérempli ; l'en-tête ne propose rien, From/To se proposent", async () => {
+  await catalogueProd("taxi");
+  const f = await coller("taxi", "---------- Forwarded message ---------\nFrom: Client Exemple Mail <client@exemple.test>\nDate: Mon, 23 Nov 2026 at 10:00\nSubject: Taxi Krabi Airport\nTo: agence@exemple.test\n\nHi, we need a taxi on 15 December at 14:30, 2 adults. My name is Client Exemple Mail");
+  await f.prendre("Krabi Airport");
+  const [course] = f.services().filter((x) => x.querySelector('input[type="checkbox"]').checked);
+  assert.deepEqual([f.dansService(course, "-v-lieu").value, f.dansService(course, "-v-drop").value], ["", ""], "aucun lieu tiré de l'en-tête");
+  assert.equal(f.propositions().length, 0, "l'en-tête ne propose rien");
+  assert.match(f.alertes(), /Pickup à vérifier/);
+  const g = await coller("taxi", "Taxi booking 15 December 14:30, 2 adults\nFrom: Krabi Airport\nTo: Resort Exemple\nMy name is Client Exemple FromTo");
+  const [course2] = g.services();
+  await g.prendre("Krabi Airport", course2);
+  assert.deepEqual([g.dansService(course2, "-v-lieu").value, g.dansService(course2, "-v-drop").value], ["", ""], "From/To ne remplissent rien");
+  const prop = course2.querySelector(".dsv-proposition");
+  assert.ok(prop, "From/To se proposent");
+  assert.equal(prop.querySelector("span").textContent, "Lu dans le message : Krabi Airport → Resort Exemple");
+  prop.querySelector("button").click();
+  await dom.attendre(2);
+  assert.deepEqual([g.dansService(course2, "-v-lieu").value, g.dansService(course2, "-v-drop").value], ["Krabi Airport", "Resort Exemple"]);
 });
 
 test("9. Taxi, aller-retour en deux services : chaque service reçoit sa proposition, dans l'ordre, rien de prérempli", async () => {
