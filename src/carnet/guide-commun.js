@@ -12,26 +12,16 @@ const GARDER = [
   "jours", "joursTexte", "seuilGroupe", "ageMin", "messageObligatoire", "messageAide", "transfert", "pickupLabel", "notePickup", "parc", "fermeture", "angThong", "gestion"
 ];
 
-// Plus petit prix ADULTE d'une offre (adulte, ligne sans rôle ou d'adulte, tranche, formule, radeau), jamais un tarif enfant : « dès X » d'un groupe replié
-// est ce que paie au moins un adulte. null si le prix est sur demande.
-function prixMinimum(o) {
-  const prix = [];
-  const ajoute = (n) => { if (typeof n === "number" && n > 0) prix.push(n); };
-  if (o.type === "surDemande" || o.wa) return null;
-  if (o.type === "lignes") (o.lignes || []).filter((l) => !l.role || l.role === "adulte").forEach((l) => ajoute(l.prix));
-  else if (o.type === "radeau") ajoute(o.base && o.base.prix);
-  else if (o.type === "bateau") { (o.variantes || []).forEach((v) => ajoute(v.prix)); (o.paliers || []).forEach((t) => ajoute(t.prix)); }
-  else { ajoute(o.adulte); (o.variantes || []).forEach((v) => ajoute(v.adulte)); }
-  return prix.length ? Math.min(...prix) : null;
-}
-
 function construire({ guide: guideBrut, reglages, offres }) {
-  // Chaque groupe replié porte son « dès » calculé sur ses offres affichées.
-  const guide = { ...guideBrut, sections: (guideBrut.sections || []).map((sec) => ({ ...sec, groupes: sec.groupes && sec.groupes.map((g) => {
-    if (!g.repliable) return g;
-    const min = (g.offres || []).map((id) => offres[id] && prixMinimum(offres[id])).filter((n) => n !== null && n !== undefined);
-    return { ...g, des: min.length ? Math.min(...min) : undefined };
-  }) })) };
+  // Les sorties à photo alternent : photo à gauche, puis à droite ; une sortie « grande » (photo pleine largeur de colonne) coupe le rythme.
+  const guide = { ...guideBrut, sections: (guideBrut.sections || []).map((sec) => {
+    let n = 0;
+    return { ...sec, groupes: sec.groupes && sec.groupes.map((g) => {
+      if (!g.photo || g.grand) return g;
+      n += 1;
+      return { ...g, cote: n % 2 === 1 ? "gauche" : "droite" };
+    }) };
+  }) };
   const visibles = () => Object.entries(offres).filter(([, o]) => !o.isole || reglages.afficherIsoles !== false);
   return {
     guide,
@@ -59,10 +49,23 @@ function construire({ guide: guideBrut, reglages, offres }) {
       offres: () => {
         const out = {};
         for (const [id, o] of visibles()) out[id] = { id, ...o };
+        // Dans une même sortie, la phrase des droits du parc, celle de la saison et les faits identiques ne sont écrits qu'une fois : sous la première formule qui les porte.
+        for (const sec of guide.sections || []) for (const g of sec.groupes || []) {
+          let vu = "", vuF = "";
+          const faitsVus = new Set();
+          for (const id of g.offres || []) {
+            const o = out[id];
+            if (!o) continue;
+            // Un fait déjà dit sous une formule de la même sortie n'est pas redit sous les suivantes.
+            if (o.faits) o.faits = o.faits.filter((f) => { if (faitsVus.has(f)) return false; faitsVus.add(f); return true; });
+            if (o.parc) { const cle = JSON.stringify(o.parc); if (cle === vu) o.parcRepete = true; else vu = cle; }
+            if (o.fermeture) { const cle = JSON.stringify(o.fermeture); if (cle === vuF) o.fermetureRepete = true; else vuF = cle; }
+          }
+        }
         return out;
       }
     }
   };
 }
 
-module.exports = { construire, GARDER, prixMinimum };
+module.exports = { construire, GARDER };

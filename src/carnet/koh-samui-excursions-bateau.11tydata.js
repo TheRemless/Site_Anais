@@ -252,6 +252,7 @@ const offres = {
 };
 
 const guide = {
+  lead: "Depuis Koh Samui, il existe plusieurs excursions en bateau différentes.",
   intro: [
     "Depuis Koh Samui, il existe plusieurs excursions en bateau différentes.",
     "Le choix dépend surtout de votre budget, du confort recherché et votre façon de voyager (famille, couple, etc.):"
@@ -267,23 +268,17 @@ const guide = {
   sections: [
     {
       id: "ang-thong",
-      num: 1,
       titre: "Parc National d’Ang Thong",
       intro: "Archipel de 42 îles avec plages, snorkeling et points de vue incroyables.",
       liens: [
         { label: "Voir sur la carte", url: MAPS.angThong, nom: "Ang Thong" },
         { label: "Voir la vidéo", url: VIDEO_ANG_THONG, nom: "Ang Thong" }
       ],
-      photos: [
-        { src: P + "ang-thong-lagune.jpg", alt: "Eau claire entre deux parois calcaires, deux baigneurs au loin" },
-        { src: P + "ang-thong-big-boat.jpg", alt: "Rocher de l’archipel vu depuis le pont d’un bateau, bancs orange au premier plan" },
-        { src: P + "ang-thong-grotte.jpg", alt: "Falaise calcaire avec une grotte au ras de l’eau turquoise" },
-        { src: P + "ang-thong-plage.jpg", alt: "Plage de sable clair entre deux pointes rocheuses" }
-      ],
+      photo: { src: P + "ang-thong-lagune.jpg", alt: "Eau claire entre deux parois calcaires, deux baigneurs au loin" },
       groupes: [
-        { id: "at-groupe", titre: "En groupe", note: "(classique, tout inclus sauf entrées dans les parcs nationaux)", offres: ["ang-thong-big-boat", "ang-thong-speedboat-groupe"] },
-        { id: "at-petit", titre: "En petit groupe (speedboat)", offres: ["ang-thong-petit-groupe-speedboat"] },
-        { id: "at-prive", titre: "En speedboat privé (haut de gamme)", offres: ["ang-thong-speedboat-prive"] }
+        { id: "at-groupe", photo: { src: P + "ang-thong-big-boat.jpg", alt: "Rocher de l’archipel vu depuis le pont d’un bateau, bancs orange au premier plan" }, cote: "gauche", titre: "En groupe", note: "(classique, tout inclus sauf entrées dans les parcs nationaux)", offres: ["ang-thong-big-boat", "ang-thong-speedboat-groupe"] },
+        { id: "at-petit", solo: true, photo: { src: P + "ang-thong-plage.jpg", alt: "Plage de sable clair entre deux pointes rocheuses" }, cote: "droite", titre: "En petit groupe (speedboat)", offres: ["ang-thong-petit-groupe-speedboat"] },
+        { id: "at-prive", solo: true, photo: { src: P + "ang-thong-grotte.jpg", alt: "Falaise calcaire avec une grotte au ras de l’eau turquoise" }, cote: "gauche", titre: "En speedboat privé (haut de gamme)", offres: ["ang-thong-speedboat-prive"] }
       ],
       conseils: [
         "à faire plutôt pour les points de vue, les paysages et la beauté du parc national",
@@ -293,16 +288,13 @@ const guide = {
     },
     {
       id: "pig-island",
-      num: 2,
       titre: "Pig Island & Koh Tan (+ Koh Rap)",
       intro: "Excursion plus courte, plus détente et appréciée des familles (surtout des enfants!)",
-      photos: [
-        { src: P + "pig-island-cochons.jpg", alt: "Cochons sur le sable, à l’ombre d’un arbre" },
+      photo: { src: P + "pig-island-cochons.jpg", alt: "Cochons sur le sable, à l’ombre d’un arbre" },
+      bande: [
         { src: P + "pig-island-panneau.jpg", alt: "Panneau de la plage de Koh Madsum avec un cochon dessous" },
         { src: P + "koh-tan-cote.jpg", alt: "Côte boisée et eau turquoise vues du bateau" },
-        { src: P + "koh-tan-ponton.jpg", alt: "Ponton en bois avec transats au-dessus d’un lagon turquoise" },
-        { src: P + "koh-rap-kayaks.jpg", alt: "Banc de sable avec des kayaks alignés, speedboats et îles au fond" },
-        { src: P + "koh-rap-longtail.jpg", alt: "Bateau longtail amarré dans une eau turquoise au bord de la plage" }
+        { src: P + "koh-rap-kayaks.jpg", alt: "Banc de sable avec des kayaks alignés, speedboats et îles au fond" }
       ],
       iles: {
         titre: "Les îles visitées durant l’excursion",
@@ -314,7 +306,7 @@ const guide = {
       },
       groupes: [
         {
-          id: "pi-longtail",
+          id: "pi-longtail", photo: { src: P + "koh-rap-longtail.jpg", alt: "Bateau longtail amarré dans une eau turquoise au bord de la plage" }, cote: "gauche",
           titre: "Longtail privé",
           note: "(matin ou après-midi)",
           texte: "Bateau privé avec capitaine local, sans repas (restaurant sur place ou pique-nique à emporter), entrée sur les îles et transferts non inclus",
@@ -322,7 +314,7 @@ const guide = {
           offres: ["pig-island-longtail-prive-4h", "pig-island-longtail-prive-5h"]
         },
         { id: "pi-speedboat", titre: "Speedboat privé", offres: ["pig-island-speedboat-prive-4h", "pig-island-speedboat-prive-5h"], isole: true },
-        { id: "pi-groupe", titre: "En groupe", offres: ["pig-island-groupe"] }
+        { id: "pi-groupe", solo: true, photo: { src: P + "koh-tan-ponton.jpg", alt: "Ponton en bois avec transats au-dessus d’un lagon turquoise" }, cote: "droite", titre: "En groupe", offres: ["pig-island-groupe"] }
       ],
       conseils: [
         "prévoir du cash pour le restaurant et le paiement de l’entrée sur les îles",

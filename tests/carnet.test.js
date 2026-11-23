@@ -192,7 +192,7 @@ test("carnet : aucun script ni bandeau Google, aucun bouton WhatsApp flottant ; 
   assert.doesNotMatch(privee, /wa-fab/, "pas de bouton WhatsApp flottant");
   assert.doesNotMatch(privee, />Cookies</, "pas de lien « Cookies » mort dans le pied de page");
   const scripts = [...privee.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1].replace(/\?.*/, ""));
-  assert.deepEqual(scripts.sort(), ["/js/carnet-booking.js", "/js/site.js"], "seuls les scripts du site et de la feuille : ni consent.js ni currency.js (CDN tiers)");
+  assert.deepEqual(scripts.sort(), ["/js/carnet-booking.js", "/js/carnet-nav.js", "/js/site.js"], "seuls les scripts du site et de la feuille : ni consent.js ni currency.js (CDN tiers)");
   for (const f of ["src/js/carnet-booking.js"]) assert.doesNotMatch(read(f), /gtag|dataLayer|ZW_analytics|consent/i, f + " ne dépend ni de Google ni du consentement");
   for (const url of ["index.html", "services/index.html", "temples-coutumes-thailande/index.html", "en/index.html"]) {
     const doc = read(path.join("_site", url));

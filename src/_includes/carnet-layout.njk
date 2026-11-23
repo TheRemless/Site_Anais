@@ -14,15 +14,15 @@
       description  méta description (obligatoire)
       h1Lead       début du h1 en serif (sinon title entier)
       h1Script     fin du h1 en manuscrit, signature du site (facultatif)
-      kicker       sous-titre sous le h1
-      toc          sommaire discret : [{ label, href }], numéroté 1, 2, 3 dans l'ordre
-      heroImage    photo de tête (/images/...), heroAlt son alt, heroPosition son object-position (défaut « 50% 40% »)
+      toc          repères du guide : [{ label, href, ids }] ; colonne collante sur bureau, barre défilante collée sur mobile, entrée active suivie par js/carnet-nav.js
+      heroImage    photo d'ouverture pleine largeur (/images/...), heroAlt son alt, heroPosition son object-position (défaut « 50% 50% »)
+      guide.lead   la phrase unique sous le titre (données du guide)
       waText       message prérempli du bouton WhatsApp de fin de page
       endTitle, endLabel  titre et bouton de fin de page (par défaut « Une question sur ce guide ? » et « Écrire à Anaïs sur WhatsApp »)
       carnetConfig (données du guide, voir src/carnet/<guide>.11tydata.js) : si présent, la feuille de réservation (carnet-booking.njk) et js/carnet-booking.js sont ajoutés.
                    Le corps du guide vient alors de carnet-guide.njk ({% raw %}{% include "carnet-guide.njk" %}{% endraw %} dans la page).
-    Composants .cg-* (voir pages.css, bloc « Carnet, pages de guide ») : .cg-intro, .cg-resume avec .cg-compare, .cg-exc (une excursion ou un thème : .cg-exc-head, .cg-photos, .cg-exc-body),
-    .cg-sub, .cg-opt avec .cg-rows, .cg-row, .cg-price, .cg-tips, .cg-link (lien sortant). -#}
+    Composants .cg-* (voir pages.css, bloc « Carnet, pages de guide ») : .cg-open (ouverture), .cg-nav (repères), .cg-chap (chapitre), .cg-sortie (une sortie : photo, titre, texte, formules),
+    .cg-formule (une formule : titre, faits, prix, Réserver), .cg-bloc (texte seul), .cg-link (lien sortant). -#}
 {% extends "base.njk" %}
 
 {% block head %}
@@ -35,41 +35,40 @@
 
 {% block content %}
 <article class="cg-page">
-<header class="article-hero cg-hero">
-  <div class="container">
-    <nav class="crumbs" aria-label="Fil d'Ariane">
-      <span>Carnet de voyage</span>
-      <span aria-hidden="true">›</span>
-      <span aria-current="page">{{ title }}</span>
-    </nav>
+<header class="cg-open">
+  {%- if heroImage %}
+  <figure class="cg-open-photo"><img fetchpriority="high" sizes="100vw" src="{{ heroImage }}" alt="{{ heroAlt | escape }}" style="object-position: {{ heroPosition or '50% 50%' }}"></figure>
+  {%- endif %}
+  <div class="cg-open-text">
     {%- if h1Script %}
-    <h1 class="sig-title sig-title-h1">{{ h1Lead }} <span class="sig-script">{{ h1Script }}</span></h1>
+    <h1 class="sig-title sig-title-h1 cg-h1">{{ h1Lead }} <span class="sig-script">{{ h1Script }}</span></h1>
     {%- else %}
-    <h1>{{ h1Lead or title }}</h1>
+    <h1 class="cg-h1">{{ h1Lead or title }}</h1>
     {%- endif %}
-    {%- if kicker %}
-    <p class="standfirst">{{ kicker }}</p>
-    {%- endif %}
-    {%- if toc %}
-    <nav class="cg-toc" aria-label="Sommaire">
-      {%- for item in toc %}
-      <a href="{{ item.href }}"><span class="sig-num" aria-hidden="true">{{ loop.index }}</span><span>{{ item.label }}</span></a>
-      {%- endfor %}
-    </nav>
+    {%- if guide.lead %}
+    <p class="cg-lead">{{ guide.lead }}</p>
     {%- endif %}
   </div>
-  {%- if heroImage %}
-  <div class="container"><div class="article-cover"><img fetchpriority="high" sizes="100vw" src="{{ heroImage }}" alt="{{ heroAlt | escape }}" style="object-position: {{ heroPosition or '50% 40%' }}"></div></div>
-  {%- endif %}
 </header>
 
+<div class="cg-layout">
+  {%- if toc %}
+  <nav class="cg-nav" aria-label="Repères du guide">
+    <ul>
+      {%- for item in toc %}
+      <li><a href="{{ item.href }}" data-ids="{{ (item.ids or [item.href | replace('#', '')]) | join(' ') }}">{{ item.label }}</a></li>
+      {%- endfor %}
+    </ul>
+  </nav>
+  {%- endif %}
+  <div class="cg-main">
 {{ content | safe }}
+  </div>
+</div>
 
 <section class="cg-end" aria-labelledby="cg-end-title">
-  <div class="container">
-    <h2 id="cg-end-title">{{ endTitle or "Une question sur ce guide ?" }}</h2>
-    <a class="btn btn-teal" href="https://wa.me/{{ business.telephone | replace('+', '') }}{% if waText %}?text={{ waText | urlencode }}{% endif %}" target="_blank" rel="noopener"><span>{{ endLabel or "Écrire à Anaïs sur WhatsApp" }}</span></a>
-  </div>
+  <h2 id="cg-end-title">{{ endTitle or "Une question sur ce guide ?" }}</h2>
+  <a class="btn btn-teal" href="https://wa.me/{{ business.telephone | replace('+', '') }}{% if waText %}?text={{ waText | urlencode }}{% endif %}" target="_blank" rel="noopener"><span>{{ endLabel or "Écrire à Anaïs sur WhatsApp" }}</span></a>
 </section>
 </article>
 {%- if carnetConfig %}
@@ -79,5 +78,6 @@
 {% endblock %}
 
 {% block scripts %}
+{%- if toc %}<script src="/js/carnet-nav.js?v={{ build.v }}" defer></script>{% endif %}
 {%- if carnetConfig %}<script src="/js/carnet-booking.js?v={{ build.v }}" defer></script>{% endif %}
 {% endblock %}

@@ -114,20 +114,12 @@ const offres = {
 };
 
 const guide = {
-  paragraphes: [
-    "Des tours en long tail boat privé depuis Ao Nang, avec plusieurs niveaux de confort selon votre budget. Départ de 8h à 14h ou de 14h30 au coucher du soleil."
-  ],
+  lead: "Des tours en long tail boat privé depuis Ao Nang, avec plusieurs niveaux de confort selon votre budget. Départ de 8h à 14h ou de 14h30 au coucher du soleil.",
   sections: [
     {
       id: "tours-prives",
-      num: 1,
       titre: "Les tours privés",
-      photos: [
-        { src: "/images/carnet-ao-nang-bateau-interieur.jpg", alt: "Intérieur d’un bateau privé, bancs blancs et rideaux" },
-        { src: "/images/carnet-ao-nang-fruits.jpg", alt: "Plateau de fruits découpés tenu à la main au-dessus du sable, au bord d’une eau peu profonde" },
-      ],
       notePrix: "Réservez suffisamment à l’avance : en haute saison, les prix peuvent varier selon les demandes.",
-      optionsTitre: "Les options",
       blocs: [
         {
           titre: "Avant de réserver",
@@ -139,16 +131,15 @@ const guide = {
         }
       ],
       groupes: [
-        { id: "an-vip", titre: "Option VIP", note: "(la moins chère des trois niveaux)", texte: "Long tail boat privé, de 1 à 4 personnes.", offres: ["ao-nang-vip"] },
-        { id: "an-mini", titre: "Option Mini Luxury", texte: "L’option VIP avec en plus des soft drinks, du jus d’orange, un snack et un paddle board.", offres: ["ao-nang-mini-luxury"] },
-        { id: "an-luxury", titre: "Option Luxury", texte: "L’option VIP avec en plus un repas de midi sur un beau set de pique-nique, un paddle board et du personnel à bord.", offres: ["ao-nang-luxury"] },
-        { id: "an-eco", titre: "Une option plus économique", note: "(privé, de 1 à 6 personnes)", texte: "Un bateau privé pour un budget plus serré. Pour 1 000 THB de plus, vous pouvez ajouter le « VIP Set » avec coussins, snacks et une boisson.", offres: ["ao-nang-economique"] },
-        { id: "an-luxe", titre: "Une option encore plus luxueuse", note: "(bateaux de luxe, de 1 à 6 personnes)", texte: "Toujours en long tail boat, mais en version plus luxueuse selon votre budget.", offres: ["ao-nang-luxe"] }
+        { id: "an-vip", solo: true, photo: { src: "/images/carnet-ao-nang-bateau-interieur.jpg", alt: "Intérieur d’un bateau privé, bancs blancs et rideaux" }, cote: "gauche", titre: "Option VIP", note: "(la moins chère des trois niveaux)", offres: ["ao-nang-vip"] },
+        { id: "an-mini", solo: true, titre: "Option Mini Luxury", texte: "L’option VIP avec en plus des soft drinks, du jus d’orange, un snack et un paddle board.", offres: ["ao-nang-mini-luxury"] },
+        { id: "an-luxury", solo: true, photo: { src: "/images/carnet-ao-nang-fruits.jpg", alt: "Plateau de fruits découpés tenu à la main au-dessus du sable, au bord d’une eau peu profonde" }, cote: "droite", titre: "Option Luxury", texte: "L’option VIP avec en plus un repas de midi sur un beau set de pique-nique, un paddle board et du personnel à bord.", offres: ["ao-nang-luxury"] },
+        { id: "an-eco", solo: true, titre: "Une option plus économique", note: "(privé, de 1 à 6 personnes)", texte: "Un bateau privé pour un budget plus serré. Pour 1 000 THB de plus, vous pouvez ajouter le « VIP Set » avec coussins, snacks et une boisson.", offres: ["ao-nang-economique"] },
+        { id: "an-luxe", solo: true, titre: "Une option encore plus luxueuse", note: "(bateaux de luxe, de 1 à 6 personnes)", texte: "Toujours en long tail boat, mais en version plus luxueuse selon votre budget.", offres: ["ao-nang-luxe"] }
       ]
     },
     {
       id: "francais",
-      num: 2,
       titre: "En français",
       blocs: [
         {

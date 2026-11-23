@@ -430,11 +430,11 @@ test("Phi Phi : droits du parc 400 / 200 sans âge ni gratuité affichés, la li
     B.submitRequest(cfgLa, id, { ...BASE, adults: 2, ages: ["7"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/x-abc123/", rand: () => 0 });
     assert.ok(JSON.parse(f.calls[0].opts.body).message.split("\n").includes("Park fee: about 1,000 THB"));
   }
-  const doc = read(PAGE_LA);
-  const carte = doc.slice(doc.indexOf('id="offre-koh-phi-phi--sunset"'), doc.indexOf("</article>", doc.indexOf('id="offre-koh-phi-phi--sunset"')));
-  const droits = carte.match(/<p class="cg-droits">Entrée du parc[^<]*<\/p>/)[0];
-  assert.match(droits, /400&nbsp;THB par adulte, 200&nbsp;THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.<\/p>$/);
-  assert.doesNotMatch(droits, /\d ans|gratuit/i);
+  const bloc = sortie(read(PAGE_LA), "ll-phi-phi");
+  const droits = bloc.match(/<p class="cg-droits">Entrée du parc[^<]*<\/p>/g);
+  assert.equal(droits.length, 1, "la phrase des droits n'est écrite qu'une fois dans la sortie");
+  assert.match(droits[0], /400&nbsp;THB par adulte, 200&nbsp;THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.<\/p>$/);
+  assert.doesNotMatch(droits[0], /\d ans|gratuit/i);
   // Koh Rok et 4 Islands : le site publie l'âge (4 à 11 ans, gratuit avant 4 ans)
   assert.match(texteVisible(read(PAGE_LA)).replace(/\s+/g, " "), /Entrée du parc, en plus du prix : 400 THB par adulte, 200 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/);
 });
@@ -542,7 +542,7 @@ test("Prix sur demande qui exige un détail : message obligatoire (erreur claire
   assert.match(js, /"\(obligatoire\)" : "\(facultatif\)"/);
 });
 
-test("titres : chaque groupe replié de Koh Lanta est un h3 et ses offres des h4, aucune suite de h4 sans parent", () => {
+test("titres : chaque sortie de Koh Lanta est un h3 et ses formules des h4, aucun saut de niveau", () => {
   for (const f of [PAGE_AO, PAGE_LA]) {
     const html = read(f);
     const main = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
@@ -551,54 +551,26 @@ test("titres : chaque groupe replié de Koh Lanta est un h3 et ses offres des h4
     niveaux.forEach((n, i) => { if (i) assert.ok(n <= niveaux[i - 1] + 1, `${f} : saut de h${niveaux[i - 1]} à h${n} (titre n°${i})`); });
   }
   const la = read(PAGE_LA);
-  assert.equal((la.match(/<summary><h3 class="cg-prod-titre"/g) || []).length, 17, "17 groupes repliés");
-  assert.doesNotMatch(la, /<span class="cg-prod-titre"/);
+  assert.equal((la.match(/<h3 class="cg-sortie-titre"/g) || []).length, 17, "17 sorties, chacune un h3");
+  assert.doesNotMatch(la, /cg-prod-titre|<summary><h3/);
+  const nbH4 = (la.match(/<h4 class="cg-formule-titre/g) || []).length;
+  assert.ok(nbH4 >= 40, "les formules sont des h4 sous leur sortie");
 });
 
-test("« dès » d'un groupe replié = le plus petit prix ADULTE (ou par bateau) de ses offres, jamais un tarif enfant", () => {
-  const { prixMinimum } = require("../src/carnet/guide-commun.js");
-  const offres = la.eleventyComputed.offres();
-  const html = texteVisible(read(PAGE_LA)).replace(/\s+/g, " ");
-  const attendu = { "Les 4 Islands": 1000, "Koh Rok et Koh Haa": 2000, "Koh Phi Phi": 2000, "La mangrove": 1000, "Pêche sur un radeau privé": 3900, "Radeau au lever du soleil": 3500, "Radeau et dîner au coucher du soleil": 3900,
-    "Quad (ATV)": 900, "Sanctuaire d’éléphants": 1800, "Cours de cuisine thaïe": 1650, "Peinture sur batik": 1500, "Go-kart électrique": 399, "Kayak": 1000, "Plongée": 1800 };
-  const vus = [];
-  for (const sec of la.guide.sections) for (const g of sec.groupes || []) {
-    if (!g.repliable) continue;
-    const prix = g.offres.map((id) => prixMinimum(offres[id])).filter((x) => x !== null);
-    if (!prix.length) { assert.ok(!new RegExp(g.titre + " dès").test(html), `${g.titre} : aucun « dès » sans prix`); continue; }
-    const mini = Math.min(...prix);
-    assert.equal(g.des, mini, `${g.titre} : des = minimum des offres`);
-    assert.equal(g.des, attendu[g.titre], `${g.titre} : valeur attendue`);
-    assert.ok(html.includes(`${g.titre} dès ${String(mini).replace(/\B(?=(\d{3})+(?!\d))/g, "’")} THB`), `${g.titre} : « dès ${mini} » affiché`);
-    vus.push(g.titre);
-    // aucun adulte ne paie moins : ni le tarif adulte, ni une ligne de pilote ou de passager adulte, ni une tranche, ni une formule
-    for (const id of g.offres) {
-      const o = offres[id];
-      const adultes = [o.adulte, ...(o.lignes || []).filter((l) => !l.role || l.role === "adulte").map((l) => l.prix), ...(o.paliers || []).map((t) => t.prix), ...(o.variantes || []).map((v) => v.prix), o.base && o.base.prix].filter((n) => typeof n === "number" && n > 0);
-      for (const n of adultes) assert.ok(n >= g.des, `${id} : ${n} < dès ${g.des}`);
-    }
-  }
-  assert.deepEqual(vus.sort(), Object.keys(attendu).sort());
-  // les tarifs enfant (600 au 4 Islands, 700 en mangrove, 600 en quad) ne sont jamais le « dès »
-  assert.ok(!html.includes("Les 4 Islands dès 600"));
-  assert.ok(!html.includes("Quad (ATV) dès 600"));
-});
-
-test("offres sur demande d'un parc : les droits d'entrée sont dits comme sur les offres voisines (mêmes montants, mêmes âges), jamais dans un total", () => {
+test("offres sur demande d'un parc : mêmes droits que les offres voisines de leur sortie (mêmes montants, mêmes âges), dits une fois dans la sortie, jamais dans un total", () => {
   const regle = (id) => cfgLa.offres[id].parc;
   assert.deepEqual(regle("4-islands--private-speedboat"), regle("4-islands--private-longtail"));
   assert.deepEqual(regle("koh-rok-koh-haa--private-speedboat"), regle("koh-rok-koh-haa--private-longtail"));
   assert.deepEqual(regle("koh-phi-phi--private-longtail"), regle("koh-phi-phi--join-in-speedboat"));
   assert.deepEqual(regle("koh-phi-phi--private-speedboat"), regle("koh-phi-phi--sunset"));
   const doc = read(PAGE_LA);
-  const carte = (id) => texteVisible(doc.slice(doc.indexOf(`id="offre-${id}"`), doc.indexOf("</article>", doc.indexOf(`id="offre-${id}"`)))).replace(/\s+/g, " ");
-  for (const id of ["4-islands--private-speedboat", "koh-rok-koh-haa--private-speedboat", "koh-phi-phi--private-longtail", "koh-phi-phi--private-speedboat"]) {
-    assert.match(carte(id), /Entrée du parc, en plus du prix : /, id);
-    assert.match(carte(id), /Prix sur demande/, id);
+  for (const [id, motif] of [["ll-4-islands", /200 THB par adulte, 100 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/], ["ll-koh-rok", /400 THB par adulte, 200 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/], ["ll-phi-phi", /400 THB par adulte, 200 THB par enfant\. Droit d’entrée/]]) {
+    const t = texteVisible(sortie(doc, id)).replace(/\s+/g, " ");
+    assert.match(t, motif, id);
+    assert.equal((t.match(/Entrée du parc, en plus du prix/g) || []).length, 1, id + " : une seule fois");
+    assert.match(t, /Prix sur demande/, id + " : les offres sur demande font partie de la sortie");
   }
-  assert.match(carte("4-islands--private-speedboat"), /200 THB par adulte, 100 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/);
-  assert.match(carte("koh-phi-phi--private-speedboat"), /400 THB par adulte, 200 THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\./);
-  assert.doesNotMatch(carte("koh-phi-phi--private-speedboat"), /\d ans|gratuit/, "aucun âge présumé pour Phi Phi");
+  assert.doesNotMatch(texteVisible(sortie(doc, "ll-phi-phi")), /\d ans, gratuit|gratuit avant/, "aucun âge présumé pour Phi Phi");
   const f = fakeFetch();
   B.submitRequest(cfgLa, "4-islands--private-speedboat", { ...BASE, adults: 2, ages: ["6"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/x-abc123/", rand: () => 0 });
   const body = JSON.parse(f.calls[0].opts.body);
@@ -621,7 +593,7 @@ test("droits du parc : phrase vendeur unique, plus aucun « à confirmer » sur 
     assert.ok(t.includes(SENTENCE), f);
     assert.doesNotMatch(t, /montants? à confirmer|à confirmer au moment de la réservation|tarif étranger/i, f);
     const droits = [...read(f).matchAll(/<p class="cg-droits">(Entrée du parc[^<]*)<\/p>/g)].map((m) => m[1]);
-    assert.ok(droits.length >= 5, f);
+    assert.ok(droits.length >= 3, f);
     for (const d of droits) assert.match(d, /Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.$/, f);
   }
   const ao = texteVisible(read(PAGE_AO)).replace(/\s+/g, " ");
@@ -640,8 +612,38 @@ test("droits du parc : phrase vendeur unique, plus aucun « à confirmer » sur 
   assert.ok(JSON.parse(f.calls[0].opts.body).message.split("\n").includes("Park fee: about 750 THB"));
 });
 
+test("design éditorial : ouverture sans fil d'Ariane ni pastilles numérotées, repères collants, une phrase sous le titre, photo à bord franc", () => {
+  const SAMUI = "_site/carnet/koh-samui-excursions-bateau-xc8do3/index.html";
+  for (const f of [PAGE_AO, PAGE_LA, SAMUI]) {
+    const html = read(f);
+    assert.doesNotMatch(html, /class="crumbs"|sig-num|cg-toc|cg-exc\b|cg-prod/, `${f} : ancien gabarit`);
+    assert.match(html, /<header class="cg-open">\s*<figure class="cg-open-photo"><img fetchpriority="high"/, f);
+    assert.match(html, /<p class="cg-lead">[^<]{20,}<\/p>/, `${f} : une phrase sous le titre`);
+    const nav = html.match(/<nav class="cg-nav" aria-label="Repères du guide">[\s\S]*?<\/nav>/);
+    assert.ok(nav, f);
+    const liens = [...nav[0].matchAll(/href="#([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(liens.length >= 2, f);
+    for (const id of liens) assert.ok(html.includes(`id="${id}"`), `${f} : repère #${id} sans cible`);
+    assert.match(html, /<script src="\/js\/carnet-nav\.js/, f);
+    assert.doesNotMatch(html, /wa-fab/, f);
+    // un bouton « Réserver » par formule réservable (créé par le script), jamais décoratif
+    assert.equal((html.match(/data-cg-slot="/g) || []).length, Object.keys(JSON.parse(html.match(/<script type="application\/json" id="cg-data">([\s\S]*?)<\/script>/)[1]).offres).length, f);
+  }
+  const css = read("src/css/pages.css");
+  const bloc = css.slice(css.indexOf("Carnet, pages de guide"));
+  assert.doesNotMatch(bloc, /linear-gradient|radial-gradient|box-shadow: 0|backdrop-filter|border-radius: 9999|border-radius: 999|animation:|@keyframes/, "ni dégradé, ni ombre portée, ni pilule, ni animation");
+  assert.match(bloc, /\.cg-nav a \{ display: flex; align-items: center; min-height: 48px;/, "cibles de 48 px dans la barre de repères");
+  assert.match(bloc, /\.cg-bar \{ position: sticky; bottom: 0;/, "total et envoi collés en bas de la feuille");
+  // Les photos des deux guides en ligne ne montrent aucun nom de bateau : fichiers connus seulement
+  const photos = new Set([...(read("src/carnet/ao-nang-excursions-bateau.11tydata.js") + read("src/carnet/ao-nang-excursions-bateau.njk") + read("src/carnet/koh-lanta-excursions-activites.11tydata.js") + read("src/carnet/koh-lanta-excursions-activites.njk")).matchAll(/carnet-[a-z0-9-]+\.jpg/g)].map((m) => m[0]));
+  const autorisees = ["carnet-ao-nang-hero.jpg", "carnet-ao-nang-bateau-interieur.jpg", "carnet-ao-nang-fruits.jpg", "carnet-koh-lanta-hero.jpg", "carnet-koh-lanta-4-islands.jpg", "carnet-koh-lanta-koh-rok.jpg", "carnet-koh-lanta-mangroves-ciel.jpg", "carnet-koh-lanta-radeau-aube.jpg", "carnet-koh-lanta-radeau-soir.jpg", "carnet-koh-lanta-quad.jpg", "carnet-koh-lanta-elephants.jpg", "carnet-koh-lanta-cuisine.jpg", "carnet-koh-lanta-batik.jpg", "carnet-koh-lanta-recif.jpg", "carnet-koh-lanta-moto.jpg", "carnet-koh-lanta-vieille-ville.jpg"];
+  for (const n of photos) assert.ok(autorisees.includes(n), `${n} : photo non vérifiée (nom de bateau, visage)`);
+});
+
 // ---------- Pages construites ----------
 
+// Une sortie (groupe) de la page : de son <article> jusqu'à la suivante ou la fin du chapitre.
+const sortie = (html, id) => { const i = html.indexOf(`id="${id}" aria-labelledby`); assert.ok(i > 0, id); const fin = html.slice(i + 10).search(/<article class="cg-sortie|<\/section>/); return html.slice(i, i + 10 + fin); };
 const texteVisible = (html) => html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
 
 test("pages : noindex, sans analytique ni cookie, aucun lien depuis une page publique, absentes du sitemap", () => {

@@ -323,62 +323,41 @@ const BATEAU_AVANT = "Les itinéraires indiqués sont donnés à titre indicatif
 const MIN = (prefixe, liste) => liste.map((id) => prefixe + "--" + id);
 
 const guide = {
-  paragraphes: [
-    "Envie de découvrir les îles autour de Koh Lanta ? Voici une sélection d’excursions et d’activités proposées par des équipes locales, avec différentes options selon votre budget et vos envies.",
-    BATEAU_AVANT
-  ],
+  lead: "Envie de découvrir les îles autour de Koh Lanta ? Voici une sélection d’excursions et d’activités proposées par des équipes locales, avec différentes options selon votre budget et vos envies.",
   sections: [
     {
       id: "bateau",
-      num: 1,
       titre: "Les tours en bateau",
-      photos: [
-        { src: "/images/carnet-koh-lanta-rochers.jpg", alt: "Deux rochers calcaires qui sortent de la mer, vus depuis un bateau" },
-        { src: "/images/carnet-koh-lanta-plage-koh-rok.jpg", alt: "Plage de sable blanc et eau turquoise, une île boisée au fond" },
-        { src: "/images/carnet-koh-lanta-plage-kradan.jpg", alt: "Plage de sable clair, branche d’arbre mort et visiteurs en gilet orange au bord de l’eau" },
-        { src: "/images/carnet-koh-lanta-mangroves.jpg", alt: "Long tail boat sur un canal de la mangrove" }
-      ],
+      note: BATEAU_AVANT,
       notePrix: HAUTE_SAISON,
-      optionsTitre: "Les sorties",
       groupes: [
-        { id: "ll-4-islands", titre: "Les 4 Islands", repliable: true, texte: "La grotte d’Émeraude de Koh Mook, Koh Chuek, Koh Ma et Koh Ngai, avec le déjeuner sur la plage. En longtail ou en speedboat, en groupe ou en privé.", offres: MIN("4-islands", ["join-in-longtail", "join-in-speedboat", "private-longtail", "private-speedboat"]) },
-        { id: "ll-koh-rok", titre: "Koh Rok et Koh Haa", repliable: true, texte: "Deux îles du parc national de Mu Ko Lanta, ouvertes de la mi-octobre à la mi-mai, avec des arrêts snorkeling et le déjeuner sur la plage de Koh Rok. Environ 1h30 de trajet en longtail.", offres: MIN("koh-rok-koh-haa", ["join-in-speedboat", "sunset", "private-longtail", "private-speedboat"]) },
-        { id: "ll-phi-phi", titre: "Koh Phi Phi", repliable: true, texte: "Maya Bay, Pileh Lagoon, Viking Cave et Monkey Beach le matin, puis le déjeuner sur Phi Phi Don, Bamboo Island et du temps libre. En speedboat partagé ou en bateau privé.", offres: MIN("koh-phi-phi", ["join-in-speedboat", "sunset", "private-longtail", "private-speedboat"]) },
-        { id: "ll-mangroves", titre: "La mangrove", repliable: true, texte: "Une demi-journée dans la mangrove de la côte est de Koh Lanta, en longtail dans des canaux étroits où vivent des singes et des oiseaux, avec le déjeuner.", offres: MIN("mangroves", ["longtail-half-day", "longtail-old-town-viewpoint", "fishing-park"]) },
-        { id: "ll-peche", titre: "Pêche sur un radeau privé", repliable: true, texte: "Une demi-journée de pêche sur un radeau en bois dans le calme d’Ao Lanta, avec un déjeuner de fruits de mer frais sur le radeau.", offres: ["fishing-trip--private-raft"] },
-        { id: "ll-lever", titre: "Radeau au lever du soleil", repliable: true, texte: "Un radeau en bois rien que pour votre groupe, dans la mangrove de Thung Yee Peng avant le lever du soleil, avec le petit déjeuner à bord.", offres: ["sunrise-raft--raft-sunrise"] },
-        { id: "ll-diner", titre: "Radeau et dîner au coucher du soleil", repliable: true, texte: "La mangrove en fin de journée, un dîner de fruits de mer aux chandelles sur votre radeau, puis le plancton qui brille dans l’eau noire.", offres: ["sunset-dinner-raft--raft-sunset-dinner"] },
-        { id: "ll-speedboat", titre: "Speedboat et ferry", repliable: true, texte: "Un trajet en speedboat ou en ferry depuis Koh Lanta vers Phi Phi, Phuket, les autres îles ou Langkawi.", offres: ["speedboat-ferry"] }
+        { id: "ll-4-islands", photo: { src: "/images/carnet-koh-lanta-4-islands.jpg", alt: "Falaise calcaire couverte de végétation au-dessus d’une eau verte, des nageurs au loin" }, grand: true, titre: "Les 4 Islands", texte: "La grotte d’Émeraude de Koh Mook, Koh Chuek, Koh Ma et Koh Ngai, avec le déjeuner sur la plage. En longtail ou en speedboat, en groupe ou en privé.", offres: MIN("4-islands", ["join-in-longtail", "join-in-speedboat", "private-longtail", "private-speedboat"]) },
+        { id: "ll-koh-rok", photo: { src: "/images/carnet-koh-lanta-koh-rok.jpg", alt: "Rochers et îlots dans une eau turquoise, ciel de nuages" }, titre: "Koh Rok et Koh Haa", texte: "Deux îles du parc national de Mu Ko Lanta, ouvertes de la mi-octobre à la mi-mai, avec des arrêts snorkeling et le déjeuner sur la plage de Koh Rok. Environ 1h30 de trajet en longtail.", offres: MIN("koh-rok-koh-haa", ["join-in-speedboat", "sunset", "private-longtail", "private-speedboat"]) },
+        { id: "ll-phi-phi", titre: "Koh Phi Phi", texte: "Maya Bay, Pileh Lagoon, Viking Cave et Monkey Beach le matin, puis le déjeuner sur Phi Phi Don, Bamboo Island et du temps libre. En speedboat partagé ou en bateau privé.", offres: MIN("koh-phi-phi", ["join-in-speedboat", "sunset", "private-longtail", "private-speedboat"]) },
+        { id: "ll-mangroves", photo: { src: "/images/carnet-koh-lanta-mangroves-ciel.jpg", alt: "Mangrove vue du ciel, un chenal qui serpente entre les palétuviers" }, titre: "La mangrove", texte: "Une demi-journée dans la mangrove de la côte est de Koh Lanta, en longtail dans des canaux étroits où vivent des singes et des oiseaux, avec le déjeuner.", offres: MIN("mangroves", ["longtail-half-day", "longtail-old-town-viewpoint", "fishing-park"]) },
+        { id: "ll-peche", titre: "Pêche sur un radeau privé", texte: "Une demi-journée de pêche sur un radeau en bois dans le calme d’Ao Lanta, avec un déjeuner de fruits de mer frais sur le radeau.", offres: ["fishing-trip--private-raft"] },
+        { id: "ll-lever", solo: true, photo: { src: "/images/carnet-koh-lanta-radeau-aube.jpg", alt: "Rivière calme bordée de mangrove, ciel nuageux" }, titre: "Radeau au lever du soleil", texte: "Un radeau en bois rien que pour votre groupe, dans la mangrove de Thung Yee Peng avant le lever du soleil, avec le petit déjeuner à bord.", offres: ["sunrise-raft--raft-sunrise"] },
+        { id: "ll-diner", solo: true, photo: { src: "/images/carnet-koh-lanta-radeau-soir.jpg", alt: "Table dressée pour deux sur le pont d’un radeau, montagnes et ciel de coucher de soleil au fond" }, titre: "Radeau et dîner au coucher du soleil", texte: "La mangrove en fin de journée, un dîner de fruits de mer aux chandelles sur votre radeau, puis le plancton qui brille dans l’eau noire.", offres: ["sunset-dinner-raft--raft-sunset-dinner"] },
+        { id: "ll-speedboat", solo: true, titre: "Speedboat et ferry", texte: "Un trajet en speedboat ou en ferry depuis Koh Lanta vers Phi Phi, Phuket, les autres îles ou Langkawi.", offres: ["speedboat-ferry"] }
       ]
     },
     {
       id: "activites",
-      num: 2,
       titre: "Les activités",
-      photos: [
-        { src: "/images/carnet-koh-lanta-quad.jpg", alt: "Quads garés sur une piste en terre avec vue sur la campagne" },
-        { src: "/images/carnet-koh-lanta-elephants.jpg", alt: "Deux éléphants dans la végétation, au bord d’un point d’eau" },
-        { src: "/images/carnet-koh-lanta-batik.jpg", alt: "Peinture de batik colorée d’une femme à la coiffe ornée, un artiste y ajoute des détails" },
-        { src: "/images/carnet-koh-lanta-recif.jpg", alt: "Corail et petits poissons sur un récif" },
-        { src: "/images/carnet-koh-lanta-vieille-ville.jpg", alt: "Rue de Lanta Old Town avec ses maisons en bois" }
-      ],
-      notePrix: HAUTE_SAISON,
-      optionsTitre: "Les activités",
       groupes: [
-        { id: "la-atv", titre: "Quad (ATV)", repliable: true, texte: "Une balade en quad sur les pistes de terre de Koh Lanta. La piste de 30 minutes convient aux débutants, les balades plus longues sont réservées aux pilotes expérimentés.", offres: MIN("atv", ["track-30-min", "forest-1-hr", "beach-bridge-2-hr", "atv-kayak-2-hr"]) },
-        { id: "la-elephants", titre: "Sanctuaire d’éléphants", repliable: true, texte: "Nourrir les éléphants et marcher avec eux, sans les monter.", offres: MIN("elephant-sanctuary", ["programme-a", "programme-b", "programme-c", "programme-d"]) },
-        { id: "la-cuisine", titre: "Cours de cuisine thaïe", repliable: true, texte: "Une visite du marché local, puis de la cuisine thaïe avec un cuisinier local. Convient aux enfants.", offres: MIN("cooking-class", ["single-chef", "partner-chef", "carving"]) },
-        { id: "la-batik", titre: "Peinture sur batik", repliable: true, texte: "Peindre votre propre toile de batik avec un instructeur local, ou ajouter une sortie en kayak vers la grotte marine.", offres: MIN("batik", ["morning-or-afternoon", "kayak-and-painting", "private-course"]) },
-        { id: "la-kart", titre: "Go-kart électrique", repliable: true, texte: "Des karts électriques, petits et grands, à une ou deux places, et des carpes koï à nourrir.", offres: MIN("go-kart", ["10-minutes", "15-minutes"]) },
-        { id: "la-kayak", titre: "Kayak", repliable: true, texte: "Les grottes marines, la mangrove et les îles en kayak, d’une demi-journée à une journée.", offres: MIN("kayak", ["sea-cave-mangrove-half-day", "sea-cave-island-hopping-1-day", "love-kayak-1-day"]).concat(["mangrove-kayaking--mangrove-kayak-half-day"]) },
-        { id: "la-plongee", titre: "Plongée", repliable: true, texte: "Une première plongée sans expérience (dès 8 ans), des plongées pour plongeurs certifiés et du snorkeling sur le bateau de plongée, en petits groupes.", offres: MIN("scuba-diving", ["one-day-experience", "fun-dives", "snorkelling-on-dive-boat", "catamaran-special-trips", "courses", "rentals-and-discounts"]) },
-        { id: "la-location", titre: "Voitures et scooters", repliable: true, texte: "Des scooters, de grosses motos, des voitures et des pick-up pour explorer l’île.", offres: MIN("rental", ["cars-and-pick-ups", "big-bikes", "scooters-and-small-bikes"]) },
-        { id: "la-tour", titre: "Tour de l’île", repliable: true, offres: ["island-day-tour"] }
+        { id: "la-atv", photo: { src: "/images/carnet-koh-lanta-quad.jpg", alt: "Quads garés sur une piste en terre avec vue sur la campagne" }, titre: "Quad (ATV)", texte: "Une balade en quad sur les pistes de terre de Koh Lanta. La piste de 30 minutes convient aux débutants, les balades plus longues sont réservées aux pilotes expérimentés.", offres: MIN("atv", ["track-30-min", "forest-1-hr", "beach-bridge-2-hr", "atv-kayak-2-hr"]) },
+        { id: "la-elephants", grand: true, photo: { src: "/images/carnet-koh-lanta-elephants.jpg", alt: "Deux éléphants dans la végétation, au bord d’un point d’eau" }, titre: "Sanctuaire d’éléphants", texte: "Nourrir les éléphants et marcher avec eux, sans les monter.", offres: MIN("elephant-sanctuary", ["programme-a", "programme-b", "programme-c", "programme-d"]) },
+        { id: "la-cuisine", photo: { src: "/images/carnet-koh-lanta-cuisine.jpg", alt: "Fleurs sculptées dans des légumes, disposées autour d’un bol" }, titre: "Cours de cuisine thaïe", texte: "Une visite du marché local, puis de la cuisine thaïe avec un cuisinier local. Convient aux enfants.", offres: MIN("cooking-class", ["single-chef", "partner-chef", "carving"]) },
+        { id: "la-batik", photo: { src: "/images/carnet-koh-lanta-batik.jpg", alt: "Peinture de batik colorée d’une femme à la coiffe ornée, un artiste y ajoute d’autres détails" }, titre: "Peinture sur batik", texte: "Peindre votre propre toile de batik avec un instructeur local, ou ajouter une sortie en kayak vers la grotte marine.", offres: MIN("batik", ["morning-or-afternoon", "kayak-and-painting", "private-course"]) },
+        { id: "la-kart", titre: "Go-kart électrique", texte: "Des karts électriques, petits et grands, à une ou deux places, et des carpes koï à nourrir.", offres: MIN("go-kart", ["10-minutes", "15-minutes"]) },
+        { id: "la-kayak", titre: "Kayak", texte: "Les grottes marines, la mangrove et les îles en kayak, d’une demi-journée à une journée.", offres: MIN("kayak", ["sea-cave-mangrove-half-day", "sea-cave-island-hopping-1-day", "love-kayak-1-day"]).concat(["mangrove-kayaking--mangrove-kayak-half-day"]) },
+        { id: "la-plongee", photo: { src: "/images/carnet-koh-lanta-recif.jpg", alt: "Corail et petits poissons sur un récif" }, titre: "Plongée", texte: "Une première plongée sans expérience (dès 8 ans), des plongées pour plongeurs certifiés et du snorkeling sur le bateau de plongée, en petits groupes.", offres: MIN("scuba-diving", ["one-day-experience", "fun-dives", "snorkelling-on-dive-boat", "catamaran-special-trips", "courses", "rentals-and-discounts"]) },
+        { id: "la-location", photo: { src: "/images/carnet-koh-lanta-moto.jpg", alt: "Moto à selle noire garée devant un mur gris" }, titre: "Voitures et scooters", texte: "Des scooters, de grosses motos, des voitures et des pick-up pour explorer l’île.", offres: MIN("rental", ["cars-and-pick-ups", "big-bikes", "scooters-and-small-bikes"]) },
+        { id: "la-tour", solo: true, photo: { src: "/images/carnet-koh-lanta-vieille-ville.jpg", alt: "Rue de Lanta Old Town avec ses maisons en bois" }, titre: "Tour de l’île", offres: ["island-day-tour"] }
       ]
     },
     {
       id: "choisir",
-      num: 3,
       titre: "Pour choisir",
       blocs: [
         {
