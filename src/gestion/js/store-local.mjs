@@ -8,6 +8,7 @@ import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
+import { corrigerLocal } from "./encaisser-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
@@ -686,6 +687,12 @@ export function creer() {
       else if (montant !== null) data.reservations_nets.push({ id: uid(), entite_id: r.entite_id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, net_prevu_auto: null, commission_prevue_auto: null, commission_recue: null, commission_recue_le: null, ...valeurs });
       sauve();
       return montant;
+    },
+    // Corriger une commission (migration 119), avec les contrôles de corriger_commission : tout est vérifié avant la première écriture.
+    async corrigerCommission(args) {
+      const res = corrigerLocal(data, droit, args, { ajd: aujourdhui(), maintenant: new Date().toISOString() });
+      sauve();
+      return structuredClone(res);
     },
     async fiduciaireAPreparer() {
       return structuredClone(aPreparerLocal(data, { droit, resumeDe, voit }));

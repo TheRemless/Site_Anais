@@ -927,11 +927,11 @@ div.enc-case { cursor: default; }
 .enc-total { flex: 1 1 auto; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 @media (forced-colors: active) { .enc-motif .puce:has(input:checked) { outline: 2px solid Highlight; } }
 /* Corriger une commission depuis À encaisser (23.11.2026) : le dossier s'ouvre d'un tap, « Corriger » est une vraie cible au doigt. */
-.enc-texte a.enc-client, .enc-detail a.enc-ref { color: inherit; text-decoration: underline; text-decoration-color: var(--bord-fort); text-underline-offset: 3px; }
-.enc-texte a.enc-client:hover, .enc-detail a.enc-ref:hover { color: var(--teal-700); text-decoration-color: currentColor; }
-.enc-texte a.enc-client { align-self: flex-start; padding: 2px 0; }
-.enc-corriger { flex: none; min-height: 44px; min-width: 44px; margin: 0 0 10px auto; }
-@media (min-width: 720px) { .enc-corriger { margin: 0 0 0 auto; } }
+.enc-texte a.enc-client { align-self: flex-start; padding: 2px 0; color: inherit; text-decoration: underline; text-decoration-color: var(--bord-fort); text-underline-offset: 3px; }
+.enc-texte a.enc-client:hover { color: var(--teal-700); text-decoration-color: currentColor; }
+.enc-actions { flex: none; display: flex; gap: 8px; margin: 0 0 10px auto; }
+@media (min-width: 720px) { .enc-actions { margin: 0 0 0 auto; } }
+.enc-actions .petit { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .enc-correction { color: var(--texte-2); font-style: italic; }
 .tag-corrigee { background: var(--teal-100); color: var(--teal-700); }
 .corr-feuille .enc-motif .puce { min-height: 44px; }

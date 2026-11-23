@@ -2,12 +2,13 @@
 // Anaïs coche les dossiers que le partenaire lui a payés, voit le total coché et encaisse la sélection d'un geste : un enregistrement par dossier,
 // avec la date et le moyen. Un montant différent du prévu se règle dans la feuille : le reste viendra plus tard, ou le dossier est soldé avec un motif.
 // Le calcul vit dans encaisser-calc.mjs : chaque total affiché est la somme des montants de sa liste.
-import { etat, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, reglages, modeTaxi, modifier, chargerDossier } from "../etat.mjs";
+import { etat, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, reglages, modeTaxi, chargerDossier, appliquerLignes } from "../etat.mjs";
 import { h, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { aujourdhui, formatDate, ajouterJours, arrondi } from "../calc.mjs";
-import { aRecevoirParPartenaire, recuesParPartenaire, sommeRestes, sommeMontants, natureMontant, ecrituresEncaissement, VALEURS_ANNULATION, MOTIFS_ECART, NOTE_ECART_MAX, correctionCommission, derniereCorrection, MOTIFS_CORRECTION, NOTE_CORRECTION_MAX } from "../encaisser-calc.mjs";
+import { aRecevoirParPartenaire, recuesParPartenaire, sommeRestes, sommeMontants, natureMontant, ecrituresEncaissement, VALEURS_ANNULATION, MOTIFS_ECART, NOTE_ECART_MAX, correctionCommission, derniereCorrection, texteCorrection, luCorrection, retourEncaisser, CLE_RETOUR, MOTIFS_CORRECTION, NOTE_CORRECTION_MAX } from "../encaisser-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
-import { lieeFacture, suivreFacture, appliquerChangements } from "./suivi-facture.mjs";
+import { apercuFacture } from "./suivi-facture.mjs";
+import { separerNets } from "../nets-documents.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -42,33 +43,36 @@ const libelleMotif = (k) => {
 // Les services d'un dossier chez ce partenaire, en une ligne : libellés et dates.
 const servicesTexte = (rs) => rs.map((r) => [r.libelle, r.date_service ? formatDate(r.date_service) : ""].filter(Boolean).join(", ")).join(" ; ");
 
-// Ouvrir le dossier depuis la liste : « Retour » de la fiche ramène ici, et la liste se retrouve à la même hauteur (une seule fois).
-const CLE_RETOUR = "gestion-encaisser-retour";
-const lienVersDossier = (dossierId, contenu, classe = "enc-client") =>
-  h("a", { class: classe, href: `#/dossier/${dossierId}?depuis=encaisser`, onclick: () => { try { sessionStorage.setItem(CLE_RETOUR, String(Math.round(window.scrollY))); } catch { /* sans stockage : la liste repart en haut */ } } }, contenu);
-const retrouverHauteur = () => {
-  let y = null;
+// Ouvrir le dossier depuis la liste (bouton « Dossier ») : la liste note sa hauteur, les dossiers cochés et le dossier ouvert, avec l'heure
+// (retourEncaisser). La fiche de ce dossier propose « À encaisser » pendant quelques minutes, même après un passage par un de ses documents ;
+// la liste retrouve sa hauteur et sa sélection à son retour, une seule fois.
+const noterRetour = (dossierId, coches) => {
   try {
-    y = sessionStorage.getItem(CLE_RETOUR);
-    sessionStorage.removeItem(CLE_RETOUR);
+    sessionStorage.setItem(CLE_RETOUR, JSON.stringify({ t: Date.now(), y: Math.round(window.scrollY), coches: [...coches], dossierId }));
   } catch {
-    return;
+    // sans stockage : la liste repartira en haut, sans la sélection
   }
-  if (y === null) return;
-  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, Number(y) || 0)));
 };
-const libelleCorrection = (k) => {
-  const m = MOTIFS_CORRECTION.find(([cle]) => cle === k);
-  return m ? tr(m[1]) : "";
+const lireRetour = () => {
+  try {
+    const v = sessionStorage.getItem(CLE_RETOUR);
+    sessionStorage.removeItem(CLE_RETOUR);
+    return retourEncaisser(v);
+  } catch {
+    return null;
+  }
 };
-// « corrigée le 22 nov. : 1 000 → 800, remboursement partiel » : la trace visible sur la ligne et dans la fiche du service.
-export function texteCorrection(n) {
-  const c = derniereCorrection(n);
-  if (!c) return "";
-  const montants = c.avant === null ? prix(c.apres) : `${prix(c.avant)} → ${prix(c.apres)}`;
-  const prixTexte = c.prixAvant !== null ? tr("prix d'avant {prix}", { prix: prix(c.prixAvant) }) : null;
-  return [tr("Commission corrigée le {date} : {montants}", { date: formatDate(c.le), montants }), prixTexte, [libelleCorrection(c.motif), c.note].filter(Boolean).join(" : ")].filter(Boolean).join(", ");
-}
+// La trace d'une correction, aux montants de l'écran.
+const correctionTexte = (n) => texteCorrection(n, prix);
+
+// Les refus de corriger_commission (migration 119), en mots.
+const REFUS_CORRECTION = {
+  change: N_("Ce service a changé depuis l'ouverture (encaissement, saisie ou prix) : rien n'a été corrigé. Vérifiez la liste."),
+  droits: N_("Votre rôle ne permet pas de corriger une commission."),
+  entite: N_("L'entreprise a changé : rien n'a été corrigé. Rouvrez la liste."),
+  documents: N_("La facture n'a pas pu suivre le nouveau prix : rien n'a été corrigé."),
+  introuvable: N_("Ce service n'existe plus."),
+};
 
 export function sectionCommissions({ rafraichir, ecrit }) {
   const ajd = aujourdhui();
@@ -79,6 +83,7 @@ export function sectionCommissions({ rafraichir, ecrit }) {
   const partenaires = aRecevoirParPartenaire(etat.db.reservations, netDe, { ecartees, ajd });
   // Corriger une commission (ou le prix et la commission) : la personne voit les nets et écrit dans les dossiers. Jamais Mook, jamais le partenaire.
   const corrige = ecrit && voitNets();
+  const retour = lireRetour();
   const recues = recuesParPartenaire(etat.db.reservations, netDe, { ecartees, depuis: ajouterJours(ajd, -JOURS_RECUES) });
   const total = sommeRestes(partenaires.flatMap((p) => p.dossiers));
   const moyens = (reglages().listes.moyens || []).filter((m) => !m.archive);
@@ -88,8 +93,9 @@ export function sectionCommissions({ rafraichir, ecrit }) {
   };
 
   // ---- La sélection : une case par dossier, un total par partenaire et en bas de l'écran -------------------------------------------
-  const coches = new Set();
   const parCle = new Map(partenaires.flatMap((p) => p.dossiers.map((d) => [d.cle, d])));
+  // Revenu d'un dossier : la sélection d'avant revient (seulement les dossiers encore dans la liste).
+  const coches = new Set(((retour && retour.coches) || []).filter((c) => parCle.has(c)));
   const sousTotaux = new Map();
   const barreTexte = h("p", { class: "enc-barre-texte", "aria-live": "polite" });
   const barreBouton = h("button", { class: "principal", type: "button", onclick: () => ouvrirFeuille([...coches].map((c) => parCle.get(c)).filter(Boolean)) }, tr("Encaisser la sélection"));
@@ -108,6 +114,7 @@ export function sectionCommissions({ rafraichir, ecrit }) {
 
   const ligneDossier = (d) => {
     const dossier = dossierDe(d.dossier_id);
+    const nom = clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier");
     const sans = d.sansCommission === d.reservations.length;
     const tags = [
       d.aVenir ? h("span", { class: "tag" }, tr("à venir")) : null,
@@ -115,25 +122,31 @@ export function sectionCommissions({ rafraichir, ecrit }) {
       d.dejaRecu > 0 ? h("span", { class: "tag" }, d.partielLe ? tr("déjà reçu {montant} le {date}", { montant: prix(d.dejaRecu), date: formatDate(d.partielLe) }) : tr("déjà reçu {montant}", { montant: prix(d.dejaRecu) })) : null,
       d.reservations.some((r) => derniereCorrection(netDe(r))) ? h("span", { class: "tag tag-corrigee" }, tr("corrigée")) : null,
     ].filter(Boolean);
-    const corrections = d.reservations.map((r) => texteCorrection(netDe(r))).filter(Boolean);
+    const corrections = d.reservations.map((r) => correctionTexte(netDe(r))).filter(Boolean);
+    // Le nom reste le texte de la case : un tap coche le dossier. Le dossier s'ouvre par son propre bouton.
     const texte = h(
       "span",
       { class: "enc-texte" },
-      lienVersDossier(d.dossier_id, clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier")),
-      h("span", { class: "enc-detail" }, dossier && dossier.ref ? lienVersDossier(d.dossier_id, dossier.ref, "enc-ref") : null, dossier && dossier.ref ? " · " : null, servicesTexte(d.reservations)),
+      h("span", { class: "enc-client" }, nom),
+      h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")),
       tags.length ? h("span", { class: "enc-tags" }, tags) : null,
       corrections.length ? h("span", { class: "enc-detail enc-correction" }, corrections.join(" ; ")) : null
     );
     const montant = h("strong", { class: "enc-montant" }, sans ? "—" : prix(d.reste));
-    const corriger = corrige ? h("button", { class: "secondaire petit enc-corriger", type: "button", "aria-label": tr("Corriger la commission : {client}", { client: clientDuDossier(dossier) || (dossier && dossier.ref) || "" }), onclick: () => ouvrirCorrection(d) }, tr("Corriger")) : null;
-    if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant));
-    const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id });
+    const actions = h(
+      "span",
+      { class: "enc-actions" },
+      h("a", { class: "bouton secondaire petit enc-ouvrir", href: `#/dossier/${d.dossier_id}`, "aria-label": tr("Ouvrir le dossier : {client}", { client: nom }), onclick: () => noterRetour(d.dossier_id, coches) }, tr("Dossier")),
+      corrige ? h("button", { class: "secondaire petit enc-corriger", type: "button", "aria-label": tr("Corriger la commission : {client}", { client: nom }), onclick: () => ouvrirCorrection(d) }, tr("Corriger")) : null
+    );
+    if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant), actions);
+    const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id, checked: coches.has(d.cle) });
     input.addEventListener("change", () => {
       if (input.checked) coches.add(d.cle);
       else coches.delete(d.cle);
       maj();
     });
-    return h("li", { class: "enc-dossier" }, h("label", { class: "enc-case" }, input, texte, montant), corriger);
+    return h("li", { class: "enc-dossier" }, h("label", { class: "enc-case" }, input, texte, montant), actions);
   };
 
   const cartePartenaire = (p) => {
@@ -315,12 +328,8 @@ export function sectionCommissions({ rafraichir, ecrit }) {
     const dossier = dossierDe(d.dossier_id);
     const taxi = modeTaxi();
     let r = d.reservations[0];
-    // Ce qui était lu à l'ouverture : si la ligne change entre-temps (autre appareil, Mr. Brown), rien ne s'écrit.
-    const lu = (x) => {
-      const n = netReservation(x) || {};
-      return JSON.stringify([n.commission_prevue ?? null, n.commission_recue ?? null, n.commission_recue_le ?? null, x.montant_vente ?? null]);
-    };
-    const ouverture = new Map(d.reservations.map((x) => [x.id, lu(x)]));
+    // Ce que la feuille a lu à l'ouverture, service par service : la base refuse la correction si l'un de ces montants a changé depuis.
+    const ouverture = new Map(d.reservations.map((x) => [x.id, luCorrection(x, netReservation(x))]));
 
     const radio = (nom, valeur, libelle, coche = false) => {
       const label = h("label", { class: "case puce" }, h("input", { type: "radio", name: nom, value: valeur, checked: coche }), h("span", null, libelle));
@@ -368,17 +377,40 @@ export function sectionCommissions({ rafraichir, ecrit }) {
       }
       recap.textContent = phrases.join(" ");
       // Le prix change sur un service déjà facturé : la facture n'est jamais modifiée en silence (Taxi : prix interne, jamais montré).
-      const p = num(prixChamp.value);
-      const prixChange = mode() === "prix" && p !== null && arrondi(p) !== arrondi(Number(r.montant_vente) || 0);
-      const doc = !taxi && prixChange && lieeFacture(r) ? etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") : null;
-      facture.hidden = !doc;
-      facture.textContent = !doc ? "" : doc.envoye_le
-        ? tr("Ce service est sur la facture envoyée au client le {date}. Le nouveau prix y sera repris : le nouveau total s'affiche avant d'enregistrer, et il faudra renvoyer la facture.", { date: formatDate(doc.envoye_le) })
-        : tr("Ce service est sur la facture. Le nouveau prix y sera repris et son nouveau total s'affichera.");
+      const a = apercuPrixSaisi();
+      const textes = a ? texteFacture(a) : [];
+      facture.hidden = !textes.length;
+      facture.textContent = textes.join(" ");
     };
     choixService.forEach((x) => x.input.addEventListener("change", () => { r = d.reservations.find((y) => y.id === x.input.value) || r; remplir(); majRecap(); }));
     [modeCommission.input, modePrix.input, ...motifs.map((m) => m.input)].forEach((x) => x.addEventListener("change", majRecap));
     [commission, prixChamp].forEach((x) => x.addEventListener("input", majRecap));
+
+    // L'aperçu de la facture pour le prix saisi (apercuFacture), ou null quand le prix ne change pas ou que le service n'est sur aucun document.
+    function apercuPrixSaisi() {
+      const p = num(prixChamp.value);
+      if (mode() !== "prix" || p === null || !(p > 0) || arrondi(p) === arrondi(Number(r.montant_vente) || 0)) return null;
+      return apercuFacture(r, { montant_vente: arrondi(p) });
+    }
+    // Ce que deviennent les factures, en mots : elle suit (total), elle a été envoyée (confirmation demandée), ou elle garde l'ancien prix et pourquoi.
+    function texteFacture(a) {
+      if (a.taxi) return [];
+      const nomDoc = (type) => (type === "facture_locale" ? tr("La facture locale") : tr("La facture"));
+      const t = [];
+      if (a.changements.length && !a.droit) t.push(tr("Votre rôle ne permet pas de modifier la facture : elle garde l'ancien prix, à corriger par une personne qui en a le droit."));
+      else if (a.suit) {
+        if (arrondi(a.avant) !== arrondi(a.apres)) t.push(tr("{doc} suit le nouveau prix : total {avant} → {apres}.", { doc: nomDoc(a.type), avant: prix(a.avant), apres: prix(a.apres) }));
+        else if (arrondi(a.placeAvant) !== arrondi(a.placeApres)) t.push(tr("{doc} suit le nouveau prix : à régler sur place {avant} → {apres}.", { doc: nomDoc(a.type), avant: prix(a.placeAvant), apres: prix(a.placeApres) }));
+        else t.push(tr("{doc} suit le nouveau prix.", { doc: nomDoc(a.type) }));
+        if (a.envoye) t.push(tr("Elle a été envoyée au client le {date} : il faudra la lui renvoyer. Une confirmation vous sera demandée.", { date: formatDate(a.envoye) }));
+      }
+      for (const x of a.restants) {
+        t.push(x.raison === "plusieurs_lignes"
+          ? tr("{doc} répartit ce service sur {n} lignes : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), n: x.lignes })
+          : tr("{doc} compte ce service en {q} unités et le nouveau prix ne se divise pas juste : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), q: x.qte || "?" }));
+      }
+      return t;
+    }
 
     const erreurs = {
       commission: tr("Saisissez la nouvelle commission (0 ou plus, deux décimales au plus)."),
@@ -407,48 +439,43 @@ export function sectionCommissions({ rafraichir, ecrit }) {
               return;
             }
             const frais = etat.db.reservations.find((x) => x.id === r.id);
-            if (!frais || lu(frais) !== ouverture.get(r.id)) {
-              fermer();
-              toast(tr("Ce service a changé depuis l'ouverture : rien n'a été corrigé. Vérifiez la liste."), true);
-              rafraichir();
-              return;
-            }
+            if (!frais) return void fermer();
             Object.values(champDe).forEach((c) => erreurChamp(c, null));
-            const res = correctionCommission(frais, netReservation(frais), { mode: mode(), commission: num(commission.value), prix: num(prixChamp.value), motif: motif(), note: note.value }, { ajd, maintenant: new Date().toISOString() });
+            const choix = { mode: mode(), commission: num(commission.value), prix: num(prixChamp.value), motif: motif(), note: note.value };
+            const res = correctionCommission(frais, netReservation(frais), choix);
             if (res.erreur) {
               erreurChamp(champDe[res.erreur], erreurs[res.erreur]);
               focusPremiereErreur(e.target);
               return;
             }
+            // La facture : ce qu'elle devient, confirmé avant d'écrire si elle est déjà partie. Elle s'écrit avec le reste, dans la même transaction.
+            const a = res.prix !== null ? apercuPrixSaisi() : null;
+            if (a && !a.taxi && a.droit && a.suit && a.envoye) {
+              const ok = await confirmer(`${texteFacture(a).join(" ")}`, tr("Enregistrer la correction"));
+              if (!ok) return;
+            }
+            const documents = a && a.droit ? a.changements.map(({ doc, suite }) => ({ id: doc.id, updated_at: doc.updated_at, contenu: separerNets(suite).contenu, complet: suite })) : [];
             envoiEnCours = true;
             bouton.disabled = true;
             bouton.textContent = tr("Enregistrement…");
             try {
-              let ecartRestant = null;
-              if (res.reservation) {
-                // Le chemin commun : la facture suit le prix, avec son nouveau total, et une confirmation si elle a déjà été envoyée.
-                const valeurs = { ...res.reservation };
-                const pareil = { date_service: frais.date_service, personnes: frais.personnes };
-                const suivi = await suivreFacture(frais, valeurs, { avant: pareil, apres: pareil, service: { montant_vente: valeurs.montant_vente } });
-                if (!suivi) {
-                  bouton.disabled = false;
-                  bouton.textContent = tr("Enregistrer la correction");
-                  return;
-                }
-                await appliquerChangements(suivi.changements);
-                await modifier("reservations", frais.id, valeurs);
-                // Seul l'écart de prix concerne cette correction : un écart de date ou de personnes déjà là reste signalé sur la carte du service.
-                ecartRestant = (suivi.ecartRestant || []).filter((t) => t.startsWith(tr("Montant vendu")));
-              }
-              await enregistrerLie("reservations_nets", "reservation_id", frais.id, res.nets);
+              await appliquerLignes(async () => {
+                const x = await etat.store.corrigerCommission({ reservationId: frais.id, entiteId: entite, commission: res.commission, prix: res.prix, motif: choix.motif, note: res.note, lu: ouverture.get(frais.id), documents });
+                const complets = new Map(documents.map((dd) => [dd.id, dd.complet]));
+                return { resultat: x, lignes: { reservations_nets: [x.nets], reservations: [x.reservation], documents: (x.documents || []).map((dd) => ({ ...dd, contenu: complets.get(dd.id) })) } };
+              });
               fermer();
               const fait = res.solde ? tr("Commission corrigée : {montant}, le service est soldé.", { montant: prix(res.apres) }) : tr("Commission corrigée : {montant}, reste à recevoir {reste}.", { montant: prix(res.apres), reste: prix(res.reste) });
-              toast(ecartRestant && ecartRestant.length ? `${fait} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : fait);
+              const garde = a && !a.taxi && (a.restants.length || (a.changements.length && !a.droit)) ? ` ${tr("La facture garde l'ancien prix : corrigez-la dans le document.")}` : "";
+              toast(fait + garde);
             } catch (err) {
               fermer();
-              toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+              const refus = ((err.message || "").match(/corriger_commission:(\w+)/) || [])[1];
+              toast(refus && REFUS_CORRECTION[refus] ? tr(REFUS_CORRECTION[refus]) : refus && erreurs[refus] ? erreurs[refus] : tr("Enregistrement impossible : {message}", { message: err.message }), true);
             } finally {
               envoiEnCours = false;
+              // La liste se redessine avec les nouveaux montants : les dossiers cochés et la hauteur restent.
+              noterRetour(null, coches);
               rafraichir();
             }
           },
@@ -501,14 +528,16 @@ export function sectionCommissions({ rafraichir, ecrit }) {
       d.moyen ? nomMoyen(d.moyen) : null,
       d.ecart ? tr("écart {ecart}", { ecart: (d.ecart > 0 ? "+" : "−") + prix(Math.abs(d.ecart)) }) : null,
       d.motif ? [libelleMotif(d.motif), d.note].filter(Boolean).join(" : ") : null,
+      d.parCorrection ? tr("soldée par correction") : null,
     ].filter(Boolean);
+    const nom = clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier");
     return h(
       "li",
       { class: "enc-dossier" },
       h(
         "div",
         { class: "enc-case" },
-        h("span", { class: "enc-texte" }, lienVersDossier(d.dossier_id, clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier")), h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")), h("span", { class: "enc-detail" }, quoi.join(", "))),
+        h("span", { class: "enc-texte" }, h("a", { class: "enc-client", href: `#/dossier/${d.dossier_id}`, onclick: () => noterRetour(d.dossier_id, coches) }, nom), h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")), h("span", { class: "enc-detail" }, quoi.join(", "))),
         h("strong", { class: "enc-montant" }, prix(d.recu))
       ),
       ecrit ? h("button", { class: "lien", type: "button", onclick: () => annuler(d) }, tr("Annuler")) : null
@@ -539,6 +568,9 @@ export function sectionCommissions({ rafraichir, ecrit }) {
         )
       : null
   );
-  retrouverHauteur();
+  // Revenu d'un dossier : la sélection d'avant (barre et sous-totaux), puis la même hauteur.
+  if (coches.size) maj();
+  // Après la mise en haut d'un écran neuf (app.mjs, restaurerDefilement) : une fois l'écran posé, puis une seconde pour une mise en page tardive.
+  if (retour) for (const ms of [0, 150]) setTimeout(() => window.scrollTo(0, retour.y), ms);
   return { noeud, total, nbPartenaires: partenaires.length, rien: !partenaires.length && !nbRecues };
 }

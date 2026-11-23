@@ -393,6 +393,11 @@ export function commissionPrevue(regle, { vente = null, net = null, adultes = 0,
 // `contexte` : regleDe(partenaire_id), netDe(reservation) (net prévu ou null), ecartees (dossiers annulés). Renvoie
 //   { changements: [{ reservation, avant, apres }], inchanges, impossibles }
 // `impossibles` : la règle ou une donnée manque (jamais de commission devinée). `seulementVides` : ne remplit que les commissions encore absentes.
+// Une correction de commission (migration 119) encore en vigueur : la commission prévue est celle que la correction a posée. Changée ensuite
+// ailleurs (Taxi du lendemain, fiche du service), elle redevient une commission ordinaire.
+export const correctionEnVigueur = (n) =>
+  !!(n && n.commission_corrigee_le) && n.commission_apres_correction !== null && n.commission_apres_correction !== undefined && n.commission_prevue !== null && n.commission_prevue !== undefined && Math.round(Number(n.commission_prevue) * 100) === Math.round(Number(n.commission_apres_correction) * 100);
+
 export function recalculerCommissions(reservations, { regleDe, netDe = () => null, ecartees = new Set() }, { partenaireId = null, seulementVides = false } = {}) {
   const changements = [];
   // Commissions déjà reçues dont la valeur prévue s'écarte de la règle : signalées à l'écran, jamais modifiées.
@@ -403,13 +408,14 @@ export function recalculerCommissions(reservations, { regleDe, netDe = () => nul
     if (!r.paye_sur_place || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
     if (partenaireId && r.partenaire_id !== partenaireId) continue;
     const n = netDe(r) || {};
+    // Corrigée à la main (remboursement partiel, geste commercial…, migration 119) et pas modifiée depuis : la règle du partenaire ne la défait
+    // pas, et ne la signale pas non plus comme un écart, même une fois reçue.
+    if (correctionEnVigueur(n)) { inchanges++; continue; }
     if (n.commission_recue_le) {
       const attendue = commissionPrevue(regleDe(r.partenaire_id || null), { vente: r.montant_vente ?? null, net: n.net_prevu ?? null, adultes: Number((r.personnes || {}).adultes) || 0, enfants: Number((r.personnes || {}).enfants) || 0 });
       if (attendue !== null && n.commission_prevue !== null && n.commission_prevue !== undefined && Math.round(Number(n.commission_prevue) * 100) !== Math.round(attendue * 100)) ecartsRecus.push({ reservation: r, prevue: Number(n.commission_prevue), attendue, recue: n.commission_recue === null || n.commission_recue === undefined ? null : Number(n.commission_recue) });
       continue;
     }
-    // Corrigée à la main (remboursement partiel, geste commercial…, migration 119) : la règle du partenaire ne la défait pas.
-    if (n.commission_corrigee_le) { inchanges++; continue; }
     const avant = n.commission_prevue === undefined ? null : n.commission_prevue;
     if (seulementVides && avant !== null) continue;
     const p = r.personnes || {};

@@ -76,72 +76,132 @@ async function course(entite, partenaireId, n, { heure = "10:00", prix = 1800, d
 const R = {
   taxi: await course(ent.taxi, P.vip, -1),
   taxiSien: await course(ent.taxi, P.vip, -2),
+  partiel: await course(ent.taxi, P.vip, -3, { nets: { prevue: 400, recue: 100 } }),
+  zero: await course(ent.taxi, P.vip, -4, { nets: { prevue: 250 } }),
   secret: await course(ent.secret, P.secret, -3, { prix: 2000 }),
 };
 await db.query("insert into partenaires_acces (user_id, partenaire_id) values ($1, $2)", [u.brown, P.vip]);
+await db.query("update reservations_nets set commission_partielle_le = $2 where reservation_id = $1", [R.partiel, await jour(-1)]);
 const com = async (id) => un("select * from reservations_nets where reservation_id = $1", [id]);
+const resa = async (id) => un("select * from reservations where id = $1", [id]);
+const lu = async (id) => {
+  const n = (await com(id)) || {};
+  const r = await resa(id);
+  return JSON.stringify({ commission_prevue: n.commission_prevue ?? null, commission_recue: n.commission_recue ?? null, montant_vente: r.montant_vente ?? null });
+};
+const corriger = (user, id, { entite, commission, prix = null, motif = "remboursement_partiel", note = null, luJson, documents = [] }) =>
+  essaie(u[user], "select corriger_commission($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb) v", [id, entite, commission, prix, motif, note, luJson, JSON.stringify(documents)]);
+const code = (r) => ((r.err || "").match(/corriger_commission:(\w+)/) || [])[1] || r.err;
 
 // ---- Structure ------------------------------------------------------------------------------------------------------------------------
-for (const c of ["commission_avant_correction", "prix_avant_correction", "commission_corrigee_le", "commission_corrigee_motif", "commission_corrigee_note"]) {
+for (const c of ["commission_avant_correction", "prix_avant_correction", "commission_apres_correction", "commission_corrigee_le", "commission_corrigee_motif", "commission_corrigee_note", "commission_soldee_par_correction"]) {
   ok(!!(await un("select 1 x from information_schema.columns where table_name = 'reservations_nets' and column_name = $1", [c])), `colonne ${c}`);
 }
+const exec = async (role, f) => (await un(`select has_function_privilege('${role}', '${f}', 'execute') a`)).a;
+const F = "corriger_commission(uuid, uuid, numeric, numeric, text, text, jsonb, jsonb)";
+ok((await exec("authenticated", F)) && !(await exec("anon", F)), "corriger_commission : authenticated seulement, jamais anon");
 
-// ---- Mr. Brown saisit, Nani corrige au même montant : il ne la réécrit plus -------------------------------------------------------------
+// ---- Mr. Brown saisit, Nani corrige au même montant (le prix seul change) : il ne la réécrit plus ----------------------------------------
 let r = await essaie(u.brown, "select partenaire_saisir_commission($1, 500) v", [R.taxi]);
 ok(r.ok, "Mr. Brown saisit 500 " + (r.err || ""));
-const correction = (id, valeurs) => essaie(u.nani, `update reservations_nets set ${Object.keys(valeurs).map((k, i) => `${k} = $${i + 2}`).join(", ")} where reservation_id = $1`, [id, ...Object.values(valeurs)]);
-r = await correction(R.taxi, { commission_prevue: 500, commission_prevue_auto: null, commission_avant_correction: 500, commission_corrigee_le: new Date().toISOString(), commission_corrigee_motif: "geste_commercial", commission_corrigee_note: null, commission_partenaire: null, commission_partenaire_le: null });
-ok(r.ok && r.n === 1, "Nani corrige (même montant, le prix seul change) " + (r.err || ""));
+r = await corriger("nani", R.taxi, { entite: ent.taxi, commission: 500, prix: 1600, motif: "geste_commercial", luJson: await lu(R.taxi) });
+ok(r.ok && r.rows[0].v.nets.commission_prevue === 500, "Nani corrige (même montant, prix 1 800 → 1 600) " + (r.err || ""));
+let n = await com(R.taxi);
+ok(n.commission_partenaire === null && Number(n.commission_apres_correction) === 500 && Number(n.prix_avant_correction) === 1800 && Number((await resa(R.taxi)).montant_vente) === 1600, "saisie du partenaire effacée, montant posé et ancien prix gardés");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 700) v", [R.taxi]);
-ok(!r.ok && /corrigée par l'équipe/.test(r.err) && Number((await com(R.taxi)).commission_prevue) === 500, "Mr. Brown n'écrase pas la commission corrigée " + (r.err || ""));
+ok(!r.ok && /corrigée par l'équipe/.test(r.err) && Number((await com(R.taxi)).commission_prevue) === 500, "Mr. Brown n'écrase pas la commission corrigée");
 r = await essaie(u.brown, "select par_moi, modifiable from partenaire_courses() where id = $1", [R.taxi]);
-ok(r.ok && r.rows[0] && r.rows[0].par_moi === false && r.rows[0].modifiable === false, "son écran la montre verrouillée");
-// Garde de la base même si l'écran n'avait pas effacé sa saisie : la date de correction suffit.
+ok(r.ok && r.rows[0] && r.rows[0].par_moi === false && r.rows[0].modifiable === false, "partenaire_courses : la course corrigée n'est pas modifiable");
+// Garde de la base même si sa saisie n'avait pas été effacée : la date de correction suffit (liste et saisie).
 await essaie(u.brown, "select partenaire_saisir_commission($1, 300) v", [R.taxiSien]);
 await db.query("update reservations_nets set commission_corrigee_le = now(), commission_corrigee_motif = 'erreur_saisie' where reservation_id = $1", [R.taxiSien]);
+r = await essaie(u.brown, "select modifiable from partenaire_courses() where id = $1", [R.taxiSien]);
+ok(r.ok && r.rows[0].modifiable === false, "partenaire_courses : corrigée sans effacer sa saisie, toujours verrouillée");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 400) v", [R.taxiSien]);
-ok(!r.ok && Number((await com(R.taxiSien)).commission_prevue) === 300, "corrigée sans effacer sa saisie : toujours refusée");
+ok(!r.ok && Number((await com(R.taxiSien)).commission_prevue) === 300, "partenaire_saisir_commission : toujours refusée");
 
-// ---- Contraintes ----------------------------------------------------------------------------------------------------------------------
-r = await correction(R.taxi, { commission_corrigee_motif: "rabais" });
-ok(!r.ok, "motif hors liste refusé");
-r = await correction(R.taxi, { commission_corrigee_motif: "autre", commission_corrigee_note: "  " });
-ok(!r.ok, "« autre » sans note refusé");
-r = await correction(R.taxi, { commission_corrigee_motif: "autre", commission_corrigee_note: "vu avec le chauffeur" });
-ok(r.ok, "« autre » avec une note accepté " + (r.err || ""));
-r = await correction(R.taxi, { commission_corrigee_note: "x".repeat(201) });
-ok(!r.ok, "note de plus de 200 caractères refusée");
-r = await essaie(u.mook, "update reservations_nets set commission_prevue = 1 where reservation_id = $1", [R.taxi]);
-ok(r.ok ? r.n === 0 : true, "Mook (sans les nets) ne corrige pas");
-r = await essaie(u.mook, "select commission_avant_correction from reservations_nets");
-ok(!r.ok || r.rows.length === 0, "Mook ne lit pas les corrections");
+// ---- Concurrence : un encaissement noté entre l'ouverture et l'enregistrement ----------------------------------------------------------
+const luAvant = await lu(R.partiel);
+await essaie(u.nani, "update reservations_nets set commission_recue = 250, commission_partielle_le = $2 where reservation_id = $1", [R.partiel, await jour(0)]);
+r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 100, luJson: luAvant });
+n = await com(R.partiel);
+ok(!r.ok && code(r) === "change" && Number(n.commission_recue) === 250 && Number(n.commission_prevue) === 400 && !n.commission_recue_le, "écriture concurrente refusée : l'encaissement de 250 reste, rien n'est corrigé");
+r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 200, luJson: await lu(R.partiel) });
+ok(!r.ok && code(r) === "sous_recu", "refusée sous le déjà reçu (contrôle de la base)");
+// Solde : la nouvelle commission égale le déjà reçu, commission_recue n'est jamais réécrite.
+r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 250, luJson: await lu(R.partiel) });
+n = await com(R.partiel);
+ok(r.ok && Number(n.commission_recue) === 250 && (await un("select commission_recue_le::text d from reservations_nets where reservation_id = $1", [R.partiel])).d === (await jour(0)) && n.commission_soldee_par_correction === true, "soldée au déjà reçu : reçu intact, date du dernier versement " + (r.err || ""));
+r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 300, luJson: await lu(R.partiel) });
+ok(!r.ok && code(r) === "reglee", "une commission soldée ne se corrige plus");
+r = await corriger("nani", R.zero, { entite: ent.taxi, commission: 0, luJson: await lu(R.zero) });
+n = await com(R.zero);
+ok(r.ok && n.commission_recue === null && !!n.commission_recue_le && n.commission_soldee_par_correction === true, "corrigée à 0 sans rien de reçu : soldée par correction, aucun montant reçu inventé");
 
-// ---- Journal : l'ancien montant reste ---------------------------------------------------------------------------------------------------
-const j = await un("select details from journal where table_name = 'reservations_nets' and cible = $1 and details ? 'commission_corrigee_le' order by created_at desc limit 1", [R.taxi]);
-ok(j && j.details.commission_partenaire && Number(j.details.commission_partenaire.avant) === 500, "le journal des nets garde la saisie effacée et la correction");
+// ---- Droits et entreprise -----------------------------------------------------------------------------------------------------------
+r = await corriger("mook", R.taxiSien, { entite: ent.taxi, commission: 100, luJson: await lu(R.taxiSien) });
+ok(!r.ok && ["droits", "introuvable"].includes(code(r)), "Mook (sans les nets) : refusée " + code(r));
+r = await corriger("brown", R.taxiSien, { entite: ent.taxi, commission: 100, luJson: await lu(R.taxiSien) });
+ok(!r.ok, "le compte partenaire : refusée");
+r = await corriger("nani", R.taxiSien, { entite: ent.secret, commission: 100, luJson: await lu(R.taxiSien) });
+ok(!r.ok && code(r) === "entite", "autre entreprise que celle de la course : refusée");
+r = await corriger("autre", R.taxiSien, { entite: ent.taxi, commission: 100, luJson: await lu(R.taxiSien) });
+ok(!r.ok, "un compte sans accès à Taxi : refusée");
+ok(!(await anonyme(`select corriger_commission('${R.taxiSien}', '${ent.taxi}', 1, null, 'autre', 'x', '{}'::jsonb, '[]'::jsonb)`)).ok, "anon : refusée");
+for (const [quoi, args, attendu] of [
+  ["motif hors liste", { motif: "rabais" }, "motif"],
+  ["« autre » sans note", { motif: "autre", note: "  " }, "note"],
+  ["note de plus de 200 caractères", { note: "x".repeat(201) }, "note"],
+  ["trois décimales", { commission: 10.555 }, "commission"],
+  ["au-dessus du prix", { commission: 5000 }, "au_dessus_prix"],
+  ["rien ne change", { commission: 300 }, "inchange"],
+]) {
+  r = await corriger("nani", R.taxiSien, { entite: ent.taxi, commission: 100, ...args, luJson: await lu(R.taxiSien) });
+  ok(!r.ok && code(r) === attendu, `refusée : ${quoi} (${code(r)})`);
+}
 
-// ---- Secret : le prix change, la base ne réécrit pas la commission corrigée (migration 32) ---------------------------------------------
+// ---- Secret : prix, commission et facture dans une seule transaction ; la migration 32 ne recalcule pas entre les deux ------------------
 await db.query("update partenaires_prives set commission_regle = $2::jsonb where partenaire_id = $1", [P.secret, JSON.stringify({ type: "pourcent_vente", valeur: 20 })]);
 if (!(await un("select 1 x from partenaires_prives where partenaire_id = $1", [P.secret]))) await db.query("insert into partenaires_prives (partenaire_id, entite_id, commission_regle) values ($1, $2, $3::jsonb)", [P.secret, ent.secret, JSON.stringify({ type: "pourcent_vente", valeur: 20 })]);
 await db.query("update reservations set montant_vente = 2100 where id = $1", [R.secret]);
-let n = await com(R.secret);
-ok(n && Number(n.commission_prevue) === 420 && Number(n.commission_prevue_auto) === 420, "avant correction : la base calcule 20 % de 2 100");
-r = await correction(R.secret, { commission_prevue: 300, commission_prevue_auto: null, commission_avant_correction: 420, commission_corrigee_le: new Date().toISOString(), commission_corrigee_motif: "remboursement_partiel" });
-ok(r.ok, "Nani corrige à 300 " + (r.err || ""));
-r = await essaie(u.nani, "update reservations set montant_vente = 1500 where id = $1", [R.secret]);
 n = await com(R.secret);
-ok(r.ok && Number(n.commission_prevue) === 300, "le prix change ensuite : la commission corrigée reste 300 " + (r.err || ""));
-const jr = await un("select details from journal where table_name = 'reservations' and cible = $1 and details ? 'montant_vente' order by created_at desc limit 1", [R.secret]);
+ok(n && Number(n.commission_prevue) === 420 && Number(n.commission_prevue_auto) === 420, "avant correction : la base calcule 20 % de 2 100");
+const dossierSecret = (await resa(R.secret)).dossier_id;
+const facture = await un("insert into documents (entite_id, dossier_id, type, contenu, date_emission) values ($1, $2, 'facture', $3::jsonb, current_date) returning id, updated_at", [ent.secret, dossierSecret, JSON.stringify({ lignes: [{ id: "l1", unite: 2100, qte: 1 }] })]);
+const autreDossier = await un("insert into dossiers (entite_id, ref, client_id) select entite_id, 'S-autre', client_id from dossiers where id = $1 returning id", [dossierSecret]);
+const etrangere = await un("insert into documents (entite_id, dossier_id, type, contenu, date_emission) values ($1, $2, 'facture', '{}'::jsonb, current_date) returning id, updated_at", [ent.secret, autreDossier.id]);
+const contenuNeuf = { lignes: [{ id: "l1", unite: 1800, qte: 1 }] };
+// Tout ou rien : une facture d'un autre dossier dans la liste fait tout échouer, rien n'est écrit.
+r = await corriger("nani", R.secret, { entite: ent.secret, commission: 300, prix: 1800, luJson: await lu(R.secret), documents: [{ id: facture.id, updated_at: facture.updated_at, contenu: contenuNeuf }, { id: etrangere.id, updated_at: etrangere.updated_at, contenu: {} }] });
+ok(!r.ok && Number((await resa(R.secret)).montant_vente) === 2100 && Number((await com(R.secret)).commission_prevue) === 420 && Number((await un("select contenu->'lignes'->0->>'unite' u from documents where id = $1", [facture.id])).u) === 2100, "tout ou rien : une facture d'un autre dossier, ni prix, ni commission, ni facture écrits");
+r = await corriger("nani", R.secret, { entite: ent.secret, commission: 300, prix: 1800, luJson: await lu(R.secret), documents: [{ id: facture.id, updated_at: "2000-01-01T00:00:00Z", contenu: contenuNeuf }] });
+ok(!r.ok && code(r) === "change" && Number((await resa(R.secret)).montant_vente) === 2100, "facture modifiée depuis l'ouverture : refusée, rien d'écrit");
+r = await corriger("nani", R.secret, { entite: ent.secret, commission: 300, prix: 1800, luJson: await lu(R.secret), documents: [{ id: facture.id, updated_at: facture.updated_at, contenu: contenuNeuf }] });
+n = await com(R.secret);
+ok(r.ok && Number(n.commission_prevue) === 300 && n.commission_prevue_auto === null && Number((await resa(R.secret)).montant_vente) === 1800, "prix 1 800 et commission 300 (la règle aurait donné 360) " + (r.err || ""));
+ok(Number((await un("select contenu->'lignes'->0->>'unite' u from documents where id = $1", [facture.id])).u) === 1800 && r.rows[0].v.documents.length === 1, "la facture suit dans la même transaction");
+await essaie(u.nani, "update reservations set montant_vente = 1500 where id = $1", [R.secret]);
+ok(Number((await com(R.secret)).commission_prevue) === 300, "le prix change ensuite : la commission corrigée reste 300");
+const jr = await un("select details from journal where table_name = 'reservations' and cible = $1 and details ? 'montant_vente' order by created_at asc limit 1 offset 1", [R.secret]);
 ok(jr && Number(jr.details.montant_vente.avant) === 2100, "le journal des réservations garde l'ancien prix");
+const jn = await un("select details from journal where table_name = 'reservations_nets' and cible = $1 and details ? 'commission_corrigee_le' order by created_at desc limit 1", [R.secret]);
+ok(jn && Number(jn.details.commission_prevue.avant) === 420, "le journal des nets garde l'ancienne commission");
+// Un rôle qui écrit les dossiers sans les factures ne fait pas suivre une facture.
+await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${ent.secret}', 'Nets sans factures', 'toute', array['dossiers.lire', 'dossiers.ecrire', 'partenaires.lire', 'partenaires.nets', 'finances.voir'])`);
+await membre("autre", ent.secret, "Nets sans factures");
+const f2 = await un("select id, updated_at from documents where id = $1", [facture.id]);
+r = await corriger("autre", R.secret, { entite: ent.secret, commission: 250, prix: 1700, luJson: await lu(R.secret), documents: [{ id: f2.id, updated_at: f2.updated_at, contenu: contenuNeuf }] });
+ok(!r.ok && code(r) === "documents" && Number((await resa(R.secret)).montant_vente) === 1500, "sans le droit des factures : la facture ne suit pas, rien n'est écrit");
 
 // ---- Rejouée, puis retour en arrière ---------------------------------------------------------------------------------------------------
 await db.exec(lire(MIG));
 ok(Number((await com(R.taxi)).commission_prevue) === 500, "la migration se rejoue sans rien changer");
 await db.exec(lire("retour-119-corriger-commission.sql"));
 ok(!(await un("select 1 x from information_schema.columns where table_name = 'reservations_nets' and column_name = 'commission_corrigee_le'")), "retour : colonnes parties");
-ok(!/commission_corrigee/.test((await un("select prosrc from pg_proc where proname = 'partenaire_saisir_commission'")).prosrc), "retour : la fonction de la migration 115 revient");
+ok(!(await un("select 1 x from pg_proc where proname = 'corriger_commission'")), "retour : corriger_commission partie");
+ok(!/commission_corrigee/.test((await un("select prosrc from pg_proc where proname = 'partenaire_saisir_commission'")).prosrc) && !/commission_corrigee/.test((await un("select prosrc from pg_proc where proname = 'partenaire_courses'")).prosrc), "retour : les fonctions des migrations 115 et 116 reviennent");
 r = await essaie(u.brown, "select partenaire_saisir_commission($1, 600) v", [R.taxi]);
-ok(!r.ok && /équipe/.test(r.err), "retour : sa saisie effacée par l'écran, la commission corrigée reste protégée");
+ok(!r.ok && /équipe/.test(r.err), "retour : sa saisie effacée, la commission corrigée reste protégée");
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);
