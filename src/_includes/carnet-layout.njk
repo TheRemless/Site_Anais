@@ -18,6 +18,7 @@
       toc          sommaire discret : [{ label, href }], numéroté 1, 2, 3 dans l'ordre
       heroImage    photo de tête (/images/...), heroAlt son alt, heroPosition son object-position (défaut « 50% 40% »)
       waText       message prérempli du bouton WhatsApp de fin de page
+      endTitle, endLabel  titre et bouton de fin de page (par défaut « Une question sur ce guide ? » et « Écrire à Anaïs sur WhatsApp »)
       carnetConfig (données du guide, voir src/carnet/<guide>.11tydata.js) : si présent, la feuille de réservation (carnet-booking.njk) et js/carnet-booking.js sont ajoutés.
                    Le corps du guide vient alors de carnet-guide.njk ({% raw %}{% include "carnet-guide.njk" %}{% endraw %} dans la page).
     Composants .cg-* (voir pages.css, bloc « Carnet, pages de guide ») : .cg-intro, .cg-resume avec .cg-compare, .cg-exc (une excursion ou un thème : .cg-exc-head, .cg-photos, .cg-exc-body),
@@ -66,8 +67,8 @@
 
 <section class="cg-end" aria-labelledby="cg-end-title">
   <div class="container">
-    <h2 id="cg-end-title">Une question sur ce guide ?</h2>
-    <a class="btn btn-teal" href="https://wa.me/{{ business.telephone | replace('+', '') }}{% if waText %}?text={{ waText | urlencode }}{% endif %}" target="_blank" rel="noopener"><span>Écrire à Anaïs sur WhatsApp</span></a>
+    <h2 id="cg-end-title">{{ endTitle or "Une question sur ce guide ?" }}</h2>
+    <a class="btn btn-teal" href="https://wa.me/{{ business.telephone | replace('+', '') }}{% if waText %}?text={{ waText | urlencode }}{% endif %}" target="_blank" rel="noopener"><span>{{ endLabel or "Écrire à Anaïs sur WhatsApp" }}</span></a>
   </div>
 </section>
 </article>

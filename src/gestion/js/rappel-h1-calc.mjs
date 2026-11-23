@@ -93,7 +93,7 @@ export function aPrevoir(r, { prestation = null, partenaire = null, trajet = nul
   const d = (r && r.details) || {};
   const passeport = notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, partenaire, destinations });
   if (passeport) out.push(passeport);
-  else if (typeVoucher(r, prestation, partenaire) === "billet") out.push(consigneCheckinFiche(partenaire, trajet || {}, destinations));
+  else if (typeVoucher(r, prestation, partenaire, trajet) === "billet") out.push(consigneCheckinFiche(partenaire, trajet || {}, destinations));
   const parc = fraisDeParc(prestation);
   const parcTexte = (parc.texte || "").replace(/\.\s*,/g, ",").replace(/\.$/, "");
   if (parc.inclus === false && parcTexte) out.push(/park fee/i.test(parcTexte) ? `${parcTexte}.` : `National park fee not included: ${parcTexte}.`);

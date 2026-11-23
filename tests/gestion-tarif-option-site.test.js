@@ -208,7 +208,9 @@ test("site-produits.mjs : chaque ligne de prix reliée porte un identifiant de t
     for (const o of p.options) {
       for (const x of o.tarifs || []) {
         n++;
-        assert.deepEqual(Object.keys(x).sort(), ["libelle", "ligne", "prestation"], `${p.id} ${o.id}`);
+        // `ages` : les âges que la ligne déclare sur le site ({ min, max }, structurés), pas un prix ni un net.
+        assert.deepEqual(Object.keys(x).filter((k) => k !== "ages").sort(), ["libelle", "ligne", "prestation"], `${p.id} ${o.id}`);
+        if (x.ages) assert.ok(Object.keys(x.ages).every((k) => (k === "min" || k === "max") && Number.isFinite(x.ages[k])), `${p.id} ${o.id} : ages`);
         assert.match(x.prestation, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, `${p.id} ${o.id}`);
         assert.ok(x.ligne && x.libelle, `${p.id} ${o.id}`);
       }

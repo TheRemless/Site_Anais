@@ -18,7 +18,9 @@ export const ERREURS_TRAJET = { e_programme: N_("Indiquez le programme : ce que 
 // `dateService` : () => date de départ, pour compter les jours d'une location ; `dateInitiale` donne la date de retour proposée.
 // Rend { CHAMPS: { clé: () => champ }, valeurs(), majJours() }. `valeurs()` donne tous les champs, vides compris (une valeur effacée s'efface).
 // `hotelFiche` : l'hôtel de la fiche client, proposé dans le champ « Hôtel » tant que la réservation n'en a pas un à elle.
-export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = () => "", dateInitiale = "", hotelFiche = "" } = {}) {
+// `transfertAuto` : le type de transfert que l'automatique imprime (typeTransfert : « partage » pour un trajet du catalogue), dit dans le menu
+// au lieu de « d'après la prestation », pour que la personne voie ce qui sortira sans choisir (INV-2026-047, 23.11.2026).
+export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = () => "", dateInitiale = "", hotelFiche = "", transfertAuto = "" } = {}) {
   const id = (suffixe) => `${prefixe}-${suffixe}`;
   const texte = (suffixe, valeur, placeholder) => h("input", { id: id(suffixe), value: valeur || "", ...(placeholder ? { placeholder } : {}) });
   const zone = (suffixe, valeur, placeholder) => {
@@ -56,7 +58,9 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   );
   const auto = ["", tr("Automatique d'après la prestation")];
   const typeTour = choix("tour", dt.type_tour, [auto, ["join", tr("Join tour")], ["prive", tr("Private tour")]]);
-  const typeTransfert = choix("transfert", dt.type_transfert, [auto, ["taxi", tr("Private taxi")], ["minivan", tr("Private minivan")], ["partage", tr("Shared minivan")]]);
+  const TYPES_TRANSFERT = [["taxi", tr("Private taxi")], ["minivan", tr("Private minivan")], ["partage", tr("Shared minivan")]];
+  const autoTransfert = TYPES_TRANSFERT.find(([v]) => v === transfertAuto);
+  const typeTransfert = choix("transfert", dt.type_transfert, [autoTransfert ? ["", tr("Auto : {type}", { type: autoTransfert[1] })] : auto, ...TYPES_TRANSFERT]);
   const parc = choix("parc", dt.parc, [auto, ["inclus", tr("Included")], ["non", tr("Not included")], ["aucun", tr("Ne rien afficher")]]);
   const parcTexte = texte("parc-texte", dt.parc_texte, exemple("parc"));
   const remarques = zone("remarques", dt.remarques, tr("Vu par le client et le prestataire, en anglais"));
@@ -183,7 +187,7 @@ export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe,
   const cles = [...base, ...(siegesTotal(siegesLus({ ...(s.details || {}), sieges: s.sieges })) > 0 && !base.includes("sieges") ? ["sieges"] : [])].filter((c) => !sauf.includes(c));
   if (!cles.length) return null;
   const location = service.type === "location";
-  const cv = champsVoucher({ details: { ...s.details, ...(s.sieges ? { sieges: s.sieges } : {}) }, prefixe, dateService: () => service.date || "" });
+  const cv = champsVoucher({ details: { ...s.details, ...(s.sieges ? { sieges: s.sieges } : {}) }, prefixe, dateService: () => service.date || "", transfertAuto: service.transfertAuto || "" });
   const heure = h("input", { id: `${prefixe}-heure`, type: "time", value: s.heure || "" });
   const lieu = h("input", { id: `${prefixe}-lieu`, value: s.lieu || "", autocomplete: "off", placeholder: tr("Hôtel, embarcadère, aéroport") });
   const nombre = (suffixe, v) => saisie(h("input", { id: `${prefixe}-${suffixe}`, value: v ? String(v) : "" }), "entier");

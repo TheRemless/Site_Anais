@@ -407,9 +407,8 @@ test("fermeture annuelle d'Ang Thong : toute année, du 1er novembre au 15 déce
   assert.equal(B.closureText("2026-11-01", rule), rule.messageAnnee);
   assert.equal(B.closureText("2028-11-01", rule), rule.message);
   assert.equal(B.inClosure("2026-11-01", null), false);
-  // Une seule définition dans les données, rappelée dans aConfirmer
+  // Une seule définition dans les données
   assert.equal((fs.readFileSync(path.join(root, "src/carnet/koh-samui-excursions-bateau.11tydata.js"), "utf8").match(/debut: "11-01"/g) || []).length, 1);
-  assert.ok(data.aConfirmer.some((t) => /reglages\.fermetureAngThong/.test(t)));
 });
 
 test("estimation partielle : un enfant sans tarif écrit rend le total non définitif, dit dans l'estimation et dans le récapitulatif", async () => {

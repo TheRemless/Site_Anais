@@ -405,11 +405,7 @@ export function sectionCommissions({ rafraichir, ecrit }) {
         else t.push(tr("{doc} suit le nouveau prix.", { doc: nomDoc(a.type) }));
         if (a.envoye) t.push(tr("Elle a été envoyée au client le {date} : il faudra la lui renvoyer. Une confirmation vous sera demandée.", { date: formatDate(a.envoye) }));
       }
-      for (const x of a.restants) {
-        t.push(x.raison === "plusieurs_lignes"
-          ? tr("{doc} répartit ce service sur {n} lignes : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), n: x.lignes })
-          : tr("{doc} compte ce service en {q} unités et le nouveau prix ne se divise pas juste : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), q: x.qte || "?" }));
-      }
+      for (const x of a.restants) t.push(tr("{doc} répartit ce service sur {n} lignes : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), n: x.lignes }));
       return t;
     }
 

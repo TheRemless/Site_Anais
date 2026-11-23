@@ -14,9 +14,9 @@ import { fichesParNumero } from "../demande-calc.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
-  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
+  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, optionsModifiables, optionModifiee, texteDemande, changements, finalDeConfirmation, reponseConfirmation, reponseRefus,
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
-  estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties, produitSite,
+  estCarnet, carnetDeLaDemande, titreCarnet, champsCarnet, autresSorties,
 } from "../demandes-site-calc.mjs";
 import { boutonMessageClient } from "./message-client.mjs";
 import { relierConversationApresDemande, avertissementDossier, accordSecondDossier, boutonDelier } from "./demandes-whatsapp.mjs";
@@ -125,18 +125,8 @@ async function confirmer_(d, modifs = {}) {
       return null;
     },
     surCree: async ({ dossier, services, total }) => {
-      const s = services[0] || {};
-      // Plusieurs services (liste de sorties) : la réponse les reprend un par un, le total est celui de la facture.
-      const final = {
-        ...(services.length > 1 ? { services: services.map((x) => ({ titre: x.titre, date: x.date, heure: x.heure, adultes: x.adultes, enfants: x.enfants })) } : {}),
-        date: s.date || modifs.date || d.date_service,
-        heure: s.heure || modifs.heure || d.heure,
-        option_titre: modifs.option_titre || titreOption(d),
-        adultes: s.adultes ?? d.adultes,
-        enfants: s.enfants ?? d.enfants,
-        total: modifs.prix ?? (total > 0 ? total : null),
-        devise: (etat.db.reglages && etat.db.reglages.devise) || d.devise || "THB",
-      };
+      // Ce que la fenêtre a réellement créé (services, extras compris) : la réponse ne dit que cela (finalDeConfirmation).
+      const final = finalDeConfirmation(d, modifs, { services, total, devise: (etat.db.reglages && etat.db.reglages.devise) || d.devise || "THB" });
       const decision = { changements: changements(d, final), final };
       let confirmee = null;
       try {
@@ -157,11 +147,11 @@ function ouvrirModifier(d) {
   if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   const date = h("input", { type: "date", value: d.date_service || "", min: aujourdhui() });
   const heure = h("input", { type: "time", value: d.heure || "" });
-  // Les options de la page produit, plus celle de la demande si son nom a changé depuis sur le site.
-  const options = [...optionsProduit(d.produit_id)];
-  if (titreOption(d) && !options.some((o) => o.titre === titreOption(d))) options.unshift({ id: d.option_id || "", titre: titreOption(d) });
+  // Les options de la sortie, sans doublon : l'option de la demande y est déjà (résolue par identifiant, titre ou alias), montrée sous son titre canonique. Elle n'est ajoutée que si elle
+  // n'est aucune d'elles (un nom qui a changé depuis sur le site).
+  const { options, courante } = optionsModifiables(d);
   const option = options.length ? h("select", null, options.map((o) => h("option", { value: o.titre }, o.titre))) : h("input", { type: "text", value: titreOption(d), lang: "en" });
-  option.value = titreOption(d) || (options[0] || {}).titre || "";
+  option.value = courante;
   const devise = (etat.db.reglages && etat.db.reglages.devise) || d.devise || "THB";
   const prix = h("input", { type: "number", inputmode: "numeric", min: "0", step: "1", placeholder: d.total_estime ? String(d.total_estime) : "" });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
@@ -170,7 +160,9 @@ function ouvrirModifier(d) {
     const modifs = {};
     if (date.value && date.value !== d.date_service) modifs.date = date.value;
     if (heure.value && heure.value !== (d.heure || "")) modifs.heure = heure.value;
-    if (option.value.trim() && option.value.trim() !== titreOption(d)) modifs.option_titre = option.value.trim();
+    // Choisir la même option n'est pas un changement (« With kayak » pour « avec kayak ») : le titre n'est posé que si l'option résolue change.
+    const autre = optionModifiee(d, option.value);
+    if (autre) modifs.option_titre = autre;
     if (prix.value !== "") {
       const n = Number(prix.value);
       if (!(n >= 0)) return (erreur.textContent = tr("Indiquez un prix positif."));
@@ -311,6 +303,8 @@ function champsDuCarnet(d) {
     ligne(tr("Adultes"), c.adultes ? String(c.adultes) : ""),
     ligne(tr("Enfants"), enfants),
     ligne(tr("Hôtel"), c.hotel),
+    ligne(tr("Extras"), c.extras),
+    ligne(tr("Transfert depuis l'hôtel"), c.transfert),
     ligne(tr("Nom"), c.nom || tr("Nom non donné"), !c.nom),
     ligne(tr("WhatsApp"), c.whatsapp ? numeroAffiche(c.whatsapp) : ""),
     ligne(tr("Total estimé"), c.total !== null ? formatMontant(c.total, c.devise) : "")

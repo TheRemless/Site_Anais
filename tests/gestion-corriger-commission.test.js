@@ -235,7 +235,10 @@ test("point 5 : l'aperçu de facture vient d'apercuFacture et dit pourquoi une f
   assert.deepEqual(suitePrixDocument(deux, r, 1800), { contenu: null, raison: "plusieurs_lignes", lignes: 2, qte: null });
   const une = resa("b", "D1", { ligne_id: "m1" });
   const parTrois = { id: "g", type: "facture_locale", contenu: { lignes: [{ id: "m1", unite: 700, qte: 3 }] } };
-  assert.equal(suitePrixDocument(parTrois, une, 2000).raison, "quantite", "2 000 ne se divise pas juste par 3");
+  // 2 000 ne se divise pas juste par 3 : la ligne prend le total, sans prix unitaire arrondi (23.11.2026, tests/gestion-aligner-facture.test.js).
+  const total = suitePrixDocument(parTrois, une, 2000);
+  assert.equal(total.raison, null);
+  assert.deepEqual([total.contenu.lignes[0].unite, total.contenu.lignes[0].qte, total.contenu.lignes[0].montant], [null, 3, 2000]);
   assert.equal(suitePrixDocument(parTrois, une, 1800).contenu.lignes[0].unite, 600);
   const vue = source("views/encaisser-commissions.mjs");
   assert.match(vue, /apercuFacture\(r, \{ montant_vente: arrondi\(p\) \}\)/);

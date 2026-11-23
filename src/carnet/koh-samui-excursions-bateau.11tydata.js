@@ -4,7 +4,7 @@
 //
 // Règle de publication : rien de ce qui est ici n'est affiché tel quel. Seuls `guide` (le texte et les offres) et `carnetConfig`
 // (ce que le navigateur reçoit pour calculer l'estimation) partent dans la page. Aucun nom de prestataire, aucune donnée de rémunération,
-// aucun lien vers les documents d'un partenaire : ces informations restent dans Gestion. `aConfirmer` ne part nulle part.
+// aucun lien vers les documents d'un partenaire : ces informations restent dans Gestion.
 
 const P = "/images/carnet-koh-samui-";
 const MAPS = {
@@ -43,22 +43,6 @@ if (reglages.fermetureAngThong) {
 // Transfert depuis l'hôtel (prix par van, aller-retour). Indicatif, à confirmer par Anaïs.
 const transfert = { prix: 1500, unite: "par van" };
 
-// Points encore à confirmer avec Jérémy ou Anaïs. Non affichés comme certains.
-const aConfirmer = [
-  "Petit groupe Ang Thong : prix du site du partenaire retenus (adulte dès 10 ans 4 400, enfant 3 à 9 ans 2 700, gratuit avant 3 ans) ; le 2 500 THB du guide d'origine est abandonné (décision de Jérémy, 22.11.2026).",
-  "Fermeture annuelle du parc d'Ang Thong (1er novembre au 15 décembre) : voir reglages.fermetureAngThong. Année 2026 confirmée par Jérémy, années suivantes à reconfirmer chaque saison avec Nani.",
-  "Transfert depuis l'hôtel +1 500 THB par van (privés) : prix indicatif, nombre de vans non calculé (un seul compté).",
-  "Longtail 4 h : la tranche 11 à 13 personnes dépasse le maximum de 12, affichée jusqu'à 12.",
-  "Speedboats privés de Pig Island (11 500 et 13 500 THB) absents du guide d'origine : réglage afficherSpeedboatsPigIsland.",
-  "Entrée du parc d'Ang Thong : toujours en plus, pour toutes les offres y compris le petit groupe, jamais « incluse » (décision de Jérémy). Calculée à part dans la feuille, hors estimation.",
-  "Contradiction : le document du partenaire dit « enfant de plus de 130 cm = adulte » pour le parc, le tarif officiel est « enfant de 3 à 14 ans et de moins de 1,40 m ». Règle officielle affichée, la taille n'est pas demandée : l'estimation suppose moins de 1,40 m jusqu'à 14 ans.",
-  "Pig Island en groupe : « transferts inclus » (guide) contre départ d'un pier sans transfert d'hôtel (document du partenaire). L'hôtel est demandé dans tous les cas.",
-  "Enfants de moins de 4 ans (big boat, speedboat, Pig Island en groupe) : aucune règle publiée, tarif à confirmer, non compté dans l'estimation.",
-  "Enfant plus âgé que la limite : tarif adulte supposé, non écrit dans les documents.",
-  "Guide d'origine : « plusieurs horaires » pour le speedboat privé d'Ang Thong, un seul créneau publié (09:00 à 17:00).",
-  "Jours de départ en groupe publiés pour Pig Island seulement (mardi, jeudi, samedi, dimanche) ; document de mauvaise qualité.",
-  "Option pêche (6 000 THB, 1 à 4 personnes) et speedboat privé de la même agence pour Ang Thong : non repris."
-];
 
 // Entrée du parc national d'Ang Thong (tarif étranger, mai 2026, site officiel des parcs nationaux) : toujours EN PLUS du prix, à payer sur place
 // en espèces, jamais dans l'estimation. Enfant au tarif du parc : 3 à 14 ans ET moins de 1,40 m ; gratuit avant 3 ans.
@@ -354,7 +338,6 @@ const guide = {
 module.exports = {
   guide,
   reglages,
-  aConfirmer,
   eleventyComputed: {
     // Ce que le navigateur reçoit : les offres réservables et les réglages, rien d'autre.
     carnetConfig: (data) => {

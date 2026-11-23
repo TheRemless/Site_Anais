@@ -144,7 +144,8 @@ test("relecture 3 et 7 : le champ sièges suit l'impression (transfert chez Secr
   assert.match(lire("src/gestion/js/operations-calc.mjs"), /transfert: \[[^\]]*"sieges"/);
   assert.doesNotMatch(lire("src/gestion/js/operations-calc.mjs"), /(?:bateau|activite|location|billet): \[[^\]]*"sieges"/);
   // Ailleurs, seulement tant qu'une valeur reste (transfert devenu excursion, location devenue transfert) ; jamais dans la grille des personnes.
-  assert.match(vue, /const siegesHorsModele = m && m !== "transfert" && siegesSaisis\(\) > 0;/);
+  // Relecture de la PR 337 : hors des champs du modèle (un trajet du catalogue en transfert ne les demande pas), visible tant qu'il a une valeur.
+  assert.match(vue, /const siegesHorsModele = m && !champsVoucherDe\(m, \{ trajet: !!r\.trajet_id \}\)\.includes\("sieges"\) && siegesSaisis\(\) > 0;/);
   assert.doesNotMatch(vue, /type === "location" \? null : CHAMPS\.sieges\(\)/);
   // ZTP : pas de voucher, pas de champ ; et la fiche de création n'y reprend jamais de sièges.
   assert.match(vue, /const avecVoucher = modeExcursions\(\) && !modeTaxi\(\);/);

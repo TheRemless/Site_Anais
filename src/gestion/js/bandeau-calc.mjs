@@ -55,6 +55,7 @@ export function dateBandeau(iso, aujourdhui) {
 }
 const jourCourt = (iso) => (iso ? `${utc(iso).getUTCDate()} ${MOIS[utc(iso).getUTCMonth()].slice(0, 3)}` : "");
 
+// Un bandeau ne vise que des pages du site Secret : jamais une sortie du carnet (qui n'a pas d'adresse de page publique).
 export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || null;
 export const produitsDeMarques = (marques) => PRODUITS_SITE.filter((p) => marques.includes(p.marque));
 
