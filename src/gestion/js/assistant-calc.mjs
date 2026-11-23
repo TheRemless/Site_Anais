@@ -93,13 +93,12 @@ export function propositionVersDemande(p, contexte) {
     // Transfert privé hors catalogue (« Lanta Sand → The Scene, Ao Nang ») : pas de ligne de la base, un prix à taper dans l'écran.
     // Carte de l'agent : un prix tapé par la personne (prix_libre) et le lieu de pickup proposé (lieu_pickup) passent à la fiche.
     // La dépose (« vers ») va dans le drop-off du voucher, que le service soit du catalogue ou un transfert libre (23.11.2026 : un service du
-    // catalogue venu d'une carte « dossier » perdait sa dépose). Jamais un lien.
-    // Le pickup (relecture de la PR 332) : celui de la carte ; pour un transfert libre, sinon son départ ; pour un service du catalogue, le
-    // départ lu ne sert qu'en dernier recours (`depart`), après l'hôtel du client et, chez Taxi, le bout du trajet du catalogue.
+    // catalogue venu d'une carte « dossier » perdait sa dépose). Jamais un lien. Le pickup de la carte est recopié tel quel ; rien n'est
+    // déduit quand la carte n'en a pas (relecture de la PR 332 : la carte le signale, lieuxAVerifier).
     const lieu = s.lieu_pickup ? { hotelDepart: s.lieu_pickup } : {};
     const de = sansLien(s.de);
     const depose = sansLien(s.vers);
-    const dropoff = { ...(depose ? { dropoff: depose } : {}), ...(de ? { depart: de } : {}) };
+    const dropoff = depose ? { dropoff: depose } : {};
     // Le numéro de vol de la carte (21.11.2026) : il rejoint le bloc du voucher du service, modifiable.
     const vol = s.vol ? { vol: s.vol } : {};
     // Les sièges enfant ou bébé de la carte (22.11.2026) : dans le bloc du voucher du service, puis sur la réservation.

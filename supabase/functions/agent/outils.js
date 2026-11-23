@@ -219,9 +219,9 @@ const SERVICE = obj({
   ref: S("La référence du catalogue (P-… ou T-…) rendue par un outil, ou \"\" pour un service hors catalogue."),
   date: S("AAAA-MM-JJ ou \"\"."),
   heure_pickup: S("HH:MM, de préférence celle de planifier_course, ou \"\"."),
-  lieu_pickup: S("Hôtel ou point de prise en charge (nom de l'établissement), ou \"\". Jamais un lien."),
+  lieu_pickup: S("Hôtel ou point de prise en charge (nom de l'établissement), recopié de la conversation. Obligatoire pour un transfert : \"\" seulement s'il n'y est pas, et alors demande-le (avertissement pickup_a_verifier). Jamais deviné, jamais un lien."),
   de: S("Lieu de départ d'un transfert, ou \"\". Jamais un lien."),
-  vers: S("Lieu d'arrivée d'un transfert : le nom de l'établissement de dépose (celui d'un lien Google Maps lu, recopié tel que Google Maps l'affiche, sans traduction, transcription ni adresse), sinon la zone, ou \"\". Jamais un lien."),
+  vers: S("Lieu d'arrivée d'un transfert : le nom de l'établissement de dépose (celui d'un lien Google Maps lu, recopié tel que Google Maps l'affiche, sans traduction, transcription ni adresse), sinon la zone écrite. Obligatoire pour un transfert : \"\" seulement si la conversation ne la donne pas, et alors demande-la (avertissement dropoff_a_verifier). Jamais devinée, jamais un lien."),
   adultes: I("0 si inconnu."),
   enfants: I("0 si inconnu."),
   // Les sièges par type et le « aucun siège » (Jérémy, 22.11.2026) : dès qu'il y a un enfant ou un bébé, le choix est fait avant la carte.
@@ -1527,14 +1527,21 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     if (!ent) avert.push("entreprise_a_choisir");
     entreprise = { entite_id: ent ? ent.id : null, entreprise: ent ? ent.slug : "" };
   }
+  // Un lieu ne porte jamais de lien (22.11.2026) : un lien Maps lu devient le nom de l'établissement, un autre lien est retiré.
+  const lieux = lieuxDuService(s, memo, avert);
+  // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : rien n'est deviné. La carte le dit, ne se valide pas d'un geste, et
+  // l'Assistant pose la question. Un transfert : hors catalogue, un trajet, une prestation de la famille « transfert », ou toute course de Taxi.
+  if (estTransfertService({ p, t, fonctionnement: fonctionnementDuService(ctx, entreprise) })) {
+    if (!lieux.lieu_pickup) avert.push("pickup_a_verifier");
+    if (!lieux.vers) avert.push("dropoff_a_verifier");
+  }
   return {
     texte: texte(s.texte, 160),
     offre: p ? { genre: "prestation", id: p.id } : t ? { genre: "trajet", id: t.id } : null,
     libelle: p ? texte(p.libelle, 160) : t ? `${texte(t.de, 80)} → ${texte(t.vers, 80)}${t.depart ? ` ${texte(t.depart, 5)}` : ""}` : texte(s.texte, 160),
     date,
     heure_pickup: heureValide(s.heure_pickup) ? s.heure_pickup : "",
-    // Un lieu ne porte jamais de lien (22.11.2026) : un lien Maps lu devient le nom de l'établissement, un autre lien est retiré.
-    ...lieuxDuService(s, memo, avert),
+    ...lieux,
     adultes,
     enfants,
     // Les sièges par type (22.11.2026, sieges-calc.mjs) : enfant (details.sieges), bébé (details.sieges_bebe), ou « aucun siège »
@@ -1611,6 +1618,8 @@ export function partenairesCitesParMot(t, noms = []) {
 // Les lieux d'un service de carte, sans lien : { lieu_pickup, de, vers }. Un lien Maps résolu dans cet échange (memo.lieuxMaps) devient le nom
 // de l'établissement ; un lien non résolu est retiré et la carte avertit (« lieu_a_verifier ») : Nani vérifie la dépose avant de valider.
 // Un lien Maps lu dans la conversation mais pas résolu avertit aussi un transfert (de ou vers rempli) : son lieu est peut-être vague.
+// Un transfert, pour les lieux à vérifier : hors catalogue, un trajet, une prestation de la famille « transfert », ou toute course de Taxi.
+export const estTransfertService = ({ p = null, t = null, fonctionnement = "" } = {}) => fonctionnement === "taxi" || !!t || !p || p.famille === "transfert";
 export function lieuxDuService(s = {}, memo = {}, avert = []) {
   const lieux = Array.isArray(memo.lieuxMaps) ? memo.lieuxMaps : [];
   const out = {};
@@ -1893,7 +1902,7 @@ export function partenairesCites(t, noms = []) {
 // Les avertissements d'entreprise des services (mode unifié), remontés sur la carte pour que l'écran les montre et que le modèle les lise.
 // Avec le prix du client non corrigé par Nani et le prix refusé parce qu'égal à un net (22.11.2026) : la carte les montre, rien n'est bloqué.
 // Et une remarque de voucher passée en note interne parce qu'elle citait un net ou un partenaire (22.11.2026).
-const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net", "remarque_voucher_interne", "lieu_a_verifier"];
+const AVERT_ENTREPRISE = ["entreprise_a_choisir", "catalogue_autre_entreprise", "vol_illisible", "vol_piece_jointe", "vol_sans_source", "prix_client_non_corrige", "prix_nani_a_verifier", "prix_egal_net", "prix_sous_net", "prix_client_sans_net", "remarque_voucher_interne", "lieu_a_verifier", "pickup_a_verifier", "dropoff_a_verifier"];
 const avertissementsEntreprise = (services) => [...new Set(services.flatMap((s) => s.avertissements || []).filter((a) => AVERT_ENTREPRISE.includes(a)))];
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).

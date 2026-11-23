@@ -756,11 +756,6 @@ export const zoneDeHotel = (nom) => {
   const l = hotelConnu(nom, hotelsLieux());
   return l ? l.zone || "" : "";
 };
-// Le lieu du catalogue où se trouve l'hôtel (« Koh Lanta »), "" s'il n'est pas situé : il dit de quel côté d'un transfert est le client.
-export const lieuDeHotel = (nom) => {
-  const l = hotelConnu(nom, hotelsLieux());
-  return l ? l.lieu || "" : "";
-};
 // Enregistre un hôtel situé (par la recherche ou par la personne) et garde la ligne rendue par la base.
 export async function enregistrerHotelLieu(ligne) {
   const e = etat.entiteId;

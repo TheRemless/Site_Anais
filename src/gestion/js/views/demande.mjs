@@ -3,7 +3,7 @@
 // carte « Nouveau dossier » de l'agent. Elle montre le client, les services avec leur prix de la base, les zones de pickup, les champs du
 // voucher. Elle crée client, dossier, facture et réservations. Tout se corrige sur place ; le prix suit. Une carte validée d'un geste passe
 // par la même fiche sans l'afficher (`auto`) : la fiche ne s'ouvre que s'il manque quelque chose, avec le motif.
-import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel, lieuDeHotel } from "../etat.mjs";
+import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, ajusterAgesCarnet, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
@@ -15,7 +15,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, serviceDeLecture, saisieInitiale, reservationDuService, hotelDuClient as hotelDuClientCalc, estTransfertOffre, poserLieuxTransfert, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive, champsCreation } from "../creation-voucher-calc.mjs";
+import { servicesCreation, serviceDeLecture, saisieInitiale, reservationDuService, hotelDuClient as hotelDuClientCalc, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive, champsCreation } from "../creation-voucher-calc.mjs";
 import { siegesLus, siegesTotal, siegesAChoisir } from "../sieges-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
@@ -23,6 +23,15 @@ import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal } from "../demandes-site-calc.mjs";
+
+// Le plus long qu'une validation d'un geste attend la liste des hôtels situés avant de créer le dossier.
+export const HOTELS_DELAI_MS = 3000;
+// Une promesse attendue au plus `ms` : rend sa valeur, ou null à l'échéance ou en cas d'erreur (la minuterie est levée dès la réponse).
+export function avecDelai(promesse, ms) {
+  let minuterie;
+  const echeance = new Promise((ok) => (minuterie = setTimeout(() => ok(null), ms)));
+  return Promise.race([Promise.resolve(promesse).catch(() => null), echeance]).finally(() => clearTimeout(minuterie));
+}
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -158,8 +167,6 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   // Le partenaire du service : celui de l'offre, ou de la première ligne prise dans la base. Sa grille de pickup donne les zones.
   const partenaireDeOffre = (sv, offre) => (sv.lignesCustom ? (sv.lignesCustom.find((l) => l.partenaire_id) || {}).partenaire_id : offre && offre.source && offre.source.partenaire_id) || "";
   const partenaireDuService = (sv) => partenaireDeOffre(sv, sv.lignesCustom ? null : etatDe(sv).offre);
-  // L'hôtel du client (celui de la demande, sinon celui de la fiche retenue) et le lieu du catalogue où il se trouve (hotels_lieux).
-  const hotelDuDossier = () => (d && d.hotel) || hotelDuClient(clientId ? clientParId(clientId) : null);
 
   // Réservation de ce service : heure, lieu de prise en charge, dépose, vol, bagages (creation-voucher-calc.mjs, reservationDuService).
   const reservationDe = (sv, offre) => reservationDuService(sv, offre, { d, client: clientId ? clientParId(clientId) : null, taxi: modeTaxi(), entiteId: etat.entiteId });
@@ -227,15 +234,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const cle = service ? `${service.type}|${service.personnes.adultes + service.personnes.enfants > 0}|${service.pickup}|${service.dropoff}` : "";
     if (cle !== sv.cleVoucher) {
       sv.cleVoucher = cle;
-      // Un transfert (carte, demande du site, message collé ; Taxi et Secret) : le pickup et le drop-off par la règle unique (lieuxDuTransfert,
-      // relecture de la PR 332). Une arrivée part de l'aéroport ou de l'embarcadère, jamais de l'hôtel du client, qui devient le drop-off.
-      // Taxi, un autre service : les deux bouts du trajet choisi, comme avant.
-      // Un transfert libre ou un retour au départ remplacé par une ligne prise dans la base (« Choisir dans la base ») suit la règle aussi.
-      const garde = (sv.transfertLibre && (!sv.lignesCustom || sv.ligneLibre)) || (sv.retourDepart && (!sv.lignesCustom || sv.ligneRetour));
-      const transfert = !!service && !garde && (service.type === "transfert" || estTransfertOffre(d, offre));
-      const hotel = hotelDuDossier();
-      if (transfert) poserLieuxTransfert(sv.saisie, service, { lieuPickup: sv.hotelDepart || (d.type === "transfer" ? d.pickup || "" : ""), de: sv.depart || d.de || "", hotel, lieuHotel: lieuDeHotel(hotel), taxi: modeTaxi(), poserLieu: !(d.type === "transfer" && d.pickup) });
-      else if (service && modeTaxi()) boutsDuTrajet(sv.saisie, service, { lieu: !(d.type === "transfer" && d.pickup) });
+      // Taxi : sans lieu donné par la demande, le pickup et le drop-off montrent les deux bouts du trajet choisi, dans un champ vide seulement
+      // (un lieu de la carte ou saisi par Nani n'est jamais remplacé).
+      if (service && modeTaxi()) boutsDuTrajet(sv.saisie, service, { lieu: !(d.type === "transfer" && d.pickup) });
       n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false, surSaisie: (s) => {
         // Les sièges choisis effacent l'alerte « child seat, baby seat ou aucun siège ».
         majAlertes(sv);
@@ -681,17 +682,16 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto });
 
   // Hôtels situés (migration 48) : lus en arrière-plan, leurs zones complètent ensuite les propositions de zone de pickup.
-  // Le lieu de chaque hôtel dit aussi de quel côté d'un transfert est le client (lieuxDuTransfert) : les lieux sont reposés une fois lus.
-  const hotelsLus = chargerHotelsLieux()
-    .catch(() => null)
-    .then(() => services.forEach((sv) => (sv.zones && sv.zones.rafraichir(), sv.noeuds && ((sv.cleVoucher = null), majService(sv)))));
+  // Une validation d'un geste les attend (leurs zones servent aux zones de pickup), jamais plus de HOTELS_DELAI_MS : une lecture lente ou
+  // bloquée ne retient pas la création (relecture de la PR 332).
+  const hotelsLus = avecDelai(chargerHotelsLieux(), HOTELS_DELAI_MS).then(() => services.forEach((sv) => sv.zones && sv.zones.rafraichir()));
 
   // Demande déjà lue (carte de l'agent) : le message et les services, sans relecture. `auto` crée tout de suite, la fiche reste cachée.
   if (depuisItineraire) {
     zone.value = depuisItineraire.texte || "";
     texte = zone.value;
     appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => ({ ...s, offresIA: s.offres })));
-    // D'un geste : la création attend les hôtels situés, pour que les lieux d'un transfert en tiennent compte.
+    // D'un geste : la création attend les hôtels situés, au plus HOTELS_DELAI_MS.
     if (auto) return hotelsLus.then(() => creerMaintenant(bouton, { auto: true }));
     return Promise.resolve({ ok: false, ouverte: true });
   }

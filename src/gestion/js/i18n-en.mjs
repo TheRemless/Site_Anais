@@ -43,6 +43,10 @@ export const EN = {
   "Le prix écrit par le client n'a pas pu être comparé au net : il a été laissé vide.": "The price written by the client could not be compared with the net: it was left empty.",
   "Le nombre de personnes a changé : le prix repart du catalogue. Vérifiez le prix convenu dans la conversation.": "The number of people changed: the price goes back to the catalogue. Check the price agreed in the conversation.",
   "Le prix écrit par le client est au niveau du net ou en dessous : il a été laissé vide. Fixez-le avec « Vérifier avant ».": "The price written by the client is at or below the net: it was left empty. Set it with “Check first”.",
+  // Relecture de la PR 332 : un transfert sans pickup ou sans dépose (agent.mjs, lieuxAVerifier).
+  "Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Complétez-le avec « Vérifier avant ».": "Pickup to check: the card has no pickup place. Fill it in with “Check first”.",
+  "Drop-off à vérifier : la carte n'a pas de lieu de dépose. Complétez-le avec « Vérifier avant ».": "Drop-off to check: the card has no drop-off place. Fill it in with “Check first”.",
+  "Pickup ou drop-off à vérifier : la carte n'a pas tous les lieux du transfert. Complétez-les avec « Vérifier avant ».": "Pickup or drop-off to check: the card does not have every place of the transfer. Fill them in with “Check first”.",
   "Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».": "The price written by the client is at or below the net: set it with “Check first”.",
   "catalogue : {prix}": "catalogue: {prix}",
   "Un prix vient du client et Nani ne l'a pas corrigé : vérifiez-le avant de valider.": "A price comes from the client and Nani did not correct it: check it before validating.",

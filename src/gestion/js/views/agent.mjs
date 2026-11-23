@@ -4,10 +4,10 @@
 // par le code habituel de l'outil (fiche de création du dossier, confirmation de course, formulaire de réservation), sans le réécrire : la
 // fenêtre ne s'ouvre que s'il manque quelque chose ; la carte garde alors le motif. « Tout valider » fait de même pour toutes les cartes.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
-import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe, chargerHotelsLieux } from "../etat.mjs";
+import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte } from "../agent-calc.mjs";
+import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte, lieuxAVerifier } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
@@ -122,6 +122,9 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 315 : calculé par l'écran, jamais par la fonction.
   sieges_a_verifier: N_("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant »."),
   sieges_a_choisir: N_("Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant »."),
+  // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
+  pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Complétez-le avec « Vérifier avant »."),
+  dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Complétez-le avec « Vérifier avant »."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
   remarque_voucher_interne: N_("La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
@@ -858,6 +861,8 @@ export async function vueAgent(idOuvert = "") {
     );
   }
   const estCourse = (c) => c.genre === "dossier" && !!(c.donnees && c.donnees.course);
+  // Les lieux d'un transfert qui manquent à la carte (« pickup_a_verifier », « dropoff_a_verifier »), avec les services de l'espace unifié.
+  const lieuxCarte = (c) => (["dossier", "reservation"].includes(c.genre) ? lieuxAVerifier({ ...c, donnees: c.genre === "dossier" ? donneesCarte(c) : c.donnees }, { prestations: etat.brut.prestations || [], taxi: modeTaxi() }) : []);
   // « Envoyé par Jade », puis « Apporteur : pas de fiche chez Taxi » pour une entreprise de la carte sans fiche. Rien n'est bloqué : Nani
   // pourra créer la fiche plus tard. Écran interne seulement, jamais un document du client.
   const blocApporteurCarte = (apporteur, entiteIds) => [
@@ -891,6 +896,8 @@ export async function vueAgent(idOuvert = "") {
       // tant qu'un service n'a pas d'entreprise.
       const aChoisir = u && (du.services || []).some((s) => !s.entite_id);
       action = { libelle: mixte ? tr("Créer les deux dossiers") : ailleurs ? tr("Créer le dossier chez {nom}", { nom: libelleEntreprise(ids[0]) }) : tr("Créer le dossier"), faire: () => valider(c), puis: mixte || ailleurs || aChoisir ? null : { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) } };
+      // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : pas de geste unique, « Vérifier avant » pour compléter le lieu.
+      if (lieuxCarte(c).length && !mixte && !ailleurs && !aChoisir) action = { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) };
       // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
@@ -898,7 +905,7 @@ export async function vueAgent(idOuvert = "") {
     } else if (c.genre === "reservation") {
       const s = d.service || {};
       corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), remarquesCarte(s)), prixTexte(s))));
-      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
+      action = lieuxCarte(c).length ? { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } : { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, LIBELLES_MODIF[d.champ] ? h("span", null, tr(LIBELLES_MODIF[d.champ]), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
@@ -963,7 +970,9 @@ export async function vueAgent(idOuvert = "") {
     }
     // Espace unifié : « entreprise à choisir » tombe dès que chaque service a son entreprise (corrigée d'un tap).
     const resolu = c.genre === "dossier" && carteUnifiee(d) && (c.statut !== "proposee" || (donneesCarte(c).services || []).every((s) => s.entite_id));
-    const avertissements = [...(c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir")), ...(c.statut === "proposee" && siegesAVerifier(c) ? ["sieges_a_verifier"] : []), ...(c.statut === "proposee" && siegesAChoisir(c) && !(c.avertissements || []).includes("sieges_a_choisir") ? ["sieges_a_choisir"] : [])];
+    // Les lieux manquants se recalculent sur la carte (une carte d'avant la relecture de la PR 332 ne les portait pas) : affichés une fois.
+    const lieuxManquants = lieuxCarte(c).filter((a) => !(c.avertissements || []).includes(a));
+    const avertissements = [...(c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir") && !((a === "pickup_a_verifier" || a === "dropoff_a_verifier") && !lieuxCarte(c).includes(a))), ...lieuxManquants, ...(c.statut === "proposee" && siegesAVerifier(c) ? ["sieges_a_verifier"] : []), ...(c.statut === "proposee" && siegesAChoisir(c) && !(c.avertissements || []).includes("sieges_a_choisir") ? ["sieges_a_choisir"] : [])];
     const avert = avertissements.length && c.genre !== "amelioration" ? h("ul", { class: "assistant-avertissements" }, avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
     const libelles = { dossier: estCourse(c) ? N_("Course") : N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: c.genre === "reponse" && d.destinataire === "apporteur" ? N_("Réponse à l'apporteur") : N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
     // Une demande envoyée montre son suivi (envoyée, PR prête, en ligne, refusée).
@@ -1189,8 +1198,7 @@ export async function vueAgent(idOuvert = "") {
   // fermeture. Refus sans rien ouvrir si la personne n'écrit pas de dossiers dans l'entreprise visée.
   function dansFenetre(id, ouvrir) {
     if (id && id !== etat.entiteId && !permissionsDe(id).includes("dossiers.ecrire")) return void toast(refusDroit(id).motif, true);
-    // Les hôtels situés de l'entreprise d'abord : la carte « reservation » d'un transfert en lit le lieu (optionsCarte, relecture de la PR 332).
-    return ouvrirDansEntreprise({ id, origine: etat.entiteId, changer: changerSansNaviguer, charger: () => chargerHotelsLieux().catch(() => null).then(() => import("./reservations.mjs")), ouvrir });
+    return ouvrirDansEntreprise({ id, origine: etat.entiteId, changer: changerSansNaviguer, charger: () => import("./reservations.mjs"), ouvrir });
   }
 
   // ---- Valider d'un geste ---------------------------------------------------------------------------------------------------------
@@ -1207,6 +1215,8 @@ export async function vueAgent(idOuvert = "") {
       // Un enfant ou un bébé sans choix des sièges (Jérémy, 22.11.2026) : jamais validé d'un geste ; la fiche, elle, exige le choix.
       else if (siegesAChoisir(c)) r = { ok: false, motif: tr("Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant ».") };
       // Un prix du client sous le net (revue de la PR 307) : jamais validé d'un geste.
+      // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : jamais validé d'un geste, rien n'est deviné.
+      else if (lieuxCarte(c).length) r = { ok: false, motif: tr("Pickup ou drop-off à vérifier : la carte n'a pas tous les lieux du transfert. Complétez-les avec « Vérifier avant ».") };
       else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.

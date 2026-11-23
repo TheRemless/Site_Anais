@@ -1,15 +1,14 @@
 // Validation des cartes de l'onglet Assistant (sorti de views/agent.mjs, relecture de la PR 332, pour que les tests passent par ce code) :
 // la préparation d'une carte « dossier » pour la fiche de création, le chauffeur, le règlement et le lieu d'une carte « reservation »,
 // l'enregistrement d'une réservation par la fenêtre habituelle (cachée), et la carte « dossier » de l'espace unifié (deux dossiers liés).
-import { etat, reglages, nomPartenaire, modeTaxi, modifier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis, lieuDeHotel, chargerHotelsLieux } from "../etat.mjs";
+import { etat, reglages, nomPartenaire, modeTaxi, modifier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis } from "../etat.mjs";
 import { modal, toast } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { propositionDepuisCarte, reservationDepuisCarte, chauffeurCarte, payeSurPlaceCarte } from "../agent-calc.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
-import { modeParDefaut, lieuParDefaut } from "../operations-calc.mjs";
+import { modeParDefaut } from "../operations-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { planCreation, creerDossiersLies, lierDossiers } from "../espace-unifie-calc.mjs";
-import { boutsDuService, hotelDuClient } from "../creation-voucher-calc.mjs";
 
 const changerSansNaviguer = (id) => etat.entiteId !== id && changerEntite(id, { naviguer: false });
 
@@ -21,24 +20,10 @@ export const preparation = (c) => {
 // Le chauffeur d'une course ajoutée par carte (22.11.2026) : appelé une fois dans l'entreprise du dossier (dansEntreprise, dansFenetre).
 export const chauffeurDeLaCarte = (c) => chauffeurCarte((c.donnees || {}).service, { taxi: modeTaxi(), defaut: modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null, prestations: etat.db.prestations, trajets: etat.db.trajets });
 // Le chauffeur et le règlement sur place d'une course ajoutée par carte (relecture de la PR 329 : une course de Taxi se paie au chauffeur).
-// Avec le lieu de pickup du dossier (lieuParDefaut : dernier lieu de ses services, sinon l'hôtel du client) et, chez Taxi, les deux bouts du
-// trajet du catalogue : la carte « reservation » prend son pickup et sa dépose dans le même ordre qu'une carte « dossier » (relecture de la PR 332).
 export const optionsCarte = (c) => {
   const partenaireId = chauffeurDeLaCarte(c);
   const partenaire = partenaireId ? etat.db.partenaires.find((p) => p.id === partenaireId) || null : null;
-  const d = c.donnees || {};
-  const s = d.service || {};
-  const dossier = etat.db.dossiers.find((x) => x.id === d.dossier_id) || null;
-  const client = (dossier && etat.db.clients.find((x) => x.id === dossier.client_id)) || {};
-  const lieuDossier = dossier ? lieuParDefaut(etat.db.reservations.filter((x) => x.dossier_id === dossier.id), client, dossier.entite_id) : "";
-  const ligne = { libelle: s.libelle || s.texte || "", ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}), ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}) };
-  // Un transfert (trajet, prestation de la famille « transfert », ou hors catalogue) prend ses lieux par lieuxDuTransfert : les bouts du
-  // catalogue (pickup dans les deux entreprises, drop-off chez Taxi), l'hôtel du client et le lieu où il se trouve (relecture de la PR 332).
-  const prestation = ligne.prestation_id ? etat.db.prestations.find((x) => x.id === ligne.prestation_id) || null : null;
-  const transfert = !s.offre || !!ligne.trajet_id || !!(prestation && prestation.famille === "transfert");
-  const bouts = s.offre ? boutsDuService(ligne, etat.db) : null;
-  const hotel = dossier ? hotelDuClient(client, dossier.entite_id) : "";
-  return { partenaireId, surPlace: payeSurPlaceCarte({ taxi: modeTaxi(), partenaire, modeDe: modeParDefaut }), lieuDossier, hotel, lieuHotel: lieuDeHotel(hotel), bouts, transfert, taxi: modeTaxi() };
+  return { partenaireId, surPlace: payeSurPlaceCarte({ taxi: modeTaxi(), partenaire, modeDe: modeParDefaut }) };
 };
 
 export async function enregistrerReservation(valeurs, message, ancienne = null) {
@@ -130,9 +115,5 @@ export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise 
 }
 
 
-// Carte « reservation » validée d'un geste : les hôtels situés de l'entreprise du dossier d'abord (le lieu de l'hôtel dit de quel côté d'un
-// transfert est le client), puis la fenêtre habituelle, cachée.
-export async function ajouterParCarte(c, message) {
-  await chargerHotelsLieux().catch(() => null);
-  return enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), message);
-}
+// Carte « reservation » validée d'un geste : la fenêtre habituelle, cachée, avec le chauffeur et le règlement de la course.
+export const ajouterParCarte = (c, message) => enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), message);

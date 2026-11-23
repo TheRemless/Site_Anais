@@ -59,7 +59,7 @@ const ctxUnifie = (permSecret = TOUS, permTaxi = TOUS) => ({ permissions: permSe
 // ZTP, ou une personne sans droits dans l'autre entreprise : le contexte d'avant.
 const ctxSimple = (permissions = TOUS) => ({ permissions, charger, reglages: {} });
 const memoNeuf = (o = {}) => memoDepuis([], { prestataires: donnees.partenaires.map((p) => p.nom), entreprise: SECRET.nom, ...o });
-const service = (o) => ({ texte: "", ref: "", date: "2026-11-28", heure_pickup: "", lieu_pickup: "Hotel Sunset", de: "", vers: "", adultes: 2, enfants: 0, prix_saisi: "", remarque: "", ...o });
+const service = (o) => ({ texte: "", ref: "", date: "2026-11-28", heure_pickup: "", lieu_pickup: "Hotel Sunset", de: "", vers: "Krabi Airport", adultes: 2, enfants: 0, prix_saisi: "", remarque: "", ...o });
 
 test("détection : Secret ou Taxi actif, droits partenaires.lire et dossiers.ecrire dans l'autre ; sinon rien ne change", () => {
   const u = modeUnifie({ active: SECRET, autre: TAXI, permissions: TOUS, permissionsAutre: SANS_NETS });
