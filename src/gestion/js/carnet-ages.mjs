@@ -56,6 +56,10 @@ export function extrasEnElements(texte) {
   }
   return elements;
 }
+// L'identifiant de la prestation d'un tarif du carnet, d'après sa clé (« sortie|option|ligne »), ou null : celui qui est écrit dans PRODUITS_CARNET (md5 de la clé).
+export const idTarifCarnet = (cle) => { for (const p of PRODUITS_CARNET) for (const o of p.options) for (const t of o.tarifs) if (t.cle === cle) return t.prestation; return null; };
+// Cette prestation de la base est-elle la ligne de cet extra (EXTRAS_DU_SITE) ? Par la clé écrite sur la ligne (details.cle_carnet) ou par l'identifiant du tarif du carnet.
+export const estLExtra = (p, x) => !!p && ((p.details && p.details.cle_carnet === x.cle) || (!!idTarifCarnet(x.cle) && p.id === idTarifCarnet(x.cle)));
 // Une ligne de prix « enfant » du site (« Child, 4 to 11 », « Child rider ») : la seule définition (demande-calc.mjs l'importe).
 export const LIGNE_ENFANT = /^child\b/i;
 

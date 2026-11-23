@@ -6,7 +6,8 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
-import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, LIGNE_ENFANT } from "./carnet-ages.mjs";
+import { carnetDuMessage } from "./carnet-colle.mjs";
+import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, estLExtra, LIGNE_ENFANT } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -479,8 +480,13 @@ export function lireLibre(texte, aujourdhui) {
 }
 
 // Lecture d'un message : le formulaire des sites d'abord (lecture exacte), sinon le message libre.
-export function lireMessage(texte, aujourdhui) {
-  return lireDemande(texte, aujourdhui) || lireLibre(texte, aujourdhui);
+// Un message qui porte la référence d'une page du carnet (« Ref: AON-… », « Réf : SAM-… », table REFS_CARNET) se lit comme une demande de cette page : la sortie et l'option se retrouvent
+// par leur nom dans le message (carnet-colle.mjs), `d.carnet` les porte, les âges sont réglés comme pour une demande du site (enfant plus âgé que le barème = adulte), et le seuil de groupe
+// et les extras suivent. Sans cette référence, ou avec un nom de sortie inconnu, rien ne change. `detecterCarnet: false` pour une demande du site, dont le contexte exact est déjà connu.
+export function lireMessage(texte, aujourdhui, { detecterCarnet = true } = {}) {
+  const c = detecterCarnet ? carnetDuMessage(texte) : null;
+  const lu = lireDemande(c ? c.texte : texte, aujourdhui) || lireLibre(texte, aujourdhui);
+  return lu && c ? ajusterAgesCarnet({ ...lu, carnet: c.carnet }) : lu;
 }
 
 // Koh Lanta est le point de départ implicite d'un transfert (« un taxi vers l'aéroport de Phuket ») : ces mots ne sont pas exigés dans la phrase.
@@ -1177,17 +1183,36 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
-// Les extras du site qui ont un tarif de Gestion (EXTRAS_DU_SITE : « Add Koh Kradan » du 4 Islands privé), pour l'option citée par une demande d'une page du carnet : leur ligne
-// s'ajoute au service, une seule fois et au prix d'un bateau (jamais par personne), et leur prix entre dans le total de l'offre. Les mêmes lignes pour tous les chemins (fenêtre de
-// création, réponse, « Modifier »). Seule une demande du carnet (`d.carnet`) les porte : le site Secret ordinaire écrit l'extension à sa façon et Gestion n'y touche pas.
-// Un extra d'une autre option (le join-in ne le propose pas : Kradan y est déjà dans la sortie) ne s'applique pas. Dans une liste de sorties, ce sont les extras de la première
-// sortie, celle qui est préparée (`d.extras`, lu par sortie dans lireSite).
-export function extrasDemandes(d) {
-  if (!d || !d.carnet || !d.extras) return [];
+// Les extras du site que la demande d'une page du carnet nomme (la ligne « Extras: » du message, chaque extra comparé ENTIER) : ceux qui sont possibles pour sa sortie et son option (`voulus`,
+// entrées de EXTRAS_DU_SITE : leur ligne s'ajoute au service, une seule fois, et leur prix entre dans le total) et ceux qui ne le sont pas (`impossibles`, leurs libellés : le join-in a déjà
+// Kradan dans la sortie, le VIP Set n'existe qu'en option économique, la lunch box est comprise dans Luxury et absente de Prestige). Rien d'ajouté pour ceux-là : l'offre les signale. Les mêmes
+// lignes pour tous les chemins (fenêtre de création, réponse, « Modifier »). Seule une demande du carnet (`d.carnet`) les porte : le site Secret ordinaire écrit l'extension à sa façon et Gestion n'y
+// touche pas. Option non reconnue : rien ne peut s'ajouter, tout extra connu nommé est signalé. Dans une liste de sorties, ce sont les extras de la première sortie, celle qui est préparée.
+export function extrasDeLaDemande(d) {
+  const vide = { voulus: [], impossibles: [] };
+  if (!d || !d.carnet || !d.extras) return vide;
   const trouve = optionDuSite(d);
   const demandes = extrasEnElements(d.extras).map((x) => cleTexte(x.texte));
-  // Option non reconnue : aucune ligne ne peut se créer, mais l'extra demandé doit se dire (ajouterExtras le signale) : on rend ceux que le texte nomme, pour n'importe quelle option.
-  return EXTRAS_DU_SITE.filter((x) => (!trouve || (x.produit === trouve.produit.id && x.option === trouve.option.id)) && demandes.includes(cleTexte(x.ligne)));
+  const nommes = [...new Set(EXTRAS_DU_SITE.map((x) => x.ligne))].filter((l) => demandes.includes(cleTexte(l)));
+  const voulus = [];
+  const impossibles = [];
+  for (const ligne of nommes) {
+    const possible = trouve ? EXTRAS_DU_SITE.find((x) => x.ligne === ligne && x.option === trouve.option.id && x.produits.includes(trouve.produit.id)) : null;
+    if (possible) voulus.push(possible);
+    else impossibles.push(ligne);
+  }
+  return { voulus, impossibles };
+}
+export const extrasDemandes = (d) => extrasDeLaDemande(d).voulus;
+// Les extras qui ont réellement une ligne dans le service créé (la fenêtre a pu en supprimer une) : leur libellé, d'après la ligne de chaque prestation. Sert la réponse de confirmation.
+export function extrasCrees(lignes, prestations = []) {
+  const libelles = [];
+  for (const l of lignes || []) {
+    const p = l.prestation_id ? prestations.find((x) => x.id === l.prestation_id) : null;
+    const x = p ? EXTRAS_DU_SITE.find((e) => estLExtra(p, e)) : null;
+    if (x && !libelles.includes(x.ligne)) libelles.push(x.ligne);
+  }
+  return libelles;
 }
 // Ce que la confirmation et l'apprentissage des prix retiennent d'un service créé : ses extras ET son total viennent des MÊMES lignes créées (une ligne Kradan supprimée dans la fenêtre
 // ne reste pas dans le total). `base` : titre, date, heure, personnes.
@@ -1196,33 +1221,25 @@ export function serviceCree(base, lignes, prestations = []) {
   const somme = chiffrees.reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
   return { ...base, total: chiffrees.length ? Math.round(somme * 100) / 100 : null, extras: extrasCrees(lignes, prestations) };
 }
-// Les extras qui ont réellement une ligne dans le service créé (la fenêtre a pu en supprimer une) : leur libellé, d'après la clé du tarif de chaque ligne. Sert la réponse de confirmation.
-export function extrasCrees(lignes, prestations = []) {
-  const libelles = [];
-  for (const l of lignes || []) {
-    const p = l.prestation_id ? prestations.find((x) => x.id === l.prestation_id) : null;
-    const x = p && p.details ? EXTRAS_DU_SITE.find((e) => e.cle === p.details.cle_carnet) : null;
-    if (x && !libelles.includes(x.ligne)) libelles.push(x.ligne);
-  }
-  return libelles;
-}
-// Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) : l'offre
-// le dit dans `extrasManquants`, EN PLUS de son avertissement principal (un groupe hors tranche ne cache pas un extra sans tarif).
-function ajouterExtras(offre, voulus, { prestations, partenaires }) {
-  if (!voulus.length) return offre;
+// Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) ou impossible pour
+// la sortie : l'offre le dit dans `extrasManquants`, EN PLUS de son avertissement principal (un groupe hors tranche ne cache pas un extra manquant). Un extra « par personne » compte
+// les personnes qui paient (adultes et enfants, jamais les bébés), une seule ligne de cette quantité ; un extra « par bateau » une seule fois.
+function ajouterExtras(offre, { voulus, impossibles }, pax, { prestations, partenaires }) {
+  if (!voulus.length && !impossibles.length) return offre;
   // Une offre qui n'est pas celle d'une option du site (recouvrement de mots, trajet) ne peut porter aucune ligne d'extra : l'offre le dit, l'extra ne disparaît pas en silence.
-  if (offre.genre !== "prestation" || offre.ligneSite === undefined) return { ...offre, extrasManquants: [...(offre.extrasManquants || []), ...voulus.map((x) => x.ligne)] };
-  let sortie = offre;
+  if (offre.genre !== "prestation" || offre.ligneSite === undefined) return { ...offre, extrasManquants: [...(offre.extrasManquants || []), ...voulus.map((x) => x.ligne), ...impossibles] };
+  let sortie = impossibles.length ? { ...offre, extrasManquants: [...(offre.extrasManquants || []), ...impossibles] } : offre;
   for (const x of voulus) {
-    const tarif = prestations.find((p) => p.details && p.details.cle_carnet === x.cle && proposable(p, partenaires));
+    const tarif = prestations.find((p) => estLExtra(p, x) && proposable(p, partenaires));
     if (!tarif) {
       sortie = { ...sortie, extrasManquants: [...(sortie.extrasManquants || []), x.ligne] };
       continue;
     }
     const deja = tarif.id === sortie.source.id || (sortie.supplement && sortie.supplement.source.id === tarif.id) || (sortie.extras || []).some((e) => e.source.id === tarif.id);
     if (deja) continue;
-    const prix = tarif.sur_place || tarif.prix_vente === null || tarif.prix_vente === undefined ? null : Number(tarif.prix_vente);
-    sortie = { ...sortie, extras: [...(sortie.extras || []), { source: tarif, qte: 1, ligne: x.ligne }], total: sortie.total === null || sortie.total === undefined || prix === null ? sortie.total : sortie.total + prix };
+    const qte = x.par === "personne" ? Math.max(0, (pax.adultes || 0) + (pax.enfants || 0)) : 1;
+    const prix = tarif.sur_place || tarif.prix_vente === null || tarif.prix_vente === undefined ? null : Number(tarif.prix_vente) * qte;
+    sortie = { ...sortie, extras: [...(sortie.extras || []), { source: tarif, qte, ligne: x.ligne }], total: sortie.total === null || sortie.total === undefined || prix === null ? sortie.total : sortie.total + prix };
   }
   return sortie;
 }
@@ -1279,8 +1296,8 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   }
-  const voulus = extrasDemandes(d);
-  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), voulus, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  const extrasVoulus = extrasDeLaDemande(d);
+  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), extrasVoulus, pax, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------

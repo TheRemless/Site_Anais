@@ -129,7 +129,7 @@ export function transfertDuMessage(message) {
 }
 // Les lignes du récapitulatif de la page (en français) qui n'ont pas de champ dans la demande, reportées dans le message refait : « Formula: », « Slot: », « Extras: » (les extras déjà
 // écrits à la façon du site), « Hotel transfer: » (quand le client l'a coché), « Park fee: » et « Message: ». Le texte du client est repris tel que la page l'a écrit.
-function lignesDuRecapitulatif(message) {
+export function lignesDuRecapitulatif(message) {
   const lire = (re) => lireLigne(message, re);
   const formule = lire(/^Formule\s*:\s*(.+)$/im);
   const creneau = lire(/^Créneau\s*:\s*(.+)$/im);
@@ -143,14 +143,15 @@ function lignesDuRecapitulatif(message) {
 // Kradan est déjà dans la sortie), avec sa précision (« per boat »). Un extra se compare ENTIER (« Add Koh Kradan sunset dinner » n'est pas « Add Koh Kradan »), les autres restent avec
 // leurs séparateurs d'origine. Rien à retirer : le texte est rendu tel quel. Vide s'il ne reste rien.
 export function extrasPourOption(extras, produitId, optionId) {
-  const inapplicables = EXTRAS_DU_SITE.filter((x) => !(x.produit === produitId && x.option === optionId)).map((x) => cleTexte(x.ligne));
+  const possibles = EXTRAS_DU_SITE.filter((x) => x.option === optionId && x.produits.includes(produitId)).map((x) => cleTexte(x.ligne));
+  const inapplicables = EXTRAS_DU_SITE.map((x) => cleTexte(x.ligne)).filter((l) => !possibles.includes(l));
   const elements = extrasEnElements(extras);
   const gardes = elements.filter((e) => !inapplicables.includes(cleTexte(e.texte)));
   if (gardes.length === elements.length) return String(extras || "");
   return gardes.map((e, i) => (i ? e.sep : "") + e.texte + e.precisions.map((p) => p.sep + p.texte).join("")).join("");
 }
 // « 2 adults, 2 children (ages 5 and under 1) » : les invités lus dans le message (agesDuMessage), avec leurs âges, tels que le contrat du site les écrit.
-function invitesAnglais({ adultes = 0, enfants = 0, bebes = 0, ages = [] }) {
+export function invitesAnglais({ adultes = 0, enfants = 0, bebes = 0, ages = [] }) {
   const enfantsTous = ages.length || enfants + bebes;
   const age = (a) => (a === 0 ? "under 1" : String(a));
   const liste = ages.length ? ` (age${ages.length > 1 ? "s" : ""} ${ages.length > 1 ? `${ages.slice(0, -1).map(age).join(", ")} and ${age(ages[ages.length - 1])}` : age(ages[0])})` : "";

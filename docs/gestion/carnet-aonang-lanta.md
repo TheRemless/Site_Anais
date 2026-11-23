@@ -64,3 +64,21 @@ Extension de Koh Kradan sur le **4 Islands privé** (`4-islands`, option `privat
 Nom de la page : le début de son nom dit son guide (`koh-samui-…`, `ao-nang-…`, `koh-lanta-…` dans `/carnet/<guide>-<code>/`). Gestion s'en sert pour « Proposer une autre sortie » quand l'identifiant d'une sortie est inconnu : il ne propose alors que les sorties de ce guide.
 
 Pas dans le mapping du site (Gestion ne trouve aucun tarif tout seul, la fenêtre de création propose « Choisir dans la base ») : `koh-talabeng-koh-bubu`, `island-day-tour`. Les options sans barème (quad, kart, cours de cuisine, location, bateaux privés) ne contrôlent pas l'âge des enfants.
+
+## Extras tarifés d'Ao Nang : lunch box et VIP Set
+
+La page d'Ao Nang écrit les extras cochés dans la ligne `Extras:` de son message (libellés `en` de `src/carnet/ao-nang-excursions-bateau.11tydata.js`) : `Lunch box` et `VIP Set`. Gestion les tarife comme l'extension de Kradan (`EXTRAS_DU_SITE`, `carnet-produits.mjs`), avec les lignes de tarif déjà en base (identifiant de tarif du carnet, md5 de la clé) :
+
+| Extra | Sorties où il est possible | Ligne de tarif (clé) | Prix |
+|---|---|---|---|
+| `Lunch box` | options VIP et Mini Luxury (3 destinations chacune) | `aonang-option-lunch-box\|standard\|Per person, VIP, Mini Luxury or Luxury boat` | par personne |
+| `Lunch box` | option économique (3 sorties) | `aonang-option-lunch-box\|standard\|Per person, Economy boat` | par personne |
+| `VIP Set` | option économique (3 sorties) | `aonang-option-vip-set\|standard\|Per boat` | par bateau |
+
+La lunch box compte une quantité égale aux personnes qui paient, adultes et enfants, jamais les bébés (une seule ligne de cette quantité) ; le VIP Set vaut une fois par bateau. Un extra impossible pour la sortie (VIP Set hors de l'économique, lunch box sur Luxury qui l'inclut et sur Prestige qui n'en propose pas) n'est jamais ajouté : l'offre le signale (`extrasManquants`, affiché par la fenêtre de création) et « Modifier » le retire du message refait. Exemple de contrôle : Hong Islands VIP, 2 adultes et 1 enfant, `Extras: Lunch box` = prix du bateau + 3 lunch box. La ligne du VIP Set côté partenaire se complète par un SQL privé de correctif (hors dépôt).
+
+## Message collé et Assistant
+
+Un message collé qui porte la référence d'une page (`Ref: AON-…`, `Réf : SAM-…`, préfixes de `REFS_CARNET` : `SAM` Koh Samui, `AON` Ao Nang, `LAN` Koh Lanta, une seule table, comparée par un test aux `prefixeRef` des pages) se lit comme une demande de cette page (`carnet-colle.mjs`, appelé par `lireMessage`) : la sortie se retrouve par le nom écrit dans le message (nom de la sortie du carnet, ou du site pour Koh Lanta ; nom français de la page pour le récapitulatif de Koh Samui, `nomPage`), l'option par son titre, puis les âges, le seuil de groupe et les extras suivent les règles d'une demande du site. Formes lues : le message anglais `Booking request:` des guides d'Ao Nang et de Koh Lanta, le récapitulatif français `Demande de réservation :` de Koh Samui (récrit au format du site ; le récapitulatif français d'Ao Nang et de Koh Lanta n'est pas reconnu : son nom de sortie n'est pas dans Gestion). Sans préfixe de la table, avec un préfixe inconnu ou avec un nom de sortie inconnu, le message reste ce qu'il était. Une demande du site (`Demandes du site`) garde son contexte exact : la référence n'y est pas relue.
+
+L'Assistant ne passe pas par cette détection : son message est lu par la fonction « agent » (modèle, côté serveur) qui rend des cartes avec des offres du catalogue ; ni le texte ni la référence n'arrivent jusqu'à la fenêtre de création, qui ne peut donc ni régler les âges ni appliquer le seuil ni les extras. Pour qu'il le fasse, la fonction devrait rendre la référence du message (ou le client garder le texte) : à décider. La lecture de démonstration (`simulerLecture`) passe, elle, par `lireMessage`.
