@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireDuTexte, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireDuTexte, demandeEnregistree, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, lieuParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -23,7 +23,8 @@ import { badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees, lignesAuPrixCarte } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
-import { imposerTotal } from "../demandes-site-calc.mjs";
+import { imposerTotal, estCarnet } from "../demandes-site-calc.mjs";
+import { refDeLaPage } from "../carnet-colle.mjs";
 
 // Le plus long qu'une validation d'un geste attend la liste des hôtels situés avant de créer le dossier.
 export const HOTELS_DELAI_MS = 3000;
@@ -753,13 +754,29 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     );
   }
 
+  // Les demandes que la page du carnet a enregistrées et que l'utilisateur peut lire (la liste de l'écran, ses droits), plus celle que la base a rendue pour la référence du texte.
+  let demandeDeLaBase = null;
+  const demandesLues = () => [...(etat.db.demandes_site || []), ...(demandeDeLaBase ? [demandeDeLaBase] : [])];
+  // Un texte collé qui porte la référence d'une page du carnet : la demande enregistrée par la page, lue en base si la liste de l'écran ne la contient pas (les droits de la personne
+  // s'appliquent, la base ne rend que ce qu'elle a le droit de voir). Le texte est relu une seule fois si la demande arrive, et seulement s'il n'a pas changé entre-temps.
+  async function chercherLaDemande(t) {
+    const ref = refDeLaPage(t);
+    if (!ref || demandeEnregistree(t, demandesLues()) || !etat.store.demandeSiteParRef) return;
+    const trouvee = await etat.store.demandeSiteParRef(ref).catch(() => null);
+    if (trouvee && texte === t && estCarnet(trouvee)) {
+      demandeDeLaBase = trouvee;
+      lire(t);
+    }
+  }
+
   // Relire le texte : tout ce qui avait été corrigé à la main est perdu, c'est un autre message.
   function lire(valeur) {
     texte = valeur;
     erreur.textContent = "";
-    // Demande d'une page du carnet : sa sortie et son option sont connues ; un texte collé à la main est lu avec la détection par la référence de la page (lireDuTexte).
-    // Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
-    const lu = texte.trim() ? lireDuTexte(texte, aujourdhui(), depuisSite) : null;
+    // Demande d'une page du carnet : sa sortie et son option sont connues ; un texte collé à la main est lu d'après la demande enregistrée par la page, sinon avec la détection par la
+    // référence de la page (lireDuTexte). Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
+    const lu = texte.trim() ? lireDuTexte(texte, aujourdhui(), depuisSite, { demandes: demandesLues() }) : null;
+    if (texte.trim() && !(depuisSite && depuisSite.carnet)) chercherLaDemande(texte);
     if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
     d = null;
     vider();
@@ -820,7 +837,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   if (depuisItineraire) {
     zone.value = depuisItineraire.texte || "";
     texte = zone.value;
-    appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => ({ ...s, offresIA: s.offres })));
+    appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => (s.depuisPage ? s : { ...s, offresIA: s.offres })));
     // D'un geste : la création attend les hôtels situés, au plus HOTELS_DELAI_MS.
     if (auto) return hotelsLus.then(() => creerMaintenant(bouton, { auto: true }));
     return Promise.resolve({ ok: false, ouverte: true });

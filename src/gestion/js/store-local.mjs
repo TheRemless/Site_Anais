@@ -838,6 +838,11 @@ export function creer() {
       const d = demandeLue(id);
       return d ? { id: d.id, statut: d.statut, dossier_id: d.dossier_id, updated_at: d.updated_at } : null;
     },
+    // Comme demandes_site lue par une personne connectée : la demande de cette référence que ses droits lui laissent voir.
+    async demandeSiteParRef(ref) {
+      const lues = data.demandes_site.filter((d) => d.ref === ref && demandeLue(d.id)).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+      return lues[0] || null;
+    },
     async demandeSiteRelier(demandeId, dossierId) {
       const d = data.demandes_site.find((x) => x.id === demandeId);
       const lue = demandeLue(demandeId);

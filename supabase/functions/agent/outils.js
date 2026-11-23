@@ -547,6 +547,34 @@ export function outilsPour(permissions = [], { unifie = false, whatsapp = false,
 export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx), apporteur: !!(ctx && ctx.apporteur), vouchers: peutTrouverVouchers(ctx) });
 export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER, "proposer_course"];
 
+// Le message d'une page du carnet de ZTP (guides de Koh Samui, d'Ao Nang et de Koh Lanta) que la personne a collé ou que le client a écrit dans WhatsApp : le bloc que la page fabrique, de sa ligne
+// de demande (« Booking request: », « Demande de réservation : ») à sa référence (« Ref: AON-AB12 », « Réf : SAM-AB12 »). Le texte part tel quel dans la carte « dossier » (`message_page`) :
+// la fiche de création le lit comme une demande du site (sortie, option, âges, extras, prix de la page), jamais réécrit par le modèle. Un seul bloc dans l'échange (une seule référence), sinon
+// rien : le modèle ne choisit pas entre deux demandes. La table des préfixes de référence est celle de Gestion (carnet-produits.mjs, REFS_CARNET), qui rejette un préfixe inconnu.
+const LIGNE_DEMANDE_PAGE = /^(?:Booking request:|Demande de réservation\s*:)/i;
+const LIGNE_REF_PAGE = /^R[ée]f\s*:\s*([A-Z]{3}-[A-Z0-9]{3,})$/i;
+export function blocsDeLaPage(textes = []) {
+  const blocs = [];
+  for (const t of textes) {
+    const lignes = String(t || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    let debut = -1;
+    lignes.forEach((l, i) => {
+      if (LIGNE_DEMANDE_PAGE.test(l)) debut = i;
+      const ref = LIGNE_REF_PAGE.exec(l);
+      if (ref && debut >= 0) {
+        blocs.push({ ref: ref[1].toUpperCase(), texte: lignes.slice(debut, i + 1).join("\n") });
+        debut = -1;
+      }
+    });
+  }
+  return blocs;
+}
+export function messageDeLaPage(textes = []) {
+  const blocs = blocsDeLaPage(textes);
+  const refs = new Set(blocs.map((b) => b.ref));
+  return refs.size === 1 && blocs[blocs.length - 1].texte.length <= 2000 ? blocs[blocs.length - 1].texte : "";
+}
+
 // La confirmation de course dont parle l'agent : le message de la personne qui commence par `debut` (espaces et casse ignorés), sinon le seul
 // message qui ressemble à une confirmation. Le texte part tel que la personne l'a collé, jamais réécrit par le modèle.
 export function confirmationCollee(textes = [], debut = "") {
@@ -1936,7 +1964,7 @@ export async function proposer(nom, e, ctx, memo) {
     if (app.avertissement) avert.push(app.avertissement);
     // Un enfant ou un bébé sur un transfert sans choix des sièges : la carte ne se valide pas, la question est à poser au client.
     if (siegesAChoisirServices(services, { enfants: entier(e.enfants), bebes: entier(e.bebes, 10) })) avert.push("sieges_a_choisir");
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(messageDeLaPage([...(memo.textes || []), ...(memo.sourcesVol || [])]) ? { message_page: messageDeLaPage([...(memo.textes || []), ...(memo.sourcesVol || [])]) } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");

@@ -579,6 +579,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (error) throw new Error(error.message);
       return data || null;
     },
+    // La demande que la page du carnet a enregistrée pour une référence (« AON-AB12 »), la plus récente : lue avec les droits de la personne connectée (les règles de la table), null sinon.
+    async demandeSiteParRef(ref) {
+      const { data, error } = await sb.from("demandes_site").select("*").eq("ref", ref).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
     // Un envoi au résultat inconnu, vérifié par Nani dans WhatsApp (migration 64) : parti (le message reste, la réponse est soldée) ou pas
     // parti (le message sort du fil, la réponse redevient à faire).
     async whatsappConfirmerEnvoi(conversationId, parti) {

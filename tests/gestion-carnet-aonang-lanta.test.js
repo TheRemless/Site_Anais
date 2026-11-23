@@ -297,7 +297,7 @@ test("SQL privé d'Ao Nang : mêmes identifiants que le module, uniquement dans 
   for (const n of noms) assert.ok(!module.includes(n.toLowerCase()), "le module ne nomme aucun partenaire");
   assert.equal((SQL_AONANG.match(/"type":"vente_moins_net"/g) || []).length, 3);
   assert.equal((SQL_AONANG.match(/"mode_reglement":"sur_place"/g) || []).length, 3);
-  // Nets : une ligne par tarif, sauf le VIP Set dont le net est à confirmer.
+  // Nets : une ligne par tarif, sauf le VIP Set, dont le net se pose par un SQL de correctif à part.
   const nets = [...SQL_AONANG.split("-- 4. Nets")[1].matchAll(/^\s+\('((?:[^']|'')*)', (\d+)\),?$/gm)].map((m) => m[1]);
   assert.equal(nets.length, cles.length - 1);
   assert.ok(!nets.includes("aonang-option-vip-set|standard|Per boat"), "net du VIP Set non écrit");
@@ -1153,11 +1153,11 @@ test("message collé : la table des références et les noms de page du guide de
   for (const p of PRODUITS_CARNET.filter((x) => x.guide !== "koh-samui")) assert.equal(p.nomPage, undefined, p.id);
 });
 
-test("Assistant : la lecture de l'agent se fait côté serveur, la détection du carnet n'y passe pas (documenté) ; la lecture de démonstration passe par lireMessage", () => {
-  // La lecture réelle est faite par la fonction « agent » (modèle) : elle rend des cartes avec des offres du catalogue et ne porte ni le texte ni la référence jusqu'à la fenêtre.
+test("Assistant : la fonction « agent » joint le bloc de la page à la carte, la fiche le lit par la même fonction que la fenêtre de création (tests/gestion-assistant-carnet-page.test.js, tests/gestion-carnet-colle-complete.test.js)", () => {
   const doc = lireFichier("docs/gestion/carnet-aonang-lanta.md");
-  assert.match(doc, /Message collé et Assistant/);
+  assert.match(doc, /message_page/);
   assert.match(doc, /fonction « agent »/);
+  assert.match(lireFichier("supabase/functions/agent/outils.js"), /message_page: messageDeLaPage\(/);
   assert.match(lireFichier("src/gestion/js/assistant-calc.mjs"), /const d = lireMessage\(texte, aujourdhui\);/, "la lecture de démonstration passe par lireMessage, donc par la détection");
 });
 
@@ -1203,7 +1203,7 @@ test("fenêtre de création : un texte collé à la main est lu avec la détecti
   assert.equal(fenetre(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { ref: "" })).d.carnet, undefined);
   // La vue n'appelle plus lireMessage elle-même, ni ne désactive la détection pour un texte collé.
   const vue = lireFichier("src/gestion/js/views/demande.mjs");
-  assert.match(vue, /lireDuTexte\(texte, aujourdhui\(\), depuisSite\)/);
+  assert.match(vue, /lireDuTexte\(texte, aujourdhui\(\), depuisSite, \{ demandes: demandesLues\(\) \}\)/);
   assert.doesNotMatch(vue, /detecterCarnet/);
 });
 

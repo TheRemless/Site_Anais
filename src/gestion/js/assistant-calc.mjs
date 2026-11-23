@@ -1,7 +1,7 @@
 // Assistant IA, côté outil : la logique pure (sans écran) qui transforme ce que la fonction « assistant » renvoie en demande à vérifier,
 // et qui prépare les faits envoyés pour rédiger une réponse. Les prix viennent toujours de la base chargée dans l'outil, avec les mêmes
 // calculs que la lecture par règles (demande-calc.mjs) : Claude choisit une ligne du catalogue, il ne donne jamais un prix.
-import { prixPrestation, prixTrajet, completerEnfant, completerSupplement, separerNom, lireMessage, offresPour } from "./demande-calc.mjs";
+import { prixPrestation, prixTrajet, completerEnfant, completerSupplement, separerNom, lireMessage, offresPour, lireDuTexte, decouperServices } from "./demande-calc.mjs";
 import { libelleClient, libelleUnite, proposable } from "./partenaires-calc.mjs";
 import { horairesTexte, dureeTexte, fraisDeParc } from "./operations-calc.mjs";
 import { sansLien } from "./agent-calc.mjs";
@@ -143,6 +143,27 @@ export function propositionVersDemande(p, contexte) {
     remarquesIA: p.remarques || "",
   };
   return { d, services };
+}
+
+// Une carte « dossier » dont la fonction a joint le message d'une page du carnet (`message_page`, le bloc de la page tel que le client l'a écrit) : ce message est lu comme dans la fiche de création
+// d'une demande collée (lireDuTexte : la demande enregistrée par la page si Gestion l'a, sinon le texte), et SON service remplace celui que le modèle avait choisi, avec les mêmes offres, les mêmes
+// extras (Kradan, lunch box, VIP Set), les mêmes âges réglés et le même prix. Le service remplacé est celui d'une excursion (ou l'unique service sans offre) : un transfert ou le service d'une
+// autre entreprise de la carte reste tel quel. Sans message de la page, ou s'il n'est pas reconnu : la carte n'est pas changée.
+export function carteAvecLaPage(prep, messagePage, contexte, { demandes = [], aujourdhui = "" } = {}) {
+  if (typeof messagePage !== "string" || !messagePage.trim()) return prep;
+  const lu = lireDuTexte(messagePage, aujourdhui, null, { demandes });
+  if (!lu || !lu.carnet) return prep;
+  const services = prep.services || [];
+  const excursion = (s) => { const o = (s.offres || [])[0]; return !!o && o.genre === "prestation" && !!o.source && o.source.famille === "excursion"; };
+  let i = services.findIndex(excursion);
+  if (i < 0 && services.length === 1 && !(services[0].offres || []).length) i = 0;
+  if (i < 0) return prep;
+  const [page] = decouperServices(messagePage, lu, contexte, aujourdhui);
+  if (!page) return prep;
+  const base = services[i];
+  const service = { ...base, phrase: page.phrase, date: page.date || base.date || "", heure: base.heure || page.heure || "", adultes: page.adultes, enfants: page.enfants, offres: page.offres, inconnu: !(page.offres || []).length, confiance: (page.offres || []).length ? "haute" : "basse", depuisPage: true };
+  const d = { ...prep.d, ...lu, nom: prep.d.nom || lu.nom || "", telephone: prep.d.telephone || "", hotel: prep.d.hotel || lu.hotel || "", langue: prep.d.langue || "", remarquesIA: prep.d.remarquesIA || "", ia: true, libre: false };
+  return { ...prep, texte: messagePage, d, services: services.map((s, j) => (j === i ? service : s)) };
 }
 
 // Faits envoyés pour rédiger une réponse : le prénom, chaque service avec l'offre retenue et son prix de vente, les horaires et frais de la base.

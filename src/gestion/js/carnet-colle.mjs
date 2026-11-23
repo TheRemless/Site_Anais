@@ -7,6 +7,7 @@ import { REFS_CARNET, PRODUITS_CARNET, SORTIES_KOH_LANTA } from "./carnet-produi
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { cleTexte, resoudreSortie, lireInvitesFrancais } from "./carnet-ages.mjs";
 import { lignesDuRecapitulatif, invitesAnglais, dateDuSite, montantAnglais } from "./demandes-site-calc.mjs";
+import { CORRESPONDANCE_CARNET } from "./carnet-correspondance.mjs";
 
 // La ligne de référence (« Ref: AON-AB12 », « Réf : SAM-AB12 ») et ce qui la précède : un message n'est une demande de la page que s'il COMMENCE par sa ligne de demande (précédée, pour le
 // WhatsApp français, de la phrase d'accueil de la page) et s'il FINIT par la référence. Un client qui répond librement en citant l'ancien message, ou en écrivant après lui, a un message libre.
@@ -25,6 +26,11 @@ function blocDeLaPage(texte) {
 export function guideDeLaRef(texte) {
   const bloc = blocDeLaPage(texte);
   return bloc && Object.prototype.hasOwnProperty.call(REFS_CARNET, bloc.prefixe) ? REFS_CARNET[bloc.prefixe] : null;
+}
+// La référence du bloc de la page (« AON-AB12 »), ou null : la même condition que guideDeLaRef (bloc de la page, préfixe de la table). Sert à retrouver la demande enregistrée par la page.
+export function refDeLaPage(texte) {
+  const bloc = blocDeLaPage(texte);
+  return bloc && guideDeLaRef(texte) ? bloc.ref.toUpperCase() : null;
 }
 // Les sorties d'un guide : celles du carnet, ou (Koh Lanta) celles du site Secret que le guide propose.
 const sortiesDuGuide = (guide) => (guide === "koh-lanta" ? SORTIES_KOH_LANTA.map((id) => PRODUITS_SITE.find((p) => p.id === id)).filter((p) => p && p.marque === "secret") : PRODUITS_CARNET.filter((p) => p.guide === guide));
@@ -65,6 +71,65 @@ function anglaisDuRecapitulatif(texte, produit, option, ref) {
     `Ref: ${ref}`,
   ].filter(Boolean).join("\n");
 }
+// Le WhatsApp français des guides d'Ao Nang et de Koh Lanta : la première ligne (« Demande de réservation : <titre de l'offre> ») donne l'offre, la ligne de ses formules (Ao Nang : « Destination : … »)
+// la formule, d'après la correspondance générée des pages (carnet-correspondance.mjs). Le message est récrit au format du site, comme la page l'écrit pour Gestion (buildGestionMessage) : sortie et
+// option, créneau, choix, date, invités (ou lignes d'un quad), extras, pickup, nom, estimation, droit de parc, message, référence. Un titre ou une formule inconnus : null, on ne devine rien.
+const lignesFrancaises = (lignes) => lignes.slice(1).map((l) => { const m = /^(.+?) : (.*)$/.exec(l); return m ? { cle: m[1].trim(), valeur: m[2].trim() } : null; }).filter(Boolean);
+export function offreDeLaPage(guide, titre, lignes = []) {
+  const trouvees = CORRESPONDANCE_CARNET.filter((o) => o.guide === guide && cleTexte(o.titre) === cleTexte(titre));
+  if (trouvees.length !== 1) return null;
+  const offre = trouvees[0];
+  if (!offre.variantes) return { offre, ids: offre.gestion || null };
+  const v = (lignesFrancaises(lignes).find((l) => l.cle === offre.variantesLabel) || {}).valeur;
+  const variante = offre.variantes.find((x) => cleTexte(x.label) === cleTexte(v));
+  return variante ? { offre, ids: variante } : null;
+}
+function anglaisDeLaPage({ offre, ids }, lignes, ref) {
+  const fr = lignesFrancaises(lignes);
+  const val = (cle) => (fr.find((l) => l.cle === cle) || {}).valeur;
+  const sorties = [`Booking request: ${ids.produitNom}${ids.optionTitre ? ` – ${ids.optionTitre}` : ""}`];
+  if ((offre.creneaux || []).length > 1) {
+    const c = offre.creneaux.find((x) => cleTexte(x.label) === cleTexte(val(offre.creneauxLabel)));
+    if (c) sorties.push(`${offre.creneauxLabelEn}: ${c.en || c.label}`);
+  }
+  for (const g of offre.choix || []) {
+    const v = (g.valeurs || []).find((x) => cleTexte(x.label) === cleTexte(val(g.label)));
+    if (v) sorties.push(`${g.en || g.label}: ${v.en || v.label}`);
+  }
+  const iso = dateFrancaise(val("Date"));
+  if (iso) sorties.push(`Date: ${dateDuSite(iso)}`);
+  if ((offre.lignes || []).length) {
+    // Les lignes d'un quad ou de karts : « 2 × Adulte pilote, 1 × Enfant passager » ; les invités se déduisent des rôles, comme la page (people).
+    const choisies = [];
+    for (const l of offre.lignes) { const m = new RegExp(`(\\d+) × ${l.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:,|$)`).exec(val(offre.lignesLabel) || ""); if (m) choisies.push({ ligne: l, q: Number(m[1]) }); }
+    if (choisies.length) {
+      sorties.push(`${offre.lignesLabelEn}: ${choisies.map((x) => `${x.q} × ${x.ligne.en || x.ligne.label}`).join(", ")}`);
+      let adultes = 0;
+      let enfants = 0;
+      for (const x of choisies) { if (x.ligne.role === "enfant") enfants += x.q; else adultes += x.q * (x.ligne.role === "adulte" ? 1 : x.ligne.places || 1); }
+      sorties.push(`Guests: ${[adultes ? `${adultes} adult${adultes > 1 ? "s" : ""}` : "", enfants ? `${enfants} ${enfants > 1 ? "children" : "child"}` : ""].filter(Boolean).join(", ")}`);
+    }
+  } else if (val("Personnes")) sorties.push(`Guests: ${invitesAnglais(lireInvitesFrancais(val("Personnes")))}`);
+  const options = val("Options");
+  const extras = options ? (offre.extras || []).filter((x) => options.includes(x.label)).map((x) => x.en || x.label) : [];
+  if (extras.length) sorties.push(`Extras: ${extras.join(", ")}`);
+  if (val("Prise en charge")) sorties.push(`Pickup: ${val("Prise en charge")}`);
+  if (val("Nom")) sorties.push(`Name: ${val("Nom")}`);
+  if (val("WhatsApp")) sorties.push(`WhatsApp: ${val("WhatsApp")}`);
+  if (/^sur demande/i.test(val("Prix") || "")) sorties.push("Price: on request");
+  else {
+    const total = montantFrancais((/^([\d\s\u00a0\u202f'\u2019.,]+?)\s*THB/.exec(val("Estimation") || "") || [])[1]);
+    if (total) sorties.push(`Estimated total: ${montantAnglais(total)}`);
+  }
+  const partielle = /^le tarif de (\d+) enfants? est à confirmer/i.exec(val("Estimation partielle") || "");
+  if (partielle) sorties.push(`Partial estimate: the price of ${partielle[1]} ${Number(partielle[1]) > 1 ? "children" : "child"} is to be confirmed`);
+  const parc = val("Entrée du parc à payer sur place");
+  const droit = parc ? /^(environ\s+)?([\d\s\u00a0\u202f'\u2019.,]+?)\s*THB/i.exec(parc) : null;
+  if (droit) sorties.push(`Park fee: ${droit[1] ? "about " : ""}${montantAnglais(montantFrancais(droit[2]))}`);
+  if (val("Message")) sorties.push(`Message: ${val("Message")}`);
+  sorties.push(`Ref: ${ref}`);
+  return sorties.join("\n");
+}
 // Le contexte du carnet que porte un message collé, ou null : { guide, carnet: { produit, option }, texte }. `texte` est le message à lire (celui qui est collé, à partir de sa première ligne
 // de demande ; le récapitulatif français est récrit au format du site). `carnet` est le même objet que celui d'une demande du site (identifiant de la sortie et de l'option).
 export function carnetDuMessage(texte) {
@@ -81,6 +146,10 @@ export function carnetDuMessage(texte) {
     const [nom, ...option] = en[1].split(/\s+[–—]\s+/);
     produit = sorties.find((p) => cleTexte(p.nom) === cleTexte(nom)) || null;
     titre = option.join(" – ").trim();
+  } else if (fr && guide !== "koh-samui") {
+    const page = offreDeLaPage(guide, fr[1], bloc.lignes);
+    if (!page || !page.ids || !page.ids.produit) return null;
+    return { guide, carnet: { produit: page.ids.produit, option: page.ids.option || "" }, texte: anglaisDeLaPage(page, bloc.lignes, bloc.ref) };
   } else if (fr) {
     produit = sorties.find((p) => p.nomPage && cleTexte(p.nomPage) === cleTexte(fr[1])) || null;
     titre = ((/^Formule\s*:\s*(.+)$/im.exec(bloc.lignes.join("\n")) || [])[1] || "").trim();

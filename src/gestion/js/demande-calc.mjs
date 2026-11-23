@@ -6,7 +6,8 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET, EXTRAS_DU_SITE, guideDeSortie, extrasDuGuide } from "./carnet-produits.mjs";
-import { carnetDuMessage } from "./carnet-colle.mjs";
+import { carnetDuMessage, refDeLaPage } from "./carnet-colle.mjs";
+import { estCarnet, carnetDeLaDemande, texteDemande } from "./demandes-site-calc.mjs";
 import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, estLExtra, LIGNE_ENFANT } from "./carnet-ages.mjs";
 import { sansLien } from "./agent-calc.mjs";
 
@@ -1316,10 +1317,28 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
-// Le texte que la fenêtre de création lit (la seule fonction qu'elle appelle pour lire un message) : une demande du site du carnet connaît déjà sa sortie et son option (`depuisSite.carnet`),
-// la référence du message n'est pas relue ; tout autre texte (collé à la main, ou demande du site ordinaire) est lu avec la détection par la référence de la page.
-export function lireDuTexte(texte, aujourdhui, depuisSite = null) {
+// La demande que la page du carnet a enregistrée pour ce texte : celle dont la référence est la dernière ligne du bloc collé (« Réf : AON-AB12 »), la plus récente si la page l'a envoyée
+// deux fois. `demandes` : les demandes du site que l'utilisateur peut déjà lire (ses droits, rien de plus). null sans référence de la page, ou sans demande enregistrée.
+export function demandeEnregistree(texte, demandes = []) {
+  const ref = refDeLaPage(texte);
+  if (!ref) return null;
+  const memes = (demandes || []).filter((x) => x && estCarnet(x) && String(x.ref || "").toUpperCase() === ref);
+  return memes.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0] || null;
+}
+// Le texte que la fenêtre de création lit (la seule fonction qu'elle appelle pour lire un message). Trois cas, du plus sûr au moins sûr :
+//   1. une demande du site du carnet connaît déjà sa sortie et son option (`depuisSite.carnet`) : la référence du message n'est pas relue ;
+//   2. un texte collé dont la référence est celle d'une demande enregistrée par la page (`demandes`) : la demande enregistrée (sortie, option, âges, extras tels que la page les a envoyés)
+//      est lue comme celle de la liste « Demandes du site » (texteDemande) ;
+//   3. sinon la lecture du texte lui-même, avec la détection par la référence de la page (carnet-colle.mjs).
+export function lireDuTexte(texte, aujourdhui, depuisSite = null, { demandes = [] } = {}) {
   const carnet = depuisSite && depuisSite.carnet ? depuisSite.carnet : null;
+  if (!carnet) {
+    const enregistree = demandeEnregistree(texte, demandes);
+    if (enregistree) {
+      const lu = lireMessage(texteDemande(enregistree), aujourdhui, { detecterCarnet: false });
+      if (lu) return ajusterAgesCarnet({ ...lu, carnet: carnetDeLaDemande(enregistree) });
+    }
+  }
   const lu = lireMessage(texte, aujourdhui, { detecterCarnet: !carnet });
   return lu && carnet ? ajusterAgesCarnet({ ...lu, carnet }) : lu;
 }

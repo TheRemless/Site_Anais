@@ -5,17 +5,32 @@ import { etat, reglages, nomPartenaire, modeTaxi, modifier, supprimer as supprim
 import { modal, toast } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { propositionDepuisCarte, reservationDepuisCarte, chauffeurCarte, payeSurPlaceCarte } from "../agent-calc.mjs";
-import { propositionVersDemande } from "../assistant-calc.mjs";
+import { propositionVersDemande, carteAvecLaPage } from "../assistant-calc.mjs";
+import { demandeEnregistree } from "../demande-calc.mjs";
+import { refDeLaPage } from "../carnet-colle.mjs";
+import { aujourdhui } from "../calc.mjs";
 import { modeParDefaut } from "../operations-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { planCreation, creerDossiersLies, lierDossiers } from "../espace-unifie-calc.mjs";
 
 const changerSansNaviguer = (id) => etat.entiteId !== id && changerEntite(id, { naviguer: false });
 
-export const preparation = (c) => {
+// `demandes` : les demandes du site que la personne peut lire (la liste de l'écran), pour retrouver celle que la page du carnet a enregistrée pour le message joint à la carte.
+export const preparation = (c, demandes = etat.db.demandes_site || []) => {
   const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
-  return { texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) };
+  return carteAvecLaPage({ texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) }, (c.donnees || {}).message_page, contexte, { demandes, aujourdhui: aujourdhui() });
 };
+// La préparation d'une carte, avec la demande de la page lue en base quand la liste de l'écran ne l'a pas (les droits de la personne s'appliquent : la base ne rend que ce qu'elle peut voir).
+export async function preparationComplete(c) {
+  const page = (c.donnees || {}).message_page;
+  const ref = typeof page === "string" ? refDeLaPage(page) : null;
+  let demandes = etat.db.demandes_site || [];
+  if (ref && !demandeEnregistree(page, demandes) && etat.store.demandeSiteParRef) {
+    const trouvee = await etat.store.demandeSiteParRef(ref).catch(() => null);
+    if (trouvee) demandes = [...demandes, trouvee];
+  }
+  return preparation(c, demandes);
+}
 
 // Le chauffeur d'une course ajoutée par carte (22.11.2026) : appelé une fois dans l'entreprise du dossier (dansEntreprise, dansFenetre).
 export const chauffeurDeLaCarte = (c) => chauffeurCarte((c.donnees || {}).service, { taxi: modeTaxi(), defaut: modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null, prestations: etat.db.prestations, trajets: etat.db.trajets });
@@ -84,8 +99,8 @@ export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise 
   const r = await creerDossiersLies({
     etapes: plan.etapes,
     // Passe à blanc : préparation et contrôles de chaque dossier (prix à fixer, service introuvable, numéro), rien n'est écrit.
-    essayer: (e, i) => dans(e.entite_id, () => ouvrirDemande(null, preparation(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre })),
-    creer: (e, i, clientId) => dans(e.entite_id, () => ouvrirDemande(null, preparation(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId })),
+    essayer: (e, i) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre })),
+    creer: (e, i, clientId) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId })),
     // Un dossier ne passe pas : ceux déjà créés vont à la corbeille (la suppression habituelle), dans leur entreprise.
     defaire: async (crees) => {
       for (const d of crees) await dans(d.entite_id, () => supprimerLigne("dossiers", d.id));

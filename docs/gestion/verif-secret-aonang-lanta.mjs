@@ -108,7 +108,7 @@ ok((await n(`select count(*) n from prestations where ${TARIFS} and entite_id <>
 const regles = await tous("select pp.commission_regle r, p.regles from partenaires p join partenaires_prives pp on pp.partenaire_id = p.id where p.id = any($1::uuid[])", [PIDS]);
 ok(regles.every((x) => x.r.type === "vente_moins_net" && x.regles.mode_reglement === "sur_place"), "commission « vente moins net » et règlement sur place pour chaque partenaire");
 const sansNet = await tous(`select libelle_en from prestations p where ${TARIFS} and not exists (select 1 from prestations_nets n where n.prestation_id = p.id)`);
-ok(sansNet.length === 1 && /VIP Set/.test(sansNet[0].libelle_en), "seul le VIP Set n'a pas de net (à confirmer)");
+ok(sansNet.length === 1 && /VIP Set/.test(sansNet[0].libelle_en), "seul le VIP Set n'a pas de net posé par ce fichier");
 ok((await n(`select count(*) n from prestations p join prestations_nets x on x.prestation_id = p.id where p.details->>'guide' = 'aonang' and p.prix_vente - x.net < 0`)) === 0, "aucune commission négative");
 ok((await n(`select count(*) n from prestations where ${TARIFS} and (sur_place or not actif or prix_vente is null)`)) === 0, "tous les tarifs sont actifs, avec un prix, ni « frais » ni sur place");
 const noms = (await tous("select nom from partenaires where id = any($1::uuid[])", [PIDS])).map((x) => x.nom.toLowerCase());

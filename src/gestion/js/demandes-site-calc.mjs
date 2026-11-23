@@ -134,10 +134,11 @@ export function lignesDuRecapitulatif(message) {
   const formule = lire(/^Formule\s*:\s*(.+)$/im);
   const creneau = lire(/^Créneau\s*:\s*(.+)$/im);
   const parc = lire(/^Entrée du parc à payer sur place\s*:\s*(.+)$/im);
+  const parcApprox = /^environ\s+/i.test(parc || "");
   const client = lire(/^Message\s*:\s*(.+)$/im);
   const extras = extrasDuMessage(message);
   const transfert = transfertDuMessage(message);
-  return [formule ? `Formula: ${formule.trim()}` : "", creneau ? `Slot: ${creneau.trim()}` : "", extras ? `Extras: ${extras}` : "", transfert ? `Hotel transfer: ${transfert}` : "", parc ? `Park fee: ${parc.trim()}` : "", client ? `Message: ${client.trim()}` : ""].filter(Boolean);
+  return [formule ? `Formula: ${formule.trim()}` : "", creneau ? `Slot: ${creneau.trim()}` : "", extras ? `Extras: ${extras}` : "", transfert ? `Hotel transfer: ${transfert}` : "", parc ? `Park fee: ${parcApprox ? "about " : ""}${parc.trim().replace(/^environ\s+/i, "")}` : "", client ? `Message: ${client.trim()}` : ""].filter(Boolean);
 }
 // Les extras d'une ligne « Extras: » qui valent pour l'option finale : un extra connu (EXTRAS_DU_SITE) d'une autre option s'en va (« Add Koh Kradan » n'a pas de sens sur le join-in, où
 // Kradan est déjà dans la sortie), avec sa précision (« per boat »). Un extra se compare ENTIER (« Add Koh Kradan sunset dinner » n'est pas « Add Koh Kradan »), les autres restent avec
