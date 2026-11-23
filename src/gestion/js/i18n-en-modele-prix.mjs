@@ -10,4 +10,6 @@ export const EN_MODELE_PRIX = {
   "Modèle de prix « {valeur} » repris mot pour mot.": "Price template “{valeur}” used word for word.",
   "La réponse s'écartait du modèle de prix « {valeur} » : le modèle rempli la remplace.": "The reply did not follow the price template “{valeur}”: the filled-in template replaces it.",
   "Modèle de prix non suivi : {valeur}": "Price template not used: {valeur}",
+  "La réponse donne un prix sans le modèle « {v} » : vérifiez si le modèle convenait.": "The reply gives a price without the template “{v}”: check whether the template fitted.",
+  "La réponse donne un prix sans le modèle « {valeur} » : vérifiez si le modèle convenait.": "The reply gives a price without the template “{valeur}”: check whether the template fitted.",
 };

@@ -26,7 +26,7 @@
 import { partenaireProbable, prixDeVentePermis } from "../whatsapp/type-contact.js";
 import { REFUS_RECALCUL, bloquerRecalcul } from "./itineraire.js";
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
-import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
+import { ENTREPRISES_UNIFIEES, LIBELLES_UNIFIES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
 import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
@@ -379,6 +379,7 @@ export const OUTILS = [
       total: S("Avec un modèle de prix : le prix tel qu'il sera écrit au client (« 2,500 THB »), venu d'un outil ou de la personne. Sinon \"\"."),
       prenom: S("Avec un modèle de prix : le prénom du client s'il est connu, sinon \"\"."),
       hors_modele: S("Avec modele_prix « aucun » : pourquoi le modèle ne convient pas, en une ligne pour la personne. Sinon \"\"."),
+      suite: S("Avec un modèle de prix : la question (hôtel, heure de pickup, sièges, bagages) ou l'autre information à envoyer en plus du prix, en message séparé après le modèle. Sinon \"\"."),
     }),
   },
   {
@@ -1795,6 +1796,22 @@ export function montantsDuTexte(t) {
   return out;
 }
 
+// Modèle de réponse de prix (modele-prix.js) : jamais pour un partenaire, un chauffeur (type « partenaire ») ni le personnel.
+export const CONTACTS_SANS_MODELE = ["partenaire", "personnel"];
+// Un prix déjà donné au client : écrit par Nani dans la conversation, ou dans une réponse déjà proposée (historique, ou plus tôt dans l'échange).
+export const prixDejaDonne = (memo) => !!memo && (memo.prixDonne === true || (memo.nani instanceof Set && memo.nani.size > 0));
+// Les prix de vente rendus par les outils, par entreprise (espace unifié : champ « entreprise » des lignes, « Secret » ou « Taxi »).
+export function noterPrixEntreprise(v, memo) {
+  if (Array.isArray(v)) return v.forEach((x) => noterPrixEntreprise(x, memo));
+  if (!v || typeof v !== "object") return;
+  if (typeof v.entreprise === "string" && v.entreprise) {
+    if (!(memo.prixParEntreprise instanceof Map)) memo.prixParEntreprise = new Map();
+    const s = memo.prixParEntreprise.get(v.entreprise) || new Set();
+    for (const k of ["prix_vente", "prix_adulte", "prix_enfant"]) if (typeof v[k] === "number" && v[k] > 0) s.add(v[k]);
+    memo.prixParEntreprise.set(v.entreprise, s);
+  }
+  for (const x of Object.values(v)) if (x && typeof x === "object") noterPrixEntreprise(x, memo);
+}
 // Les montants d'un texte qui sont des prix : un prix sourcé (outil, personne) ou un montant collé à une devise (« 2,500 THB », « ฿900 »).
 // Un numéro de vol ou de chambre n'en est pas un.
 const DEVISE_AUTOUR = /(?:฿|THB|CHF|EUR|USD|€|\$|baht)\s*[\d๐-๙][\d๐-๙\s,.'’]*|[\d๐-๙][\d๐-๙,.'’]*\s*(?:฿|THB|CHF|EUR|USD|€|baht)/giu;
@@ -2011,11 +2028,30 @@ export async function proposer(nom, e, ctx, memo) {
     // calculent sur les prix sourcés présents dans le texte, les lignes de la carte de dossier du même échange et les montants de Nani.
     const nets = netsDuControle(memo);
     // Modèle de réponse de prix de l'entreprise active (modele-prix.js) : choisi, il remplace le texte proposé, variables remplies.
-    const mp = appliquerModelePrix(e, { reglages: ctx.reglages, entreprise: memo.entreprise || ctx.entreprise || "", montants: montantsDePrix(String(e.message || ""), new Set([...(memo.prix || []), ...tapes])) });
+    // Contrôlée seulement : la première réponse de prix de l'échange, au client (jamais à l'apporteur lui-même, à un partenaire, un chauffeur
+    // ou au personnel), tant qu'aucun prix n'a été donné au client (montants de Nani, réponse déjà proposée). En espace unifié, le total vient
+    // du catalogue de l'entreprise active (relecture de la PR 342).
+    const permis = new Set([...(memo.prix || []), ...tapes]);
+    const active = entrepriseActive(ctx);
+    const libelleActive = active ? LIBELLES_UNIFIES[active.slug] || active.nom : "";
+    const controle = !versApporteur && !CONTACTS_SANS_MODELE.includes(memo.contact) && !prixDejaDonne(memo);
+    const mp = appliquerModelePrix(e, {
+      reglages: ctx.reglages,
+      entreprise: memo.entreprise || ctx.entreprise || "",
+      montants: montantsDePrix(String(e.message || ""), permis),
+      lireMontants: montantsDuTexte,
+      permis,
+      internes: memo.internes || new Set(),
+      devise: (ctx.reglages && ctx.reglages.devise) || "THB",
+      prixEntreprise: active ? (memo.prixParEntreprise && memo.prixParEntreprise.get(libelleActive)) || new Set() : null,
+      controle,
+    });
     if (mp.erreur) return { erreur: mp.erreur, conseil: mp.conseil };
     const c = controlerReponse(mp.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true, leveInternes: new Set([...(memo.prixServices || []), ...(memo.ventesDossier || [])]) });
     if (!c.ok) return { erreur: "message_vide" };
     const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
+    // Un prix est donné au client : les réponses suivantes de l'échange ne sont plus contrôlées (une confirmation reste une confirmation).
+    if (controle && montantsDePrix(c.message, permis).length) memo.prixDonne = true;
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: [...mp.avertissements, ...c.avertissements] };
   }
   if (nom === "proposer_reglage") return proposerReglage(e, ctx, memo);
@@ -2110,6 +2146,7 @@ export async function executer(nom, entree, ctx, memo) {
     const f = { chercher_conversations: executerWhatsApp.bind(null, "chercher_conversations"), lire_conversation: executerWhatsApp.bind(null, "lire_conversation"), a_faire_whatsapp: executerWhatsApp.bind(null, "a_faire_whatsapp"), lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier, [NOM_OUTIL_VOUCHERS]: executerVouchers }[nom];
     const r = await f(entree, ctx, memo);
     ajouter(r);
+    if (["chercher_catalogue", "horaires_trajet"].includes(nom) && r.resultat) noterPrixEntreprise(r.resultat, memo);
     // Les vols déjà notés sur les réservations du dossier lu : une source pour une carte (« même vol que l'aller »).
     if (nom === "lire_dossier" && r.resultat && Array.isArray(r.resultat.services)) {
       if (!Array.isArray(memo.volsLus)) memo.volsLus = [];
@@ -2141,9 +2178,9 @@ export async function executer(nom, entree, ctx, memo) {
 // dans ses blocs <conversation> sont alors admis comme prix (memo.nani, montantsDeNani). `clientProbable` : ce client n'est que probable
 // (clientProbable, pas encore de fiche) ; ses prix repris sont marqués à vérifier. `conversationLiee` : son id, seule lecture de la
 // boîte qui donne aussi des prix de Nani (retenirLecture).
-export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, clientProbable = false, conversationLiee = null, textesPage = [] } = {}) {
+export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, clientProbable = false, conversationLiee = null, textesPage = [], contact = "" } = {}) {
   // refs : les prestations et trajets rendus par les outils ; nets et servicesEnCours : posés par la fonction (netsPourControle, dossier relié).
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, clientProbable: conversationClient === true && clientProbable === true, conversationLiee, textesPage: (textesPage || []).map((t) => String(t || "")), signer, prestataires, entreprise, entreprises, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), clientValides: new Set(), prixCarte: [], conversationClient: conversationClient === true, clientProbable: conversationClient === true && clientProbable === true, conversationLiee, textesPage: (textesPage || []).map((t) => String(t || "")), signer, prestataires, entreprise, entreprises, prenoms, contact: typeof contact === "string" ? contact : "" };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
@@ -2190,7 +2227,9 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
           for (const c of Array.isArray(b.content) ? b.content : [{ type: "text", text: String(b.content || "") }]) {
             if (c.type !== "text") continue;
             try {
-              parcourir(JSON.parse(c.text));
+              const lu = JSON.parse(c.text);
+              parcourir(lu);
+              if (["chercher_catalogue", "horaires_trajet"].includes(nomsAppels.get(b.tool_use_id))) noterPrixEntreprise(lu, memo);
             } catch {
               /* résultat non JSON : rien à retenir */
             }
@@ -2199,6 +2238,11 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
       }
     }
   }
+  // Une réponse au client déjà proposée avec un prix (échange précédent) : le prix est donné, le modèle ne s'impose plus.
+  // Un appel refusé (résultat en erreur) ne compte pas.
+  const refuses = new Set();
+  for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "user" && b && b.type === "tool_result" && b.is_error) refuses.add(b.tool_use_id);
+  for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) if (m.role === "assistant" && b && b.type === "tool_use" && b.name === "proposer_reponse" && !refuses.has(b.id) && b.input && montantsDuTexte(String(b.input.message || "")).some((n) => n > 0)) memo.prixDonne = true;
   // Les heures tapées par la personne sont admises aussi (« vol à 19:30 »), et ses durées (« compte 2h30 »).
   for (const m of messages) {
     const t = sansResume(m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "");

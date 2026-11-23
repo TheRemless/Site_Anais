@@ -103,8 +103,9 @@ const VOIX = {
 };
 // Une voix enregistrée qui finit par une formule signée (« puis « Belle journée, {entreprise} » », « then "Have a nice day, {entreprise}" ») :
 // chez Secret et Taxi, les messages ne signent pas (Jérémy, 19.11.2026). La formule est retirée avant d'entrer dans les consignes, sans
-// toucher au reste de la voix. Seules les formules qui citent {entreprise} ou {prenom} sont des signatures sûres.
-const FORMULE_SIGNEE = /,?\s*(?:puis|then)\s*[«"“][^»"”\n]*\{(?:entreprise|prenom)\}[^»"”\n]*[»"”]/gi;
+// toucher au reste de la voix. Seule une formule de fin (en fin de ligne, point final admis) qui cite {entreprise} et aucune autre variable
+// est une signature sûre (relecture de la PR 342).
+const FORMULE_SIGNEE = /,?[ \t]*(?:puis|then)[ \t]*[«"“][ \t]*[^»"”\n{}]{0,60}\{entreprise\}[^»"”\n{}]{0,8}[»"”](?=[ \t]*\.?[ \t]*$)/gim;
 export const voixSansSignature = (t) => String(t).replace(FORMULE_SIGNEE, "");
 export function voixPour(reglages, entreprise, prenom) {
   const a = (reglages && reglages.assistant_voix) || {};

@@ -136,6 +136,7 @@ const AVERTISSEMENTS_PRIX = {
   modele_prix: N_("Modèle de prix « {v} » repris mot pour mot."),
   modele_prix_remplace: N_("La réponse s'écartait du modèle de prix « {v} » : le modèle rempli la remplace."),
   hors_modele_prix: N_("Modèle de prix non suivi : {v}"),
+  modele_prix_a_choisir: N_("La réponse donne un prix sans le modèle « {v} » : vérifiez si le modèle convenait."),
 };
 function texteAvertissement(a) {
   const [code, valeur] = String(a).split(/:(.*)/s);

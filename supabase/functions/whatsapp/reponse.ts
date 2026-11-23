@@ -332,7 +332,7 @@ async function preparer(
     const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.erreur ? [] : lignesAppris, messages, nomProfil: conv.nom || "", nomSource: conv.nom_source || null, client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes, contact: partenaire ? "partenaire" : null, prixRepris: prixDeVentePermis(conv) });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
-    const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+    const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), contact: partenaire ? "partenaire" : typeof conv.type_contact === "string" ? conv.type_contact : "" });
     // Garde-fou de la PR 278 : un montant égal à un net d'un service de la demande en cours (rendu par un outil, ou du dossier relié à la
     // conversation) et à aucun prix de vente est signalé « montant_interne » et bloque la copie dans l'écran. Le net d'un autre service du
     // catalogue n'est qu'un avertissement (montant_egal_net, faux blocage du 21.11.2026). Les nets restent ici, dans la fonction : ils ne

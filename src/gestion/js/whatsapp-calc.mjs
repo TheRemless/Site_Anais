@@ -239,6 +239,7 @@ const AVERTISSEMENTS = {
   modele_prix: { texte: N_("Modèle de prix « {valeur} » repris mot pour mot."), niveau: "info" },
   modele_prix_remplace: { texte: N_("La réponse s'écartait du modèle de prix « {valeur} » : le modèle rempli la remplace."), niveau: "info" },
   hors_modele_prix: { texte: N_("Modèle de prix non suivi : {valeur}"), niveau: "info" },
+  modele_prix_a_choisir: { texte: N_("La réponse donne un prix sans le modèle « {valeur} » : vérifiez si le modèle convenait."), niveau: "info" },
 };
 export function libelleAvertissement(code) {
   const brut = String(code || "");
