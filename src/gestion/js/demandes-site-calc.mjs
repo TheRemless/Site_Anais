@@ -2,14 +2,15 @@
 // Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET } from "./carnet-produits.mjs";
-import { agesDuMessage, ajusterAgesCarnet } from "./carnet-ages.mjs";
+import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA } from "./carnet-produits.mjs";
+import { agesDuMessage, ajusterAgesCarnet, sortieParId } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
 export const MOTIFS_REFUS = { complet: N_("Complet ce jour-là"), mer: N_("Mer trop agitée"), indisponible: N_("Pas possible ce jour-là"), autre: N_("Sans motif") };
 
-export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || PRODUITS_CARNET.find((p) => p.id === id) || null;
+// La même recherche et la même priorité que les demandes du carnet (carnet-ages.mjs : les sorties du carnet d'abord, puis celles du site).
+export const produitSite = sortieParId;
 export const nomProduit = (d) => d.produit || (produitSite(d.produit_id) || {}).nom || d.produit_id;
 // Ce que le client demande, pour l'écran et les réponses. Une page taxi sert les deux sens : son nom (« Krabi Airport to Koh Lanta ») peut être
 // l'inverse du trajet demandé. Le trajet est alors celui du message (« Transfer request: Koh Lanta to Krabi Airport », demande du 18.11.2026).
@@ -118,7 +119,7 @@ export function changements(d, final) {
   const optAvant = titreOption(d);
   if (final.option_titre && optAvant && final.option_titre !== optAvant) ajoute("option", optAvant, final.option_titre);
   // Les personnes de la demande comme elles sont tarifées : un enfant du carnet plus âgé que le barème compte adulte (même règle que la fenêtre de création).
-  const tarifee = demandeTarifee(d);
+  const tarifee = demandeTarifee(d, final.option_titre || d.option_titre);
   const gensAvant = personnesAnglais(tarifee.adultes || 0, tarifee.enfants || 0);
   const gensApres = personnesAnglais(final.adultes || 0, final.enfants || 0);
   if (gensAvant && gensApres && gensAvant !== gensApres) ajoute("personnes", gensAvant, gensApres);
@@ -229,10 +230,11 @@ export function estCarnet(d) {
 // La demande comme Gestion la tarife : un enfant d'une sortie du carnet plus âgé que le barème de la sortie compte adulte (ajusterAgesCarnet). Les adultes, enfants et
 // bébés viennent du message (agesDuMessage), comme dans la fenêtre de création, et non du compteur de la table qui compte tous les enfants : une seule source
 // pour tous les chemins (fenêtre de création, changements, réponse de confirmation).
-export function demandeTarifee(d) {
-  if (!estCarnet(d) || !PRODUITS_CARNET.some((p) => p.id === d.produit_id)) return d;
+export function demandeTarifee(d, titre = d.option_titre) {
+  if (!estCarnet(d) || !sortieParId(d.produit_id)) return d;
   const invites = agesDuMessage(d.message);
-  return ajusterAgesCarnet({ ...d, ...(invites || {}), carnet: carnetDeLaDemande(d) });
+  // `titre` : l'option telle qu'elle est tarifée (celle de la demande, ou celle choisie dans « Modifier »), la même résolution que le tarif.
+  return ajusterAgesCarnet({ ...d, ...(invites || {}), option: titre || "", carnet: carnetDeLaDemande(d) });
 }
 // La sortie et l'option que la fenêtre de création lit dans une demande du carnet (product_id et option), ou null pour une demande qui n'en est pas une.
 export const carnetDeLaDemande = (d) => (estCarnet(d) ? { produit: d.produit_id, option: d.option_id || "" } : null);
@@ -246,7 +248,11 @@ export function titreCarnet(d) {
 export function autresSorties(d) {
   if (estCarnet(d)) {
     const ici = PRODUITS_CARNET.find((p) => p.id === d.produit_id);
-    return PRODUITS_CARNET.filter((p) => p.id !== d.produit_id && p.marque === d.marque && (!ici || p.guide === ici.guide));
+    // Une sortie propre au carnet (Ao Nang, Koh Samui) : celles du même guide.
+    if (ici) return PRODUITS_CARNET.filter((p) => p.id !== d.produit_id && p.marque === d.marque && p.guide === ici.guide);
+    // Une sortie du site Secret proposée par le guide de Koh Lanta : les autres sorties de ce guide, pas toutes celles du site.
+    if (SORTIES_KOH_LANTA.includes(d.produit_id)) return SORTIES_KOH_LANTA.filter((id) => id !== d.produit_id).map((id) => PRODUITS_SITE.find((p) => p.id === id)).filter((p) => p && p.marque === d.marque);
+    return [];
   }
   return PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
 }

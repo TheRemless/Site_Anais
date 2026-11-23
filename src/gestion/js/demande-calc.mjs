@@ -6,7 +6,7 @@ import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs"
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET } from "./carnet-produits.mjs";
-import { lireInvites, ajusterAgesCarnet } from "./carnet-ages.mjs";
+import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId } from "./carnet-ages.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -971,17 +971,6 @@ const trancheGroupe = (ligne) => {
 // Ce qui distingue une ligne d'une autre une fois l'âge retiré : « Adult rider » et « Child rider, 6 to 12 » donnent « rider ».
 const fondLigne = (l) => cleTexte(l).replace(/\b(?:adults?|child(?:ren)?|from|age|to|and|per|person|\d+)\b/g, " ").replace(/\s+/g, " ").trim();
 
-// La sortie d'une page du carnet (carnet-produits.mjs) citée par `d.carnet` ({ produit, option } : product_id et option de la demande du site).
-// L'option se retrouve par son titre écrit dans le message (« Modifier » le change), puis par son identifiant ; une sortie à une seule option n'en demande pas.
-function optionDuCarnet(d) {
-  const c = d.carnet;
-  const produit = c && c.produit ? PRODUITS_CARNET.find((p) => p.id === c.produit) : null;
-  if (!produit) return null;
-  const titre = cleTexte(d.option);
-  const option = (titre ? produit.options.find((o) => cleTexte(o.titre) === titre) : null) || produit.options.find((o) => c.option && o.id === c.option) || (produit.options.length === 1 ? produit.options[0] : null);
-  return option ? { produit, option } : null;
-}
-
 // L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus).
 // Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
 // Deux sources, jamais mélangées : une demande d'une page du carnet porte son identifiant (`d.carnet`) et se lit parmi les sorties du carnet ; tout autre message
@@ -993,7 +982,11 @@ export function optionDuSite(d) {
   // Une demande d'une page privée du carnet dit la sortie (product_id) et l'option cochée : l'identifiant d'abord. Une sortie connue dont l'option n'est pas
   // reconnue ne donne aucun tarif (on ne devine pas une autre sortie) ; un identifiant inconnu se cherche par le nom, dans les sorties du carnet seulement,
   // jamais parmi celles du site Secret (deux sorties peuvent porter le même nom).
-  if (d.carnet && d.carnet.produit) return optionDuCarnet(d) || (PRODUITS_CARNET.some((p) => p.id === d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
+  if (d.carnet && d.carnet.produit) {
+    // La résolution du carnet (carnet-ages.mjs) : identifiant puis option, la même que pour l'âge. Une sortie connue dont l'option n'est pas reconnue ne donne aucun
+    // tarif ; un identifiant inconnu se cherche par le nom, dans les sorties du carnet seulement.
+    return resoudreSortie(d) || (sortieParId(d.carnet.produit) ? null : optionParNom(d, PRODUITS_CARNET));
+  }
   if (!d.prestation) return null;
   return optionParNom(d, PRODUITS_SITE);
 }
@@ -1033,7 +1026,11 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   const trouve = optionDuSite(d);
   if (!trouve || !(trouve.option.tarifs || []).length) return [];
   const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants || 0 };
-  const groupe = pax.adultes + (d.ages && d.ages.length ? d.ages.filter((a) => a >= 4).length : pax.enfants);
+  // Le barème d'âge de la sortie (demande du carnet) : son âge minimum dit à partir de quel âge un enfant compte dans le groupe d'un tarif par tranche (radeaux : 3 ans) ;
+  // sans barème, comme sur le site : à partir de 4 ans.
+  const bareme = d.carnet ? baremeEnfant(trouve.produit, trouve.option) : null;
+  const seuil = bareme ? bareme.min : 4;
+  const groupe = pax.adultes + (d.ages && d.ages.length ? d.ages.filter((a) => a >= seuil).length : pax.enfants);
   const cite = ` ${cleTexte([...(d.lignesService || []), d.vehiculeNom || ""].join(" "))} `;
   const lignes = trouve.option.tarifs;
   const enfants = lignes.filter((t) => LIGNE_ENFANT.test(t.ligne));
@@ -1063,7 +1060,6 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   // l'offre le signale, Nani vérifie avec le partenaire.
   // Les âges de moins de 3 ans sont des bébés (comptés à part par le message, gratuits) : ils ne sont pas jugés ici, seul un vrai enfant (3 ans et plus) sous le barème
   // l'est. Une sortie sans ligne enfant (adulte seul) le dit autrement : cet enfant n'a aucun tarif propre.
-  const bareme = trouve.produit.enfant;
   // Des enfants annoncés sans âge : le tarif enfant dépend de l'âge, on le dit plutôt que de se taire.
   if (bareme && (d.enfants || 0) > (d.ages || []).filter((a) => a >= 3).length) {
     for (const o of offres) (o.avertissement = o.avertissement || "ages_manquants"), (o.bareme = bareme);

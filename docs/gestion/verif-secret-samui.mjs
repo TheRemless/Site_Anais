@@ -91,7 +91,7 @@ const { PRODUITS_CARNET } = await import(SRC + "carnet-produits.mjs");
 const { lireMessage, ajusterAgesCarnet, offresDuService } = await import(SRC + "demande-calc.mjs");
 const prestations = await tous("select id, partenaire_id, famille, groupe, libelle, libelle_en, prix_vente::float8 as prix_vente, unite, details, sur_place, actif from prestations where entite_id = $1", [ent.secret]);
 const partenaires = await tous("select id, actif from partenaires where entite_id = $1", [ent.secret]);
-const ids = PRODUITS_CARNET.flatMap((p) => p.options.flatMap((o) => o.tarifs.map((t) => t.prestation)));
+const ids = PRODUITS_CARNET.filter((p) => p.guide === "koh-samui").flatMap((p) => p.options.flatMap((o) => o.tarifs.map((t) => t.prestation)));
 ok(ids.length === 18 && ids.every((id) => prestations.some((p) => p.id === id)), "les 18 tarifs de carnet-produits.mjs existent en base, avec le même identifiant");
 const cible = (produit, option, adultes, ages = []) => {
   const p = PRODUITS_CARNET.find((x) => x.id === produit);

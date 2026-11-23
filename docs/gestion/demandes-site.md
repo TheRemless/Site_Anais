@@ -108,6 +108,10 @@ Nani valide d'abord la demande avec le partenaire, en dehors de l'outil. La dema
 - Chaque sortie dit l'âge d'un enfant selon son partenaire : un âge hors barème n'est pas refusé, Gestion le signale au moment de créer le dossier.
 - Essai : `curl -X POST … -H "Origin: https://zwaldtravelplanner.com"` crée une vraie demande dans Secret : ne le faire que contre une base d'essai, puis « Classer » la demande.
 
+### Guides d'Ao Nang et de Koh Lanta (23.11.2026)
+
+Deux guides de plus, même contrat : les identifiants à envoyer (sorties d'Ao Nang `aonang-…`, options `aonang-option-lunch-box` et `aonang-option-vip-set`, sorties du site Secret pour Koh Lanta) et les barèmes d'âge sont dans `carnet-aonang-lanta.md`. Pour Koh Lanta, `product_id` et `option` sont ceux du site Secret : une demande venue d'une page du carnet les résout comme une demande du site, par identifiant, jamais par le nom.
+
 ## Numéro WhatsApp et nom complet (17.11.2026)
 
 Des visiteurs remplissent la feuille mais leur message WhatsApp n'arrive jamais. La feuille demande donc le numéro WhatsApp et le nom complet : Anaïs peut écrire au client depuis Gestion même quand son message manque.
