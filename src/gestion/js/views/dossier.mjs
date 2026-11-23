@@ -727,7 +727,8 @@ function ficheDossierVue(id) {
   const racine = h(
     "div",
     { "data-titre": nomClient(client) },
-    h("a", { class: "retour", href: "#/dossiers" }, tr("Dossiers")),
+    // Ouvert depuis À encaisser : « Retour » y ramène, la liste se retrouve à la même hauteur (encaisser-commissions.mjs).
+    new URLSearchParams(location.hash.split("?")[1] || "").get("depuis") === "encaisser" ? h("a", { class: "retour", href: "#/encaisser" }, tr("À encaisser")) : h("a", { class: "retour", href: "#/dossiers" }, tr("Dossiers")),
     h(
       "div",
       { class: "entete" },

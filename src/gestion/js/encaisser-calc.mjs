@@ -167,3 +167,84 @@ export function recuesParPartenaire(reservations, netDe, { ecartees = new Set(),
   }
   return [...parPartenaire.values()].map((p) => ({ ...p, dossiers: p.dossiers.sort((a, b) => String(b.le).localeCompare(String(a.le))) }));
 }
+
+// ---- Corriger une commission, ou le prix et la commission (23.11.2026, migration 119) --------------------------------------------------
+// Un cas spécial (remboursement partiel au client, geste commercial, erreur de saisie) : Nani baisse ou monte la commission prévue d'un service,
+// ou son prix de vente avec. Le motif est obligatoire ; l'ancien montant reste sur la ligne privée (commission_avant_correction,
+// prix_avant_correction) et dans le journal des nets (migration 37) avec l'avant et l'après. Ce qui a déjà été reçu ne bouge pas : le reste dû
+// devient la nouvelle commission moins le déjà reçu.
+export const MOTIFS_CORRECTION = [
+  ["remboursement_partiel", N_("Remboursement partiel")],
+  ["geste_commercial", N_("Geste commercial")],
+  ["erreur_saisie", N_("Erreur de saisie")],
+  ["autre", N_("Autre")],
+];
+export const NOTE_CORRECTION_MAX = 200;
+
+const deuxDecimales = (x) => Math.round(x * 100) === x * 100 || Math.abs(Math.round(x * 100) - x * 100) < 1e-6;
+const montantSaisi = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const x = Number(v);
+  return Number.isFinite(x) && x >= 0 && deuxDecimales(x) ? arrondi(x) : NaN;
+};
+
+// La correction d'un service. `r` : la réservation, `n` : sa ligne privée (ou null). `choix` :
+//   { mode: "commission" | "prix", commission, prix, motif, note }
+// `ajd` : la date du jour (AAAA-MM-JJ), `maintenant` : l'horodatage ISO de la correction.
+// Renvoie { erreur } ou { erreur: null, nets, reservation, avant, apres, recu, reste, solde } :
+//   `nets` : les valeurs à écrire dans reservations_nets ; `reservation` : { montant_vente } quand le prix change, sinon null ;
+//   `solde` : la nouvelle commission égale ce qui a déjà été reçu (ou zéro sans rien de reçu), le service est réglé.
+// Erreurs : commission, prix, sous_recu (moins que le déjà reçu), au_dessus_prix, inchange, motif, note, reglee (déjà soldée).
+export function correctionCommission(r, n, choix, { ajd = "", maintenant = "" } = {}) {
+  const net = n || {};
+  if (net.commission_recue_le) return { erreur: "reglee" };
+  const mode = choix.mode === "prix" ? "prix" : "commission";
+  const c = montantSaisi(choix.commission);
+  if (c === null || Number.isNaN(c)) return { erreur: "commission" };
+  const prixAvant = nombre(r.montant_vente);
+  let prixApres = prixAvant;
+  if (mode === "prix") {
+    const p = montantSaisi(choix.prix);
+    if (p === null || Number.isNaN(p) || p <= 0) return { erreur: "prix" };
+    prixApres = p;
+  }
+  const recu = arrondi(nombre(net.commission_recue) || 0);
+  if (c < recu) return { erreur: "sous_recu" };
+  if (prixApres !== null && c > prixApres) return { erreur: "au_dessus_prix" };
+  const avant = nombre(net.commission_prevue);
+  const prixChange = mode === "prix" && prixApres !== prixAvant;
+  if (avant !== null && arrondi(avant) === c && !prixChange) return { erreur: "inchange" };
+  const motif = choix.motif;
+  if (!MOTIFS_CORRECTION.some(([k]) => k === motif)) return { erreur: "motif" };
+  const note = String(choix.note || "").trim().slice(0, NOTE_CORRECTION_MAX) || null;
+  if (motif === "autre" && !note) return { erreur: "note" };
+  const solde = c === recu;
+  const nets = {
+    commission_prevue: c,
+    // La base ne recalcule plus cette commission (migration 32 : elle ne réécrit qu'une valeur égale à sa dernière valeur calculée).
+    commission_prevue_auto: null,
+    commission_avant_correction: avant,
+    prix_avant_correction: prixChange ? prixAvant : null,
+    commission_corrigee_le: maintenant || new Date().toISOString(),
+    commission_corrigee_motif: motif,
+    commission_corrigee_note: note,
+    // La commission annoncée par le partenaire chauffeur (migration 115) n'est plus la sienne : il ne peut plus l'écraser.
+    ...(net.commission_partenaire !== null && net.commission_partenaire !== undefined ? { commission_partenaire: null, commission_partenaire_le: null } : {}),
+    // Plus rien à recevoir : le service est soldé, au jour du dernier versement (ou aujourd'hui), sans toucher au montant déjà reçu.
+    ...(solde ? { commission_recue: recu, commission_recue_le: net.commission_partielle_le || ajd } : {}),
+  };
+  return { erreur: null, nets, reservation: prixChange ? { montant_vente: prixApres } : null, avant, apres: c, prixAvant, prixApres, recu, reste: arrondi(c - recu), solde };
+}
+
+// La dernière correction d'un service, pour l'afficher : null s'il n'y en a pas.
+export function derniereCorrection(n) {
+  if (!n || !n.commission_corrigee_le) return null;
+  return {
+    le: String(n.commission_corrigee_le).slice(0, 10),
+    avant: nombre(n.commission_avant_correction),
+    apres: nombre(n.commission_prevue),
+    prixAvant: nombre(n.prix_avant_correction),
+    motif: n.commission_corrigee_motif || null,
+    note: n.commission_corrigee_note || null,
+  };
+}

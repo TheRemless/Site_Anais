@@ -787,6 +787,9 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande-offre:not([aria-checked="true"]):active { background: var(--surface-2); }
 .barre-modal { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin: 12px -20px -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
 @media (max-width: 719px) { .barre-modal { margin-bottom: calc(-20px - env(safe-area-inset-bottom)); } .barre-modal .principal { flex: 1 1 100%; } .barre-modal .secondaire { flex: 1 1 auto; } }
+/* Dans une feuille qui défile, la barre colle au vrai bas : sans ce décalage, elle s'arrêtait 20 px plus haut et le texte passait dessous (23.11.2026). */
+.modal-defile .barre-modal { bottom: -20px; }
+@media (max-width: 719px) { .modal-defile .barre-modal { bottom: calc(-20px - env(safe-area-inset-bottom)); } }
 /* Une fois le message lu, il se replie pour laisser la place aux champs et au prix. */
 .demande.lu textarea { min-height: 0; height: 3.4em; font-size: 0.88rem; line-height: 1.35; }
 .demande.lu .actions { margin: 4px 0 8px; }
@@ -923,6 +926,20 @@ div.enc-case { cursor: default; }
 .enc-feuille .ecart-reception { margin: 8px 0 0; }
 .enc-total { flex: 1 1 auto; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 @media (forced-colors: active) { .enc-motif .puce:has(input:checked) { outline: 2px solid Highlight; } }
+/* Corriger une commission depuis À encaisser (23.11.2026) : le dossier s'ouvre d'un tap, « Corriger » est une vraie cible au doigt. */
+.enc-texte a.enc-client, .enc-detail a.enc-ref { color: inherit; text-decoration: underline; text-decoration-color: var(--bord-fort); text-underline-offset: 3px; }
+.enc-texte a.enc-client:hover, .enc-detail a.enc-ref:hover { color: var(--teal-700); text-decoration-color: currentColor; }
+.enc-texte a.enc-client { align-self: flex-start; padding: 2px 0; }
+.enc-corriger { flex: none; min-height: 44px; min-width: 44px; margin: 0 0 10px auto; }
+@media (min-width: 720px) { .enc-corriger { margin: 0 0 0 auto; } }
+.enc-correction { color: var(--texte-2); font-style: italic; }
+.tag-corrigee { background: var(--teal-100); color: var(--teal-700); }
+.corr-feuille .enc-motif .puce { min-height: 44px; }
+.corr-feuille .champ .aide { display: block; margin-top: 4px; }
+.corr-recap { margin: 4px 0 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.corr-recap:empty { display: none; }
+.corr-facture[hidden] { display: none; }
+.mention-correction { font-style: italic; }
 
 /* ==== Session C (mobile) : navigation et accueil ============================================================== */
 /* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */

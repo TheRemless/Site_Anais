@@ -408,6 +408,8 @@ export function recalculerCommissions(reservations, { regleDe, netDe = () => nul
       if (attendue !== null && n.commission_prevue !== null && n.commission_prevue !== undefined && Math.round(Number(n.commission_prevue) * 100) !== Math.round(attendue * 100)) ecartsRecus.push({ reservation: r, prevue: Number(n.commission_prevue), attendue, recue: n.commission_recue === null || n.commission_recue === undefined ? null : Number(n.commission_recue) });
       continue;
     }
+    // Corrigée à la main (remboursement partiel, geste commercial…, migration 119) : la règle du partenaire ne la défait pas.
+    if (n.commission_corrigee_le) { inchanges++; continue; }
     const avant = n.commission_prevue === undefined ? null : n.commission_prevue;
     if (seulementVides && avant !== null) continue;
     const p = r.personnes || {};
