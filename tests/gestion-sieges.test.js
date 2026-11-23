@@ -88,7 +88,7 @@ test("carte de l'Assistant (et carte WhatsApp, la même) : les sièges vont jusq
   assert.equal(saisieInitiale({ sieges: 2 }, { excursions: false }).sieges, 0, "jamais chez ZTP");
   assert.match(demande, /sv\.saisie = saisieInitiale\(sv, \{ d, excursions: modeExcursions\(\), sd: siegesDemande\(d\) \}\);/);
   assert.equal((await import("../src/gestion/js/creation-voucher-calc.mjs")).serviceDeLecture({ sieges: "2" }).sieges, 2, "le service de l'Assistant porte ses sièges");
-  assert.match(demande, /nouveauService\(\{ \.\.\.serviceDeLecture\(t\), sensLu: sensDe\(t\.phrase\) \}\)/);
+  assert.match(demande, /nouveauService\(\{ \.\.\.serviceDeLecture\(t\), /);
   const { entreeParService, champsReservation } = await import("../src/gestion/js/creation-voucher-calc.mjs");
   assert.equal(entreeParService({}, { ...saisieInitiale({ sieges: 2 }, { excursions: true }) }).sieges, 2, "la réservation reçoit la saisie");
   assert.deepEqual(champsReservation({}, { sieges: 2 }).details, { sieges: 2 });

@@ -866,6 +866,9 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .a-preciser { color: #8a5200; }
 .dsv-prix { padding-top: 6px; white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
 .dsv-alertes { margin: 4px 0 2px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+/* Trajet lu dans le texte libre d'un message collé chez Taxi : proposé sous le champ vide, posé seulement au clic (relecture de la PR 335). */
+.dsv-proposition { margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: .9rem; }
+.dsv-proposition button { min-height: 44px; min-width: 44px; }
 .dsv-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; margin-top: 6px; }
 .dsv-champs .champ { margin-bottom: 8px; }
 @media (min-width: 720px) { .dsv-champs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

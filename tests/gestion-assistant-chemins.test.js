@@ -513,66 +513,91 @@ Remarks: ${REMARQUE}`;
   comparer(reservationsDu(dossier.id)[0], { ...DE_LA_CARTE, enfants: 2, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "course");
 });
 
-// ---- 9. Message collé chez Taxi : le sens de la course recopié, jamais deviné (relecture de la PR 332) ------------------------------
-// « from Krabi Airport to Resort Exemple » : avant, lireMessage ne lisait ni le départ ni l'arrivée ; avec les libellés de production (une
-// seule destination, aucun trajet), la fiche laissait le pickup vide (le voucher imprimait alors l'hôtel du client) et le drop-off vide, même
-// pour une arrivée. Le message dit le sens : il est recopié (sansLien). Il ne le dit pas : « Pickup à vérifier » ou « Drop-off à vérifier »
-// sur la fiche, et rien n'est créé tant que le champ est vide. Un lieu tapé par Nani n'est jamais vidé ni remplacé.
-const { lireSens, lireMessage: lireMsg } = await import("../src/gestion/js/demande-calc.mjs");
+// ---- 9. Message collé chez Taxi : le pickup et le drop-off, recopiés d'une ligne étiquetée ou proposés (relectures des PR 332 et 335) ---
+// Avant, lireMessage ne lisait ni le départ ni l'arrivée de « from Krabi Airport to Resort Exemple » ; avec les libellés de production (une
+// seule destination), la fiche Taxi laissait le pickup vide (le voucher imprimait l'hôtel du client) et le drop-off vide. Désormais : une
+// ligne étiquetée (« Pickup: », « Drop-off: ») se recopie ; le texte libre ne remplit jamais un champ, il se propose sous le champ vide
+// (« Lu dans le message : … », bouton « Utiliser ») ; tant qu'un lieu manque, « Pickup à vérifier » ou « Drop-off à vérifier » et pas de
+// création. Un lieu tapé par Nani n'est jamais vidé ni remplacé.
+const { lireLieuxEtiquetes, lireTrajetsLibres, lireMessage: lireMsg } = await import("../src/gestion/js/demande-calc.mjs");
 
-test("9. lireSens : from/to, Pickup:/Drop-off:, flèche, « X to Y », français, un seul bout, lien Maps ; rien de deviné", () => {
+test("9. lireLieuxEtiquetes : seules les lignes étiquetées se recopient, sans lien", () => {
   const cas = [
-    ["Hello, we need a taxi from Krabi Airport to Resort Exemple on 15 December at 14:30, 2 adults.", "Krabi Airport", "Resort Exemple"],
-    ["Taxi from Resort Exemple to Krabi Airport tomorrow 9am please", "Resort Exemple", "Krabi Airport"],
-    ["Pickup: Pakbara Pier\nDrop-off: Villa Exemple\n2 adults", "Pakbara Pier", "Villa Exemple"],
-    ["Pick-up location: Krabi Airport (KBV)\nDrop off: Resort Exemple", "Krabi Airport (KBV)", "Resort Exemple"],
-    ["Pakbara Pier → Resort Exemple, 3 adults on 12/12", "Pakbara Pier", "Resort Exemple"],
-    ["Private taxi Krabi Airport to Resort Exemple", "Krabi Airport", "Resort Exemple"],
-    ["Speedboat Koh Exemple to Koh Autre Exemple on 20 Dec, 4 people", "Koh Exemple", "Koh Autre Exemple"],
-    ["Bonjour, un taxi de l'aéroport de Krabi à l'hôtel Plage Exemple le 15 décembre pour 2 adultes", "l'aéroport de Krabi", "l'hôtel Plage Exemple"],
-    ["Bonjour, depuis Villa Exemple jusqu'à Ao Nang demain", "Villa Exemple", "Ao Nang"],
+    ["Transfer request: exemple\nPickup: Hotel A Exemple\nDrop-off: Hotel B Exemple https://maps.app.goo.gl/exemple1", "Hotel A Exemple", "Hotel B Exemple"],
+    ["Pick-up location: Krabi Airport (KBV)\nDropoff: Resort Exemple", "Krabi Airport (KBV)", "Resort Exemple"],
+    ["From: Pakbara Pier\nTo: Villa Exemple", "Pakbara Pier", "Villa Exemple"],
     ["Prise en charge : Resort Exemple\nDépose : Krabi Airport", "Resort Exemple", "Krabi Airport"],
-    ["Pick us up at Villa Exemple at 8am", "Villa Exemple", ""],
-    ["Taxi to Krabi Airport tomorrow at 9am, we stay at Resort Exemple", "", "Krabi Airport"],
-    ["Taxi from Krabi Airport to Resort Exemple https://maps.app.goo.gl/exemple7 on 15 Dec", "Krabi Airport", "Resort Exemple"],
-    ["Taxi from Krabi Airport to https://maps.app.goo.gl/exemple8 on 15 Dec", "Krabi Airport", ""],
-    // Sans nom de lieu, rien ne se recopie : « our hotel » n'est pas une adresse, l'hôtel lu ailleurs n'est pas pris.
-    ["Taxi from the airport to our hotel please, we stay at Resort Exemple", "", ""],
-    ["We need a taxi on 15 December, 2 adults, staying at Resort Exemple", "", ""],
-    ["from 2pm to 4pm, 4 islands tour", "", ""],
+    ["Hello, taxi from Krabi Airport to Resort Exemple on 15 December", "", ""],
+    ["Pickup: our hotel\nDrop-off: the airport", "", ""],
   ];
-  for (const [texte, pickup, dropoff] of cas) assert.deepEqual(lireSens(texte), { pickup, dropoff }, texte);
-  // Un formulaire du site garde sa lecture exacte (Pickup, Drop-off) : pas de second sens à côté.
-  assert.equal(lireMsg("Transfer request: Krabi Airport to Koh Exemple\nPickup: Krabi Airport\nDrop-off: Resort Exemple\nName: Client Exemple", "2026-11-23").sens, undefined);
-  assert.deepEqual(lireMsg("Taxi from Krabi Airport to Resort Exemple, 2 adults. My name is Client Exemple", "2026-11-23").sens, { pickup: "Krabi Airport", dropoff: "Resort Exemple" });
+  for (const [texte, pickup, dropoff] of cas) assert.deepEqual(lireLieuxEtiquetes(texte), { pickup, dropoff }, texte);
+  // Un formulaire du site garde sa lecture exacte (Pickup, Drop-off) : ni sens ni trajet libre à côté.
+  const site = lireMsg("Transfer request: Krabi Airport to Koh Exemple\nPickup: Krabi Airport\nDrop-off: Resort Exemple\nName: Client Exemple", "2026-11-23");
+  assert.equal(site.sens, undefined);
+  assert.equal(site.trajetsLus, undefined);
 });
 
-// Coller un message dans la fiche, comme une demande à confirmer (views/demande.mjs, lire), et la piloter.
+test("9. lireTrajetsLibres : un trajet lu après un mot de course ou en début de phrase, jamais un verbe ni un pronom (cas de la relecture)", () => {
+  const cas = [
+    ["Hello, we need a taxi from Krabi Airport to Resort Exemple on 15/12, 2 adults", [["Krabi Airport", "Resort Exemple"]]],
+    ["Pakbara Pier → Resort Exemple, 3 adults", [["Pakbara Pier", "Resort Exemple"]]],
+    ["Need a taxi Krabi Airport to Resort Exemple", [["Krabi Airport", "Resort Exemple"]]],
+    ["Taxi de l'aéroport de Krabi à Resort Exemple demain", [["l'aéroport de Krabi", "Resort Exemple"]]],
+    ["Hi! We would like to book a ride. From Krabi Airport. To Resort Exemple", [["Krabi Airport", "Resort Exemple"]]],
+    ["Pick us up at Villa Exemple at 8:00, drop us at Krabi Airport", [["Villa Exemple", "Krabi Airport"]]],
+    ["Taxi from Krabi Airport to Resort Exemple https://maps.app.goo.gl/exemple7 on 15 Dec", [["Krabi Airport", "Resort Exemple"]]],
+    ["Taxi from Krabi Airport to Resort Exemple on 3 Dec and from Resort Exemple to Krabi Airport on 10 Dec", [["Krabi Airport", "Resort Exemple"], ["Resort Exemple", "Krabi Airport"]]],
+    // La relecture : « Germany and want » n'est pas un pickup ; « you » non plus ; le ferry n'est pas la course ; « go » n'est pas un mot de course.
+    ["I'm from Germany and want to go to Ao Nang", []],
+    ["I’m from Germany and want to go to Ao Nang", []],
+    ["Looking forward to hearing from you. Taxi to Ao Nang on Monday", [["", "Ao Nang"]]],
+    ["We go from Koh Exemple to Ao Nang by ferry, then need a taxi to Krabi Airport", [["", "Krabi Airport"]]],
+    ["We want to go to the Old Town tomorrow", []],
+    // Après un mot de course aussi, un lieu qui contient un verbe ou un pronom est écarté.
+    ["Taxi from where we stay to Krabi Airport", [["", "Krabi Airport"]]],
+    ["Taxi from Germany and want to Ao Nang", [["", "Ao Nang"]]],
+    ["We are from 10 to 12 people, need a van", []],
+    ["Taxi from the airport to our hotel please", []],
+    ["Can you take us to Ao Nang? We are at Resort Exemple", []],
+  ];
+  for (const [texte, attendu] of cas) assert.deepEqual(lireTrajetsLibres(texte), attendu.map(([pickup, dropoff]) => ({ pickup, dropoff })), texte);
+});
+
+// Coller un message dans la fiche, comme une demande à confirmer (views/demande.mjs, lire), et la piloter. `clientId` : un client connu.
 let collage = 0;
-async function coller(slug, texte) {
+async function coller(slug, texte, { telephone } = {}) {
   dans(slug);
   let cree = null;
-  ouvrirDemande({ texte, titre: "Message collé", telephone: `+4179000${3000 + ++collage}`, surCree: ({ dossier }) => (cree = dossier) });
+  const avant = new Set(dom.document.querySelectorAll(".modal-corps.demande"));
+  ouvrirDemande({ texte, titre: "Message collé", telephone: telephone || `+4179000${3000 + ++collage}`, surCree: ({ dossier }) => (cree = dossier) });
   await dom.attendre(10);
-  const dernier = (sel) => dom.document.querySelectorAll(sel).pop();
+  // La fiche qui vient de s'ouvrir : les fiches des tests précédents restent dans le DOM minimal.
+  const racine = dom.document.querySelectorAll(".modal-corps.demande").filter((x) => !avant.has(x)).pop();
+  assert.ok(racine, "la fiche s'ouvre");
+  const fenetre = () => racine.closest("dialog") || racine.parentElement || racine;
+  const parFin = (el, suffixe) => el.descendants().filter((e) => e.id && e.id.endsWith(suffixe));
   const fiche = {
-    champ: (suffixe) => dom.document.documentElement.descendants().filter((e) => e.id && e.id.endsWith(suffixe)).pop(),
-    alertes: () => (dernier(".dsv-alertes") || { textContent: "" }).textContent,
-    erreur: () => (dom.document.querySelectorAll("p.erreur-form").filter((p) => p.textContent).pop() || { textContent: "" }).textContent,
-    cree: () => cree,
+    racine,
+    champ: (suffixe) => parFin(racine, suffixe).pop(),
+    services: () => racine.querySelectorAll("li.dsv"),
+    dansService: (li, suffixe) => parFin(li, suffixe).pop(),
+    alertes: () => racine.querySelectorAll(".dsv-alertes").map((x) => x.textContent).join(" "),
+    propositions: () => racine.querySelectorAll(".dsv-proposition"),
+    erreur: () => (fenetre().querySelectorAll("p.erreur-form").filter((p) => p.textContent).pop() || { textContent: "" }).textContent,
     // Un libellé d'une seule destination ne se retrouve pas toujours d'office : Nani le prend dans la base, comme en production.
-    async prendre(libelle) {
-      if (!dom.boutons("Choisir dans la base").length || fiche.champ("-v-lieu")) return;
-      dom.boutons("Choisir dans la base").slice(-1)[0].click();
+    async prendre(libelle, li = null) {
+      const dans_ = li || racine;
+      if (!dom.boutons("Choisir dans la base", dans_).length || parFin(dans_, "-v-lieu").length) return;
+      dom.boutons("Choisir dans la base", dans_).slice(-1)[0].click();
       await dom.attendre(10);
-      const li = dom.document.querySelectorAll("li.choix").filter((x) => x.querySelector("strong").textContent === libelle && !x.textContent.includes("Chauffeurs démo")).pop();
-      assert.ok(li, `le tarif « ${libelle} » dans la base`);
-      li.querySelector(".choix-actions button").click();
+      const choix = dom.document.querySelectorAll("li.choix").filter((x) => x.querySelector("strong").textContent === libelle && !x.textContent.includes("Chauffeurs démo")).pop();
+      assert.ok(choix, `le tarif « ${libelle} » dans la base`);
+      choix.querySelector(".choix-actions button").click();
       dom.boutons("Terminé").slice(-1)[0].click();
       await dom.attendre(10);
     },
     async creer() {
-      dom.boutons("Créer le dossier").slice(-1)[0].click();
+      dom.boutons("Créer le dossier", fenetre()).slice(-1)[0].click();
       await dom.attendre(60);
       return cree;
     },
@@ -580,8 +605,12 @@ async function coller(slug, texte) {
   return fiche;
 }
 const pickupDrop = (f) => ({ pickup: f.champ("-v-lieu").value, dropoff: f.champ("-v-drop").value });
+const blocOuvert = (f) => {
+  const bloc = f.champ("-v-lieu").closest("details");
+  return bloc.open === true || [null, undefined].indexOf(bloc.getAttribute("open")) < 0;
+};
 
-// [cas, message, tarif de production, pickup attendu, drop-off attendu]
+// Les cas demandés, en texte libre : [cas, message, tarif de production, pickup proposé, drop-off proposé]
 const SENS = [
   ["arrivée aéroport vers hôtel", "Hello! We land on 15 December, flight FD3217. Please a taxi from Krabi Airport to Resort Exemple at 14:30, 2 adults. My name is Client Exemple Arrivee", "Krabi Airport", "Krabi Airport", "Resort Exemple"],
   ["départ hôtel vers aéroport", "Hi, taxi from Resort Exemple to Krabi Airport on 18 December at 9am, 2 adults. My name is Client Exemple Depart", "Krabi Airport", "Resort Exemple", "Krabi Airport"],
@@ -590,20 +619,97 @@ const SENS = [
   ["message avec un lien Maps", "Taxi from Krabi Airport to Hotel Plage Exemple https://maps.app.goo.gl/exemple7 on 15 December at 14:30, 2 adults. My name is Client Exemple Lien", "Krabi Airport", "Krabi Airport", "Hotel Plage Exemple"],
 ];
 for (const [cas, texte, tarif, pickup, dropoff] of SENS) {
-  test(`9. Taxi, message collé (${cas}) : la fiche recopie le pickup et le drop-off, la réservation écrite les garde`, async () => {
+  test(`9. Taxi, texte libre (${cas}) : rien de prérempli, la proposition « Utiliser » remplit les deux champs, la réservation les garde`, async () => {
     await catalogueProd("taxi");
     // Le tarif d'une île (une seule destination, comme en production), inventé pour ce cas.
     if (tarif === "Koh Autre Exemple" && !E.etat.db.prestations.some((p) => p.libelle === tarif)) await E.inserer("prestations", { famille: "transfert", groupe: "Private Taxi", libelle: tarif, libelle_en: tarif, prix_vente: 3500, unite: "veh", actif: true });
     const f = await coller("taxi", texte);
     await f.prendre(tarif);
-    assert.deepEqual(pickupDrop(f), { pickup, dropoff }, "la fiche montre le sens du message");
-    assert.doesNotMatch(f.alertes(), /à vérifier/, "rien à vérifier");
+    assert.deepEqual(pickupDrop(f), { pickup: "", dropoff: "" }, "le texte libre ne remplit rien");
+    assert.ok(blocOuvert(f), "le bloc du voucher est ouvert");
+    assert.match(f.alertes(), /Pickup à vérifier/);
+    const [prop] = f.propositions().slice(-1);
+    assert.ok(prop, "la proposition sous le champ");
+    assert.ok(prop.parentElement.contains(f.champ("-v-lieu")), "sous le champ du pickup, dans le bloc du voucher");
+    assert.match(f.alertes(), /utilisez le trajet lu dans le message/);
+    assert.equal(prop.querySelector("span").textContent, `Lu dans le message : ${pickup} → ${dropoff}`);
+    assert.doesNotMatch(prop.textContent, /https?:|goo\.gl/, "sans lien");
+    const avant = ecrits.length;
+    assert.equal(await f.creer(), null, "rien n'est créé avant le clic");
+    assert.equal(ecrits.length, avant);
+    prop.querySelector("button").click();
+    await dom.attendre(2);
+    assert.deepEqual(pickupDrop(f), { pickup, dropoff }, "le clic remplit les deux champs");
+    assert.doesNotMatch(f.alertes(), /à vérifier/);
+    assert.equal(f.propositions().length, 0, "la proposition s'en va");
     const cree = await f.creer();
     assert.ok(cree, f.erreur());
-    const [resa] = reservationsDu(cree.id);
-    comparer(resa, { lieu_pickup: pickup, drop_off: dropoff }, cas);
+    comparer(reservationsDu(cree.id)[0], { lieu_pickup: pickup, drop_off: dropoff }, cas);
   });
 }
+
+test("9. Taxi, lignes étiquetées : « Pickup: » et « Drop-off: » se recopient, sans proposition, et la réservation les garde", async () => {
+  await catalogueProd("taxi");
+  const f = await coller("taxi", "Taxi booking 15 December 14:30, 2 adults\nPickup: Krabi Airport (KBV)\nDrop-off: Resort Exemple https://maps.app.goo.gl/exemple2\nMy name is Client Exemple Etiquettes");
+  // La ligne « Pickup: Krabi Airport (KBV) » n'est pas un second service : elle part décochée.
+  const [course, ...autres] = f.services();
+  assert.ok(autres.every((x) => !x.querySelector('input[type="checkbox"]').checked), "la ligne étiquetée n'est pas une seconde course");
+  await f.prendre("Krabi Airport", course);
+  assert.deepEqual({ pickup: f.dansService(course, "-v-lieu").value, dropoff: f.dansService(course, "-v-drop").value }, { pickup: "Krabi Airport (KBV)", dropoff: "Resort Exemple" });
+  assert.equal(f.propositions().length, 0);
+  assert.doesNotMatch(f.alertes(), /à vérifier/);
+  const cree = await f.creer();
+  assert.ok(cree, f.erreur());
+  comparer(reservationsDu(cree.id)[0], { lieu_pickup: "Krabi Airport (KBV)", drop_off: "Resort Exemple" }, "étiquetées");
+});
+
+test("9. Taxi, cas de la relecture : « I'm from Germany… », « hearing from you », le ferry, l'Old Town ne proposent jamais un faux lieu", async () => {
+  await catalogueProd("taxi");
+  const cas = [
+    ["Hi, I'm from Germany and want to go to Ao Nang on 15 December at 10:00, 2 adults. We stay at Resort Exemple. My name is Client Exemple G", "Ao Nang", null],
+    ["Looking forward to hearing from you. Taxi to Ao Nang on 15 December at 10:00, 2 adults. My name is Client Exemple H", "Ao Nang", "? → Ao Nang"],
+    ["We go from Koh Exemple to Ao Nang by ferry, then need a taxi to Krabi Airport on 15 December at 10:00, 2 adults. My name is Client Exemple F", "Krabi Airport", "? → Krabi Airport"],
+    ["We want to go to the Old Town on 15 December at 10:00, 2 adults, by taxi. My name is Client Exemple O", "Ao Nang", null],
+  ];
+  for (const [texte, tarif, proposition] of cas) {
+    const transfert = !/Old Town/.test(texte);
+    const f = await coller("taxi", texte);
+    await f.prendre(tarif);
+    assert.deepEqual(pickupDrop(f), { pickup: "", dropoff: "" }, texte);
+    assert.match(f.alertes(), /Pickup à vérifier/, texte);
+    // L'Old Town peut tomber sur une excursion du catalogue : le pickup seul est alors exigé.
+    if (transfert) assert.match(f.alertes(), /Drop-off à vérifier/, texte);
+    const props = f.propositions();
+    assert.deepEqual(props.map((x) => x.querySelector("span").textContent.replace("Lu dans le message : ", "")), proposition ? [proposition] : [], texte);
+    // Le clic ne pose que le bout lu : le pickup reste à vérifier.
+    if (props.length) {
+      props[0].querySelector("button").click();
+      await dom.attendre(2);
+      assert.equal(f.champ("-v-lieu").value, "", texte);
+      assert.match(f.alertes(), /Pickup à vérifier/, texte);
+    }
+    assert.equal(await f.creer(), null, texte);
+  }
+});
+
+test("9. Taxi, aller-retour en deux services : chaque service reçoit sa proposition, dans l'ordre, rien de prérempli", async () => {
+  await catalogueProd("taxi");
+  const f = await coller("taxi", "Hello, taxi from Krabi Airport to Resort Exemple on 15 December at 14:30 and taxi from Resort Exemple to Krabi Airport on 20 December at 9:00, 2 adults. My name is Client Exemple AR");
+  const li = f.services();
+  assert.equal(li.length, 2, "deux services");
+  // Un libellé d'une seule destination : Nani prend le tarif dans la base pour chacun.
+  for (const x of li) await f.prendre("Krabi Airport", x);
+  const textes = li.map((x) => (x.querySelector(".dsv-proposition span") || { textContent: "" }).textContent);
+  assert.deepEqual(textes, ["Lu dans le message : Krabi Airport → Resort Exemple", "Lu dans le message : Resort Exemple → Krabi Airport"]);
+  assert.deepEqual(li.map((x) => f.dansService(x, "-v-lieu").value), ["", ""]);
+  for (const x of li) x.querySelector(".dsv-proposition button").click();
+  await dom.attendre(2);
+  assert.deepEqual(li.map((x) => [f.dansService(x, "-v-lieu").value, f.dansService(x, "-v-drop").value]), [["Krabi Airport", "Resort Exemple"], ["Resort Exemple", "Krabi Airport"]]);
+  // Deux trajets lus pour un seul service : aucune proposition.
+  const g = await coller("taxi", "Taxi from Krabi Airport to Resort Exemple on 3 Dec and from Resort Exemple to Krabi Airport, 2 adults. My name is Client Exemple Un");
+  await g.prendre("Krabi Airport");
+  if (g.services().length === 1) assert.equal(g.propositions().length, 0, "pas de proposition quand le nombre ne colle pas");
+});
 
 test("9. Taxi, message sans sens lisible : « Pickup à vérifier » et « Drop-off à vérifier », l'hôtel n'est pas pris, rien n'est créé avant la saisie", async () => {
   await catalogueProd("taxi");
@@ -611,13 +717,13 @@ test("9. Taxi, message sans sens lisible : « Pickup à vérifier » et « Drop-
   await f.prendre("Krabi Airport");
   assert.equal(dom.parId("dem-hotel").value, "Resort Exemple", "l'hôtel du client est lu");
   assert.deepEqual(pickupDrop(f), { pickup: "", dropoff: "" }, "ni l'hôtel ni le nom du tarif en pickup ou en drop-off");
+  assert.ok(blocOuvert(f));
   assert.match(f.alertes(), /Pickup à vérifier/);
   assert.match(f.alertes(), /Drop-off à vérifier/);
   const avant = ecrits.length;
   assert.equal(await f.creer(), null, "rien n'est créé");
   assert.equal(ecrits.length, avant, "rien n'est écrit");
   assert.match(f.erreur(), /Pickup à vérifier/);
-  // Nani remplit le pickup : l'alerte du pickup part, celle du drop-off reste, la création attend encore.
   dom.saisir(f.champ("-v-lieu"), "Resort Exemple, room 12");
   assert.doesNotMatch(f.alertes(), /Pickup à vérifier/);
   assert.match(f.alertes(), /Drop-off à vérifier/);
@@ -630,11 +736,15 @@ test("9. Taxi, message sans sens lisible : « Pickup à vérifier » et « Drop-
   comparer(reservationsDu(cree.id)[0], { lieu_pickup: "Resort Exemple, room 12", drop_off: "Krabi Airport, domestic terminal" }, "sans sens");
 });
 
-test("9. Taxi : un lieu tapé par Nani n'est jamais vidé ni remplacé, même quand le service change d'offre", async () => {
+test("9. Taxi : un lieu tapé par Nani n'est jamais vidé ni remplacé, ni par « Utiliser » ni quand le service change d'offre", async () => {
   await catalogueProd("taxi");
   const f = await coller("taxi", "Taxi from Krabi Airport to Resort Exemple on 15 December at 14:30, 2 adults. My name is Client Exemple Garde");
   await f.prendre("Krabi Airport");
   dom.saisir(f.champ("-v-lieu"), "Krabi Airport, arrivals gate 3");
+  const [prop] = f.propositions().slice(-1);
+  prop.querySelector("button").click();
+  await dom.attendre(2);
+  assert.deepEqual(pickupDrop(f), { pickup: "Krabi Airport, arrivals gate 3", dropoff: "Resort Exemple" }, "« Utiliser » ne remplit que le champ vide");
   dom.saisir(f.champ("-v-drop"), "Resort Exemple, reception");
   const choix = dom.document.querySelectorAll("select").filter((s) => s.getAttribute("aria-label") === "Service proposé").pop();
   if (choix) for (const o of choix.querySelectorAll("option")) dom.saisir(choix, o.value);
@@ -644,13 +754,34 @@ test("9. Taxi : un lieu tapé par Nani n'est jamais vidé ni remplacé, même qu
   comparer(reservationsDu(cree.id)[0], { lieu_pickup: "Krabi Airport, arrivals gate 3", drop_off: "Resort Exemple, reception" }, "saisi par Nani");
 });
 
-test("9. Secret et ZTP : le même message collé ne change pas (aucun lieu recopié, aucune alerte de lieu)", async () => {
+test("9. Taxi, excursion d'un client connu : le pickup est son hôtel (lieuParDefaut, comme sur master), la fiche ne bloque pas", async () => {
+  await catalogueProd("taxi");
+  const libelle = "Full-day trip, discovery of Koh Exemple";
+  if (!E.etat.db.prestations.some((p) => p.libelle === libelle)) await E.inserer("prestations", { famille: "excursion", groupe: "Taxi excursions", libelle, libelle_en: libelle, prix_vente: 2000, unite: "veh", actif: true });
+  const telephone = "+41790009001";
+  await E.inserer("clients", { civilite: "", prenom: "Client", nom: "Exemple Connu", adresse: "Resort Exemple", telephone, email: "", notes: "" });
+  const f = await coller("taxi", "Hi, we want the full-day trip discovery of Koh Exemple on 15 December at 9:00, 2 adults. My name is Client Exemple Connu", { telephone });
+  await f.prendre(libelle);
+  assert.doesNotMatch(f.alertes(), /à vérifier/, "le client connu n'est pas bloqué");
+  const cree = await f.creer();
+  assert.ok(cree, f.erreur());
+  // Comme sur master : le lieu est l'hôtel du client, écrit ou repris par le voucher (lieuParDefaut).
+  assert.ok(["", "Resort Exemple"].includes(reservationsDu(cree.id)[0].lieu_pickup || ""));
+  // Un nouveau client sans hôtel : le pickup de l'excursion reste à vérifier.
+  const g = await coller("taxi", "Hi, we want the full-day trip discovery of Koh Exemple on 16 December at 9:00, 2 adults. My name is Client Exemple Nouveau");
+  await g.prendre(libelle);
+  assert.match(g.alertes(), /Pickup à vérifier/);
+  assert.doesNotMatch(g.alertes(), /Drop-off à vérifier/);
+});
+
+test("9. Secret et ZTP : le même message collé ne change pas (aucun lieu recopié, aucune proposition, aucune alerte de lieu)", async () => {
   for (const slug of ["excursions", "agence"]) {
     await catalogueProd(slug);
-    const f = await coller(slug, `Taxi from Krabi Airport to Resort Exemple on 15 December at 14:30, 2 adults. My name is Client Exemple ${slug}`);
+    const f = await coller(slug, `Taxi from Krabi Airport to Resort Exemple on 15 December at 14:30, 2 adults\nPickup: Krabi Airport\nMy name is Client Exemple ${slug}`);
     await f.prendre("Krabi Airport");
     assert.equal((f.champ("-v-lieu") || { value: "" }).value, "", slug);
     assert.equal((f.champ("-v-drop") || { value: "" }).value, "", slug);
+    assert.equal(f.propositions().length, 0, slug);
     assert.doesNotMatch(f.alertes(), /à vérifier/, slug);
   }
 });
@@ -659,10 +790,8 @@ test("9. reservationDuService : chez Taxi, l'hôtel lu n'est le pickup que d'une
   const { reservationDuService } = await import("../src/gestion/js/creation-voucher-calc.mjs");
   const d = { hotel: "Resort Exemple" };
   const offre = (famille) => ({ genre: "prestation", id: "p1", source: { libelle: "Ao Nang", ...(famille ? { famille } : {}) } });
-  // Taxi : un tarif sans famille ou d'une autre famille est une course (lieuxExiges) : pickup vide, la fiche le signale.
   for (const f of ["", "autre", "transfert"]) assert.equal(reservationDuService({}, offre(f), { d, taxi: true }).lieu, "", `Taxi, famille « ${f} »`);
   assert.equal(reservationDuService({}, offre("excursion"), { d, taxi: true }).lieu, "Resort Exemple", "Taxi, excursion");
-  // Secret et ZTP : comme avant, l'hôtel lu sert au pickup d'un service qui n'est pas un transfert.
   assert.equal(reservationDuService({}, offre(""), { d, taxi: false }).lieu, "Resort Exemple");
   assert.equal(reservationDuService({}, offre("transfert"), { d, taxi: false }).lieu, "");
 });
