@@ -287,7 +287,7 @@ test("écran : ligne non transmise, repère, nom d'un client sans numéro, texte
 test("écran : la ligne et les repères sont branchés, colonnes relues sans la migration", () => {
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
   // Classe wa-bulle : « aller au message » et le défilement du téléphone la trouvent comme une bulle.
-  assert.match(vue, /if \(estNonTransmis\(m\)\) return h\("p", \{ class: "wa-bulle entrant wa-non-transmis"/);
+  assert.match(vue, /const noeud = estNonTransmis\(m\) \? h\("p", \{ class: "wa-bulle entrant wa-non-transmis"/);
   assert.match(vue, /tr\(TEXTE_NON_TRANSMIS, \{ heure: heureBangkok\(m\.envoye_le\) \}\)/);
   assert.match(vue, /repereManque\(m\) \? h\("p", \{ class: "wa-repere-manque" \}, tr\(LIBELLE_MANQUE\)\)/);
   assert.match(vue, /conversationManque\(c\) \? h\("span", \{ class: "wa-conv-manque" \}, tr\(LIBELLE_MANQUE\)\)/);

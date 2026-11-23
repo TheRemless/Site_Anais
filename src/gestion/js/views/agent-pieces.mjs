@@ -2,6 +2,7 @@
 // PDF à un message : bouton trombone (sur iPhone, il ouvre la photothèque, l'appareil photo ou Fichiers), glisser-déposer sur ordinateur,
 // coller une capture (Cmd+V). Les images sont réduites dans le navigateur avant l'envoi (pieces-jointes.mjs). Aussi : les vignettes d'un
 // message déjà envoyé (aperçu à la demande) et la carte « Importer la brochure ».
+import { ouvrirVisionneuse } from "../visionneuse.mjs";
 import { etat, peut } from "../etat.mjs";
 import { h, icone, modal, toast } from "../ui.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
@@ -148,10 +149,11 @@ async function apercu(f) {
   if (!ligne || !ligne.data) return toast(tr("Ce fichier n'est plus gardé : les pièces jointes partent après 30 jours."), true);
   const octets = Uint8Array.from(atob(ligne.data), (c) => c.charCodeAt(0));
   const adresse = URL.createObjectURL(new Blob([octets], { type: ligne.media_type }));
-  const corps = estPdf(ligne.media_type)
-    ? h("div", { class: "modal-corps" }, h("p", null, ligne.nom), h("a", { class: "bouton principal", href: adresse, target: "_blank", rel: "noopener", download: ligne.nom || "document.pdf" }, tr("Ouvrir le PDF")))
-    : h("div", { class: "modal-corps agent-apercu" }, h("img", { src: adresse, alt: ligne.nom || tr("Pièce jointe") }));
-  modal(ligne.nom || tr("Pièce jointe"), corps, { large: true, protege: false, ferme: () => setTimeout(() => URL.revokeObjectURL(adresse), 1000) });
+  const liberer = () => setTimeout(() => URL.revokeObjectURL(adresse), 1000);
+  // Une photo jointe s'ouvre en grand par-dessus le fil, comme dans WhatsApp (visionneuse.mjs, 23.11.2026).
+  if (!estPdf(ligne.media_type)) return void ouvrirVisionneuse({ src: adresse, alt: ligne.nom || tr("Pièce jointe"), ferme: liberer });
+  const corps = h("div", { class: "modal-corps" }, h("p", null, ligne.nom), h("a", { class: "bouton principal", href: adresse, target: "_blank", rel: "noopener", download: ligne.nom || "document.pdf" }, tr("Ouvrir le PDF")));
+  modal(ligne.nom || tr("Pièce jointe"), corps, { large: true, protege: false, ferme: liberer });
 }
 
 // ---- Carte « Importer la brochure » ------------------------------------------------------------------------------------------------

@@ -2081,9 +2081,11 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-voucher-titre { display: grid; gap: 2px; }
 .agent-voucher-titre small { color: var(--texte-2); }
 .agent-voucher .avertissements-voucher { margin: 0 0 8px; }
-.agent-voucher-apercu { display: block; width: 100%; max-width: 320px; min-height: 96px; margin: 0 0 8px; padding: 0; background: var(--surface-2); border: 1px solid var(--bord); border-radius: 8px; overflow: hidden; font-weight: 400; }
-.agent-voucher-apercu img { display: block; width: 100%; height: auto; }
-.agent-voucher-apercu > .aide, .agent-voucher-apercu > .erreur-form { display: block; margin: 0; padding: 36px 12px; text-align: center; }
+/* Place réservée (23.11.2026) : la boîte a d'emblée les proportions d'un voucher (1588 × 1900 px). Avant, elle passait de 96 à 380 px quand
+   l'image arrivait et le fil de l'Assistant sautait d'autant à chaque carte. */
+.agent-voucher-apercu { display: flex; align-items: center; justify-content: center; width: 100%; max-width: 320px; aspect-ratio: 1588 / 1900; min-height: 0; margin: 0 0 8px; padding: 0; background: var(--surface-2); border: 1px solid var(--bord); border-radius: 8px; overflow: hidden; font-weight: 400; }
+.agent-voucher-apercu img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: top; background: #fff; }
+.agent-voucher-apercu > .aide, .agent-voucher-apercu > .erreur-form { display: block; margin: 0; padding: 12px; text-align: center; }
 .agent-tout-valider { display: flex; justify-content: flex-end; padding: 8px 0 0; }
 .agent-tout-valider button { min-height: 44px; }
 .agent-bascule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
@@ -2309,7 +2311,27 @@ button.agent-joint { cursor: pointer; }
 .wa-image, .wa-fichier { margin: 0 0 6px; }
 .wa-image figcaption, .wa-fichier figcaption { margin-top: 4px; font-size: 0.92rem; white-space: pre-wrap; }
 .wa-vignette { display: block; padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; min-height: 0; }
-.wa-vignette img { display: block; max-width: 100%; max-height: 280px; width: auto; height: auto; border-radius: 10px; }
+/* Place réservée avant le chargement (23.11.2026) : la boîte a les proportions de la photo quand on les connaît (--ratio, relevées par le
+   webhook), sinon un carré fixe, et garde la même taille avec ou sans image. Plus aucun saut quand les photos arrivent. La photo est
+   toujours entière (contain) sur un fond neutre : une ancienne photo sans dimensions ou une capture très haute n'est jamais coupée. */
+.wa-vignette-boite { display: block; width: min(260px, 62vw, calc(320px * var(--ratio, 1))); aspect-ratio: var(--ratio, 1); border-radius: 10px; overflow: hidden; background: var(--surface-2); }
+.wa-vignette-boite img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.wa-vignette-boite .wa-vignette-vide { width: 100%; height: 100%; border-radius: 0; }
+/* « Nouveaux messages ↓ » : Nani lit plus haut, un message arrive. Collé en bas du fil (bureau), au-dessus de la barre d'action (téléphone). */
+/* Le repère de lecture est tenu par fil-defilement.mjs, comme sur Safari : pas d'ancrage du navigateur en plus (Chrome). */
+.wa-messages, .agent-messages { overflow-anchor: none; }
+.wa-nouveaux, .agent-nouveaux { position: sticky; bottom: 12px; z-index: 6; align-self: center; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: var(--teal-600); color: #fff; font-weight: 600; white-space: nowrap; box-shadow: var(--ombre-forte); }
+.wa-nouveaux[hidden], .agent-nouveaux[hidden] { display: none; }
+@media (max-width: 899px) {
+  .wa-nouveaux, .agent-nouveaux { position: fixed; left: 50%; bottom: calc(var(--barre-basse) + 84px); transform: translateX(-50%); }
+}
+/* Une photo en grand (visionneuse.mjs) : fond sombre, photo entière, Fermer en haut à droite. */
+.modal-fond.visionneuse { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); bottom: 0; background: rgba(8, 12, 12, 0.94); overflow: hidden; }
+.visionneuse-barre { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px 6px 16px; }
+.visionneuse-fermer { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 22px; background: rgba(255, 255, 255, 0.14); color: #fff; }
+.visionneuse-original { display: inline-flex; align-items: center; min-height: 44px; color: #fff; text-decoration: underline; }
+.visionneuse-cadre { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px 12px; }
+.visionneuse-image { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; touch-action: pinch-zoom; }
 .wa-vignette-vide { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 220px; max-width: 100%; height: 140px; border-radius: 10px; background: var(--surface-2); color: var(--texte-2); font-size: 0.82rem; font-weight: 500; text-align: center; padding: 8px; }
 .wa-fichier button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
 .wa-media-absent { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); color: var(--texte-2); font-size: 0.86rem; }

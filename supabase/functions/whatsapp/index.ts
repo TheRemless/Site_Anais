@@ -21,7 +21,7 @@ import { pretApresMessage, rattraperPret } from "./pret.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
 import { interpreterWaba, rattrapageAttend, sembleManquer, citationDatable, repereAutorise, REPERE } from "./manquants.js";
-import { BUCKET_SORTANT, cheminsSortants, sansFichierSortant, statutLibereFichier, sortantsAPurger } from "../whatsapp-envoi/calc.js";
+import { BUCKET_SORTANT, cheminsSortants, sansFichierSortant, statutLibereFichier, sortantsAPurger, dimensionsImage } from "../whatsapp-envoi/calc.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 const entetes = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -469,7 +469,15 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
       const chemin = cheminMedia(ORGANISATION, conversation, message, i + 1, mime);
       const { error } = await db.storage.from("whatsapp").upload(chemin, octets, { contentType: mime, upsert: true });
       if (error) throw new Error(error.message);
-      resultat.push(mediaCopie(m, { statut: "copie", chemin, taille: octets.length, mime }));
+      // Largeur et hauteur lues dans l'en-tête (23.11.2026) : Gestion réserve la place de la vignette avant son chargement.
+      // Un en-tête mal formé ne met jamais le média en erreur : la photo est gardée, sans dimensions (boîte carrée dans Gestion).
+      let dims = null;
+      try {
+        dims = mime.startsWith("image/") ? dimensionsImage(octets) : null;
+      } catch {
+        dims = null;
+      }
+      resultat.push(mediaCopie(m, { statut: "copie", chemin, taille: octets.length, mime, ...(dims || {}) }));
     } catch (err) {
       // Délai dépassé, réseau ou stockage : passager, la source reste pour un nouvel essai.
       resultat.push(mediaApresErreur(m, { erreur: String((err as Error)?.message || err) }));

@@ -14,6 +14,7 @@ import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
+import { conversationPhotos, imagePhotoDemo } from "./demo-photos.mjs";
 import { conversationPret } from "./demo-pret.mjs";
 import { conversationTypeDeduit } from "./demo-type-contact.mjs";
 import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
@@ -139,6 +140,17 @@ export function creer() {
         data.whatsapp_messages.push(...j.whatsapp_messages);
       }
     }
+    // Photos (23.11.2026) : une conversation de 18 photos dessinées, posée une fois, aussi dans une démo déjà enregistrée.
+    const sansPhotos = !AGENCE && !data.demo_photos;
+    if (sansPhotos) {
+      data.demo_photos = 1;
+      const secretP = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
+      if (secretP) {
+        const p = conversationPhotos({ secret: secretP, uid, organisation: ORG_DEMO });
+        data.whatsapp_conversations.push(...p.whatsapp_conversations);
+        data.whatsapp_messages.push(...p.whatsapp_messages);
+      }
+    }
     // Prêt à réserver (migration 85) : une conversation de taxi prête, posée une fois, aussi dans une démo déjà enregistrée.
     if (!AGENCE && !data.demo_pret) {
       data.demo_pret = 1;
@@ -179,7 +191,7 @@ export function creer() {
       data.demo_demandes_wa = 1;
       data.demandes_site.push(...demandesWhatsAppDemo({ entites: data.entites, conversations: data.whatsapp_conversations, dossiers: data.dossiers, clients: data.clients, reservations: data.reservations, ajd: aujourdhui(), ajouterJours, uid }));
     }
-    if (neuve || sansWhatsApp || sansUnifie || sansJade || sansApporteurs || sansDemandesWa) sauve();
+    if (neuve || sansWhatsApp || sansUnifie || sansJade || sansApporteurs || sansDemandesWa || sansPhotos) sauve();
   };
   // Le partage réciproque Secret et Taxi (migration 63) : posé par la base pour l'organisation de Zwald seulement. La démonstration le pose à la
   // première carte mixte, comme une organisation qui l'a coché dans ses réglages ; l'outil le relit aussitôt.
@@ -889,9 +901,27 @@ export function creer() {
       const p = data.whatsapp_propositions.find((x) => x.id === id);
       return p && conversationLue(p.conversation_id) ? { id: p.id, statut: p.statut } : null;
     },
-    // Le navigateur de démo ne garde aucun fichier : pas de lien, l'écran le dit.
-    async whatsappLienMedia() {
-      return null;
+    // Le navigateur de démo ne garde aucun fichier : pas de lien, l'écran le dit. Sauf les photos dessinées de la conversation de démo
+    // (demo-photos.mjs), rendues après un court délai, comme un lien signé demandé au stockage.
+    async whatsappLienMedia(media) {
+      const image = imagePhotoDemo(media && media.chemin);
+      if (!image) return null;
+      await new Promise((r) => setTimeout(r, 150 + Math.round(Math.random() * 600)));
+      return image;
+    },
+    // Démonstration : un message du client arrive dans une conversation, comme l'écrirait le webhook (vérifier le défilement en direct).
+    async simulerMessageWhatsApp(conversationId, { texte = "Another photo for you!", photo = true } = {}) {
+      const c = data.whatsapp_conversations.find((x) => x.id === conversationId);
+      if (!c) return null;
+      const le = new Date().toISOString();
+      const n = 100 + data.whatsapp_messages.filter((m) => m.conversation_id === c.id).length;
+      const medias = photo ? [{ type: "image", mime: "image/jpeg", legende: null, nom: `photo-${n}.jpg`, chemin: `demo/photos/${n}-1200x900.svg`, statut: "copie", taille: 120000 }] : [];
+      const m = { id: uid(), conversation_id: c.id, sens: "entrant", origine: "client", type: photo ? "image" : "text", texte: photo ? null : texte, medias, envoye_le: le, recu_le: le, modifie_le: null, supprime_le: null };
+      data.whatsapp_messages.push(m);
+      Object.assign(c, { dernier_message_le: le, dernier_sens: "entrant", updated_at: le }, apercuDepuisMessages(data.whatsapp_messages.filter((x) => x.conversation_id === c.id)));
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return structuredClone(m);
     },
     // Rien ne part en démonstration.
     async whatsappEnvoyer() {

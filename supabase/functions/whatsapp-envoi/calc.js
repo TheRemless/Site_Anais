@@ -197,6 +197,47 @@ export function imageAcceptee(octets) {
   return { ok: true, mime, largeur: lu.largeur, hauteur: lu.hauteur };
 }
 
+// Orientation EXIF d'un JPEG (1 à 8), 1 sans indication. 5 à 8 : la photo s'affiche tournée d'un quart de tour, largeur et hauteur échangées.
+export function orientationJpeg(o) {
+  let i = 2;
+  while (o && i + 4 <= o.length && o[i] === 0xff) {
+    const m = o[i + 1];
+    if (m === 0xda || m === 0xd9) break;
+    const longueur = u16be(o, i + 2);
+    if (longueur < 2) break;
+    if (m === 0xe1 && i + 10 <= o.length && ascii(o, i + 4, 6) === "Exif\0\0") {
+      const t = i + 10;
+      const le = ascii(o, t, 2) === "II";
+      const u16 = (k) => (le ? u16le(o, k) : u16be(o, k));
+      const u32 = (k) => (le ? (o[k] + (o[k + 1] << 8) + (o[k + 2] << 16) + ((o[k + 3] << 24) >>> 0)) : u32be(o, k));
+      if (t + 8 > o.length) return 1;
+      const ifd = t + u32(t + 4);
+      if (ifd + 2 > o.length) return 1;
+      const n = u16(ifd);
+      for (let e = 0; e < n && ifd + 2 + e * 12 + 12 <= o.length; e++) {
+        const k = ifd + 2 + e * 12;
+        if (u16(k) === 0x0112) {
+          const v = u16(k + 8);
+          return v >= 1 && v <= 8 ? v : 1;
+        }
+      }
+      return 1;
+    }
+    i += 2 + longueur;
+  }
+  return 1;
+}
+// Les dimensions d'une photo reçue telles qu'elle s'affiche (orientation EXIF comprise), lues dans l'en-tête : la place de la vignette est
+// réservée avant son chargement dans Gestion (23.11.2026). null si l'en-tête est illisible ou si ce n'est pas une image.
+export function dimensionsImage(octets) {
+  const mime = typeImage(octets);
+  if (!mime) return null;
+  const lu = mime === "image/png" ? lirePng(octets) : mime === "image/jpeg" ? lireJpeg(octets) : lireWebp(octets);
+  if (!lu || !(lu.largeur > 0) || !(lu.hauteur > 0)) return null;
+  const tournee = mime === "image/jpeg" && orientationJpeg(octets) >= 5;
+  return tournee ? { largeur: lu.hauteur, hauteur: lu.largeur } : { largeur: lu.largeur, hauteur: lu.hauteur };
+}
+
 // ---- Fichier temporaire -------------------------------------------------------------------------------------------------------------
 // Chemin dans le bucket privé : <organisation>/<horodatage>-<id>.<ext>, à plat (la purge liste un seul dossier). Rien du client dedans.
 const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };

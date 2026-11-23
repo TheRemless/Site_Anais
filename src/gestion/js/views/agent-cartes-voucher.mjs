@@ -204,7 +204,8 @@ export function cartesVouchers(resultat) {
       const { lus, absents } = relireTout(lignes, voucher, mods[3]);
       const parDossier = new Map();
       for (const v of lus) parDossier.set(v.dossier.id, [...(parDossier.get(v.dossier.id) || []), v]);
-      zone.replaceChildren(...[...parDossier.values()].map((l) => carte(l, mods)), absents ? h("p", { class: "aide" }, tr("Un service de ce résultat n'est pas chargé sur cet appareil : rechargez la page pour voir son voucher.")) : null);
+      // replaceChildren écrit « null » en texte : rien n'est passé quand tout est chargé (relecture de la PR 339).
+      zone.replaceChildren(...[...parDossier.values()].map((l) => carte(l, mods)), ...(absents ? [h("p", { class: "aide" }, tr("Un service de ce résultat n'est pas chargé sur cet appareil : rechargez la page pour voir son voucher."))] : []));
     })
     .catch((err) => zone.replaceChildren(h("p", { class: "agent-erreur", role: "alert" }, tr("L'image n'a pas pu être fabriquée : {message}", { message: err.message }))));
   return zone;

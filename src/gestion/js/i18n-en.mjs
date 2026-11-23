@@ -4666,3 +4666,7 @@ for (const [k, v] of Object.entries(EN_VOUCHER)) if (!(k in EN)) EN[k] = v;
 // Type de transfert automatique et carte de l'Assistant validée une seule fois (INV-2026-047, 23.11.2026).
 import { EN_TRANSFERT } from "./i18n-en-transfert.mjs";
 for (const [k, v] of Object.entries(EN_TRANSFERT)) if (!(k in EN)) EN[k] = v;
+
+// Défilement des fils et photo en grand (23.11.2026) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_DEFILEMENT } from "./i18n-en-defilement.mjs";
+for (const [k, v] of Object.entries(EN_DEFILEMENT)) if (!(k in EN)) EN[k] = v;

@@ -32,6 +32,8 @@ import { noteTypeDeduit } from "./whatsapp-type.mjs";
 import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
+import { suivreFil, decisionArrivee, ratioMedia, cacheLiens, empreinteMessage } from "../fil-defilement.mjs";
+import { ouvrirVisionneuse } from "../visionneuse.mjs";
 import { estNonTransmis, repereManque, conversationManque, TEXTE_NON_TRANSMIS, LIBELLE_MANQUE, LIBELLE_NOUVEAU_NUMERO, ancienneConversation } from "../whatsapp-calc.mjs";
 // Filtre « Prêt à réserver » (migration 85), à part dans whatsapp-pret.mjs.
 import { clientCommun } from "../whatsapp-pret-calc.mjs";
@@ -522,7 +524,7 @@ async function choisirPieces(c) {
       cases.push(caseP);
       const vignette = h("span", { class: "wa-piece-vignette", "aria-hidden": "true" }, icone(p.media_type === "application/pdf" ? "regles" : "image", 22));
       if (p.media_type !== "application/pdf")
-        etat.store.whatsappLienMedia(p.media).then((lien) => lien && vignette.replaceChildren(h("img", { src: lien, alt: "" })), () => {});
+        lienPhoto(p.media).then((lien) => lien && vignette.replaceChildren(h("img", { src: lien, alt: "" })));
       const qui = p.sens === "entrant" ? tr("Envoyé par le client") : tr("Envoyé par Nani");
       return h("li", null, h("label", { class: "wa-piece", for: id }, caseP, vignette, h("span", { class: "wa-piece-texte" }, h("strong", null, p.legende || p.nom), h("span", null, `${qui} · ${new Date(p.envoye_le).toLocaleString(localeActive(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })}`))));
     };
@@ -615,6 +617,17 @@ async function demanderAssistant(c, prop) {
   }
   if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
   naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
+}
+
+// Le suivi du défilement de la conversation affichée (fil-defilement.mjs), repris d'un rendu à l'autre.
+let suiviFil = null;
+// Les bulles inchangées du rendu précédent remplacent les neuves : même nœud, image déjà chargée, aucune hauteur qui bouge.
+function reprendreBulles(ancienne, nouvelle) {
+  const anciennes = new Map([...ancienne.querySelectorAll("[data-message]")].map((b) => [b.dataset.message, b]));
+  for (const b of nouvelle.querySelectorAll("[data-message]")) {
+    const a = anciennes.get(b.dataset.message);
+    if (a && a.empreinte && a.empreinte === b.empreinte) b.replaceWith(a);
+  }
 }
 
 // Aller au message (#/whatsapp?c=…&m=…) : le message cité est amené au centre et mis en évidence deux secondes, une fois par adresse.
@@ -739,19 +752,61 @@ async function ouvrirMedia(media) {
     toast(etat.store.mode === "demo" ? tr("Aperçu indisponible en démonstration.") : tr("Ce fichier n'est plus disponible."), true);
   }
 }
+// Les liens signés des photos, gardés quatre minutes (fil-defilement.mjs) : un redessin reprend la même adresse, l'image ne se recharge pas.
+const liensMedia = cacheLiens();
+const lienEnCache = (media) => liensMedia.lire(media && media.chemin);
+async function lienPhoto(media, { neuf = false } = {}) {
+  const deja = neuf ? null : lienEnCache(media);
+  if (deja) return deja;
+  const lien = await etat.store.whatsappLienMedia(media).catch(() => null);
+  liensMedia.garder(media.chemin, lien);
+  return lien;
+}
+// La photo en grand, par-dessus la conversation (visionneuse.mjs) : on revient exactement où on lisait.
+let agrandissement = false;
+async function agrandirPhoto(media, alt) {
+  // Un second toucher pendant la lecture du lien n'ouvre pas une deuxième photo.
+  if (agrandissement) return;
+  agrandissement = true;
+  const lien = await lienPhoto(media).finally(() => (agrandissement = false));
+  if (!lien) return toast(etat.store.mode === "demo" ? tr("Aperçu indisponible en démonstration.") : tr("Ce fichier n'est plus disponible."), true);
+  ouvrirVisionneuse({ src: lien, alt, original: /^https:/.test(lien) ? lien : null });
+}
 function blocMedia(media) {
   const e = etatMedia(media);
   const legende = media.legende ? h("figcaption", null, media.legende) : null;
   if (LIBELLES_MEDIA[e]) return h("p", { class: `wa-media-absent ${e}` }, icone(e === "attente" ? "horloge" : e === "voucher_envoye" ? "image" : "alerte", 16), tr(LIBELLES_MEDIA[e]));
   if (e === "image") {
-    const zone = h("span", { class: "wa-vignette-vide" }, icone("image", 22), h("span", null, etat.store.mode === "demo" ? tr("Aperçu indisponible en démonstration") : tr("Photo en chargement")));
-    const fig = h("figure", { class: "wa-image" }, h("button", { type: "button", class: "wa-vignette", "aria-label": tr("Ouvrir la photo"), onclick: () => ouvrirMedia(media) }, zone), legende);
-    // La vignette se charge après l'affichage : un lien par photo, sans retenir l'écran.
-    etat.store.whatsappLienMedia(media).then((lien) => {
-      if (!lien) return void (etat.store.mode !== "demo" && zone.replaceChildren(icone("image", 22), h("span", null, tr("Photo indisponible"))));
-      zone.replaceWith(h("img", { src: lien, alt: media.legende || tr("Photo envoyée par le client"), loading: "lazy" }));
-    }, () => {});
-    return fig;
+    // La place de la photo est réservée avant son chargement (proportions du média, sinon un carré) : la boîte ne change jamais de taille.
+    const alt = media.legende || tr("Photo envoyée par le client");
+    const boite = h("span", { class: "wa-vignette-boite", style: `--ratio: ${ratioMedia(media)}` });
+    const attente = (texte) => boite.replaceChildren(h("span", { class: "wa-vignette-vide" }, icone("image", 22), h("span", null, texte)));
+    let reessai = false;
+    const montrer = (lien) =>
+      boite.replaceChildren(
+        h("img", {
+          src: lien,
+          alt,
+          loading: "lazy",
+          decoding: "async",
+          // Un lien expiré avant le chargement (photo loin dans le fil) : un nouveau lien, une seule fois.
+          onerror: async () => {
+            if (reessai) return attente(tr("Photo indisponible"));
+            reessai = true;
+            const neuf = await lienPhoto(media, { neuf: true });
+            if (neuf) montrer(neuf);
+            else attente(tr("Photo indisponible"));
+          },
+        })
+      );
+    const deja = lienEnCache(media);
+    if (deja) montrer(deja);
+    else {
+      attente(tr("Photo en chargement"));
+      // La vignette se charge après l'affichage : un lien par photo, sans retenir l'écran.
+      lienPhoto(media).then((lien) => (lien ? montrer(lien) : attente(etat.store.mode === "demo" ? tr("Aperçu indisponible en démonstration") : tr("Photo indisponible"))));
+    }
+    return h("figure", { class: "wa-image" }, h("button", { type: "button", class: "wa-vignette", "aria-label": tr("Ouvrir la photo"), onclick: () => agrandirPhoto(media, alt) }, boite), legende);
   }
   const libelle = media.nom || tr(libelleType(e));
   return h("figure", { class: "wa-fichier" }, h("button", { type: "button", class: "secondaire petit", onclick: () => ouvrirMedia(media) }, icone(e === "document" ? "trombone" : "fleche", 16), libelle), legende);
@@ -761,8 +816,10 @@ function bulle(m) {
   // Repère discret avant une réponse de Nani : un message du client semble manquer avant elle (migration 100).
   const repere = repereManque(m) ? h("p", { class: "wa-repere-manque" }, tr(LIBELLE_MANQUE)) : null;
   // WhatsApp n'a pas transmis ce message du client : une ligne qui renvoie au téléphone, à la place de la bulle.
-  if (estNonTransmis(m)) return h("p", { class: "wa-bulle entrant wa-non-transmis", "data-message": m.id, role: "note" }, icone("alerte", 16), tr(TEXTE_NON_TRANSMIS, { heure: heureBangkok(m.envoye_le) }));
-  return repere ? [repere, bulleMessage(m)] : bulleMessage(m);
+  const noeud = estNonTransmis(m) ? h("p", { class: "wa-bulle entrant wa-non-transmis", "data-message": m.id, role: "note" }, icone("alerte", 16), tr(TEXTE_NON_TRANSMIS, { heure: heureBangkok(m.envoye_le) })) : bulleMessage(m);
+  // Ce que la bulle montre : un redessin reprend la bulle déjà affichée si rien n'a changé (reprendreBulles).
+  noeud.empreinte = `${langueActive()}|${empreinteMessage(m)}`;
+  return repere && !estNonTransmis(m) ? [repere, noeud] : noeud;
 }
 
 function bulleMessage(m) {
@@ -1155,7 +1212,6 @@ export async function vueWhatsApp() {
   // L'écran tel qu'il était avant ce rendu (redessin à la même adresse) : la position de la liste et de la conversation à garder.
   const avant = document.querySelector("#principal > .wa");
   const defilListe = avant ? (avant.querySelector(".wa-liste") || {}).scrollTop || 0 : 0;
-  const defilMessages = avant ? (avant.querySelector(".wa-messages") || {}).scrollTop || 0 : 0;
   // Ouvrir la conversation la marque lue (onglet visible), avant de dessiner la liste et le badge.
   if (idOuvert) await marquerLue(idOuvert);
   // Ce que ce rendu montre de la conversation ouverte : le retour sur l'onglet ne marque lu que si rien n'est arrivé depuis.
@@ -1235,37 +1291,58 @@ export async function vueWhatsApp() {
     racine.classList.add("avec-fil");
     const { noeud, messages } = await fil(ouverte, courantes.get(ouverte.id) || null);
     racine.append(noeud);
-    // Le défilement ne se replace qu'au premier affichage de la conversation ou à l'arrivée d'un nouveau message. Un redessin pour autre
-    // chose (synchronisation, Realtime) laisse Nani où elle lisait.
+    // Défilement (23.11.2026) : à l'ouverture, le dernier message ; ensuite, la conversation reste en bas tant que Nani n'a pas fait défiler
+    // elle-même (images qui arrivent, message reçu). Si elle lit plus haut, rien ne la déplace : « Nouveaux messages ↓ » apparaît.
     const dernier = messages.length ? messages[messages.length - 1].id : "";
     racine.dataset.conversation = ouverte.id;
     racine.dataset.dernier = dernier;
-    const replacer = !avant || avant.dataset.conversation !== ouverte.id || avant.dataset.dernier !== dernier;
+    const meme = !!avant && avant.dataset.conversation === ouverte.id;
+    const zone = noeud.querySelector(".wa-messages");
+    const ancienneZone = meme ? avant.querySelector(".wa-messages") : null;
+    const precedent = meme && suiviFil && suiviFil.zone === ancienneZone && !suiviFil.ctrl.arrete ? suiviFil : null;
+    const nouveau = meme && avant.dataset.dernier !== dernier;
+    const decision = decisionArrivee({ premiere: !precedent, nouveau, colle: precedent ? precedent.ctrl.colle : true, deMoi: nouveau && messages.length > 0 && messages[messages.length - 1].sens === "sortant" && messages[messages.length - 1].origine === "gestion" });
+    // Ce que Nani lit, relevé sur l'écran encore affiché : la bulle lue est retrouvée après le redessin.
+    const lectureAvant = precedent ? precedent.ctrl.instantane() : null;
+    // Redessin sans message neuf, Nani en bas : elle y reste, à la même distance sous le dernier message (téléphone).
+    const ecartAvant = precedent && !nouveau ? precedent.ctrl.ecart : 0;
+    const dejaAnnonce = !!(precedent && precedent.bouton && !precedent.bouton.hidden);
+    const bouton = h("button", { class: "wa-nouveaux", type: "button", hidden: true }, tr("Nouveaux messages"), h("span", { "aria-hidden": "true" }, " ↓"));
+    zone.append(bouton);
     // Le message cité par l'adresse (PR B), montré une seule fois pour cette adresse : un redessin ne ramène pas Nani dessus.
     const cible = messageCible(lireAdresse(location.hash));
     const cle = cible ? `${ouverte.id}|${cible}` : "";
     if (!cible) messageMontre = "";
-    // Les derniers messages et la réponse préparée en vue, après le placement du défilement par app.mjs (deux images d'affichage, comme lui).
-    const placer = () => {
-      if (!racine.isConnected) return;
-      const zone = racine.querySelector(".wa-messages");
+    // Téléphone (la page défile) : le dernier message en haut de l'écran, la réponse préparée et Copier juste dessous.
+    const cibleTelephone = () => {
+      const derniere = [...zone.querySelectorAll(".wa-bulle")].pop();
+      if (!derniere) return Infinity;
+      const tete = noeud.querySelector(".wa-fil-tete");
+      // L'en-tête est collé en haut une fois la page défilée : sa hauteur plus sa position collée.
+      const haut = tete ? tete.offsetHeight + (parseFloat(getComputedStyle(tete).top) || 0) : 0;
+      return window.scrollY + derniere.getBoundingClientRect().top - haut - 12;
+    };
+    // Appelé par app.mjs juste après la mise en place de l'écran, avant l'affichage : la position est rendue sans image intermédiaire.
+    racine.apresInsertion = () => {
+      // Un redessin (message reçu, synchronisation) reprend les bulles inchangées de l'écran qu'il remplace : leurs photos restent chargées.
+      // Fait ici seulement, une fois l'ancien écran retiré : un rendu abandonné (un plus récent a pris le relais) ne lui vole rien.
+      if (ancienneZone) reprendreBulles(ancienneZone, zone);
       const colonne = racine.querySelector(".wa-liste");
       if (colonne && defilListe) colonne.scrollTop = defilListe;
+      if (suiviFil) suiviFil.ctrl.arreter();
+      const ctrl = suivreFil(zone, { cibleFenetre: cibleTelephone, bouton });
+      suiviFil = { zone, ctrl, bouton };
       // Montré, le message quitte l'adresse : un rechargement ou un redessin ne ramène plus dessus.
-      if (cle && cle !== messageMontre && montrerMessage(racine, cible)) return void ((messageMontre = cle), history.replaceState(null, "", adresseConversation(ouverte)));
-      if (!replacer) return void (zone && (zone.scrollTop = defilMessages));
-      if (window.matchMedia("(min-width: 900px)").matches) zone && (zone.scrollTop = zone.scrollHeight);
-      else {
-        // Téléphone : le dernier message en haut de l'écran, la réponse préparée et Copier juste dessous.
-        const derniere = [...racine.querySelectorAll(".wa-bulle")].pop();
-        const tete = racine.querySelector(".wa-fil-tete");
-        // L'en-tête est collé en haut une fois la page défilée : sa hauteur plus sa position collée.
-        const haut = tete ? tete.offsetHeight + (parseFloat(getComputedStyle(tete).top) || 0) : 0;
-        window.scrollTo(0, derniere ? Math.max(0, window.scrollY + derniere.getBoundingClientRect().top - haut - 12) : document.documentElement.scrollHeight);
+      if (cle && cle !== messageMontre && montrerMessage(racine, cible)) {
+        messageMontre = cle;
+        history.replaceState(null, "", adresseConversation(ouverte));
+        return void ctrl.garder(ctrl.instantane());
       }
+      if (decision === "bas") ctrl.bas({ ecart: ecartAvant });
+      else ctrl.garder(lectureAvant, { annoncer: decision === "annoncer" || dejaAnnonce });
     };
-    setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(placer)), 0);
   } else {
+    if (suiviFil) (suiviFil.ctrl.arreter(), (suiviFil = null));
     racine.append(h("section", { class: "wa-fil wa-fil-vide seulement-bureau" }, h("p", { class: "aide" }, tr("Choisissez une conversation."))));
     // La liste garde sa position entre deux rendus.
     if (defilListe)
