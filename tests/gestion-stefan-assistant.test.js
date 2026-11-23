@@ -457,7 +457,9 @@ test("PR 307, point 4 : prix du client au niveau du net ou dessous, refusé (pri
   assert.equal(h2.prixServices.size, 0);
   // La réservation garde l'origine (details.prix_origine) : lue par la fonction.
   assert.match(lire("supabase/functions/agent/index.ts"), /vol:details->>vol, prix_origine:details->>prix_origine[,"]/);
-  assert.match(lire("src/gestion/js/views/demande.mjs"), /details\.prix_origine = "client_non_corrige";/);
+  const { entreeParService } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  assert.equal(entreeParService({}, { details: {} }, { prixClient: true }).details.prix_origine, "client_non_corrige");
+  assert.match(lire("src/gestion/js/views/demande.mjs"), /prixClient: \(offre && offre\.prixCarte !== undefined && offre\.prixOrigine === "client_non_corrige"\)/);
 });
 
 test("prix du client dans une conversation de partenaire ou une autre conversation : jamais admis", async () => {

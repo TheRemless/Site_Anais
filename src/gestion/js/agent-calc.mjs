@@ -149,8 +149,9 @@ export function propositionDepuisCarte(donnees = {}) {
       // Les bagages et la remarque du voucher (22.11.2026) : sur le voucher (details.bagages, details.remarques), plus dans les notes.
       bagages: bagagesCarte(s),
       remarque_voucher: String(s.remarque_voucher || "").trim(),
-      de: s.de || "",
-      vers: s.vers || "",
+      // Le départ et la dépose, sans lien (la fonction les retire déjà) : la dépose finit dans details.drop_off, comme pour une carte « reservation ».
+      de: sansLien(s.de),
+      vers: sansLien(s.vers),
       prive: true,
       hors_catalogue: !s.offre,
       offre: s.offre || null,

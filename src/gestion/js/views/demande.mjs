@@ -15,7 +15,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive, champsCreation } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieVide, serviceDeLecture, saisieInitiale, entreeParService, boutsDuTrajet, trajetIncomplet, siegesIncomplets, siegesEnTrop, ligneRetourDepart, ligneTransfertPrive, champsCreation } from "../creation-voucher-calc.mjs";
 import { siegesLus, siegesTotal, siegesAChoisir } from "../sieges-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { badgeConfiance } from "./assistant-demande.mjs";
@@ -162,15 +162,15 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     const hotelPickup = sv.hotelDepart || d.hotel;
     const lieuFinal = lieu || (sv.zonePickup && hotelPickup ? hotelPickup : "");
     // Les champs du voucher remplis dans la fenêtre l'emportent ; un lieu laissé vide reste celui de la demande.
-    const v = sv.saisie || saisieVide();
     // Un numéro de vol ne reste que sur un transfert : une offre changée pour une excursion ne le garde pas caché.
-    const details = nonVides(v.details);
-    // Un prix repris du client sans correction de Nani (revue de la PR 307) : la réservation le garde (details.prix_origine), le contrôle ne
-    // s'en sert jamais pour lever un net.
-    if ((offre && offre.prixCarte !== undefined && offre.prixOrigine === "client_non_corrige") || (sv.transfertLibre && sv.prixOrigine === "client_non_corrige")) details.prix_origine = "client_non_corrige";
-    if (details.vol && !modeTaxi() && !sv.transfertLibre && !sv.retourDepart && offre && !estTransfert(offre)) delete details.vol;
+    // Un prix repris du client sans correction de Nani (revue de la PR 307) : la réservation le garde (details.prix_origine).
     // `siegesRequis` : un transfert dont la fiche montre les sièges (Taxi, Secret) : avec un enfant ou un bébé, le choix est obligatoire.
-    return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details, zonePickup: sv.zonePickup || null, siegesRequis: !!sv.siegesVisibles };
+    return entreeParService(sv, sv.saisie || saisieVide(), {
+      lieuFinal,
+      garderVol: modeTaxi() || !!sv.transfertLibre || !!sv.retourDepart || !offre || estTransfert(offre),
+      prixClient: (offre && offre.prixCarte !== undefined && offre.prixOrigine === "client_non_corrige") || (sv.transfertLibre && sv.prixOrigine === "client_non_corrige"),
+      siegesRequis: !!sv.siegesVisibles,
+    });
   }
 
   const coches = () => services.filter((sv) => sv.coche);
@@ -261,36 +261,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function construireService(sv) {
     const noeuds = { titre: h("div", { class: "dsv-titre" }), prix: h("strong", { class: "dsv-prix" }), alertes: h("p", { class: "dsv-alertes" }), voucher: h("div", { class: "dsv-voucher" }) };
     sv.noeuds = noeuds;
-    // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges), modifiable dans la fenêtre.
-    const site = d.type === "transfer";
-    // Les sièges du service (carte de l'Assistant, 22.11.2026) passent avant ceux du formulaire du site.
-    // Jamais chez ZTP : ses vouchers n'impriment pas de sièges (relecture de la PR 315).
-    // Formulaire du site et message collé (relecture de la PR 327) : « Child seat needed » ou « Baby seat needed » sans nombre donnent un
-    // siège ; les bagages vont dans details.bagages, plus dans les notes du dossier (notesDemande, surLeVoucher).
-    const sd = siegesDemande(d);
-    const carteSieges = Number(sv.sieges) > 0 || !!(sv.voucherCarte && (sv.voucherCarte.sieges_bebe || sv.voucherCarte.sans_siege));
-    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: modeExcursions() ? Number(sv.sieges) || (carteSieges ? 0 : sd.sieges) : 0, details: { ...(site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "" }) : {}), ...(modeExcursions() ? nonVides({ bagages: d.bagages ? String(d.bagages) : "", sieges_bebe: carteSieges ? 0 : sd.sieges_bebe }) : site ? nonVides({ bagages: d.bagages ? String(d.bagages) : "" }) : {}) } };
-    // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
-    // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
-    if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
-    // Numéro de vol lu par l'Assistant (carte « dossier ») : dans le bloc du voucher, comme celui du formulaire du site.
-    if (sv.vol) sv.saisie.details = { ...sv.saisie.details, vol: sv.vol };
-    // Sièges bébé, « aucun siège », bagages et remarque du voucher de la carte (22.11.2026) : sur le voucher, plus dans les notes du dossier.
-    // Les sièges jamais chez ZTP (ses vouchers n'en impriment pas).
-    if (sv.voucherCarte) {
-      const { sieges_bebe, sans_siege, ...autres } = sv.voucherCarte;
-      sv.saisie.details = { ...sv.saisie.details, ...autres, ...(modeExcursions() ? nonVides({ sieges_bebe: sieges_bebe || 0, sans_siege: sans_siege === true ? true : "" }) : {}) };
-    }
-    if (sv.transfertLibre) {
-      sv.saisie.lieu = sv.transfertLibre.de || d.hotel || "";
-      sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: sv.transfertLibre.vers || "" }) };
-      sv.saisie.ouvert = true;
-    }
-    if (sv.retourDepart) {
-      sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: "" }), type_trajet: RETOUR_DEPART, ...nonVides({ programme_trajet: sv.retourDepart.programme || "", duree_h: sv.retourDepart.duree || "" }) };
-      sv.saisie.lieu = (site && d.pickup) || d.hotel || "";
-      sv.saisie.ouvert = true;
-    }
+    // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges ; une carte de
+    // l'Assistant sa dépose, son vol, ses sièges, ses bagages et sa remarque), modifiable dans la fenêtre : creation-voucher-calc.mjs.
+    // Formulaire du site et message collé (relecture de la PR 327) : « Child seat needed » ou « Baby seat needed » sans nombre donnent un siège.
+    sv.saisie = saisieInitiale(sv, { d, excursions: modeExcursions(), sd: siegesDemande(d) });
     const champ4 = (cle, libelle, valeur, opts = {}) => {
       const input = h("input", { id: `svc${sv.id}-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => ((sv[cle] = opts.type === "number" ? entier(e.target.value) : e.target.value), majService(sv), majTotal()) });
       return champ(libelle, input);
@@ -698,7 +672,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, prixOrigine: t.prixOrigine || null, hotelDepart: t.hotelDepart || "", vol: t.vol || "", sieges: Number(t.sieges) || 0, voucherCarte: t.voucherCarte || null, siegesRequis: t.siegesRequis === true, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService(serviceDeLecture(t));
     dessinerClient();
     majTotal();
   }
