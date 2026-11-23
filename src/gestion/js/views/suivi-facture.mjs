@@ -59,6 +59,7 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   else {
     const s = suitesDocuments(documents, r, { avant, apres, mode, service: clesService.length ? service : null });
     resultat.changements = s.changements;
+    resultat.restes = s.restes;
     // Enfant ajouté : la ligne enfant créée sur la facture devient une ligne de cette réservation (sinon elle paraîtrait en écart).
     if (s.ajoutees.length) {
       resultat.detailsAvant = { avait: "details" in valeurs, valeur: valeurs.details };
@@ -120,10 +121,38 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   // Seulement ce que cette modification devait faire suivre (date, personnes, et ce qui a changé dans le service).
   const suivis = new Set(["date_service", "personnes", ...clesService]);
   resultat.ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => suivis.has(c.cle)).map((c) => texteEcart(c, deviseEcart)) : null;
+  // Les mêmes écarts avec leur clé, et ce que la facture n'a pas pu prendre (le tarif n'est pas un écart affiché) : l'alignement dit pourquoi.
+  resultat.nonAlignes = ecart && ecart.champs.length ? ecart.champs.filter((c) => suivis.has(c.cle)).map((c) => ({ cle: c.cle, texte: texteEcart(c, deviseEcart) })) : [];
+  const docRef = principale ? principale.doc : refDoc;
+  resultat.resteFacture = (resultat.restes && docRef && resultat.restes.get(docRef)) || [];
+  resultat.lignesService = refDoc ? lignesDuService(refDoc.contenu, r) : 0;
+  resultat.documentId = (docRef && docRef.id) || null;
   if (factureNonSuivie) toast(tr("La facture n'a pas suivi : votre rôle ne permet pas de la modifier."), true);
   // Rien n'a changé sur la facture mais l'enfant n'y est pas : la raison est dite (avant, aucun total ni message ne s'affichait).
   else if (!principale && resultat.raisonEnfant) toast(texteRaisonEnfant(resultat.raisonEnfant), resultat.raisonEnfant !== "prix_global");
   return resultat;
+}
+
+// Le nombre de lignes de prix du service sur un document (adulte, enfant, supplément).
+function lignesDuService(contenu, r) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  return ((contenu && contenu.lignes) || []).filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise").length;
+}
+
+// Ce que « Mettre la facture comme la réservation » n'a pas pu faire, et pourquoi, en phrases pour Nani (23.11.2026 : un prix qui ne suivait
+// pas restait sans un mot). `nonAlignes` : [{ cle, texte }] (écarts restants) ; `reste` : ce que contenuAvecService a laissé ; `lignes` : lignes du service.
+// Renvoie { ecarts: [texte], raisons: [texte] } ; vide quand tout est aligné.
+export function raisonsNonAlignees({ nonAlignes = [], reste = [], lignes = 0, raisonEnfant = "" } = {}) {
+  const cles = new Set([...nonAlignes.map((c) => c.cle), ...reste.map((x) => (x.cle === "trajet_id" ? "prestation_id" : x.cle))]);
+  const raisons = [];
+  if (cles.has("montant_vente")) raisons.push(lignes > 1 ? tr("Le prix de ce service est réparti sur {n} lignes de la facture (adulte, enfant ou supplément). Gestion ne devine pas la part de chaque ligne. Corrigez les prix dans la facture, ou alignez la réservation sur la facture.", { n: lignes }) : tr("Le prix de la facture n'a pas pu suivre. Corrigez-le dans la facture, ou alignez la réservation sur la facture."));
+  if (cles.has("libelle")) raisons.push(tr("Le nom de la ligne a été réécrit dans la facture. Corrigez-le dans la facture."));
+  if (cles.has("prestation_id")) raisons.push(tr("Ce service a plusieurs lignes adultes sur la facture. Choisissez le tarif de chaque ligne dans la facture."));
+  if (cles.has("personnes") && raisonEnfant) raisons.push(texteRaisonEnfant(raisonEnfant));
+  if ((cles.has("personnes") && !raisonEnfant) || cles.has("date_service") || cles.has("partenaire_id")) raisons.push(tr("Corrigez ce qui reste dans la facture, ou alignez la réservation sur la facture."));
+  // Le tarif ne s'affiche pas en écart : il est dit à part.
+  const ecarts = [...nonAlignes.map((c) => c.texte), ...(cles.has("prestation_id") && !nonAlignes.some((c) => c.cle === "prestation_id") ? [tr("Tarif : celui de la réservation n'est pas sur la facture")] : [])];
+  return { ecarts, raisons: [...new Set(raisons)] };
 }
 
 // Pourquoi la facture ne prend pas l'enfant ajouté à la réservation.
@@ -166,7 +195,8 @@ function suitesDocuments(documents, r, { avant, apres, mode = null, service = nu
   const pa = avant.personnes || {};
   const pb = apres.personnes || {};
   const personnesChangees = (Number(pb.adultes) || 0) !== (Number(pa.adultes) || 0) || (Number(pb.enfants) || 0) !== (Number(pa.enfants) || 0);
-  const out = { changements: [], ajoutees: [], raisonEnfant: "" };
+  // `restes` : par document, ce que contenuAvecService n'a pas pu reporter ([{ cle, reservation, facture }]).
+  const out = { changements: [], ajoutees: [], raisonEnfant: "", restes: new Map() };
   for (const doc of documents) {
     let suite = doc.contenu;
     if (mode) suite = contenuAvecSurPlace(suite, r, mode.surPlace) || suite;
@@ -178,7 +208,11 @@ function suitesDocuments(documents, r, { avant, apres, mode = null, service = nu
       if (e.ajoutee) out.ajoutees.push(e.ajoutee);
       if (e.raison && doc.type !== "devis" && !out.raisonEnfant) out.raisonEnfant = e.raison;
     }
-    if (service) suite = contenuAvecService(suite, r, service, optionsService(apres.personnes)).contenu || suite;
+    if (service) {
+      const s = contenuAvecService(suite, r, service, optionsService(apres.personnes));
+      suite = s.contenu || suite;
+      if (s.reste.length) out.restes.set(doc, s.reste);
+    }
     if (suite !== doc.contenu) out.changements.push({ doc, suite });
   }
   return out;

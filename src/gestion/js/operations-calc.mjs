@@ -1263,16 +1263,28 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
     } else reste.push({ cle: "prestation_id", reservation: pid, facture: premiere.prestation_id || null });
   }
 
-  // Prix : le montant vendu de la réservation devient celui de la ligne (prix unitaire = montant / quantité, seulement s'il tombe juste).
+  // Prix : le montant vendu de la réservation devient celui de la ligne. Prix unitaire = montant / quantité quand il tombe juste ; sinon la ligne
+  // devient un prix total (23.11.2026 : 2 900 pour 3 passagers à 950 ne donne pas un prix unitaire juste, la facture gardait 2 850 sans rien dire).
+  // Prix total : la quantité reste (elle compte les personnes, « 3 passengers » reste dans le libellé), le prix unitaire et la mention « (par personne) »
+  // s'effacent, le montant porte le total. Jamais de prix unitaire arrondi : 3 × 966,67 ferait 2 900,01. Une ligne déjà au prix total le reste.
+  // Plusieurs lignes (adulte, enfant) : la répartition serait devinée, le prix reste dans `reste`.
   if (cible.montant_vente !== undefined && cible.montant_vente !== null && cible.montant_vente !== "" && Number.isFinite(Number(cible.montant_vente))) {
     const montant = arr(Number(cible.montant_vente));
     const total = arr(cibles.reduce((s, l) => s + (brut(nouvelles.get(l)) || 0), 0));
     if (total !== montant || cibles.every((l) => brut(nouvelles.get(l)) === null)) {
       const n = seule ? nouvelles.get(seule) : null;
       const q = n && n.qte !== null && n.qte !== undefined && n.qte !== "" ? Number(n.qte) : null;
-      if (n && q !== null && q > 0 && arr(arr(montant / q) * q) === montant) n.unite = arr(montant / q);
-      else if (n && q === null) n.montant = montant;
-      else reste.push({ cle: "montant_vente", reservation: montant, facture: total });
+      const sansUnite = n && (n.unite === null || n.unite === undefined || n.unite === "");
+      if (n && q !== null && q > 0 && !sansUnite && arr(arr(montant / q) * q) === montant) {
+        n.unite = arr(montant / q);
+        if (n.montant !== null && n.montant !== undefined && n.montant !== "") n.montant = null;
+      } else if (n) {
+        n.montant = montant;
+        if (q !== null) {
+          n.unite = null;
+          if (n.par && n.intro === `(${libelleUnite(n.par, en)})`) n.intro = "";
+        }
+      } else reste.push({ cle: "montant_vente", reservation: montant, facture: total });
     }
   }
 
