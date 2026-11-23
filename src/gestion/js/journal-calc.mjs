@@ -3,6 +3,8 @@
 import { personnesTexte, STATUTS_RESERVATION } from "./operations-calc.mjs";
 import { tr, N_ } from "./i18n.mjs";
 
+// Les motifs d'une correction de commission (migration 119), comme MOTIFS_CORRECTION d'encaisser-calc.mjs.
+const MOTIFS_CORRECTION_JOURNAL = { remboursement_partiel: N_("Remboursement partiel"), geste_commercial: N_("Geste commercial"), erreur_saisie: N_("Erreur de saisie"), autre: N_("Autre") };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // `ctx` : { prestations, trajets, partenaires, clients, personnes (Map user_id → nom) }. Un identifiant qui ne se retrouve plus (fiche supprimée)
@@ -21,6 +23,7 @@ export function valeurJournal(cle, v, ctx = {}) {
   if (["responsable_id", "assignee_id", "fait_par"].includes(cle)) return (ctx.personnes && ctx.personnes.get(v)) || tr("une personne");
   if (cle === "personnes" && typeof v === "object") return personnesTexte(v) || "0";
   if (cle === "statut" && STATUTS_RESERVATION[v]) return tr(STATUTS_RESERVATION[v]);
+  if (cle === "commission_corrigee_motif" && MOTIFS_CORRECTION_JOURNAL[v]) return tr(MOTIFS_CORRECTION_JOURNAL[v]);
   if (typeof v === "boolean") return v ? tr("oui") : tr("non");
   if (typeof v === "object" && !Array.isArray(v)) return detailsEnMots(v);
   if (Array.isArray(v)) return v.every((x) => typeof x === "string" && UUID.test(x)) ? tr("{n} fiche(s) liée(s)", { n: v.length }) : JSON.stringify(v);

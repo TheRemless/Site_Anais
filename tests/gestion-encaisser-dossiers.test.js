@@ -194,8 +194,9 @@ test("reçues ces derniers jours : réglées et versements partiels, avec moyen,
     ["D2", 100, 0, true, null, null],
     ["D1", 250, -50, false, "rabais", "virement"],
   ]);
-  assert.deepEqual(Object.keys(VALEURS_ANNULATION).sort(), ["commission_ecart_motif", "commission_ecart_note", "commission_partielle_le", "commission_recue", "commission_recue_le", "commission_recue_moyen"]);
-  assert.ok(Object.values(VALEURS_ANNULATION).every((v) => v === null));
+  assert.deepEqual(Object.keys(VALEURS_ANNULATION).sort(), ["commission_ecart_motif", "commission_ecart_note", "commission_partielle_le", "commission_recue", "commission_recue_le", "commission_recue_moyen", "commission_soldee_par_correction"]);
+  // Annuler efface aussi la marque « soldée par correction » (migration 119) : le service redevient à recevoir.
+  assert.ok(Object.entries(VALEURS_ANNULATION).every(([k, v]) => (k === "commission_soldee_par_correction" ? v === false : v === null)));
   assert.ok(!("commission_prevue" in VALEURS_ANNULATION), "la commission prévue ne change pas");
 });
 

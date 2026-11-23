@@ -2,11 +2,14 @@
 // Anaïs coche les dossiers que le partenaire lui a payés, voit le total coché et encaisse la sélection d'un geste : un enregistrement par dossier,
 // avec la date et le moyen. Un montant différent du prévu se règle dans la feuille : le reste viendra plus tard, ou le dossier est soldé avec un motif.
 // Le calcul vit dans encaisser-calc.mjs : chaque total affiché est la somme des montants de sa liste.
-import { etat, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, reglages, modeTaxi } from "../etat.mjs";
+import { etat, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, reglages, modeTaxi, chargerDossier, appliquerLignes } from "../etat.mjs";
 import { h, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { aujourdhui, formatDate, ajouterJours, arrondi } from "../calc.mjs";
-import { aRecevoirParPartenaire, recuesParPartenaire, sommeRestes, sommeMontants, natureMontant, ecrituresEncaissement, VALEURS_ANNULATION, MOTIFS_ECART, NOTE_ECART_MAX } from "../encaisser-calc.mjs";
-import { prix } from "./partenaires.mjs";
+import { aRecevoirParPartenaire, recuesParPartenaire, sommeRestes, sommeMontants, natureMontant, ecrituresEncaissement, VALEURS_ANNULATION, MOTIFS_ECART, NOTE_ECART_MAX, correctionCommission, derniereCorrection, texteCorrection, luCorrection, retourEncaisser, CLE_RETOUR, MOTIFS_CORRECTION, NOTE_CORRECTION_MAX } from "../encaisser-calc.mjs";
+import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
+import { apercuFacture } from "./suivi-facture.mjs";
+import { separerNets } from "../nets-documents.mjs";
+import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
 // Un seul encaissement à la fois, même si l'écran est redessiné pendant l'envoi : pas de double clic, pas de double encaissement.
@@ -40,6 +43,38 @@ const libelleMotif = (k) => {
 // Les services d'un dossier chez ce partenaire, en une ligne : libellés et dates.
 const servicesTexte = (rs) => rs.map((r) => [r.libelle, r.date_service ? formatDate(r.date_service) : ""].filter(Boolean).join(", ")).join(" ; ");
 
+// Ouvrir le dossier depuis la liste (bouton « Dossier ») : la liste note sa hauteur, les dossiers cochés et le dossier ouvert, avec l'heure
+// (retourEncaisser). La fiche de ce dossier propose « À encaisser » pendant quelques minutes, même après un passage par un de ses documents ;
+// la liste retrouve sa hauteur et sa sélection à son retour, une seule fois.
+const noterRetour = (dossierId, coches) => {
+  try {
+    sessionStorage.setItem(CLE_RETOUR, JSON.stringify({ t: Date.now(), y: Math.round(window.scrollY), coches: [...coches], dossierId }));
+  } catch {
+    // sans stockage : la liste repartira en haut, sans la sélection
+  }
+};
+const lireRetour = () => {
+  try {
+    const v = sessionStorage.getItem(CLE_RETOUR);
+    sessionStorage.removeItem(CLE_RETOUR);
+    return retourEncaisser(v);
+  } catch {
+    return null;
+  }
+};
+// La trace d'une correction, aux montants de l'écran.
+const correctionTexte = (n) => texteCorrection(n, prix);
+
+// Les refus de corriger_commission (migration 119), en mots.
+const REFUS_CORRECTION = {
+  change: N_("Ce service a changé depuis l'ouverture (encaissement, saisie ou prix) : rien n'a été corrigé. Vérifiez la liste."),
+  droits: N_("Votre rôle ne permet pas de corriger une commission."),
+  entite: N_("L'entreprise a changé : rien n'a été corrigé. Rouvrez la liste."),
+  documents: N_("La facture n'a pas pu suivre le nouveau prix : rien n'a été corrigé."),
+  introuvable: N_("Ce service n'existe plus."),
+  lecture_manquante: N_("Ce service a changé depuis l'ouverture (encaissement, saisie ou prix) : rien n'a été corrigé. Vérifiez la liste."),
+};
+
 export function sectionCommissions({ rafraichir, ecrit }) {
   const ajd = aujourdhui();
   const ecartees = dossiersAnnules();
@@ -47,6 +82,9 @@ export function sectionCommissions({ rafraichir, ecrit }) {
   const index = new Map(etat.db.reservations_nets.map((n) => [n.reservation_id, n]));
   const netDe = (r) => index.get(r.id) || null;
   const partenaires = aRecevoirParPartenaire(etat.db.reservations, netDe, { ecartees, ajd });
+  // Corriger une commission (ou le prix et la commission) : la personne voit les nets et écrit dans les dossiers. Jamais Mook, jamais le partenaire.
+  const corrige = ecrit && voitNets();
+  const retour = lireRetour();
   const recues = recuesParPartenaire(etat.db.reservations, netDe, { ecartees, depuis: ajouterJours(ajd, -JOURS_RECUES) });
   const total = sommeRestes(partenaires.flatMap((p) => p.dossiers));
   const moyens = (reglages().listes.moyens || []).filter((m) => !m.archive);
@@ -56,8 +94,9 @@ export function sectionCommissions({ rafraichir, ecrit }) {
   };
 
   // ---- La sélection : une case par dossier, un total par partenaire et en bas de l'écran -------------------------------------------
-  const coches = new Set();
   const parCle = new Map(partenaires.flatMap((p) => p.dossiers.map((d) => [d.cle, d])));
+  // Revenu d'un dossier : la sélection d'avant revient (seulement les dossiers encore dans la liste).
+  const coches = new Set(((retour && retour.coches) || []).filter((c) => parCle.has(c)));
   const sousTotaux = new Map();
   const barreTexte = h("p", { class: "enc-barre-texte", "aria-live": "polite" });
   const barreBouton = h("button", { class: "principal", type: "button", onclick: () => ouvrirFeuille([...coches].map((c) => parCle.get(c)).filter(Boolean)) }, tr("Encaisser la sélection"));
@@ -76,28 +115,39 @@ export function sectionCommissions({ rafraichir, ecrit }) {
 
   const ligneDossier = (d) => {
     const dossier = dossierDe(d.dossier_id);
+    const nom = clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier");
     const sans = d.sansCommission === d.reservations.length;
     const tags = [
       d.aVenir ? h("span", { class: "tag" }, tr("à venir")) : null,
       d.sansCommission ? h("span", { class: "tag" }, sans ? tr("sans commission prévue") : tr("{n} sans commission", { n: d.sansCommission })) : null,
       d.dejaRecu > 0 ? h("span", { class: "tag" }, d.partielLe ? tr("déjà reçu {montant} le {date}", { montant: prix(d.dejaRecu), date: formatDate(d.partielLe) }) : tr("déjà reçu {montant}", { montant: prix(d.dejaRecu) })) : null,
+      d.reservations.some((r) => derniereCorrection(netDe(r))) ? h("span", { class: "tag tag-corrigee" }, tr("corrigée")) : null,
     ].filter(Boolean);
+    const corrections = d.reservations.map((r) => correctionTexte(netDe(r))).filter(Boolean);
+    // Le nom reste le texte de la case : un tap coche le dossier. Le dossier s'ouvre par son propre bouton.
     const texte = h(
       "span",
       { class: "enc-texte" },
-      h("span", { class: "enc-client" }, clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier")),
+      h("span", { class: "enc-client" }, nom),
       h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")),
-      tags.length ? h("span", { class: "enc-tags" }, tags) : null
+      tags.length ? h("span", { class: "enc-tags" }, tags) : null,
+      corrections.length ? h("span", { class: "enc-detail enc-correction" }, corrections.join(" ; ")) : null
     );
     const montant = h("strong", { class: "enc-montant" }, sans ? "—" : prix(d.reste));
-    if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant));
-    const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id });
+    const actions = h(
+      "span",
+      { class: "enc-actions" },
+      h("a", { class: "bouton secondaire petit enc-ouvrir", href: `#/dossier/${d.dossier_id}`, "aria-label": tr("Ouvrir le dossier : {client}", { client: nom }), onclick: () => noterRetour(d.dossier_id, coches) }, tr("Dossier")),
+      corrige ? h("button", { class: "secondaire petit enc-corriger", type: "button", "aria-label": tr("Corriger la commission : {client}", { client: nom }), onclick: () => ouvrirCorrection(d) }, tr("Corriger")) : null
+    );
+    if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant), actions);
+    const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id, checked: coches.has(d.cle) });
     input.addEventListener("change", () => {
       if (input.checked) coches.add(d.cle);
       else coches.delete(d.cle);
       maj();
     });
-    return h("li", { class: "enc-dossier" }, h("label", { class: "enc-case" }, input, texte, montant));
+    return h("li", { class: "enc-dossier" }, h("label", { class: "enc-case" }, input, texte, montant), actions);
   };
 
   const cartePartenaire = (p) => {
@@ -270,6 +320,192 @@ export function sectionCommissions({ rafraichir, ecrit }) {
     majTotal();
   };
 
+  // ---- Corriger : la commission seule, ou le prix de vente et la commission (23.11.2026, migration 119) ----------------------------------
+  // Un service à la fois : un dossier avec plusieurs services chez ce partenaire propose d'abord de choisir lequel. Le motif est obligatoire.
+  // Ce qui a déjà été reçu ne bouge pas ; un prix changé passe par le chemin commun de la facture (total montré, confirmation si elle est partie).
+  const ouvrirCorrection = (d) => {
+    if (envoiEnCours || !d.reservations.length) return;
+    const entite = etat.entiteId;
+    const dossier = dossierDe(d.dossier_id);
+    const taxi = modeTaxi();
+    let r = d.reservations[0];
+    // Ce que la feuille a lu à l'ouverture, service par service : la base refuse la correction si l'un de ces montants a changé depuis.
+    const ouverture = new Map(d.reservations.map((x) => [x.id, luCorrection(x, netReservation(x))]));
+
+    const radio = (nom, valeur, libelle, coche = false) => {
+      const label = h("label", { class: "case puce" }, h("input", { type: "radio", name: nom, value: valeur, checked: coche }), h("span", null, libelle));
+      return { input: label.querySelector("input"), label };
+    };
+    const choixService = d.reservations.length > 1 ? d.reservations.map((x, i) => radio("corr-service", x.id, [x.libelle, x.date_service ? formatDate(x.date_service) : ""].filter(Boolean).join(", "), i === 0)) : [];
+    const modeCommission = radio("corr-mode", "commission", tr("La commission seule"), true);
+    const modePrix = radio("corr-mode", "prix", tr("Le prix et la commission"));
+    const prixChamp = saisie(h("input", { id: "corr-prix", type: "number", min: "0", step: "any", inputmode: "decimal" }), "montant");
+    const prixAide = h("span", { class: "aide" });
+    const blocPrix = h("div", { class: "champ", hidden: true }, h("label", { for: "corr-prix" }, taxi ? tr("Nouveau prix de la course") : tr("Nouveau prix de vente")), prixChamp, prixAide);
+    const commission = saisie(h("input", { id: "corr-commission", type: "number", min: "0", step: "any", inputmode: "decimal", required: true }), "montant");
+    const commissionAide = h("span", { class: "aide" });
+    const recap = h("p", { class: "corr-recap", "aria-live": "polite" });
+    const facture = h("p", { class: "bandeau-info corr-facture", hidden: true });
+    const motifs = MOTIFS_CORRECTION.map(([k, l]) => radio("corr-motif", k, tr(l)));
+    const note = h("input", { id: "corr-note", type: "text", maxlength: String(NOTE_CORRECTION_MAX), autocomplete: "off" });
+    const noteLabel = h("label", { for: "corr-note" }, tr("Note (facultative)"));
+    const bouton = h("button", { class: "principal", type: "submit" }, tr("Enregistrer la correction"));
+
+    const mode = () => (modePrix.input.checked ? "prix" : "commission");
+    const motif = () => (motifs.find((m) => m.input.checked) || {}).input?.value || null;
+    const remplir = () => {
+      const n = netReservation(r) || {};
+      commission.value = n.commission_prevue === null || n.commission_prevue === undefined ? "" : String(Number(n.commission_prevue));
+      prixChamp.value = r.montant_vente === null || r.montant_vente === undefined ? "" : String(Number(r.montant_vente));
+      const actuelle = n.commission_prevue === null || n.commission_prevue === undefined ? tr("aucune") : prix(Number(n.commission_prevue));
+      commissionAide.textContent = commissionDuPartenaire(n) ? tr("Actuelle : {montant}, annoncée par le partenaire.", { montant: actuelle }) : tr("Actuelle : {montant}.", { montant: actuelle });
+      prixAide.textContent = tr("Actuel : {montant}.", { montant: r.montant_vente === null || r.montant_vente === undefined ? tr("aucun") : prix(Number(r.montant_vente)) });
+    };
+    // Le récapitulatif suit la saisie : ancienne et nouvelle commission, ce qui reste à recevoir du partenaire.
+    const majRecap = () => {
+      blocPrix.hidden = mode() !== "prix";
+      noteLabel.textContent = motif() === "autre" ? tr("Note (obligatoire)") : tr("Note (facultative)");
+      const n = netReservation(r) || {};
+      const avant = n.commission_prevue === null || n.commission_prevue === undefined ? null : Number(n.commission_prevue);
+      const c = num(commission.value);
+      const recu = Number(n.commission_recue) || 0;
+      const phrases = [];
+      if (c !== null && c >= 0) {
+        if (avant !== null && arrondi(c) !== arrondi(avant)) phrases.push(tr("Commission {avant} → {apres} ({ecart}).", { avant: prix(avant), apres: prix(c), ecart: (c > avant ? "+" : "−") + prix(Math.abs(arrondi(c - avant))) }));
+        if (c < recu) phrases.push(tr("Le partenaire a déjà versé {recu} : la commission ne peut pas descendre en dessous.", { recu: prix(recu) }));
+        else if (recu > 0) phrases.push(arrondi(c - recu) === 0 ? tr("Déjà reçu {recu} : le service sera soldé.", { recu: prix(recu) }) : tr("Déjà reçu {recu} : il restera {reste} à recevoir.", { recu: prix(recu), reste: prix(arrondi(c - recu)) }));
+        else phrases.push(c === 0 ? tr("Plus rien à recevoir : le service sera soldé.") : tr("À recevoir du partenaire : {reste}.", { reste: prix(c) }));
+      }
+      recap.textContent = phrases.join(" ");
+      // Le prix change sur un service déjà facturé : la facture n'est jamais modifiée en silence (Taxi : prix interne, jamais montré).
+      const a = apercuPrixSaisi();
+      const textes = a ? texteFacture(a) : [];
+      facture.hidden = !textes.length;
+      facture.textContent = textes.join(" ");
+    };
+    choixService.forEach((x) => x.input.addEventListener("change", () => { r = d.reservations.find((y) => y.id === x.input.value) || r; remplir(); majRecap(); }));
+    [modeCommission.input, modePrix.input, ...motifs.map((m) => m.input)].forEach((x) => x.addEventListener("change", majRecap));
+    [commission, prixChamp].forEach((x) => x.addEventListener("input", majRecap));
+
+    // L'aperçu de la facture pour le prix saisi (apercuFacture), ou null quand le prix ne change pas ou que le service n'est sur aucun document.
+    function apercuPrixSaisi() {
+      const p = num(prixChamp.value);
+      if (mode() !== "prix" || p === null || !(p > 0) || arrondi(p) === arrondi(Number(r.montant_vente) || 0)) return null;
+      return apercuFacture(r, { montant_vente: arrondi(p) });
+    }
+    // Ce que deviennent les factures, en mots : elle suit (total), elle a été envoyée (confirmation demandée), ou elle garde l'ancien prix et pourquoi.
+    function texteFacture(a) {
+      if (a.taxi) return [];
+      const nomDoc = (type) => (type === "facture_locale" ? tr("La facture locale") : tr("La facture"));
+      const t = [];
+      if (a.changements.length && !a.droit) t.push(tr("Votre rôle ne permet pas de modifier la facture : elle garde l'ancien prix, à corriger par une personne qui en a le droit."));
+      else if (a.suit) {
+        if (arrondi(a.avant) !== arrondi(a.apres)) t.push(tr("{doc} suit le nouveau prix : total {avant} → {apres}.", { doc: nomDoc(a.type), avant: prix(a.avant), apres: prix(a.apres) }));
+        else if (arrondi(a.placeAvant) !== arrondi(a.placeApres)) t.push(tr("{doc} suit le nouveau prix : à régler sur place {avant} → {apres}.", { doc: nomDoc(a.type), avant: prix(a.placeAvant), apres: prix(a.placeApres) }));
+        else t.push(tr("{doc} suit le nouveau prix.", { doc: nomDoc(a.type) }));
+        if (a.envoye) t.push(tr("Elle a été envoyée au client le {date} : il faudra la lui renvoyer. Une confirmation vous sera demandée.", { date: formatDate(a.envoye) }));
+      }
+      for (const x of a.restants) {
+        t.push(x.raison === "plusieurs_lignes"
+          ? tr("{doc} répartit ce service sur {n} lignes : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), n: x.lignes })
+          : tr("{doc} compte ce service en {q} unités et le nouveau prix ne se divise pas juste : elle garde l'ancien prix, à corriger dans le document.", { doc: nomDoc(x.type), q: x.qte || "?" }));
+      }
+      return t;
+    }
+
+    const erreurs = {
+      commission: tr("Saisissez la nouvelle commission (0 ou plus, deux décimales au plus)."),
+      prix: tr("Saisissez le nouveau prix (plus que 0, deux décimales au plus)."),
+      sous_recu: tr("Le partenaire a déjà versé plus que ce montant : annulez d'abord la réception dans « Reçues ces derniers jours »."),
+      au_dessus_prix: tr("La commission dépasse le prix de vente."),
+      inchange: tr("Rien ne change : modifiez la commission ou le prix."),
+      motif: tr("Choisissez le motif de la correction."),
+      note: tr("Ajoutez une note courte pour « Autre »."),
+      reglee: tr("Cette commission est déjà soldée."),
+    };
+    const champDe = { commission, prix: prixChamp, sous_recu: commission, au_dessus_prix: commission, inchange: commission, motif: motifs[0].input, note, reglee: commission };
+    const fermer = modal(
+      tr("Corriger la commission"),
+      h(
+        "form",
+        {
+          class: "modal-corps enc-feuille corr-feuille",
+          novalidate: true,
+          onsubmit: async (e) => {
+            e.preventDefault();
+            if (envoiEnCours) return;
+            if (etat.entiteId !== entite) {
+              fermer();
+              toast(tr("L'entreprise a changé : rien n'a été corrigé. Rouvrez la liste."), true);
+              return;
+            }
+            const frais = etat.db.reservations.find((x) => x.id === r.id);
+            if (!frais) return void fermer();
+            Object.values(champDe).forEach((c) => erreurChamp(c, null));
+            const choix = { mode: mode(), commission: num(commission.value), prix: num(prixChamp.value), motif: motif(), note: note.value };
+            const res = correctionCommission(frais, netReservation(frais), choix);
+            if (res.erreur) {
+              erreurChamp(champDe[res.erreur], erreurs[res.erreur]);
+              focusPremiereErreur(e.target);
+              return;
+            }
+            // La facture : ce qu'elle devient, confirmé avant d'écrire si elle est déjà partie. Elle s'écrit avec le reste, dans la même transaction.
+            const a = res.prix !== null ? apercuPrixSaisi() : null;
+            if (a && !a.taxi && a.droit && a.suit && a.envoye) {
+              const ok = await confirmer(`${texteFacture(a).join(" ")}`, tr("Enregistrer la correction"));
+              if (!ok) return;
+            }
+            const documents = a && a.droit ? a.changements.map(({ doc, suite }) => ({ id: doc.id, updated_at: doc.updated_at, contenu: separerNets(suite).contenu, complet: suite })) : [];
+            envoiEnCours = true;
+            bouton.disabled = true;
+            bouton.textContent = tr("Enregistrement…");
+            try {
+              await appliquerLignes(async () => {
+                const x = await etat.store.corrigerCommission({ reservationId: frais.id, entiteId: entite, commission: res.commission, prix: res.prix, motif: choix.motif, note: res.note, lu: ouverture.get(frais.id), documents });
+                const complets = new Map(documents.map((dd) => [dd.id, dd.complet]));
+                return { resultat: x, lignes: { reservations_nets: [x.nets], reservations: [x.reservation], documents: (x.documents || []).map((dd) => ({ ...dd, contenu: complets.get(dd.id) })) } };
+              });
+              fermer();
+              const fait = res.solde ? tr("Commission corrigée : {montant}, le service est soldé.", { montant: prix(res.apres) }) : tr("Commission corrigée : {montant}, reste à recevoir {reste}.", { montant: prix(res.apres), reste: prix(res.reste) });
+              const garde = a && !a.taxi && (a.restants.length || (a.changements.length && !a.droit)) ? ` ${tr("La facture garde l'ancien prix : corrigez-la dans le document.")}` : "";
+              toast(fait + garde);
+            } catch (err) {
+              fermer();
+              const refus = ((err.message || "").match(/corriger_commission:(\w+)/) || [])[1];
+              toast(refus && REFUS_CORRECTION[refus] ? tr(REFUS_CORRECTION[refus]) : refus && erreurs[refus] ? erreurs[refus] : tr("Enregistrement impossible : {message}", { message: err.message }), true);
+            } finally {
+              envoiEnCours = false;
+              // La liste se redessine avec les nouveaux montants : les dossiers cochés et la hauteur restent.
+              noterRetour(null, coches);
+              rafraichir();
+            }
+          },
+        },
+        h("p", { class: "enc-feuille-titre" }, h("strong", null, clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier")), h("span", null, [dossier && dossier.ref, nomDe(d.partenaire_id)].filter(Boolean).join(" · "))),
+        choixService.length ? h("fieldset", { class: "enc-motif" }, h("legend", null, tr("Service")), h("div", { class: "puces" }, choixService.map((x) => x.label))) : h("p", { class: "aide" }, servicesTexte(d.reservations)),
+        h("fieldset", { class: "enc-motif" }, h("legend", null, tr("Ce qui change")), h("div", { class: "puces" }, modeCommission.label, modePrix.label)),
+        blocPrix,
+        h("div", { class: "champ" }, h("label", { for: "corr-commission" }, tr("Nouvelle commission")), commission, commissionAide),
+        recap,
+        facture,
+        h("fieldset", { class: "enc-motif" }, h("legend", null, tr("Motif")), h("div", { class: "puces" }, motifs.map((m) => m.label)), h("div", { class: "champ" }, noteLabel, note)),
+        h("p", { class: "aide" }, tr("L'ancien montant reste dans le journal et sur la fiche du service. Le voucher et les messages au client ne montrent jamais la commission.")),
+        h("div", { class: "barre-modal enc-feuille-barre" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Annuler")), bouton)
+      ),
+      { feuille: true, ferme: () => window.removeEventListener("hashchange", quitter) }
+    );
+    // Changer d'écran, d'entreprise ou de compte ferme la feuille : elle ne reste pas ouverte sur un autre écran (l'enregistrement le refusait déjà).
+    const ecranOuverture = location.hash;
+    const quitter = () => {
+      if (location.hash !== ecranOuverture || etat.entiteId !== entite) fermer();
+    };
+    window.addEventListener("hashchange", quitter);
+    remplir();
+    majRecap();
+    // Les factures du dossier ne sont pas chargées sur cet écran : l'avertissement de facture se recalcule une fois qu'elles sont là.
+    chargerDossier(d.dossier_id).then(majRecap).catch(() => {});
+  };
+
   // ---- Reçues ces derniers jours : revoir un encaissement, annuler une erreur -----------------------------------------------------
   const annuler = async (d) => {
     const dossier = dossierDe(d.dossier_id);
@@ -293,14 +529,16 @@ export function sectionCommissions({ rafraichir, ecrit }) {
       d.moyen ? nomMoyen(d.moyen) : null,
       d.ecart ? tr("écart {ecart}", { ecart: (d.ecart > 0 ? "+" : "−") + prix(Math.abs(d.ecart)) }) : null,
       d.motif ? [libelleMotif(d.motif), d.note].filter(Boolean).join(" : ") : null,
+      d.parCorrection ? tr("soldée par correction") : null,
     ].filter(Boolean);
+    const nom = clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier");
     return h(
       "li",
       { class: "enc-dossier" },
       h(
         "div",
         { class: "enc-case" },
-        h("span", { class: "enc-texte" }, h("a", { class: "enc-client", href: `#/dossier/${d.dossier_id}` }, clientDuDossier(dossier) || (dossier && dossier.ref) || tr("Dossier")), h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")), h("span", { class: "enc-detail" }, quoi.join(", "))),
+        h("span", { class: "enc-texte" }, h("a", { class: "enc-client", href: `#/dossier/${d.dossier_id}`, onclick: () => noterRetour(d.dossier_id, coches) }, nom), h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")), h("span", { class: "enc-detail" }, quoi.join(", "))),
         h("strong", { class: "enc-montant" }, prix(d.recu))
       ),
       ecrit ? h("button", { class: "lien", type: "button", onclick: () => annuler(d) }, tr("Annuler")) : null
@@ -331,5 +569,9 @@ export function sectionCommissions({ rafraichir, ecrit }) {
         )
       : null
   );
+  // Revenu d'un dossier : la sélection d'avant (barre et sous-totaux), puis la même hauteur.
+  if (coches.size) maj();
+  // Après la mise en haut d'un écran neuf (app.mjs, restaurerDefilement) : une fois l'écran posé, puis une seconde pour une mise en page tardive.
+  if (retour) for (const ms of [0, 150]) setTimeout(() => window.scrollTo(0, retour.y), ms);
   return { noeud, total, nbPartenaires: partenaires.length, rien: !partenaires.length && !nbRecues };
 }

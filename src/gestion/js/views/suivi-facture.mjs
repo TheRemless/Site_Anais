@@ -10,6 +10,7 @@ import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, conten
 import { prestationEnfant, prixEnfantDe } from "../demande-calc.mjs";
 import { contenuAvecEnfants, lignesIdsAvec } from "../dossier-gestes-calc.mjs";
 import { tr, langueActive } from "../i18n.mjs";
+import { suitePrixDocument } from "../encaisser-calc.mjs";
 
 export const lieeFacture = (r) => !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
 
@@ -186,6 +187,8 @@ function suitesDocuments(documents, r, { avant, apres, mode = null, service = nu
 // Aperçu du nouveau total pendant la saisie (« Changer la réservation ») : ce que deviendrait la facture, sans rien enregistrer.
 // Renvoie null quand le service n'est sur aucune facture chargée (ou en Taxi), sinon { avant, apres, devise, raison }.
 export function apercuFacture(r, valeurs) {
+  // Seul le prix change (correction depuis À encaisser) : l'aperçu du prix, avec ce que chaque facture peut suivre ou non.
+  if (valeurs && valeurs.montant_vente !== undefined && valeurs.date_service === undefined && valeurs.personnes === undefined) return apercuPrix(r, Number(valeurs.montant_vente));
   if (modeTaxi() || !lieeFacture(r)) return null;
   const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && x.type === "facture");
   if (!documents.length) return null;
@@ -197,6 +200,37 @@ export function apercuFacture(r, valeurs) {
   const devise = doc.contenu.devise || reglages().devise;
   // Ce que le client paie sur place au prestataire (contrôle du 17.11.2026, D9) : le total de la facture n'en dit rien, cet aperçu le montre aussi.
   return { avant: totaux(doc.contenu).net, apres: totaux(suite).net, placeAvant: montantSurPlace(doc.contenu), placeApres: montantSurPlace(suite), devise, raison: s.raisonEnfant, enfantAjoute: s.ajoutees.length > 0 };
+}
+
+// Le prix d'un service change seul : les documents du dossier qui le portent (devis, facture, facture locale), ce que chacun devient et pourquoi
+// une facture garderait l'ancien prix. Taxi : le prix interne de la course, jamais montré. Sans effet de bord.
+// Renvoie null quand le service n'est sur aucun document chargé, sinon { avant, apres, devise, envoye, type, suit, restants, changements, taxi, droit } :
+//   `changements` : [{ doc, suite }] à écrire ; `restants` : [{ type, raison, lignes, qte }] pour les factures qui gardent l'ancien prix.
+function apercuPrix(r, montant) {
+  if (!lieeFacture(r) || !Number.isFinite(montant)) return null;
+  const taxi = modeTaxi();
+  const docs = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && (taxi ? x.type === "facture" : ["facture", "facture_locale", "devis"].includes(x.type)));
+  if (!docs.length) return null;
+  const options = optionsService(r.personnes);
+  const suites = docs.map((doc) => ({ doc, ...suitePrixDocument(doc, r, montant, { taxi, options }) }));
+  const factures = suites.filter((x) => x.doc.type !== "devis");
+  const principale = factures.find((x) => x.contenu) || factures[0] || null;
+  const devise = ((principale && principale.doc.contenu) || {}).devise || reglages().devise;
+  return {
+    avant: principale ? totaux(principale.doc.contenu).net : null,
+    apres: principale ? totaux(principale.contenu || principale.doc.contenu).net : null,
+    // Payé sur place chez le prestataire : le total facturé ne bouge pas, c'est la part sur place qui change.
+    placeAvant: principale ? montantSurPlace(principale.doc.contenu) : null,
+    placeApres: principale ? montantSurPlace(principale.contenu || principale.doc.contenu) : null,
+    devise,
+    envoye: principale && principale.contenu ? principale.doc.envoye_le || null : null,
+    type: principale ? principale.doc.type : null,
+    suit: !!(principale && principale.contenu),
+    restants: factures.filter((x) => x.raison).map((x) => ({ type: x.doc.type, raison: x.raison, lignes: x.lignes, qte: x.qte })),
+    changements: suites.filter((x) => x.contenu).map((x) => ({ doc: x.doc, suite: x.contenu })),
+    taxi,
+    droit: peut("documents.ecrire"),
+  };
 }
 
 // Taxi : pas de facture montrée, le prix interne suit la course en silence (date, prix, paiement au chauffeur, annulation), ainsi que le libellé,

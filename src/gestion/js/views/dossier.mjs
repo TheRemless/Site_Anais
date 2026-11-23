@@ -34,6 +34,16 @@ import { disponible as carnetDisponible, peutNoter } from "../carnet-calc.mjs";
 import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservationsAReactiver, reactivation } from "../dossier-gestes-calc.mjs";
 import { champApporteur, patchApporteur, blocResumeApporteur } from "./apporteurs.mjs";
 import { boutonProposerExcursion } from "./proposer-excursion.mjs";
+import { retourEncaisser, CLE_RETOUR } from "../encaisser-calc.mjs";
+
+// La fiche a-t-elle été ouverte depuis À encaisser (la note de la liste, datée, porte ce dossier) ?
+const retourVersEncaisser = (dossierId) => {
+  try {
+    return !!retourEncaisser(sessionStorage.getItem(CLE_RETOUR), { dossierId });
+  } catch {
+    return false;
+  }
+};
 
 const rafraichir = () => naviguer(location.hash);
 
@@ -727,7 +737,8 @@ function ficheDossierVue(id) {
   const racine = h(
     "div",
     { "data-titre": nomClient(client) },
-    h("a", { class: "retour", href: "#/dossiers" }, tr("Dossiers")),
+    // Ouvert depuis À encaisser il y a moins de quelques minutes (retourEncaisser) : « À encaisser » y ramène, à la même hauteur et avec la sélection.
+    retourVersEncaisser(d.id) ? h("a", { class: "retour", href: "#/encaisser" }, tr("À encaisser")) : h("a", { class: "retour", href: "#/dossiers" }, tr("Dossiers")),
     h(
       "div",
       { class: "entete" },

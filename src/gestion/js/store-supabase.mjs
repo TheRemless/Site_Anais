@@ -1058,6 +1058,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async partenaireCourses() {
       return verifie(await sb.rpc("partenaire_courses")) || [];
     },
+    // Corriger une commission, ou le prix et la commission (migration 119) : une seule transaction dans la base, qui refuse si un montant lu
+    // à l'ouverture a changé. Les documents partent sans leurs nets (le prix d'une ligne ne change pas son net, documents_nets reste tel quel).
+    async corrigerCommission({ reservationId, entiteId, commission, prix, motif, note, lu, documents = [] }) {
+      return verifie(await sb.rpc("corriger_commission", { p_reservation: reservationId, p_entite: entiteId, p_commission: commission, p_prix: prix, p_motif: motif, p_note: note, p_lu: lu, p_documents: documents.map(({ id, updated_at, contenu }) => ({ id, updated_at, contenu })) }));
+    },
     async partenaireSaisirCommission(reservationId, montant) {
       return verifie(await sb.rpc("partenaire_saisir_commission", { p_reservation: reservationId, p_montant: montant }));
     },

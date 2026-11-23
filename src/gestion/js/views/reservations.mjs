@@ -33,6 +33,7 @@ import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { gestePrincipal, entreesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 import { saisieRapideNet } from "./saisie-net.mjs";
+import { texteCorrection } from "../encaisser-calc.mjs";
 import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
@@ -219,6 +220,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     voucherModifie ? h("div", { class: "ecart-facture", role: "status" }, modeTaxi() ? tr("Booking confirmation modifiée depuis l'envoi du {date} : renvoyez-la au client.", { date: formatDate(vx.envoi.le) }) : tr("Voucher modifié depuis l'envoi du {date} : renvoyez-le au client.", { date: formatDate(vx.envoi.le) })) : null,
     avantVeille ? h("div", { class: "ecart-facture", role: "status" }, tr("À payer au prestataire avant le {date} (la veille du départ) : {partenaire} peut annuler si ce n'est pas payé.", { date: formatDate(avantVeille.avant), partenaire: nomPartenaire(r.partenaire_id) })) : null,
     er ? h("div", { class: "ecart-facture", role: "status" }, tr("Commission reçue {recue} (prévue {prevue}), mais la règle du partenaire donne {attendue}. Les montants reçus ne sont pas modifiés : vérifiez le net du tarif ou la règle.", { recue: prix(er.recue === null ? er.prevue : er.recue), prevue: prix(er.prevue), attendue: prix(er.attendue) })) : null,
+    n && n.commission_corrigee_le ? h("p", { class: "carte-sous mention-correction" }, texteCorrection(n, prix)) : null,
     cc ? h("div", { class: "recalcul-commission", role: "status" }, h("span", null, cc.avant === null ? tr("Commission prévue : aucune. La règle du partenaire donne {apres}.", { apres: prix(cc.apres) }) : tr("Commission prévue : {avant}. La règle du partenaire donne {apres}.", { avant: prix(cc.avant), apres: prix(cc.apres) })), h("button", { class: "secondaire petit", type: "button", onclick: () => recalculerUneCommission(r, apres) }, tr("Recalculer la commission"))) : null,
     // Net ou commission manquants : un champ et Enregistrer, sans ouvrir la fiche (17.11.2026). Quand la règle du partenaire donne la commission,
     // « Recalculer la commission » ci-dessus suffit. Seulement dans le dossier : l'agenda et la liste des réservations restent des listes de travail.
@@ -436,7 +438,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   };
   // Un service payé sur place ne doit rien au prestataire : le net n'a pas lieu d'être saisi.
   const blocNets = h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera à l'agence.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe));
-  const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, h("span", null, regleCommission, mentionPartenaire(n))), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
+  const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, h("span", null, regleCommission, mentionPartenaire(n), n && n.commission_corrigee_le ? h("span", { class: "mention-partenaire" }, " ", texteCorrection(n, prix), ".") : null)), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
   partenaire.addEventListener("change", () => {
     // Le service prend le mode habituel de son partenaire, aussi quand on change le partenaire d'une réservation existante (16.11.2026) :
     // un autre prestataire se paie peut-être autrement. La puce reste modifiable.

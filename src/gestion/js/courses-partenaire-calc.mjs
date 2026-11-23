@@ -315,7 +315,8 @@ export function coursesLocales(data, userId, aujourdhui) {
         par_moi: commissionDuPartenaire(n),
         ...detailLocal(data, r, d, c, acces),
       };
-      course.modifiable = !course.reglee && !Number(course.commission_payee || 0) && (course.commission === null || course.par_moi);
+      // Comme partenaire_courses (migration 119) : une commission corrigée par Nani n'est plus modifiable, même au montant qu'il avait saisi.
+      course.modifiable = !course.reglee && !Number(course.commission_payee || 0) && !n.commission_corrigee_le && (course.commission === null || course.par_moi);
       const garde = (r.date_service >= aujourdhui && r.date_service <= limite) || (r.date_service < aujourdhui && !course.reglee && (course.commission === null || resteDu(course) > 0));
       return garde ? course : null;
     })
