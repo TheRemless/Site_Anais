@@ -3,29 +3,18 @@
 // la sortie se retrouve par le nom écrit dans le message, l'option par son titre (carnet-ages.mjs, resoudreSortie), et les règles du carnet s'appliquent (âge des enfants, seuil de groupe, extras).
 // Un message sans préfixe de la table (un client qui écrit librement) ou avec un préfixe inconnu n'est jamais pris pour une demande du carnet. Un nom de sortie qui ne se reconnaît pas non plus :
 // on ne devine rien. Module léger : il ne dépend que des modules de données et de demandes-site-calc.mjs.
-import { REFS_CARNET, PRODUITS_CARNET, SORTIES_KOH_LANTA } from "./carnet-produits.mjs";
+import { PRODUITS_CARNET, SORTIES_KOH_LANTA, guideDeSortie } from "./carnet-produits.mjs";
+import { blocDeLaPage } from "./page-carnet.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { cleTexte, resoudreSortie, lireInvitesFrancais } from "./carnet-ages.mjs";
+import { cleTexte, resoudreSortie, lireInvites, lireInvitesFrancais } from "./carnet-ages.mjs";
 import { lignesDuRecapitulatif, invitesAnglais, dateDuSite, montantAnglais } from "./demandes-site-calc.mjs";
 import { CORRESPONDANCE_CARNET } from "./carnet-correspondance.mjs";
 
-// La ligne de référence (« Ref: AON-AB12 », « Réf : SAM-AB12 ») et ce qui la précède : un message n'est une demande de la page que s'il COMMENCE par sa ligne de demande (précédée, pour le
-// WhatsApp français, de la phrase d'accueil de la page) et s'il FINIT par la référence. Un client qui répond librement en citant l'ancien message, ou en écrivant après lui, a un message libre.
-const LIGNE_REF = /^R[ée]f\s*:\s*(([A-Z]{3})-[A-Z0-9]{3,})$/i;
-const LIGNE_DEMANDE = /^(?:Booking request:|Demande de réservation\s*:)/i;
-const ACCUEIL = /^Bonjour Anaïs, voici ma demande de réservation\.?$/i;
-// Le bloc de la page : { lignes (de la ligne de demande à la référence), ref, prefixe }, ou null.
-function blocDeLaPage(texte) {
-  const lignes = String(texte || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const debut = lignes.length && ACCUEIL.test(lignes[0]) ? 1 : 0;
-  const ref = lignes.length ? LIGNE_REF.exec(lignes[lignes.length - 1]) : null;
-  if (!ref || lignes.length - debut < 2 || !LIGNE_DEMANDE.test(lignes[debut])) return null;
-  return { lignes: lignes.slice(debut), ref: ref[1], prefixe: ref[2].toUpperCase() };
-}
-// Le guide que désigne la référence du message (« koh-samui », « aonang », « koh-lanta »), ou null : message qui n'est pas le bloc de la page, ou préfixe qui n'est pas dans la table.
+// Le bloc de la page et sa référence : la règle est celle de page-carnet.mjs (le même module que la fonction « agent » : le message commence par sa ligne de demande, finit par sa
+// référence, au préfixe de REFS_CARNET). Ici seulement : le guide qu'il désigne.
 export function guideDeLaRef(texte) {
   const bloc = blocDeLaPage(texte);
-  return bloc && Object.prototype.hasOwnProperty.call(REFS_CARNET, bloc.prefixe) ? REFS_CARNET[bloc.prefixe] : null;
+  return bloc ? bloc.guide : null;
 }
 // La référence du bloc de la page (« AON-AB12 »), ou null : la même condition que guideDeLaRef (bloc de la page, préfixe de la table). Sert à retrouver la demande enregistrée par la page.
 export function refDeLaPage(texte) {
@@ -130,12 +119,8 @@ function anglaisDeLaPage({ offre, ids }, lignes, ref) {
   sorties.push(`Ref: ${ref}`);
   return sorties.join("\n");
 }
-// Le contexte du carnet que porte un message collé, ou null : { guide, carnet: { produit, option }, texte }. `texte` est le message à lire (celui qui est collé, à partir de sa première ligne
-// de demande ; le récapitulatif français est récrit au format du site). `carnet` est le même objet que celui d'une demande du site (identifiant de la sortie et de l'option).
-export function carnetDuMessage(texte) {
-  const bloc = blocDeLaPage(texte);
-  const guide = guideDeLaRef(texte);
-  if (!bloc || !guide) return null;
+// La lecture par le titre : la sortie par son nom écrit dans le message (anglais : nom de la sortie ; français : titre de l'offre de la page), l'option par son titre ou sa formule.
+function lireParTitre(bloc, guide) {
   const sorties = sortiesDuGuide(guide);
   const demande = bloc.lignes[0];
   const en = /^Booking request:\s*(.+)$/i.exec(demande);
@@ -149,13 +134,57 @@ export function carnetDuMessage(texte) {
   } else if (fr && guide !== "koh-samui") {
     const page = offreDeLaPage(guide, fr[1], bloc.lignes);
     if (!page || !page.ids || !page.ids.produit) return null;
-    return { guide, carnet: { produit: page.ids.produit, option: page.ids.option || "" }, texte: anglaisDeLaPage(page, bloc.lignes, bloc.ref) };
+    return { carnet: { produit: page.ids.produit, option: page.ids.option || "" }, texte: anglaisDeLaPage(page, bloc.lignes, bloc.ref) };
   } else if (fr) {
     produit = sorties.find((p) => p.nomPage && cleTexte(p.nomPage) === cleTexte(fr[1])) || null;
     titre = ((/^Formule\s*:\s*(.+)$/im.exec(bloc.lignes.join("\n")) || [])[1] || "").trim();
   }
   if (!produit) return null;
   const r = resoudreSortie({ carnet: { produit: produit.id, option: "" }, option: titre });
-  const carnet = { produit: produit.id, option: r ? r.option.id : "" };
-  return { guide, carnet, texte: en ? bloc.lignes.join("\n") : anglaisDuRecapitulatif(bloc.lignes.join("\n"), produit, r ? r.option.titre : titre, bloc.ref) };
+  return { carnet: { produit: produit.id, option: r ? r.option.id : "" }, texte: en ? bloc.lignes.join("\n") : anglaisDuRecapitulatif(bloc.lignes.join("\n"), produit, r ? r.option.titre : titre, bloc.ref) };
+}
+// La date « Sun 20 Dec 2026 » du message au format du site, en AAAA-MM-JJ.
+const MOIS_ANGLAIS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function dateIso(v) {
+  const m = /(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/.exec(v || "");
+  const mois = m ? MOIS_ANGLAIS.indexOf(m[2][0].toUpperCase() + m[2].slice(1).toLowerCase()) : -1;
+  return mois < 0 ? "" : `${m[3]}-${String(mois + 1).padStart(2, "0")}-${String(Number(m[1])).padStart(2, "0")}`;
+}
+// Le texte collé et la demande enregistrée parlent-ils de la même demande ? Seulement s'ils disent la même date ET le même nombre de personnes : sinon la référence est celle d'une autre demande,
+// ou le client a modifié son message, et la demande enregistrée est ignorée.
+function concorde(texteAnglais, demande) {
+  const date = dateIso((/^Date:\s*(.+)$/im.exec(texteAnglais) || [])[1]);
+  const gens = lireInvites((/^Guests:\s*(.+)$/im.exec(texteAnglais) || [])[1] || "");
+  const personnes = gens.adultes + gens.enfants + gens.bebes;
+  return !!date && date === String(demande.date_service || "").slice(0, 10) && personnes > 0 && personnes === (Number(demande.adultes) || 0) + (Number(demande.enfants) || 0);
+}
+// La lecture par la demande enregistrée, quand le titre ne suffit pas (titre renommé depuis) : elle ne dit QUE la sortie et l'option (product_id, option). Tout le reste, personnes, âges, date,
+// pickup, extras, estimation, nom, se lit dans le TEXTE collé. Retenue seulement si le texte concorde avec elle (date et nombre de personnes), et si sa sortie est de ce guide.
+function lireParDemande(bloc, guide, demande) {
+  const ids = { produit: demande.produit_id, option: demande.option_id || "" };
+  if (!ids.produit || guideDeSortie(ids.produit) !== guide) return null;
+  let anglais = null;
+  if (/^Booking request:/i.test(bloc.lignes[0])) anglais = bloc.lignes.join("\n");
+  else if (guide === "koh-samui") {
+    const produit = PRODUITS_CARNET.find((p) => p.id === ids.produit);
+    const option = produit && produit.options.find((o) => o.id === ids.option);
+    if (produit) anglais = anglaisDuRecapitulatif(bloc.lignes.join("\n"), produit, option ? option.titre : "", bloc.ref);
+  } else {
+    const offres = CORRESPONDANCE_CARNET.filter((o) => o.guide === guide && (o.variantes ? o.variantes.some((v) => v.produit === ids.produit && (v.option || "") === ids.option) : o.gestion && o.gestion.produit === ids.produit && (o.gestion.option || "") === ids.option));
+    if (offres.length === 1) {
+      const o = offres[0];
+      const x = o.variantes ? o.variantes.find((v) => v.produit === ids.produit && (v.option || "") === ids.option) : o.gestion;
+      anglais = anglaisDeLaPage({ offre: o, ids: x }, bloc.lignes, bloc.ref);
+    }
+  }
+  return anglais && concorde(anglais, demande) ? { carnet: ids, texte: anglais } : null;
+}
+// Le contexte du carnet que porte un message collé, ou null : { guide, carnet: { produit, option }, texte }. `texte` est le message à lire (celui qui est collé, à partir de sa première ligne
+// de demande ; le récapitulatif français est récrit au format du site). `carnet` est le même objet que celui d'une demande du site (identifiant de la sortie et de l'option). `demande` : la demande
+// que la page a enregistrée pour cette référence, utilisée seulement pour identifier la sortie quand le titre ne suffit pas (lireParDemande).
+export function carnetDuMessage(texte, { demande = null } = {}) {
+  const bloc = blocDeLaPage(texte);
+  if (!bloc) return null;
+  const lu = lireParTitre(bloc, bloc.guide) || (demande ? lireParDemande(bloc, bloc.guide, demande) : null);
+  return lu ? { guide: bloc.guide, ...lu } : null;
 }

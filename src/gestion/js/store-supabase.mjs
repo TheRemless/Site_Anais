@@ -579,9 +579,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (error) throw new Error(error.message);
       return data || null;
     },
-    // La demande que la page du carnet a enregistrée pour une référence (« AON-AB12 »), la plus récente : lue avec les droits de la personne connectée (les règles de la table), null sinon.
-    async demandeSiteParRef(ref) {
-      const { data, error } = await sb.from("demandes_site").select("*").eq("ref", ref).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    // La demande que la page du carnet a enregistrée pour une référence (« AON-AB12 ») dans l'entreprise du dossier en cours, la plus récente : lue avec les droits de la personne connectée
+    // (les règles de la table), null sinon ou sans entreprise. Une demande d'une autre entreprise n'est jamais rendue.
+    async demandeSiteParRef(ref, entiteId) {
+      if (!ref || !entiteId) return null;
+      const { data, error } = await sb.from("demandes_site").select("*").eq("ref", ref).eq("entite_id", entiteId).order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw new Error(error.message);
       return data || null;
     },

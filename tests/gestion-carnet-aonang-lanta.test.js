@@ -1153,14 +1153,6 @@ test("message collé : la table des références et les noms de page du guide de
   for (const p of PRODUITS_CARNET.filter((x) => x.guide !== "koh-samui")) assert.equal(p.nomPage, undefined, p.id);
 });
 
-test("Assistant : la fonction « agent » joint le bloc de la page à la carte, la fiche le lit par la même fonction que la fenêtre de création (tests/gestion-assistant-carnet-page.test.js, tests/gestion-carnet-colle-complete.test.js)", () => {
-  const doc = lireFichier("docs/gestion/carnet-aonang-lanta.md");
-  assert.match(doc, /message_page/);
-  assert.match(doc, /fonction « agent »/);
-  assert.match(lireFichier("supabase/functions/agent/outils.js"), /message_page: messageDeLaPage\(/);
-  assert.match(lireFichier("src/gestion/js/assistant-calc.mjs"), /const d = lireMessage\(texte, aujourdhui\);/, "la lecture de démonstration passe par lireMessage, donc par la détection");
-});
-
 const SQL_NET_VIP = prive("correctif-vip-set-net.sql");
 const RETOUR_NET_VIP = prive("retour-correctif-vip-set-net.sql");
 test("SQL privé du net du VIP Set : une seule ligne, tarif vérifié, jamais d'écrasement, retour symétrique", { skip: !SQL_NET_VIP || !RETOUR_NET_VIP ? "SQL privé absent (GESTION_SQL_PRIVE)" : false }, () => {
@@ -1201,10 +1193,6 @@ test("fenêtre de création : un texte collé à la main est lu avec la détecti
   assert.equal(lireDuTexte(RECAP_SAMUI, AJD, { carnet: null }).carnet.produit, "ang-thong-big-boat");
   // Sans référence : message libre, rien d'ajouté.
   assert.equal(fenetre(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { ref: "" })).d.carnet, undefined);
-  // La vue n'appelle plus lireMessage elle-même, ni ne désactive la détection pour un texte collé.
-  const vue = lireFichier("src/gestion/js/views/demande.mjs");
-  assert.match(vue, /lireDuTexte\(texte, aujourdhui\(\), depuisSite, \{ demandes: demandesLues\(\) \}\)/);
-  assert.doesNotMatch(vue, /detecterCarnet/);
 });
 
 test("« Lunch box » et « VIP Set » ne sont connus que du guide d'Ao Nang : dans Koh Samui ou Koh Lanta ils restent le texte du client", () => {
@@ -1257,8 +1245,9 @@ test("estimation française recopiée : « 1 250,50 THB » et « 1.250 THB » se
   assert.equal(lireDuTexte(recap("1.250"), AJD).prixSite, "1,250 THB");
   assert.equal(lireDuTexte(recap("5 000"), AJD).prixSite, "5,000 THB");
   // Une seule capture de la référence dans le module.
-  const code = lireFichier("src/gestion/js/carnet-colle.mjs").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
-  assert.equal((code.match(/R\[ée\]f/g) || []).length, 1, "la référence n'est lue qu'à un endroit");
+  const sans = (f) => lireFichier(f).split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert.equal((sans("src/gestion/js/carnet-colle.mjs").match(/R\[ée\]f/g) || []).length, 0, "carnet-colle.mjs ne lit pas la référence : le module partagé la lit");
+  assert.equal((sans("src/gestion/js/page-carnet.mjs").match(/R\[ée\]f/g) || []).length, 1, "la référence n'est lue qu'à un endroit");
 });
 
 test("tarifs du carnet : la table clé vers identifiant est construite une seule fois, jamais parcourue à chaque appel", () => {

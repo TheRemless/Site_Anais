@@ -18,15 +18,15 @@ const changerSansNaviguer = (id) => etat.entiteId !== id && changerEntite(id, { 
 // `demandes` : les demandes du site que la personne peut lire (la liste de l'écran), pour retrouver celle que la page du carnet a enregistrée pour le message joint à la carte.
 export const preparation = (c, demandes = etat.db.demandes_site || []) => {
   const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
-  return carteAvecLaPage({ texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) }, (c.donnees || {}).message_page, contexte, { demandes, aujourdhui: aujourdhui() });
+  return carteAvecLaPage({ texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) }, (c.donnees || {}).message_page, contexte, { demandes, aujourdhui: aujourdhui(), entiteId: etat.entiteId, taxi: modeTaxi() });
 };
 // La préparation d'une carte, avec la demande de la page lue en base quand la liste de l'écran ne l'a pas (les droits de la personne s'appliquent : la base ne rend que ce qu'elle peut voir).
 export async function preparationComplete(c) {
   const page = (c.donnees || {}).message_page;
   const ref = typeof page === "string" ? refDeLaPage(page) : null;
   let demandes = etat.db.demandes_site || [];
-  if (ref && !demandeEnregistree(page, demandes) && etat.store.demandeSiteParRef) {
-    const trouvee = await etat.store.demandeSiteParRef(ref).catch(() => null);
+  if (ref && !demandeEnregistree(page, demandes, { entiteId: etat.entiteId }) && etat.store.demandeSiteParRef) {
+    const trouvee = await etat.store.demandeSiteParRef(ref, etat.entiteId).catch(() => null);
     if (trouvee) demandes = [...demandes, trouvee];
   }
   return preparation(c, demandes);

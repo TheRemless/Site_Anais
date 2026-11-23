@@ -115,6 +115,9 @@ Deno.serve(async (req) => {
   const entiteId = demande.entite_id;
   if (typeof entiteId !== "string" || !UUID.test(entiteId)) return json({ erreur: "entreprise_invalide" }, 400);
   let message = typeof demande.texte === "string" ? demande.texte.trim() : "";
+  // Les messages du client d'une conversation WhatsApp jointe, tels que la base les garde (sauts de ligne compris) : le message joint à l'agent est neutralisé sur une seule ligne, où le bloc
+  // d'une page du carnet ne se reconnaît plus (page-carnet.js).
+  let textesPage: string[] = [];
   // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (agent/whatsapp.js) : le message et les pièces jointes sont
   // construits ici, plus bas, depuis la conversation WhatsApp lue avec la session de la personne.
   const waMode = MODES_WA.includes(demande.whatsapp_mode) ? demande.whatsapp_mode : "creer";
@@ -243,6 +246,7 @@ Deno.serve(async (req) => {
     const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
     if (wm.error) return json({ erreur: "base" }, 500);
     const messagesWa = wm.data || [];
+    textesPage = messagesWa.filter((m: { sens?: string; texte?: string; supprime_le?: string | null }) => m.sens === "entrant" && !m.supprime_le && typeof m.texte === "string" && m.texte.trim()).sort((a: { envoye_le?: string }, b: { envoye_le?: string }) => String(a.envoye_le || "").localeCompare(String(b.envoye_le || ""))).map((m: { texte: string }) => m.texte);
     // Seulement les pièces cochées par la personne dans l'écran (rien par défaut) : une capture de virement ou de compte ne part jamais
     // d'office chez Anthropic. Téléchargées avec la session (politique du stockage « whatsapp ») ; chaque fichier est contrôlé seul.
     const fichiers: { nom: string; media_type: string; data: string }[] = [];
@@ -966,7 +970,7 @@ Deno.serve(async (req) => {
   const lieuxMaps = lieuxMapsPourCtx();
   const maps = message ? await lieuxMaps(message) : { texte: message, lieux: [] };
   message = maps.texte;
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null });
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null, textesPage });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;

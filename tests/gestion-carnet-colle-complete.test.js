@@ -193,46 +193,51 @@ test("Koh Lanta collé en français : Kradan sur le longtail privé, enfant de 1
   assert.deepEqual([dq.carnet, dq.adultes, dq.enfants], [{ produit: "atv", option: "track-30-min" }, 2, 1]);
 });
 
-test("mécanisme (a) : la demande enregistrée par la page pour la même référence est reprise ; sans elle, (b) lit le français ; un titre inconnu sans demande enregistrée reste libre", () => {
+test("la demande enregistrée par la page ne dit que la sortie et l'option : le texte collé donne tout le reste, et elle n'est retenue que si elle concorde (date, personnes)", () => {
   const g = GUIDES[0];
   const o = configDe(g.fichier).offres["ao-nang-economique"];
-  const raw = { variante: "hong-island-lagoon", date: "2026-12-22", creneau: "", choix: {}, extras: ["lunch-box", "vip-set"], counts: {}, adults: 2, ages: [12, 5], pickup: "Hotel Example", transfert: false, name: "Anna Keller", whatsapp: "+41791234567", message: "" };
+  const raw = { variante: "hong-island-lagoon", date: "2026-12-22", creneau: "", choix: {}, extras: ["lunch-box", "vip-set"], counts: {}, adults: 2, ages: [12, 5], pickup: "Hotel Exemple", transfert: false, name: "Anna Keller", whatsapp: "+41791234567", message: "" };
   const { recap, corps } = messagesDe(o, raw, g.prefixe, g);
   // La ligne que la table demandes_site garde pour cette demande (le corps envoyé par la page, tel quel).
-  const ligne = { id: "d1", marque: "secret", ref: corps.ref, produit_id: corps.product_id, produit: corps.product, option_id: corps.option, option_titre: corps.option_label, date_service: corps.date, heure: null, adultes: corps.adults, enfants: corps.children, pickup: corps.pickup, nom: corps.name, total_estime: corps.estimated_total, devise: "THB", page_url: corps.page_url, message: corps.message, created_at: "2026-11-23T05:00:00Z" };
+  const ligne = { id: "d1", entite_id: "e1", marque: "secret", ref: corps.ref, produit_id: corps.product_id, produit: corps.product, option_id: corps.option, option_titre: corps.option_label, date_service: corps.date, heure: null, adultes: corps.adults, enfants: corps.children, pickup: corps.pickup, nom: "Un autre nom", total_estime: corps.estimated_total, devise: "THB", page_url: corps.page_url, message: corps.message, created_at: "2026-11-23T05:00:00Z" };
   const texte = ACCUEIL + recap;
+  const lecture = (d, t = texte) => resume(d, decouperServices(t, d, contexte, AJD));
   assert.equal(demandeEnregistree(texte, [ligne]).id, "d1");
   assert.equal(demandeEnregistree(texte, [{ ...ligne, ref: "AON-ZZZZ" }]), null);
   assert.equal(demandeEnregistree(texte, [{ ...ligne, page_url: "https://exemple.org/x" }]), null, "une demande qui n'est pas d'une page du carnet n'est pas reprise");
-  const parLigne = lireDuTexte(texte, AJD, null, { demandes: [ligne] });
-  const parTexte = lireDuTexte(texte, AJD, null);
-  const lecture = (d) => resume(d, decouperServices(texte, d, contexte, AJD));
-  assert.deepEqual(lecture(parLigne), lecture(parTexte), "les deux mécanismes donnent la même lecture");
-  // Le titre de la page a changé depuis (le texte collé n'est plus reconnu par son titre) : la demande enregistrée suffit.
+  assert.equal(demandeEnregistree(texte, [ligne], { entiteId: "e1" }).id, "d1");
+  assert.equal(demandeEnregistree(texte, [ligne], { entiteId: "autre" }), null, "la demande d'une autre entreprise n'est jamais reprise");
+  // Le titre de la page suffit : la demande enregistrée n'est pas utilisée, même si elle dit autre chose.
+  const parTitre = lireDuTexte(texte, AJD, null);
+  assert.deepEqual(lecture(lireDuTexte(texte, AJD, null, { demandes: [{ ...ligne, produit_id: "aonang-vip-hong" }] })), lecture(parTitre), "le titre français prime sur la demande enregistrée");
+  // Le titre de la page a changé depuis : la demande enregistrée identifie la sortie et l'option, RIEN d'autre ; le nom et les personnes viennent du texte.
   const renomme = texte.replace(o.produit, "Un titre que la page n'avait pas");
   assert.equal(lireDuTexte(renomme, AJD, null).carnet, undefined, "sans demande enregistrée : message libre");
-  assert.deepEqual(lireDuTexte(renomme, AJD, null, { demandes: [ligne] }).carnet, { produit: corps.product_id, option: corps.option });
+  const parLigne = lireDuTexte(renomme, AJD, null, { demandes: [ligne], entiteId: "e1" });
+  assert.deepEqual(parLigne.carnet, { produit: corps.product_id, option: corps.option });
+  assert.equal(parLigne.nom, "Anna Keller", "le nom est celui du texte, pas celui de la demande enregistrée");
+  assert.deepEqual(lecture(parLigne, renomme), lecture(parTitre), "même lecture que par le titre : personnes, âges, extras, parc et prix du texte");
+  // Le texte a été modifié par le client (une personne de plus, une autre date) : la demande enregistrée ne concorde plus, elle est ignorée.
+  assert.equal(lireDuTexte(renomme.replace("2 adultes", "3 adultes"), AJD, null, { demandes: [ligne], entiteId: "e1" }).carnet, undefined, "personnes modifiées");
+  assert.equal(lireDuTexte(renomme.replace("22 décembre", "23 décembre"), AJD, null, { demandes: [ligne], entiteId: "e1" }).carnet, undefined, "date modifiée");
+  // La référence d'un autre client (autre date, autres personnes) : ignorée, le texte reste un message libre.
+  const autre = { ...ligne, nom: "Un autre client", date_service: "2027-01-10", adultes: 4, enfants: 0 };
+  assert.equal(lireDuTexte(renomme, AJD, null, { demandes: [autre], entiteId: "e1" }).carnet, undefined);
+  assert.equal(lireDuTexte(renomme, AJD, null, { demandes: [{ ...ligne, ref: "AON-ZZZZ" }], entiteId: "e1" }).carnet, undefined, "référence inconnue");
+  assert.equal(lireDuTexte(renomme, AJD, null, { demandes: [{ ...ligne, produit_id: "koh-phi-phi" }], entiteId: "e1" }).carnet, undefined, "une sortie d'un autre guide n'est pas prise");
   // Une demande du site du carnet garde son contexte exact, jamais la ligne trouvée par la référence.
-  assert.equal(lireDuTexte(texte, AJD, { carnet: { produit: "aonang-vip-hong", option: "standard" } }, { demandes: [ligne] }).carnet.produit, "aonang-vip-hong");
+  assert.equal(lireDuTexte(texte, AJD, { carnet: { produit: "aonang-vip-hong", option: "standard" } }, { demandes: [ligne], entiteId: "e1" }).carnet.produit, "aonang-vip-hong");
   assert.deepEqual(REFS_CARNET, { SAM: "koh-samui", AON: "aonang", LAN: "koh-lanta" });
 });
 
-test("l'Assistant : la fonction « agent » joint le bloc de la page à la carte, la fiche le lit comme un message collé, même total, mêmes extras, mêmes âges", async () => {
-  const { messageDeLaPage, blocsDeLaPage } = await import("../supabase/functions/agent/outils.js");
+test("l'Assistant : la fonction « agent » joint le bloc de la page quand le client n'a rien écrit après, la fiche le lit comme un message collé, même total, mêmes extras, mêmes âges", async () => {
+  const { messageDeLaPage } = await import("../supabase/functions/agent/page-carnet.js");
   const g = GUIDES[0];
   const o = configDe(g.fichier).offres["ao-nang-vip"];
   const raw = { variante: "hong-islands", date: "2026-12-22", creneau: "matin", choix: {}, extras: ["lunch-box"], counts: {}, adults: 2, ages: [12], pickup: "Hotel Example", transfert: false, name: "Anna Keller", whatsapp: "+41791234567", message: "" };
-  const { recap } = messagesDe(o, raw, g.prefixe, g);
+  const { recap, corps } = messagesDe(o, raw, g.prefixe, g);
   const bloc = recap;
-  // Côté fonction : le bloc est repéré dans le message collé comme dans celui d'un client lu dans WhatsApp, tel quel ; deux demandes différentes dans l'échange : rien.
-  assert.equal(messageDeLaPage([ACCUEIL + recap]), bloc);
-  assert.equal(messageDeLaPage(["Bonjour", `Voici :\n${recap}\nMerci`]), bloc);
-  assert.equal(messageDeLaPage(["Salut, tarif taxi ?"]), "");
-  assert.equal(messageDeLaPage([recap, recap.replace("AON-AB12", "AON-ZZ99")]), "", "deux références : le modèle ne choisit pas");
-  assert.equal(messageDeLaPage([recap, ACCUEIL + recap]), bloc, "le même bloc dit deux fois reste un seul bloc");
-  assert.equal(blocsDeLaPage([recap]).length, 1);
-  // Côté fiche : la carte du modèle (un service du catalogue choisi par lui, sans extra) et le bloc de la page.
-  const modele = { texte: "Hong VIP", date: "2026-12-22", heure: "", adultes: 2, enfants: 1, offres: [{ genre: "prestation", id: "x", titre: "Hong VIP, choisi par le modèle", total: 1, source: { famille: "excursion" } }], inconnu: false };
+  const modele = { texte: "Hong VIP", date: "2026-12-22", heure: "", adultes: 2, enfants: 1, offres: [{ genre: "prestation", id: PRODUITS_CARNET.find((p) => p.id === corps.product_id).options[0].tarifs[0].prestation, titre: "Hong VIP, choisi par le modèle", total: 1, source: { famille: "excursion" } }], inconnu: false };
   const prep = { texte: "", d: { libre: true, ia: true, nom: "Anna Keller", telephone: "+41791234567", hotel: "", langue: "en", adultes: 2, enfants: 1, bebes: 0, remarquesIA: "" }, services: [modele] };
   const avec = carteAvecLaPage(prep, bloc, contexte, { aujourdhui: AJD });
   const fenetre = decouperServices(bloc, lireDuTexte(bloc, AJD, null), contexte, AJD)[0];
@@ -243,28 +248,102 @@ test("l'Assistant : la fonction « agent » joint le bloc de la page à la carte
   assert.deepEqual([avec.d.carnet, avec.d.adultes, avec.d.enfants, avec.d.plusGrands, avec.d.extras], [{ produit: "aonang-vip-hong", option: "standard" }, 2, 1, undefined, "Lunch box"]);
   assert.equal(avec.texte, bloc);
   assert.equal(avec.d.nom, "Anna Keller");
-  // Rien de reconnu, ou le service d'une autre entreprise : la carte reste comme elle était.
+  // Rien de reconnu : la carte reste comme elle était.
   assert.equal(carteAvecLaPage(prep, "", contexte, { aujourdhui: AJD }), prep);
   assert.equal(carteAvecLaPage(prep, bloc.replace("AON-AB12", "XYZ-AB12"), contexte, { aujourdhui: AJD }), prep);
-  const taxi = { ...prep, services: [{ ...modele, offres: [{ ...modele.offres[0], source: { famille: "transfert" } }] }] };
-  assert.equal(carteAvecLaPage(taxi, bloc, contexte, { aujourdhui: AJD }), taxi, "un transfert n'est jamais remplacé par une excursion");
-  const deux = carteAvecLaPage({ ...prep, services: [{ ...modele, offres: [{ ...modele.offres[0], source: { famille: "transfert" } }] }, modele] }, bloc, contexte, { aujourdhui: AJD });
-  assert.deepEqual(deux.services.map((s) => !!s.depuisPage), [false, true], "seul le service d'excursion est remplacé");
+  assert.equal(messageDeLaPage([ACCUEIL + recap]), bloc);
   assert.equal(md5uuid("x").length, 36);
 });
 
-test("branchements : la fiche de création lit un texte avec la demande enregistrée, l'Assistant passe par preparationComplete, les deux magasins savent chercher une référence", () => {
-  const vue = lireFichier("src/gestion/js/views/demande.mjs");
-  assert.match(vue, /lireDuTexte\(texte, aujourdhui\(\), depuisSite, \{ demandes: demandesLues\(\) \}\)/);
-  assert.match(vue, /etat\.store\.demandeSiteParRef\(ref\)/);
-  assert.match(vue, /s\.depuisPage \? s : \{ \.\.\.s, offresIA: s\.offres \}/);
-  const valider = lireFichier("src/gestion/js/views/agent-valider.mjs");
-  assert.match(valider, /carteAvecLaPage\(/);
-  assert.match(valider, /export async function preparationComplete/);
-  assert.doesNotMatch(lireFichier("src/gestion/js/views/agent.mjs"), /ouvrirDemande\(null, preparation\(/);
-  assert.match(lireFichier("src/gestion/js/store-supabase.mjs"), /async demandeSiteParRef\(ref\)/);
-  assert.match(lireFichier("src/gestion/js/store-local.mjs"), /async demandeSiteParRef\(ref\)/);
-  assert.match(lireFichier("supabase/functions/agent/outils.js"), /message_page: messageDeLaPage\(/);
+test("une carte à deux excursions : seul le service de la même sortie que la page est remplacé, jamais le premier par défaut", () => {
+  const g = GUIDES[0];
+  const o = configDe(g.fichier).offres["ao-nang-vip"];
+  const raw = { variante: "hong-islands", date: "2026-12-22", creneau: "matin", choix: {}, extras: ["lunch-box"], counts: {}, adults: 2, ages: [5], pickup: "Hotel Example", transfert: false, name: "Anna Keller", whatsapp: "+41791234567", message: "" };
+  const { recap, corps } = messagesDe(o, raw, g.prefixe, g);
+  const tarifHong = PRODUITS_CARNET.find((p) => p.id === corps.product_id).options[0].tarifs[0].prestation;
+  const tarifPhi = PRODUITS_CARNET.find((p) => p.id === "aonang-vip-phi-phi").options[0].tarifs[0].prestation;
+  const excursion = (id, date, titre) => ({ texte: titre, date, heure: "", adultes: 2, enfants: 1, offres: [{ genre: "prestation", id, titre, total: 1, source: { famille: "excursion" } }], inconnu: false });
+  const prep = (services) => ({ texte: "", d: { libre: true, ia: true, nom: "Anna Keller", telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 1, bebes: 0, remarquesIA: "" }, services });
+  // La page est la SECONDE excursion de la carte : la première reste telle quelle, la page n'est pas doublée.
+  const deux = carteAvecLaPage(prep([excursion(tarifPhi, "2026-12-20", "Phi Phi VIP"), excursion(tarifHong, "2026-12-22", "Hong VIP")]), recap, contexte, { aujourdhui: AJD });
+  assert.deepEqual(deux.services.map((s) => [s.depuisPage === true, s.texte]), [[false, "Phi Phi VIP"], [true, "Hong VIP"]].map(([a, b]) => [a, b === "Hong VIP" ? deux.services[1].texte : b]));
+  assert.equal(deux.services[0].offres[0].id, tarifPhi, "la première excursion est intacte");
+  assert.equal(deux.services[1].offres[0].id, tarifHong);
+  assert.deepEqual(deux.services[1].offres[0].extras.map((x) => x.ligne), ["Lunch box"]);
+  assert.equal(deux.services.filter((s) => s.depuisPage).length, 1, "une seule fois");
+  // Deux services de la même sortie : celui qui a la date de la page.
+  const memes = carteAvecLaPage(prep([excursion(tarifHong, "2026-12-20", "Hong VIP (le 20)"), excursion(tarifHong, "2026-12-22", "Hong VIP (le 22)")]), recap, contexte, { aujourdhui: AJD });
+  assert.deepEqual(memes.services.map((s) => s.depuisPage === true), [false, true]);
+  // Même sortie, même date, deux fois : ambigu, rien n'est remplacé, la carte le dit.
+  const ambigu = carteAvecLaPage(prep([excursion(tarifHong, "2026-12-22", "A"), excursion(tarifHong, "2026-12-22", "B")]), recap, contexte, { aujourdhui: AJD });
+  assert.deepEqual(ambigu.services.map((s) => s.depuisPage), [undefined, undefined]);
+  assert.equal(ambigu.services[0].avertissementPage, "page_non_rattachee");
+  // Aucune des excursions n'est celle de la page : rien n'est remplacé, avertissement sur la première.
+  const autre = carteAvecLaPage(prep([excursion(tarifPhi, "2026-12-22", "Phi Phi VIP")]), recap, contexte, { aujourdhui: AJD });
+  assert.equal(autre.services[0].offres[0].id, tarifPhi);
+  assert.equal(autre.services[0].avertissementPage, "page_non_rattachee");
+  assert.equal(autre.services[0].depuisPage, undefined);
+});
+
+test("carte mixte Secret et Taxi, transfert non résolu : jamais remplacé par l'excursion de la page, jamais dans l'étape Taxi", () => {
+  const g = GUIDES[0];
+  const o = configDe(g.fichier).offres["ao-nang-vip"];
+  const raw = { variante: "hong-islands", date: "2026-12-22", creneau: "matin", choix: {}, extras: [], counts: {}, adults: 2, ages: [], pickup: "Hotel Example", transfert: false, name: "Anna Keller", whatsapp: "+41791234567", message: "" };
+  const { recap, corps } = messagesDe(o, raw, g.prefixe, g);
+  const tarifHong = PRODUITS_CARNET.find((p) => p.id === corps.product_id).options[0].tarifs[0].prestation;
+  const prep = (services) => ({ texte: "", d: { libre: true, ia: true, nom: "Anna Keller", telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, remarquesIA: "" }, services });
+  const transfert = { texte: "Taxi Krabi Airport vers Ao Nang", date: "2026-12-22", heure: "10:00", adultes: 2, enfants: 0, offres: [], inconnu: true, transfertLibre: { de: "Krabi Airport", vers: "Ao Nang" } };
+  const excursion = { texte: "Hong VIP", date: "2026-12-22", heure: "", adultes: 2, enfants: 0, offres: [{ genre: "prestation", id: tarifHong, titre: "Hong VIP", total: 1, source: { famille: "excursion" } }], inconnu: false };
+  // Étape Taxi (un seul service, le transfert non résolu, sans offre) : la page n'y entre jamais, sans avertissement.
+  const taxi = prep([transfert]);
+  assert.equal(carteAvecLaPage(taxi, recap, contexte, { aujourdhui: AJD, taxi: true }), taxi);
+  // Même hors mode Taxi, un transfert sans offre n'est pas remplacé : rien ne le rattache à la sortie de la page, la carte le dit.
+  const seul = carteAvecLaPage(taxi, recap, contexte, { aujourdhui: AJD });
+  assert.deepEqual(seul.services.map((s) => s.depuisPage), [undefined]);
+  assert.equal(seul.services[0].avertissementPage, "page_non_rattachee");
+  assert.equal(seul.services[0].transfertLibre.de, "Krabi Airport");
+  // Étape Secret d'une carte mixte : l'excursion est remplacée, le transfert reste.
+  const secret = carteAvecLaPage(prep([transfert, excursion]), recap, contexte, { aujourdhui: AJD });
+  assert.deepEqual(secret.services.map((s) => s.depuisPage === true), [false, true]);
+  assert.equal(secret.services[0].transfertLibre.de, "Krabi Airport");
+  assert.equal(secret.services[0].avertissementPage, undefined);
+});
+
+test("page-carnet.js : le même module reconnaît le bloc côté fonction et côté Gestion, la fonction ne joint rien quand le client a écrit après, avant, ou que la référence n'est pas celle d'un guide", async () => {
+  const fonction = await import("../supabase/functions/agent/page-carnet.js");
+  const gestion = await import("../src/gestion/js/page-carnet.mjs");
+  assert.equal(lireFichier("supabase/functions/agent/page-carnet.js"), lireFichier("src/gestion/js/page-carnet.mjs"), "copie identique : cp supabase/functions/agent/page-carnet.js src/gestion/js/page-carnet.mjs");
+  assert.deepEqual(gestion.REFS_CARNET, REFS_CARNET);
+  const g = GUIDES[0];
+  const o = configDe(g.fichier).offres["ao-nang-vip"];
+  const raw = { variante: "hong-islands", date: "2026-12-22", creneau: "matin", choix: {}, extras: [], counts: {}, adults: 2, ages: [], pickup: "Hotel Example", transfert: false, name: "Anna Keller", whatsapp: "+41791234567", message: "" };
+  const { recap } = messagesDe(o, raw, g.prefixe, g);
+  const blocNormalise = recap.replace(/[  ]/g, " ");
+  for (const m of [fonction, gestion]) {
+    assert.equal(m.blocDeLaPage(recap).ref, "AON-AB12");
+    assert.equal(m.blocDeLaPage(ACCUEIL + recap).ref, "AON-AB12");
+    // Le client écrit APRÈS, ou AVANT, ou cite : pas un bloc.
+    assert.equal(m.blocDeLaPage(`${recap}\nfinalement 4 personnes et vendredi`), null);
+    assert.equal(m.blocDeLaPage(`Salut\n${recap}`), null);
+    assert.equal(m.blocDeLaPage(`> ${recap.split("\n").join("\n> ")}`), null);
+    // Une référence d'un autre site (« SEC- »), ou sans préfixe de la table, n'est pas celle d'un guide.
+    assert.equal(m.blocDeLaPage(recap.replace("AON-AB12", "SEC-AB12")), null);
+    assert.equal(m.blocDeLaPage(recap.replace("AON-AB12", "AB12")), null);
+  }
+  // Côté fonction : ce qui s'attache à la carte.
+  assert.equal(fonction.messageDeLaPage([ACCUEIL + recap]), recap);
+  assert.equal(fonction.messageDeLaPage([`${recap}\nfinalement 4 personnes et vendredi`]), "", "écrit après : rien n'est joint (le changement du client ne se perd pas)");
+  assert.equal(fonction.messageDeLaPage([`${recap}\nfinalement 4 personnes et vendredi`, recap]), recap, "le bloc dit en entier plus tard reste un bloc");
+  assert.equal(fonction.messageDeLaPage([recap.replace("AON-AB12", "SEC-AB12")]), "");
+  assert.equal(fonction.messageDeLaPage(["Salut, tarif taxi ?"]), "");
+  assert.equal(fonction.messageDeLaPage([recap, recap.replace("AON-AB12", "AON-ZZ99")]), "", "deux références : le modèle ne choisit pas");
+  assert.equal(fonction.messageDeLaPage([recap, ACCUEIL + recap]), recap);
+  // Messages du client dans WhatsApp : en-tête « [Client hh:mm] », un seul message à la fois ; un message du client APRÈS le bloc annule la jonction.
+  assert.equal(fonction.messageDeLaPage([], { client: [recap] }), recap);
+  assert.equal(fonction.messageDeLaPage([], { client: [recap, "finalement 4 personnes et vendredi"] }), "", "le client a écrit après");
+  assert.equal(fonction.messageDeLaPage([], { client: ["Bonjour", recap] }), recap);
+  assert.equal(fonction.messageDeLaPage([`[Client 14:00] ${recap}`]), recap, "l'en-tête d'un échange joint est retiré");
+  assert.ok(blocNormalise);
 });
 
 test("plus aucune limite dite dans la doc : ni titre français non reconnu pour Ao Nang et Koh Lanta, ni Assistant hors détection, ni tarifs « provisoires »", () => {
