@@ -992,6 +992,24 @@ body:has(.gl-main) .lb-count { font-size: 1rem; font-weight: 600; color: #fff; l
 .cg-heure { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
 .cg-list--det { gap: 4px; color: var(--ink-soft); }
 .cg-reserver { width: 100%; }
+/* Guides à beaucoup d'offres (Ao Nang, Koh Lanta) : un groupe replié par produit, avec le prix de départ, les blocs de texte et les offres sur demande. */
+.cg-intro p + p { margin-top: 12px; }
+.cg-prod { padding: 0; }
+.cg-prod summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 56px; padding: 10px 0; cursor: pointer; list-style: none; }
+.cg-prod summary::-webkit-details-marker { display: none; }
+.cg-prod summary::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 0 2px; border: solid var(--teal-deep); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.cg-prod[open] summary::after { transform: rotate(-135deg); }
+.cg-prod-titre { flex: 1 1 auto; min-width: 0; margin: 0; font-family: var(--serif); font-size: clamp(1.35rem, 2vw, 1.55rem); font-weight: inherit; letter-spacing: inherit; text-wrap: wrap; line-height: 1.2; color: var(--ink); } /* un vrai h3 dans le résumé : même rendu qu'avant */
+.cg-prod-des { flex: none; font-size: 0.95rem; color: var(--ink-mute); white-space: nowrap; }
+.cg-prod-in { padding: 0 0 14px; }
+.cg-bloc { margin-top: 28px; display: grid; gap: 10px; }
+.cg-bloc p { max-width: 42rem; color: var(--ink-soft); }
+.cg-note--prix { margin: 0 0 6px; max-width: 42rem; }
+.cg-surdemande { font-weight: 600; color: var(--ink); }
+.cg-row-detail { display: block; margin-top: 2px; font-size: 0.9rem; font-weight: 400; color: var(--ink-mute); }
+.cg-offre--wa { background: transparent; }
+.cg-line { margin-top: 12px; }
+.cg-line > label { display: block; margin-bottom: 6px; font-weight: 600; color: var(--ink); }
 @media (min-width: 560px) { .cg-reserver { width: auto; justify-self: start; } }
 .cg-exc-liens { display: flex; flex-wrap: wrap; gap: 0 22px; margin-top: 6px; }
 .cg-exc-liens .cg-link, .cg-row-lien .cg-link { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }

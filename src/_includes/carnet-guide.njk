@@ -8,7 +8,36 @@
 {%- endmacro -%}
 
 {%- macro tarifs(o) -%}
-{%- if o.variantes %}
+{%- if o.type == "surDemande" %}
+<p class="cg-surdemande">{{ o.prixTexte or "Prix sur demande : je vous le confirme dans ma réponse." }}</p>
+{%- elif o.type == "radeau" %}
+<table class="cg-tarifs">
+  <caption class="sr-only">Prix du radeau</caption>
+  <tbody>
+    <tr><th scope="row">Radeau privé, jusqu’à {{ o.base.max }} personnes</th><td><span class="cg-price">{{ thb(o.base.prix) }}</span></td></tr>
+    <tr><th scope="row">Adulte en plus</th><td><span class="cg-price">{{ thb(o.supplement.adulte) }}</span></td></tr>
+    <tr><th scope="row">{{ o.supplement.enfant.regle }}, en plus</th><td><span class="cg-price">{{ thb(o.supplement.enfant.prix) }}</span></td></tr>
+  </tbody>
+</table>
+{%- elif o.type == "lignes" %}
+<table class="cg-tarifs">
+  <caption class="sr-only">Tarifs</caption>
+  <tbody>
+    {%- for l in o.lignes %}
+    <tr><th scope="row">{{ l.label }}{% if l.regle %} <span class="cg-row-meta">({{ l.regle }})</span>{% endif %}</th><td><span class="cg-price">{{ thb(l.prix) }}</span></td></tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- elif o.variantes and o.type == "bateau" %}
+<table class="cg-tarifs">
+  <caption>{{ o.variantesCaption or "Prix par bateau" }}</caption>
+  <tbody>
+    {%- for v in o.variantes %}
+    <tr><th scope="row">{{ v.label }}{% if v.detail %}<span class="cg-row-detail">{{ v.detail }}</span>{% endif %}</th><td><span class="cg-price">{{ thb(v.prix) }}</span></td></tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- elif o.variantes %}
 <table class="cg-tarifs">
   <caption class="sr-only">Tarifs par personne</caption>
   <thead><tr><td><span class="sr-only">Personne</span></td>{% for v in o.variantes %}<th scope="col">{{ v.label }}</th>{% endfor %}</tr></thead>
@@ -42,10 +71,10 @@
 {%- endif %}
 {%- endmacro -%}
 
-{%- macro carte(o) -%}
+{%- macro carte(o, niveau) -%}
 <article class="cg-offre" id="offre-{{ o.id }}" aria-label="{{ o.produit }}">
   {%- if o.titre %}
-  <h5 class="cg-offre-titre">{{ o.titre }}{% if o.titreMeta %} <span class="cg-row-meta">{{ o.titreMeta }}</span>{% endif %}{% if o.meta and o.type == "personne" %} <span class="cg-row-meta">({{ o.meta }})</span>{% endif %}</h5>
+  <h{{ niveau or 5 }} class="cg-offre-titre">{{ o.titre }}{% if o.titreMeta %} <span class="cg-row-meta">{{ o.titreMeta }}</span>{% endif %}{% if o.meta and o.type == "personne" %} <span class="cg-row-meta">({{ o.meta }})</span>{% endif %}</h{{ niveau or 5 }}>
   {%- endif %}
   {%- if o.texte %}
   <p class="cg-offre-texte{% if not o.titre %} cg-offre-texte--seul{% endif %}">{% if not o.titre and o.meta %}{{ o.meta }}, {% endif %}{{ o.texte }}</p>
@@ -58,13 +87,30 @@
     {%- for f in o.faits %}<li>{{ f }}</li>{% endfor %}
   </ul>
   {{ tarifs(o) }}
+  {%- if o.seuilGroupe %}
+  <p class="cg-droits">Les enfants de moins de {{ o.seuilGroupe }} ans ne comptent pas dans le nombre de personnes du bateau privé.</p>
+  {%- endif %}
   {%- if o.parc %}
-  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant ({{ o.parc.regle }}), gratuit avant {{ o.parc.enfantMin }} ans. À payer sur place, en espèces, au parc (tarif étranger).</p>
+  {%- if o.parc.regle %}
+  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant ({{ o.parc.regle }}), gratuit avant {{ o.parc.enfantMin }} ans. À payer sur place, en espèces, au parc (tarif étranger).{% if o.parc.confirmer %} Montants à confirmer au moment de la réservation.{% endif %}</p>
+  {%- else %}
+  <p class="cg-droits">Entrée du parc, en plus du prix : {{ thb(o.parc.adulte) }} par adulte, {{ thb(o.parc.enfant) }} par enfant. À payer sur place, en espèces, au parc.{% if o.parc.confirmer %} Montants à confirmer au moment de la réservation.{% endif %}</p>
+  {%- endif %}
+  {%- endif %}
+  {%- if not o.parc and o.variantes and o.variantes[0].parc %}
+  <p class="cg-droits">Entrée du parc national, en plus du prix{% for v in o.variantes %}{% if loop.first %} : {% else %}{{ ' ; ' }}{% endif %}{{ v.parcLabel or v.label }}, {{ thb(v.parc.adulte) }} par adulte et {{ thb(v.parc.enfant) }} par enfant{% endfor %} (enfant {{ o.variantes[0].parc.regle }}, gratuit avant {{ o.variantes[0].parc.enfantMin }} ans). À payer sur place, en espèces, au parc. Montants à confirmer au moment de la réservation.</p>
+  {%- endif %}
+  {%- if o.extras %}
+  <p class="cg-droits">{% for x in o.extras %}{{ x.label }} : {{ thb(x.prix) }}{% if x.unite == "personne" %} par personne{% elif x.unite == "bateau" %} par bateau{% endif %} (en option){% if not loop.last %} ; {% endif %}{% endfor %}.</p>
+  {%- endif %}
+  {%- if o.fermeture %}
+  <p class="cg-note">{{ o.fermeture.message }}</p>
   {%- endif %}
   {%- if o.angThong and reglages.fermetureAngThong %}
   <p class="cg-note" data-cg-fermeture>{{ reglages.fermetureAngThong.message }}</p>
   {%- endif %}
 
+  {%- if o.programme or o.inclus or o.nonInclus or o.surPlace or o.avis or o.note %}
   <details class="cg-det">
     <summary>Détail de l’offre</summary>
     <div class="cg-det-in">
@@ -90,16 +136,38 @@
       {%- if o.note %}<p class="cg-det-n">{{ o.note }}</p>{% endif %}
     </div>
   </details>
+  {%- endif %}
   <div class="cg-slot" data-cg-slot="{{ o.id }}"><noscript><a class="btn btn-teal cg-reserver" href="https://wa.me/{{ business.telephone | replace('+', '') }}?text={{ ('Bonjour Anaïs, je souhaite réserver : ' + o.produit) | urlencode }}" target="_blank" rel="noopener"><span>Réserver sur WhatsApp<span class="sr-only"> : {{ o.produit }}</span></span></a></noscript></div>
 </article>
 {%- endmacro -%}
 
+{#- Offre sans feuille de réservation : un lien WhatsApp seulement (plongée, location, bateaux rapides). -#}
+{%- macro carteWa(o, niveau) -%}
+<article class="cg-offre cg-offre--wa" id="offre-{{ o.id }}" aria-label="{{ o.produit }}">
+  <h{{ niveau or 5 }} class="cg-offre-titre">{{ o.titre or o.produit }}</h{{ niveau or 5 }}>
+  {%- if o.texte %}<p class="cg-offre-texte cg-offre-texte--seul">{{ o.texte }}</p>{% endif %}
+  {%- if o.faits %}<ul class="cg-faits">{% for f in o.faits %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+  <p class="cg-slot"><a class="btn btn-ghost cg-reserver" href="https://wa.me/{{ business.telephone | replace('+', '') }}?text={{ ('Bonjour Anaïs, je voudrais des informations : ' + o.produit) | urlencode }}" target="_blank" rel="noopener"><span>{{ o.waLabel or "Écrire à Anaïs" }}<span class="sr-only"> : {{ o.produit }}</span></span></a></p>
+</article>
+{%- endmacro -%}
+
+{%- if guide.paragraphes %}
+<section class="cg-intro">
+  <div class="container">
+    {%- for t in guide.paragraphes %}
+    <p>{{ t }}</p>
+    {%- endfor %}
+  </div>
+</section>
+{%- else %}
 <section class="cg-intro">
   <div class="container">
     <p>{{ guide.intro[0] }}<br>{{ guide.intro[1] }}</p>
   </div>
 </section>
+{%- endif %}
 
+{%- if guide.resume %}
 <section class="cg-resume" aria-labelledby="cg-resume-title">
   <div class="container">
     <h2 id="cg-resume-title">En résumé</h2>
@@ -121,6 +189,7 @@
     </div>
   </div>
 </section>
+{%- endif %}
 
 {%- for s in guide.sections %}
 
@@ -129,17 +198,19 @@
     <header class="cg-exc-head">
       <span class="sig-num" aria-hidden="true">{{ s.num }}</span>
       <h2 id="{{ s.id }}-title">{{ s.titre }}</h2>
-      <p class="cg-exc-intro">{{ s.intro }}</p>
+      {%- if s.intro %}<p class="cg-exc-intro">{{ s.intro }}</p>{% endif %}
       {%- if s.liens %}
       <p class="cg-exc-liens">{% for l in s.liens %}{{ lien(l) }}{% endfor %}</p>
       {%- endif %}
     </header>
 
+    {%- if s.photos %}
     <div class="cg-photos" role="group" aria-label="Photos : {{ s.titre }}" tabindex="0">
       {%- for p in s.photos %}
       <figure class="cg-photo"><img loading="lazy" fetchpriority="low" sizes="(min-width: 900px) 300px, 270px" src="{{ p.src }}" alt="{{ p.alt }}"></figure>
       {%- endfor %}
     </div>
+    {%- endif %}
 
     <div class="cg-exc-body">
       {%- if s.iles %}
@@ -160,25 +231,69 @@
       </div>
       {%- endif %}
 
-      <h3 class="cg-sub">Les options</h3>
+      {%- for b in s.blocs %}
+      {%- if not b.apres %}
+      <div class="cg-bloc">
+        {%- if b.titre %}<h3 class="cg-sub">{{ b.titre }}</h3>{% endif %}
+        {%- for t in b.paragraphes %}<p>{{ t }}</p>{% endfor %}
+        {%- if b.lien %}<p>{{ b.lien.avant }} <a class="cg-link" href="{{ b.lien.url }}" target="_blank" rel="noopener noreferrer">{{ b.lien.label }}<span class="sr-only"> : s’ouvre dans un nouvel onglet</span></a> {{ b.lien.apres }}</p>{% endif %}
+        {%- if b.liste %}<ul class="cg-list">{% for t in b.liste %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {%- endif %}
+      {%- endfor %}
+
+      {%- if s.groupes %}
+      <h3 class="cg-sub">{{ s.optionsTitre or "Les options" }}</h3>
+      {%- if s.notePrix %}<p class="cg-note cg-note--prix">{{ s.notePrix }}</p>{% endif %}
       <div class="cg-opts">
         {%- for g in s.groupes %}
         {%- if not (g.isole and not reglages.afficherSpeedboatsPigIsland) %}
+        {%- if g.repliable %}
+        <details class="cg-opt cg-groupe cg-prod" id="{{ g.id }}-bloc">
+          <summary><h3 class="cg-prod-titre" id="{{ g.id }}">{{ g.titre }}</h3>{% if g.des %}<span class="cg-prod-des">dès {{ thb(g.des) }}</span>{% endif %}</summary>
+          <div class="cg-prod-in">
+          {%- if g.texte %}
+          <p class="cg-groupe-texte">{{ g.texte }}</p>
+          {%- endif %}
+          {%- for t in g.paragraphes %}<p class="cg-groupe-texte">{{ t }}</p>{% endfor %}
+          <div class="cg-offres">
+            {%- for id in g.offres %}
+            {%- if offres[id] %}{% if offres[id].wa %}{{ carteWa(offres[id], 4) }}{% else %}{{ carte(offres[id], 4) }}{% endif %}{% endif %}
+            {%- endfor %}
+          </div>
+          </div>
+        </details>
+        {%- else %}
         <section class="cg-opt cg-groupe" aria-labelledby="{{ g.id }}">
           <h4 id="{{ g.id }}" class="cg-opt-title">{{ g.titre }}{% if g.note %} <span class="cg-opt-note">{{ g.note }}</span>{% endif %}</h4>
           {%- if g.texte %}
           <p class="cg-groupe-texte">{{ g.texte }}{% if g.texteItalique %} <em>{{ g.texteItalique }}</em>{% endif %}</p>
           {%- endif %}
+          {%- for t in g.paragraphes %}<p class="cg-groupe-texte">{{ t }}</p>{% endfor %}
           <div class="cg-offres">
             {%- for id in g.offres %}
-            {%- if offres[id] %}{{ carte(offres[id]) }}{% endif %}
+            {%- if offres[id] %}{% if offres[id].wa %}{{ carteWa(offres[id]) }}{% else %}{{ carte(offres[id]) }}{% endif %}{% endif %}
             {%- endfor %}
           </div>
         </section>
         {%- endif %}
+        {%- endif %}
         {%- endfor %}
       </div>
+      {%- endif %}
 
+      {%- for b in s.blocs %}
+      {%- if b.apres %}
+      <div class="cg-bloc">
+        {%- if b.titre %}<h3 class="cg-sub">{{ b.titre }}</h3>{% endif %}
+        {%- for t in b.paragraphes %}<p>{{ t }}</p>{% endfor %}
+        {%- if b.lien %}<p>{{ b.lien.avant }} <a class="cg-link" href="{{ b.lien.url }}" target="_blank" rel="noopener noreferrer">{{ b.lien.label }}<span class="sr-only"> : s’ouvre dans un nouvel onglet</span></a> {{ b.lien.apres }}</p>{% endif %}
+        {%- if b.liste %}<ul class="cg-list">{% for t in b.liste %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {%- endif %}
+      {%- endfor %}
+
+      {%- if s.conseils %}
       <aside class="callout cg-tips" aria-label="Mes conseils : {{ s.titre }}">
         <p class="ct">Mes conseils</p>
         <ul class="cg-list">
@@ -187,6 +302,7 @@
           {%- endfor %}
         </ul>
       </aside>
+      {%- endif %}
     </div>
   </div>
 </section>

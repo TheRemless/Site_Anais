@@ -16,6 +16,9 @@ const pages = fs.readdirSync(srcDir).filter((f) => f.endsWith(".njk")).map((f) =
   return { file: f, source, permalink, built: path.join("_site", permalink, "index.html") };
 });
 
+// Les contrôles propres à Koh Samui (9 offres, liens des cartes) lisent cette page ; les guides d'Ao Nang et de Koh Lanta ont leur fichier de tests.
+const samui = pages.find((p) => /koh-samui/.test(p.file));
+
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -93,7 +96,8 @@ test("carnet : tous les prix sont en THB, aucun .price-chf, aucune note de devis
 
 test("carnet : ni « Secret » ni VIP Taxi Lanta dans la page, aucun lien vers /secret/ ou /taxi/", () => {
   for (const p of pages) {
-    const doc = read(p.built);
+    // Le guide de Koh Lanta lie le site en anglais dans son dernier bloc (voir tests/carnet-aonang-lanta.test.js) : c'est la seule mention admise.
+    const doc = read(p.built).replace(/<a class="cg-link" href="https:\/\/secrettravelandtour\.com\/"[^>]*>[\s\S]*?<\/a>/g, p.file.startsWith("koh-lanta") ? "" : "$&");
     assert.doesNotMatch(doc, /secret/i, `${p.file} : le mot « Secret » ne figure pas sur la page`);
     assert.doesNotMatch(doc, /vip taxi|secrettravelandtour/i, `${p.file} : page construite`);
     assert.doesNotMatch(doc, /href="[^"]*\/(secret|taxi)\//i, `${p.file} : lien vers /secret/ ou /taxi/`);
@@ -118,7 +122,7 @@ test("carnet : aucun nom de partenaire, aucune commission, aucun lien Google Dri
   for (const f of fs.readdirSync(path.join(root, "src", "images")).filter((n) => /^carnet-/.test(n))) {
     for (const re of INTERDITS) assert.doesNotMatch(f, re, `image ${f}`);
   }
-  const construit = read(pages[0].built);
+  const construit = read(samui.built);
   assert.doesNotMatch(construit.slice(construit.indexOf("<main")), /<!--/, "aucun commentaire HTML dans la page (le commentaire d'analyse du gabarit du site est dans le head)");
 });
 
@@ -148,6 +152,7 @@ test("carnet : seuls les liens sortants prévus (cartes, vidéo) sont dans le gu
     const main = read(p.built);
     const body = main.slice(main.indexOf("<main"), main.indexOf("</main>"));
     const liens = [...body.matchAll(/<a [^>]*href="(https?:[^"]+)"[^>]*>/g)].filter((m) => !/wa\.me/.test(m[1]));
+    if (p !== samui) { assert.deepEqual(liens.map((m) => m[1]), p.file.startsWith("koh-lanta") ? ["https://secrettravelandtour.com/"] : [], `${p.file} : liens sortants`); continue; }
     assert.ok(liens.length >= 4, `${p.file} : cartes et vidéo présentes`);
     for (const m of liens) {
       assert.ok(permis.has(m[1]), `${p.file} : lien sortant inattendu ${m[1]}`);
@@ -182,7 +187,7 @@ test("carnet : le guide Koh Samui affiche les prix des offres en THB", () => {
 
 // Pages privées (privatePage) : l'adresse secrète ne part vers aucun service tiers, aucun bouton flottant, aucun bandeau de cookies.
 test("carnet : aucun script ni bandeau Google, aucun bouton WhatsApp flottant ; les pages publiques les gardent", () => {
-  const privee = read(pages[0].built);
+  const privee = read(samui.built);
   assert.doesNotMatch(privee, /consent\.js|gtag|dataLayer|googletagmanager|G-LPTG5LLGPT|zw-consent|ZW_openConsent|data-ga-id/, "rien de lié à Google ni au consentement");
   assert.doesNotMatch(privee, /wa-fab/, "pas de bouton WhatsApp flottant");
   assert.doesNotMatch(privee, />Cookies</, "pas de lien « Cookies » mort dans le pied de page");
@@ -209,13 +214,13 @@ test("carnet : aucun numéro de téléphone en dur dans les gabarits, le script 
     assert.ok(!source.includes(digits), f + " : le numéro de business.js est écrit en dur");
   }
   assert.match(read("src/_includes/carnet-layout.njk"), /wa\.me\/\{\{ business\.telephone \| replace\('\+', ''\) \}\}/);
-  const doc = read(pages[0].built);
+  const doc = read(samui.built);
   const fin = doc.slice(doc.indexOf('class="cg-end"'));
   assert.ok(fin.includes(`href="https://wa.me/${digits}?text=`), "le bouton de fin de page pointe sur le numéro de business.js");
 });
 
 test("carnet : aucune requête externe, aucun sélecteur de langue ni de devise ; les pages publiques gardent les leurs", () => {
-  const page = read(pages[0].built);
+  const page = read(samui.built);
   // Ressources chargées : jamais une adresse externe (analytics, jsdelivr, polices externes, images externes)
   const ressources = [...page.matchAll(/<(?:script|img|source|iframe|video|audio)\b[^>]*\b(?:src|srcset)="([^"]+)"/g)].map((m) => m[1])
     .concat([...page.matchAll(/<link\b[^>]*\bhref="([^"]+)"[^>]*>/g)].filter((m) => !/rel="canonical"/.test(m[0])).map((m) => m[1]));
@@ -253,7 +258,7 @@ test("carnet : le JSON de la feuille est échappé pour une balise script (</scr
   assert.match(read("src/_includes/carnet-layout.njk"), /\{\{ carnetConfigJson \| safe \}\}/);
   assert.doesNotMatch(read("src/_includes/carnet-layout.njk"), /\| dump/);
   assert.match(read("src/carnet/carnet.11tydata.js"), /jsonPourScript/);
-  const doc = read(pages[0].built);
+  const doc = read(samui.built);
   const json = doc.match(/<script type="application\/json" id="cg-data">([\s\S]*?)<\/script>/)[1];
   assert.doesNotMatch(json, /[<>&\u2028\u2029]/);
   assert.equal(Object.keys(JSON.parse(json).offres).length, 9);
