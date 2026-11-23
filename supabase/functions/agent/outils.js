@@ -31,6 +31,7 @@ import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.
 import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
 import { apporteurDeCarte } from "./apporteur.js";
+import { appliquerModelePrix } from "./modele-prix.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
 import { contientLien, lieuSansLien, sansLiens, sessionMaps } from "./maps.js";
 import { messageDeLaPage } from "./page-carnet.js";
@@ -369,7 +370,16 @@ export const OUTILS = [
     name: "proposer_reponse",
     description:
       "Propose le message à envoyer au client, prêt à copier. La personne le relit, le modifie et l'envoie elle-même. Chaque prix et chaque heure du message doivent venir d'un résultat d'outil ou d'un montant tapé par la personne.",
-    input_schema: obj({ titre: S("Titre court de la carte."), langue: { type: "string", enum: ["fr", "en"] }, message: S("Le message au client, prêt à coller dans WhatsApp.") }),
+    input_schema: obj({
+      titre: S("Titre court de la carte."),
+      langue: { type: "string", enum: ["fr", "en"] },
+      message: S("Le message au client, prêt à coller dans WhatsApp."),
+      // Modèle de réponse de prix (modele-prix.js, 23.11.2026).
+      modele_prix: S("L'id d'un modèle de réponse de prix de l'entreprise (consignes) quand la réponse donne le prix d'un service qui y correspond ; « aucun » quand la réponse donne un prix mais que le modèle ne convient pas ; \"\" quand elle ne donne aucun prix ou que l'entreprise n'a pas de modèle."),
+      total: S("Avec un modèle de prix : le prix tel qu'il sera écrit au client (« 2,500 THB »), venu d'un outil ou de la personne. Sinon \"\"."),
+      prenom: S("Avec un modèle de prix : le prénom du client s'il est connu, sinon \"\"."),
+      hors_modele: S("Avec modele_prix « aucun » : pourquoi le modèle ne convient pas, en une ligne pour la personne. Sinon \"\"."),
+    }),
   },
   {
     name: "proposer_import_brochure",
@@ -1785,6 +1795,14 @@ export function montantsDuTexte(t) {
   return out;
 }
 
+// Les montants d'un texte qui sont des prix : un prix sourcé (outil, personne) ou un montant collé à une devise (« 2,500 THB », « ฿900 »).
+// Un numéro de vol ou de chambre n'en est pas un.
+const DEVISE_AUTOUR = /(?:฿|THB|CHF|EUR|USD|€|\$|baht)\s*[\d๐-๙][\d๐-๙\s,.'’]*|[\d๐-๙][\d๐-๙,.'’]*\s*(?:฿|THB|CHF|EUR|USD|€|baht)/giu;
+export function montantsDePrix(t, sources = new Set()) {
+  const avecDevise = new Set([...String(t || "").matchAll(DEVISE_AUTOUR)].flatMap((m) => montantsDuTexte(m[0])));
+  return montantsDuTexte(t).filter((n) => n > 0 && (sources.has(n) || avecDevise.has(n)));
+}
+
 // SHA-256 synchrone (empreinte d'un montant interne sans le droit de voir les nets, revue de la PR 306) : même code dans outils.js et
 // agent-calc.mjs. Rend l'hexadécimal.
 const K256 = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
@@ -1992,10 +2010,13 @@ export async function proposer(nom, e, ctx, memo) {
     // Les nets du catalogue : ceux des services de la demande en cours bloquent, les autres avertissent (netsDuControle). Les totaux se
     // calculent sur les prix sourcés présents dans le texte, les lignes de la carte de dossier du même échange et les montants de Nani.
     const nets = netsDuControle(memo);
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true, leveInternes: new Set([...(memo.prixServices || []), ...(memo.ventesDossier || [])]) });
+    // Modèle de réponse de prix de l'entreprise active (modele-prix.js) : choisi, il remplace le texte proposé, variables remplies.
+    const mp = appliquerModelePrix(e, { reglages: ctx.reglages, entreprise: memo.entreprise || ctx.entreprise || "", montants: montantsDePrix(String(e.message || ""), new Set([...(memo.prix || []), ...tapes])) });
+    if (mp.erreur) return { erreur: mp.erreur, conseil: mp.conseil };
+    const c = controlerReponse(mp.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true, leveInternes: new Set([...(memo.prixServices || []), ...(memo.ventesDossier || [])]) });
     if (!c.ok) return { erreur: "message_vide" };
     const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
-    return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: c.avertissements };
+    return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: [...mp.avertissements, ...c.avertissements] };
   }
   if (nom === "proposer_reglage") return proposerReglage(e, ctx, memo);
   if (nom === "proposer_amelioration") return proposerAmelioration(e, ctx);

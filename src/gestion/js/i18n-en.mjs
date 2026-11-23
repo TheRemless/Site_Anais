@@ -3630,7 +3630,6 @@ export const EN = {
   "Au chauffeur": "To the driver",
   "Renvoi de la facture corrigée (message)": "Resending the corrected invoice (message)",
   "Renvoi de la facture corrigée (objet de l'e-mail)": "Resending the corrected invoice (email subject)",
-  "Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Message avec le voucher : {pickup} {jour} {paiement} {ENTREPRISE}. Envoi d'une facture : {bonjour} {numero} {total}": "Variables: {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Message with the voucher: {pickup} {jour} {paiement} {ENTREPRISE}. Sending an invoice: {bonjour} {numero} {total}",
   "Prix du catalogue : votre rôle ne permet pas de le changer.": "Catalogue price: your role cannot change it.",
   "Le prix enfant du catalogue sert dès l'ajout d'un service.": "The catalogue child price applies as soon as a service is added.",
   "Vide : « prix à saisir » à chaque client. 0 : offert, la ligne s'imprime « Offert » sur la facture.": "Empty: “price to enter” for each client. 0: complimentary, the line prints “Complimentary” on the invoice.",
@@ -4681,3 +4680,5 @@ for (const [k, v] of Object.entries(EN_TRANSFERT)) if (!(k in EN)) EN[k] = v;
 // Défilement des fils et photo en grand (23.11.2026) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_DEFILEMENT } from "./i18n-en-defilement.mjs";
 for (const [k, v] of Object.entries(EN_DEFILEMENT)) if (!(k in EN)) EN[k] = v;
+import { EN_MODELE_PRIX } from "./i18n-en-modele-prix.mjs";
+for (const [k, v] of Object.entries(EN_MODELE_PRIX)) if (!(k in EN)) EN[k] = v;

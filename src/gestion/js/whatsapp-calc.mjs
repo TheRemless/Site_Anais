@@ -235,6 +235,10 @@ const AVERTISSEMENTS = {
   controle_impossible: { texte: N_("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau."), niveau: "alerte" },
   prenom_equipe: { texte: N_("Un prénom de l'équipe est dans le texte. Vérifiez qu'il doit y être."), niveau: "alerte" },
   signature_retiree: { texte: N_("La signature a été retirée, les messages partent sans signature."), niveau: "info" },
+  // Modèle de réponse de prix (23.11.2026, agent/modele-prix.js) : informations, rien n'est bloqué.
+  modele_prix: { texte: N_("Modèle de prix « {valeur} » repris mot pour mot."), niveau: "info" },
+  modele_prix_remplace: { texte: N_("La réponse s'écartait du modèle de prix « {valeur} » : le modèle rempli la remplace."), niveau: "info" },
+  hors_modele_prix: { texte: N_("Modèle de prix non suivi : {valeur}"), niveau: "info" },
 };
 export function libelleAvertissement(code) {
   const brut = String(code || "");
