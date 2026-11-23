@@ -221,6 +221,28 @@ export function saisieInitiale(sv = {}, { d = {}, excursions = false, sd = { sie
   return saisie;
 }
 
+// Le sens lu dans un message collé (demande-calc.mjs, lireSens) : le pickup et le drop-off recopiés dans la saisie du service, dans un champ
+// vide seulement (un lieu de la carte, du formulaire du site ou tapé par Nani n'est jamais remplacé). Un retour au point de départ n'a pas de
+// drop-off. Rend la saisie.
+export function avecSensLu(s, sens = null) {
+  if (!s || !sens) return s;
+  const details = s.details || (s.details = {});
+  if (sens.pickup && !(s.lieu || "").trim()) s.lieu = sens.pickup;
+  if (sens.dropoff && !estRetourDepartDetails(details) && !(details.drop_off || "").trim()) details.drop_off = sens.dropoff;
+  return s;
+}
+
+// Les lieux qui manquent à un service de la fiche (relecture de la PR 332, message collé chez Taxi) : ["pickup_a_verifier",
+// "dropoff_a_verifier"]. `entree` : son entrée `parService` (reservationDuService) ; `exiges` : { pickup, dropoff } (agent-calc.mjs,
+// lieuxExiges). Un lieu vide n'est plus l'hôtel du client par défaut : la fiche le signale et ne crée pas.
+export function lieuxAVerifierFiche(entree = {}, exiges = {}) {
+  const details = entree.details || {};
+  const codes = [];
+  if (exiges.pickup && !String(entree.lieu || "").trim()) codes.push("pickup_a_verifier");
+  if (exiges.dropoff && !estRetourDepartDetails(details) && !String(details.drop_off || "").trim()) codes.push("dropoff_a_verifier");
+  return codes;
+}
+
 // L'entrée `parService` d'un service (creerDossierExcursions) depuis sa saisie : les champs du voucher remplis l'emportent, un lieu vide
 // reste `lieuFinal` (celui de la demande). `garderVol` : faux pour une excursion hors Taxi (un vol ne reste que sur un transfert).
 // `prixClient` : un prix repris du client sans correction de Nani (revue de la PR 307), gardé dans details.prix_origine.
@@ -240,7 +262,10 @@ export const estTransfertOffre = (d = {}, offre = null) => d.type === "transfer"
 // Un trajet du site donne ses deux bouts. `d` : la demande lue ; `client` : la fiche retenue (ou null) ; `taxi` : modeTaxi() ; `entiteId` :
 // l'entreprise active (hotelDuClient).
 export function reservationDuService(sv = {}, offre = null, { d = {}, client = null, taxi = false, entiteId = null } = {}) {
-  const lieu = d.type === "transfer" ? d.pickup || "" : offre && !estTransfertOffre(d, offre) && d.hotel && d.hotel !== hotelDuClient(client, entiteId) ? d.hotel : "";
+  // Chez Taxi, toute course est un transfert sauf une excursion (agent-calc.mjs, lieuxExiges) : l'hôtel lu n'en devient jamais le pickup, même pour
+  // un tarif pris à la main dans la base (relecture de la PR 332). Le pickup vient du message, de la carte ou de Nani.
+  const course = taxi && !(offre && offre.source && offre.source.famille === "excursion");
+  const lieu = d.type === "transfer" ? d.pickup || "" : offre && !course && !estTransfertOffre(d, offre) && d.hotel && d.hotel !== hotelDuClient(client, entiteId) ? d.hotel : "";
   // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
   const hotelPickup = sv.hotelDepart || d.hotel;
   const lieuFinal = lieu || (sv.zonePickup && hotelPickup ? hotelPickup : "");

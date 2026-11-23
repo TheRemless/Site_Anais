@@ -8,6 +8,7 @@ import { PRODUITS_SITE } from "./site-produits.mjs";
 import { PRODUITS_CARNET, EXTRAS_DU_SITE, guideDeSortie, extrasDuGuide } from "./carnet-produits.mjs";
 import { carnetDuMessage } from "./carnet-colle.mjs";
 import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, estLExtra, LIGNE_ENFANT } from "./carnet-ages.mjs";
+import { sansLien } from "./agent-calc.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -486,7 +487,139 @@ export function lireLibre(texte, aujourdhui) {
 export function lireMessage(texte, aujourdhui, { detecterCarnet = true } = {}) {
   const c = detecterCarnet ? carnetDuMessage(texte) : null;
   const lu = lireDemande(c ? c.texte : texte, aujourdhui) || lireLibre(texte, aujourdhui);
-  return lu && c ? ajusterAgesCarnet({ ...lu, carnet: c.carnet }) : lu;
+  const d = lu && c ? ajusterAgesCarnet({ ...lu, carnet: c.carnet }) : lu;
+  // Hors formulaire du site (lireSite a déjà son Pickup et son Drop-off) : les lignes étiquetées du message, recopiées (lireLieuxEtiquetes),
+  // et les trajets écrits en texte libre, seulement proposés à Nani (lireTrajetsLibres).
+  if (d && !d.site) {
+    d.sens = lireLieuxEtiquetes(texte);
+    d.trajetsLus = lireTrajetsLibres(texte);
+  }
+  return d;
+}
+
+// ---- Le pickup et le drop-off écrits dans un message (relecture de la PR 335) -----------------------------------------------------
+// Deux lectures. Les lignes étiquetées (« Pickup: », « Drop-off: », « From: », « To: », « Prise en charge : », « Dépose : ») sont fiables :
+// elles se recopient telles quelles (sansLien). Le texte libre (« taxi from X to Y », « X → Y », « pick us up at X ») ne remplit jamais un
+// champ : la fiche le propose sous le champ vide, et seul le clic de Nani sur « Utiliser » le pose. « I'm from Germany and want to go to
+// Ao Nang » ne doit rien proposer du tout.
+const ESP = "[ \\t]+";
+// Ce qui suit un lieu et n'en fait plus partie : une ponctuation, une date, une heure, le nombre de personnes, une formule.
+const FIN_LIEU = `(?=$|[.,;!?\\n]|${ESP}(?:(?:on|for|tomorrow|today|tonight|next|this|with|please|by|and|around|then|le|pour|avec|demain|ce|cet|cette|et|puis|svp|merci|thanks?)\\b|(?:at|vers|à|a)[ \\t]+\\d)|${ESP}\\d{1,2}[ \\t]*(?:adults?|adultes?|pax|people|persons?|personnes?)\\b)`;
+// Un bout seul (« from … ») s'arrête aussi devant « to » : « from the airport to our hotel » ne donne pas « the airport to our hotel ».
+const FIN_BOUT = `(?=${ESP}(?:(?:to|vers)\\b|→|->)|${FIN_LIEU.slice(3)}`;
+const LIEU = "([^\\n.,;!?]+?)";
+// Un mot de course : « taxi from », « transfer to ». « go » et « going » n'en sont pas (« we want to go to the Old Town »).
+const MOTS_COURSE = "taxi|cab|transfer|transfert|ride|car|minivan|van|course|navette|trajet|voiture|speedboat|boat|bateau";
+// Début de phrase : début du texte ou d'une ligne, après une ponctuation de fin, ou après un deux-points.
+const DEBUT = "(?:^|[\\n.!?:]|[\\n.!?:][ \\t]*(?:hi|hello|hey|bonjour|salut)?[ \\t,]*)";
+// Un bout qui ne nomme aucun lieu : il ne se propose pas (« our hotel » n'est pas une adresse de dépose).
+const LIEU_VAGUE = /^(?:(?:our|my|your|the|this|that|notre|mon|ma|votre|l['’]|le|la|cet|cette)[ \t]*)?(?:hotel|hôtel|hotels|resort|villa|place|accommodation|room|house|home|airport|aéroport|aeroport|pier|port|jetty|harbou?r|embarcad[èe]re|station|gare|terminal|beach|plage)?$|^(?:here|there|ici|là|la|chez nous)$/iu;
+// Un verbe ou un pronom dans le bout : ce n'est pas un lieu (« Germany and want », « you »).
+const PAS_UN_LIEU = /(?:^|[\s'’])(?:i|i'm|i’m|im|we|we're|you|your|he|she|they|them|us|me|my|our|it|want|wants|wanted|need|needs|go|goes|going|went|come|coming|like|would|could|can|will|shall|should|hear|hearing|looking|forward|book|booking|is|are|am|was|were|be|been|have|has|had|do|does|get|take|stay|staying|arrive|arrives|je|nous|vous|on|veux|voulons|voudrions|aller|allons|sommes|suis|est)(?=$|[\s'’])/iu;
+function nettoyerLieu(x, { libre = false } = {}) {
+  let t = sansLien(x).replace(new RegExp(`^(?:(?:private|shared|priv[ée]e?)${ESP})?(?:${MOTS_COURSE})(?:${ESP}|$)`, "iu"), "").replace(/^(?:the|a)[ \t]+(?=\p{Lu})/u, "").replace(/[ \t]*(?:please|svp|s'il vous plaît|stp)$/iu, "").replace(/[ \t:–-]+$/u, "").trim();
+  if (!t || LIEU_VAGUE.test(t) || /^\d/.test(t) || lireHeureLibre(t) || lireDateLibre(t, "2026-01-01")) return "";
+  if (libre && PAS_UN_LIEU.test(t)) return "";
+  return t;
+}
+
+// La valeur d'une ligne étiquetée : coupée à la virgule (« Resort Exemple, room 12 » → « Resort Exemple »), sans lien. Écartée si elle porte
+// une adresse e-mail (« John Smith <john@…> ») ou un verbe ou un pronom (« Germany and want »).
+function valeurEtiquetee(v) {
+  const t = sansLien(v).split(",")[0];
+  if (/[@＠]/.test(t)) return "";
+  return nettoyerLieu(t, { libre: true });
+}
+// Les lignes étiquetées sûres, recopiées sans clic : « Pickup: », « Pick-up: », « Pick-up location: », « Drop-off: », « Dropoff: »,
+// « Prise en charge : », « Dépose : ». Rend { pickup, dropoff }, vide quand le message n'a pas la ligne.
+const ETIQUETTE_PICKUP = /^[ \t]*(?:pick[- ]?up(?:[ \t]+(?:location|place|point|address))?|(?:lieu de )?prise en charge)[ \t]*:[ \t]*(.+)$/iu;
+const ETIQUETTE_DROPOFF = /^[ \t]*(?:drop[- ]?off(?:[ \t]+(?:location|place|point|address))?|(?:lieu de )?d[ée]pose)[ \t]*:[ \t]*(.+)$/iu;
+export function lireLieuxEtiquetes(texte) {
+  const out = { pickup: "", dropoff: "" };
+  for (const l of String(texte || "").split(/\r?\n/)) {
+    let m;
+    if ((m = ETIQUETTE_PICKUP.exec(l))) out.pickup = out.pickup || valeurEtiquetee(m[1]);
+    else if ((m = ETIQUETTE_DROPOFF.exec(l))) out.dropoff = out.dropoff || valeurEtiquetee(m[1]);
+  }
+  return out;
+}
+
+// « From: », « To: », « Départ : », « Destination: » : trop souvent autre chose qu'un lieu (en-tête d'un e-mail transféré, signature,
+// « Destination: Thailand holiday »). Ils ne remplissent rien : ils font un trajet proposé (« Utiliser »). Un « From: » ou un « To: » dans un
+// bloc d'en-têtes (des lignes qui se suivent avec « Subject: », « Date: » ou « Sent: ») est ignoré. Rend { pickup, dropoff, debut } ou null.
+function trajetDesEtiquettes(texte) {
+  const lignes = String(texte || "").split(/\r?\n/);
+  // Les blocs de lignes qui se suivent sans ligne vide : un bloc avec Subject, Date ou Sent est un en-tête d'e-mail.
+  const enTete = new Set();
+  let debutBloc = 0;
+  for (let i = 0; i <= lignes.length; i++) {
+    if (i === lignes.length || !lignes[i].trim()) {
+      const bloc = lignes.slice(debutBloc, i);
+      if (bloc.some((l) => /^[ \t]*(?:subject|objet|date|sent|envoyé)[ \t]*:/iu.test(l))) for (let k = debutBloc; k < i; k++) enTete.add(k);
+      debutBloc = i + 1;
+    }
+  }
+  const t = { pickup: "", dropoff: "", debut: -1 };
+  let position = 0;
+  lignes.forEach((l, i) => {
+    let m;
+    const depart = /^[ \t]*(from|d[ée]part)[ \t]*:[ \t]*(.+)$/iu.exec(l);
+    const arrivee = !depart && /^[ \t]*(to|destination)[ \t]*:[ \t]*(.+)$/iu.exec(l);
+    if ((m = depart || arrivee) && !(enTete.has(i) && /^(?:from|to)$/i.test(m[1]))) {
+      const v = valeurEtiquetee(m[2]);
+      if (v && depart && !t.pickup) t.pickup = v;
+      if (v && arrivee && !t.dropoff) t.dropoff = v;
+      if (v && t.debut < 0) t.debut = position;
+    }
+    position += l.length + 1;
+  });
+  return t.pickup || t.dropoff ? t : null;
+}
+
+// Les trajets écrits en texte libre, dans l'ordre du message : [{ pickup, dropoff }] (un bout peut manquer). Une paire « de … à … » n'est lue
+// qu'après un mot de course ou en début de phrase ; un lieu qui contient un verbe ou un pronom est écarté. Sans aucune paire, les bouts seuls
+// (« pick us up at … », « drop us at … », « taxi to … ») font un seul trajet.
+export function lireTrajetsLibres(texte) {
+  const brut = String(texte || "").replace(/(?:\bhttps?:\/\/|\bwww\.)\S+/gi, "\n");
+  // Les lignes étiquetées sont lues à part : elles ne refont pas un trajet libre.
+  const libre = brut.split(/\r?\n/).filter((l) => !/^[ \t]*[\p{L} -]{2,30}:[ \t]*\S/u.test(l) || /\b(?:taxi|transfer|from|to)\b.*\b(?:to|→)\b/i.test(l.split(":").slice(1).join(":"))).join("\n");
+  // « … and from Lanta Sand to Krabi Airport » : le retour d'une même phrase de course.
+  const AVANT = `(?:${DEBUT}[ \\t]*|\\b(?:${MOTS_COURSE}|and|et|then|puis)\\b[ \\t]*(?:(?:priv[ée]e?|private)[ \\t]+)?)`;
+  const motifs = [
+    // « Taxi from Krabi Airport to Resort Exemple », « From Krabi Airport to … » en début de phrase
+    new RegExp(`${AVANT}(?:from|depuis)${ESP}${LIEU}${ESP}(?:to|→|->|à|a|au|aux|vers|jusqu['’]à|jusqu['’]au)${ESP}${LIEU}${FIN_LIEU}`, "giu"),
+    // « taxi de l'aéroport de Krabi à l'hôtel … »
+    new RegExp(`\\b(?:${MOTS_COURSE})${ESP}(?:priv[ée]e?${ESP})?(?:de|du|des|d['’])[ \\t]*${LIEU}${ESP}(?:à|a|au|aux|vers|jusqu['’]à|jusqu['’]au)${ESP}${LIEU}${FIN_LIEU}`, "giu"),
+    // « Krabi Airport → Resort Exemple »
+    new RegExp(`(?:${DEBUT}|\\b(?:${MOTS_COURSE})\\b)[ \\t]*${LIEU}[ \\t]*(?:→|->)[ \\t]*${LIEU}${FIN_LIEU}`, "giu"),
+    // « Taxi Krabi Airport to Resort Exemple », « Krabi Airport to Resort Exemple » en tête de ligne : deux noms propres.
+    new RegExp(`(?:^|[:\\n]|\\b(?:${MOTS_COURSE})${ESP})[ \\t]*((?:\\p{Lu}[\\p{L}\\d'’()&-]*[ \\t]+){0,5}\\p{Lu}[\\p{L}\\d'’()&-]*)${ESP}to${ESP}((?:the${ESP})?(?:\\p{Lu}[\\p{L}\\d'’()&-]*)(?:[ \\t]+(?:\\p{Lu}[\\p{L}\\d'’()&-]*|de|du|of|la|le))*)${FIN_LIEU}`, "gmu"),
+  ];
+  const trouves = [];
+  for (const re of motifs)
+    for (const m of libre.matchAll(re)) {
+      const pickup = nettoyerLieu(m[1], { libre: true });
+      const dropoff = nettoyerLieu(m[2], { libre: true });
+      // Deux motifs qui lisent la même phrase ne font qu'un trajet.
+      const fin = m.index + m[0].length;
+      if ((pickup || dropoff) && !trouves.some((t) => t.debut < fin && m.index < t.fin)) trouves.push({ pickup, dropoff, debut: m.index, fin });
+    }
+  // Les lignes « From: », « To: », « Départ : », « Destination: » : un trajet proposé de plus, à sa place dans le message.
+  const etiquettes = trajetDesEtiquettes(texte);
+  if (etiquettes) trouves.push({ ...etiquettes, fin: etiquettes.debut });
+  if (trouves.length) return trouves.sort((a, b) => a.debut - b.debut).map(({ pickup, dropoff }) => ({ pickup, dropoff }));
+  const un = { pickup: "", dropoff: "" };
+  const premier = (res, { libre: l = true } = {}) => {
+    for (const re of res) {
+      const m = re.exec(libre);
+      const v = m ? nettoyerLieu(m[1], { libre: l }) : "";
+      if (v) return v;
+    }
+    return "";
+  };
+  un.pickup = premier([new RegExp(`\\bpick(?:[- ]?up|${ESP}(?:me|us|them)${ESP}up)${ESP}(?:at|from)${ESP}${LIEU}${FIN_LIEU}`, "iu"), new RegExp(`${AVANT}(?:from|depuis)${ESP}${LIEU}${FIN_BOUT}`, "iu")]);
+  un.dropoff = premier([new RegExp(`\\bdrop(?:[- ]?off)?(?:${ESP}(?:me|us|them)(?:${ESP}off)?)?${ESP}(?:at|in)${ESP}${LIEU}${FIN_LIEU}`, "iu"), new RegExp(`\\b(?:${MOTS_COURSE})${ESP}(?:back${ESP})?to${ESP}${LIEU}${FIN_LIEU}`, "iu"), new RegExp(`${DEBUT}[ \\t]*to${ESP}${LIEU}${FIN_LIEU}`, "iu")]);
+  return un.pickup || un.dropoff ? [un] : [];
 }
 
 // Koh Lanta est le point de départ implicite d'un transfert (« un taxi vers l'aéroport de Phuket ») : ces mots ne sont pas exigés dans la phrase.

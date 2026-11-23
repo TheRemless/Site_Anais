@@ -46,6 +46,17 @@ export const EN = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose (agent.mjs, lieuxAVerifier).
   "Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service.": "Pickup to check: the card has no pickup place. Fill it in under the service.",
   "Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service.": "Drop-off to check: the card has no drop-off place. Fill it in under the service.",
+  // Message collé chez Taxi sans pickup ou sans drop-off lisible (views/demande.mjs, LIEUX_A_VERIFIER, ERREURS_LIEUX).
+  "Pickup à vérifier : le message ne dit pas d'où part la course.": "Pickup to check: the message does not say where the ride starts.",
+  "Drop-off à vérifier : le message ne dit pas où va la course.": "Drop-off to check: the message does not say where the ride goes.",
+  "Pickup à vérifier : remplissez le lieu de pickup du service avant de créer.": "Pickup to check: fill in the service's pickup place before creating.",
+  "Drop-off à vérifier : remplissez le drop-off du service avant de créer.": "Drop-off to check: fill in the service's drop-off before creating.",
+  "Recopié d'une ligne « Pickup: » du message, sinon à remplir.": "Copied from a “Pickup:” line of the message, otherwise fill it in.",
+  "Lu dans le message : {trajet}": "Read in the message: {trajet}",
+  "Pickup à vérifier : utilisez le trajet lu dans le message, ou remplissez le champ.": "Pickup to check: use the trip read in the message, or fill in the field.",
+  "Drop-off à vérifier : utilisez le trajet lu dans le message, ou remplissez le champ.": "Drop-off to check: use the trip read in the message, or fill in the field.",
+  "Utiliser {trajet}": "Use {trajet}",
+  "Utiliser": "Use",
   "Pickup ou drop-off à compléter : remplissez le champ sur la carte.": "Pickup or drop-off missing: fill in the field on the card.",
   "Remplissez le pickup ou le drop-off ci-dessus pour valider.": "Fill in the pickup or drop-off above to confirm.",
   "Hôtel, aéroport, embarcadère": "Hotel, airport, pier",
