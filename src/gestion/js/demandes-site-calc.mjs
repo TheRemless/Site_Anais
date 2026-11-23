@@ -2,7 +2,7 @@
 // Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
 // les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
+import { PRODUITS_CARNET, CHEMIN_CARNET, ORIGINES_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE, guideDeSortie, extrasDuGuide } from "./carnet-produits.mjs";
 import { agesDuMessage, ajusterAgesCarnet, sortieParId, resoudreSortie, nomsDeOption, cleTexte, extrasEnElements } from "./carnet-ages.mjs";
 import { N_ } from "./i18n.mjs";
 
@@ -143,8 +143,10 @@ export function lignesDuRecapitulatif(message) {
 // Kradan est déjà dans la sortie), avec sa précision (« per boat »). Un extra se compare ENTIER (« Add Koh Kradan sunset dinner » n'est pas « Add Koh Kradan »), les autres restent avec
 // leurs séparateurs d'origine. Rien à retirer : le texte est rendu tel quel. Vide s'il ne reste rien.
 export function extrasPourOption(extras, produitId, optionId) {
-  const possibles = EXTRAS_DU_SITE.filter((x) => x.option === optionId && x.produits.includes(produitId)).map((x) => cleTexte(x.ligne));
-  const inapplicables = EXTRAS_DU_SITE.map((x) => cleTexte(x.ligne)).filter((l) => !possibles.includes(l));
+  // Seuls les extras du guide de la sortie sont connus : ceux d'un autre guide (« Lunch box » dans une demande de Koh Samui) restent dans le message, ce sont les mots du client.
+  const connus = extrasDuGuide(guideDeSortie(produitId));
+  const possibles = connus.filter((x) => x.option === optionId && x.produits.includes(produitId)).map((x) => cleTexte(x.ligne));
+  const inapplicables = connus.map((x) => cleTexte(x.ligne)).filter((l) => !possibles.includes(l));
   const elements = extrasEnElements(extras);
   const gardes = elements.filter((e) => !inapplicables.includes(cleTexte(e.texte)));
   if (gardes.length === elements.length) return String(extras || "");

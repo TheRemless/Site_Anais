@@ -6,7 +6,7 @@
 import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, ajusterAgesCarnet, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireDuTexte, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -646,11 +646,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   function lire(valeur) {
     texte = valeur;
     erreur.textContent = "";
-    // Une demande du site connaît déjà son contexte exact : la référence du message n'est pas relue (detecterCarnet).
-    let lu = texte.trim() ? lireMessage(texte, aujourdhui(), { detecterCarnet: false }) : null;
-    // Demande d'une page du carnet : la sortie et l'option viennent de la demande du site (product_id, option), le tarif se choisit sur elles.
+    // Demande d'une page du carnet : sa sortie et son option sont connues ; un texte collé à la main est lu avec la détection par la référence de la page (lireDuTexte).
     // Un enfant plus âgé que le barème de la sortie paie le tarif adulte du partenaire : il est compté adulte (son entrée de parc reste au tarif enfant).
-    if (lu && depuisSite && depuisSite.carnet) lu = ajusterAgesCarnet({ ...lu, carnet: depuisSite.carnet });
+    const lu = texte.trim() ? lireDuTexte(texte, aujourdhui(), depuisSite) : null;
     if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
     d = null;
     vider();

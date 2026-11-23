@@ -5,7 +5,7 @@ import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSu
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
-import { PRODUITS_CARNET, EXTRAS_DU_SITE } from "./carnet-produits.mjs";
+import { PRODUITS_CARNET, EXTRAS_DU_SITE, guideDeSortie, extrasDuGuide } from "./carnet-produits.mjs";
 import { carnetDuMessage } from "./carnet-colle.mjs";
 import { lireInvites, ajusterAgesCarnet, baremeEnfant, resoudreSortie, sortieParId, cleTexte, extrasEnElements, estLExtra, LIGNE_ENFANT } from "./carnet-ages.mjs";
 
@@ -1183,6 +1183,14 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   return offres.sort((a, b) => b.score - a.score);
 }
 
+// Le texte que la fenêtre de création lit (la seule fonction qu'elle appelle pour lire un message) : une demande du site du carnet connaît déjà sa sortie et son option (`depuisSite.carnet`),
+// la référence du message n'est pas relue ; tout autre texte (collé à la main, ou demande du site ordinaire) est lu avec la détection par la référence de la page.
+export function lireDuTexte(texte, aujourdhui, depuisSite = null) {
+  const carnet = depuisSite && depuisSite.carnet ? depuisSite.carnet : null;
+  const lu = lireMessage(texte, aujourdhui, { detecterCarnet: !carnet });
+  return lu && carnet ? ajusterAgesCarnet({ ...lu, carnet }) : lu;
+}
+
 // Les extras du site que la demande d'une page du carnet nomme (la ligne « Extras: » du message, chaque extra comparé ENTIER) : ceux qui sont possibles pour sa sortie et son option (`voulus`,
 // entrées de EXTRAS_DU_SITE : leur ligne s'ajoute au service, une seule fois, et leur prix entre dans le total) et ceux qui ne le sont pas (`impossibles`, leurs libellés : le join-in a déjà
 // Kradan dans la sortie, le VIP Set n'existe qu'en option économique, la lunch box est comprise dans Luxury et absente de Prestige). Rien d'ajouté pour ceux-là : l'offre les signale. Les mêmes
@@ -1191,13 +1199,16 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
 export function extrasDeLaDemande(d) {
   const vide = { voulus: [], impossibles: [] };
   if (!d || !d.carnet || !d.extras) return vide;
+  // Seuls comptent les extras du guide de la sortie : un « Lunch box » écrit dans une demande d'un autre guide est un texte du client, laissé tel quel.
+  const connus = extrasDuGuide(guideDeSortie(d.carnet.produit));
+  if (!connus.length) return vide;
   const trouve = optionDuSite(d);
   const demandes = extrasEnElements(d.extras).map((x) => cleTexte(x.texte));
-  const nommes = [...new Set(EXTRAS_DU_SITE.map((x) => x.ligne))].filter((l) => demandes.includes(cleTexte(l)));
+  const nommes = [...new Set(connus.map((x) => x.ligne))].filter((l) => demandes.includes(cleTexte(l)));
   const voulus = [];
   const impossibles = [];
   for (const ligne of nommes) {
-    const possible = trouve ? EXTRAS_DU_SITE.find((x) => x.ligne === ligne && x.option === trouve.option.id && x.produits.includes(trouve.produit.id)) : null;
+    const possible = trouve ? connus.find((x) => x.ligne === ligne && x.option === trouve.option.id && x.produits.includes(trouve.produit.id)) : null;
     if (possible) voulus.push(possible);
     else impossibles.push(ligne);
   }
@@ -1223,8 +1234,8 @@ export function serviceCree(base, lignes, prestations = []) {
 }
 // Pas de doublon : un extra déjà porté par l'offre (tranche, supplément ou extra déjà ajouté) n'est pas ajouté deux fois. Sans tarif en base (SQL du guide pas encore passé) ou impossible pour
 // la sortie : l'offre le dit dans `extrasManquants`, EN PLUS de son avertissement principal (un groupe hors tranche ne cache pas un extra manquant). Un extra « par personne » compte
-// les personnes qui paient (adultes et enfants, jamais les bébés), une seule ligne de cette quantité ; un extra « par bateau » une seule fois.
-function ajouterExtras(offre, { voulus, impossibles }, pax, { prestations, partenaires }) {
+// toutes les personnes (adultes, enfants et bébés, au moins une : comme l'estimation de la page), une seule ligne de cette quantité ; un extra « par bateau » une seule fois.
+function ajouterExtras(offre, { voulus, impossibles }, personnes, { prestations, partenaires }) {
   if (!voulus.length && !impossibles.length) return offre;
   // Une offre qui n'est pas celle d'une option du site (recouvrement de mots, trajet) ne peut porter aucune ligne d'extra : l'offre le dit, l'extra ne disparaît pas en silence.
   if (offre.genre !== "prestation" || offre.ligneSite === undefined) return { ...offre, extrasManquants: [...(offre.extrasManquants || []), ...voulus.map((x) => x.ligne), ...impossibles] };
@@ -1237,7 +1248,7 @@ function ajouterExtras(offre, { voulus, impossibles }, pax, { prestations, parte
     }
     const deja = tarif.id === sortie.source.id || (sortie.supplement && sortie.supplement.source.id === tarif.id) || (sortie.extras || []).some((e) => e.source.id === tarif.id);
     if (deja) continue;
-    const qte = x.par === "personne" ? Math.max(0, (pax.adultes || 0) + (pax.enfants || 0)) : 1;
+    const qte = x.par === "personne" ? personnes : 1;
     const prix = tarif.sur_place || tarif.prix_vente === null || tarif.prix_vente === undefined ? null : Number(tarif.prix_vente) * qte;
     sortie = { ...sortie, extras: [...(sortie.extras || []), { source: tarif, qte, ligne: x.ligne }], total: sortie.total === null || sortie.total === undefined || prix === null ? sortie.total : sortie.total + prix };
   }
@@ -1297,7 +1308,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
     }
   }
   const extrasVoulus = extrasDeLaDemande(d);
-  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), extrasVoulus, pax, { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  return offres.map((o) => ajouterExtras(completerSupplement(completerEnfant(o, pax, prestations), pax, prestations), extrasVoulus, Math.max(1, (d.adultes || 0) + (d.enfants || 0) + (d.bebes || 0)), { prestations, partenaires })).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------

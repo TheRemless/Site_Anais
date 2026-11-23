@@ -13,10 +13,11 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { PRODUITS_CARNET, SORTIES_KOH_LANTA, EXTRAS_DU_SITE } from "../src/gestion/js/carnet-produits.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
-import { lireMessage, offresDuService, optionDuSite, notesDemande, extrasDemandes, extrasCrees, serviceCree, extrasDeLaDemande } from "../src/gestion/js/demande-calc.mjs";
+import { lireMessage, offresDuService, optionDuSite, notesDemande, extrasDemandes, extrasCrees, serviceCree, extrasDeLaDemande, lireDuTexte, decouperServices } from "../src/gestion/js/demande-calc.mjs";
 import { ajusterAgesCarnet, baremeEnfant, sortieParId, resoudreSortie, resoudreProduit, agesDuMessage, lireInvites, lireInvitesFrancais, LIGNE_ENFANT, cleTexte } from "../src/gestion/js/carnet-ages.mjs";
-import { guideDeLaRef, carnetDuMessage } from "../src/gestion/js/carnet-colle.mjs";
-import { REFS_CARNET } from "../src/gestion/js/carnet-produits.mjs";
+import { guideDeLaRef, carnetDuMessage, montantFrancais } from "../src/gestion/js/carnet-colle.mjs";
+import { REFS_CARNET, extrasDuGuide } from "../src/gestion/js/carnet-produits.mjs";
+import { idTarifCarnet, estLExtra } from "../src/gestion/js/carnet-ages.mjs";
 import { demandeTarifee, autresSorties, guideDeLaPage, champsCarnet, optionsModifiables, optionModifiee, titreCanonique, titreOption, texteDemande, changements, reponseConfirmation, finalDeConfirmation, extrasDuMessage, extrasPourOption, transfertDuMessage } from "../src/gestion/js/demandes-site-calc.mjs";
 import { typeVoucherDeduit } from "../src/gestion/js/operations-calc.mjs";
 import { ligneDepuisPrestation } from "../src/gestion/js/partenaires-calc.mjs";
@@ -1022,7 +1023,7 @@ const MSG_AONANG = (produit, titre, { invites = "2 adults, 1 child (age 12)", ex
   [`Booking request: ${produit} – ${titre}`, creneau, "Date: Sun 20 Dec 2026", `Guests: ${invites}`, extras ? `Extras: ${extras}` : "", "Pickup: Hotel Example", "Name: Anna", "WhatsApp: +41791234567", "Park fee: about 600 THB", "Message: test", ref ? `Ref: ${ref}` : ""].filter(Boolean).join("\n");
 const offreCollee = (texte, ctx = contexte) => { const d = lireMessage(texte, AJD); return { d, offre: offresDuService(d, texte, { phrase: texte, date: d.date, adultes: d.adultes, enfants: d.enfants }, ctx)[0] }; };
 
-test("lunch box et VIP Set d'Ao Nang : tarifés d'après la sortie, la lunch box par personne payante (enfants compris, bébés exclus), le VIP Set par bateau", () => {
+test("lunch box et VIP Set d'Ao Nang : tarifés d'après la sortie, la lunch box par personne (enfants et bébés compris, comme la page), le VIP Set par bateau", () => {
   const vip = (extras, invites) => offreCollee(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { extras, invites })).offre;
   const base = vip("", "2 adults, 1 child (age 12)");
   assert.equal(base.id, ID_TARIF("aonang-vip-hong|standard|1 to 4 people"));
@@ -1036,8 +1037,12 @@ test("lunch box et VIP Set d'Ao Nang : tarifés d'après la sortie, la lunch box
   assert.deepEqual([creees.total, creees.extras], [avec.total, ["Lunch box"]]);
   const sansLunch = serviceCree({ titre: avec.titre }, lignesDeLOffre(avec).slice(0, 1), prestations);
   assert.deepEqual([sansLunch.total, sansLunch.extras], [base.total, []]);
-  // Un bébé ne paie pas de lunch box.
-  assert.equal(vip("Lunch box", "2 adults, 1 child (age 1)").extras[0].qte, 2);
+  // La page compte une lunch box par personne, bébés compris (son estimation et son message) : 2 adultes + 1 bébé = 3 ; au moins une.
+  assert.equal(vip("Lunch box", "2 adults, 1 child (age 1)").extras[0].qte, 3);
+  assert.equal(vip("Lunch box", "2 adults, 1 child (age under 1)").extras[0].qte, 3);
+  assert.equal(vip("Lunch box", "2 adults, 1 child (age 1)").total - vip("", "2 adults, 1 child (age 1)").total, 3 * 61);
+  assert.equal(vip("Lunch box", "1 adult").extras[0].qte, 1);
+  assert.equal(vip("", "1 adult").extras, undefined, "sans extra rien n'est ajouté");
   // Mini Luxury : même ligne de la lunch box que VIP.
   const mini = offreCollee(MSG_AONANG("Hong Islands from Ao Nang, Mini Luxury option", "Mini Luxury option")).offre;
   assert.equal(mini.extras[0].source.id, ID_TARIF(CLE_LUNCH_VIP));
@@ -1095,11 +1100,12 @@ test("message collé : la référence de la page désigne le guide (une seule ta
     assert.match(lireFichier(`src/carnet/${fichier}.11tydata.js`), new RegExp(`prefixeRef: "${prefixe}"`));
   }
   assert.deepEqual(Object.keys(REFS_CARNET).sort(), ["AON", "LAN", "SAM"]);
-  assert.equal(guideDeLaRef("x\nRef: AON-AB12"), "aonang");
-  assert.equal(guideDeLaRef("x\nRéf : SAM-AB12"), "koh-samui");
-  assert.equal(guideDeLaRef("x\nRef: XYZ-AB12"), null);
-  assert.equal(guideDeLaRef("x\nRef: toString-AB12"), null);
+  assert.equal(guideDeLaRef("Booking request: x\nRef: AON-AB12"), "aonang");
+  assert.equal(guideDeLaRef("Demande de réservation : x\nRéf : SAM-AB12"), "koh-samui");
+  assert.equal(guideDeLaRef("Booking request: x\nRef: XYZ-AB12"), null);
+  assert.equal(guideDeLaRef("Booking request: x\nRef: toString-AB12"), null);
   assert.equal(guideDeLaRef("Booking request: x"), null);
+  assert.equal(guideDeLaRef("x\nRef: AON-AB12"), null, "pas de ligne de demande au début : message libre");
   // Samui : le récapitulatif français du WhatsApp, tel que la page l'écrit, avec un enfant de 12 ans (barème 4 à 11 : compté adulte).
   const samui = "Bonjour Anaïs, voici ma demande de réservation.\n\nDemande de réservation : Ang Thong en big boat, journée en groupe\nFormule : avec kayak\nDate : dimanche 20 décembre 2026\nCréneau : Matin, 09:00 à 13:00\nPersonnes : 1 adulte, 1 enfant (12 ans)\nPrise en charge : Hotel Example\nTransfert depuis l'hôtel : oui (1 500 THB par van, indicatif)\nEstimation : 5 000 THB, à payer sur place après confirmation\nEntrée du parc à payer sur place : 400 THB\nNom : Anna\nWhatsApp : +41791234567\nMessage : allergie aux arachides\nRéf : SAM-AB12";
   const s = lireMessage(samui, AJD);
@@ -1119,6 +1125,7 @@ test("message collé : la référence de la page désigne le guide (une seule ta
   assert.equal(carnetDuMessage("Booking request: Ang Thong Marine Park by big boat – With kayak\nRef: AON-AB12"), null);
   // Ao Nang : le message anglais de la page, lunch box et enfant de 12 ans : 4 600 + 3 × 80 sur les vrais prix, 4 600 fictifs + 3 × 61 ici.
   const aon = offreCollee(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option"));
+  assert.equal(guideDeLaRef(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option")), "aonang");
   assert.deepEqual(aon.d.carnet, { produit: "aonang-vip-hong", option: "standard" });
   const nuAon = offreCollee(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { extras: "" }));
   assert.equal(aon.offre.total, nuAon.offre.total + 3 * 61);
@@ -1134,7 +1141,7 @@ test("message collé : la référence de la page désigne le guide (une seule ta
   assert.deepEqual([ordinaire.d.carnet, ordinaire.offre.extras], [undefined, undefined]);
   // La fenêtre d'une demande du site garde son contexte exact : la référence n'est pas relue.
   assert.equal(lireMessage(lanta, AJD, { detecterCarnet: false }).carnet, undefined);
-  assert.match(lireFichier("src/gestion/js/views/demande.mjs"), /lireMessage\(texte, aujourdhui\(\), \{ detecterCarnet: false \}\)/);
+  assert.equal(lireDuTexte(lanta, AJD, { carnet: { produit: "4-islands", option: "private-longtail" } }).carnet.option, "private-longtail", "une demande du site garde son contexte exact");
 });
 
 test("message collé : la table des références et les noms de page du guide de Koh Samui viennent des fichiers des pages", () => {
@@ -1167,6 +1174,114 @@ test("SQL privé du net du VIP Set : une seule ligne, tarif vérifié, jamais d'
   assert.match(RETOUR_NET_VIP, /delete from prestations_nets/);
   assert.match(RETOUR_NET_VIP, /get diagnostics n = row_count/);
   assert.equal(ID_TARIF("aonang-option-vip-set|standard|Per boat").length, 36);
-  // Rien d'autre que cette ligne : aucun tarif, aucun partenaire, aucune commission.
+  // Rien d'autre que cette ligne : aucun tarif, aucun partenaire, aucune règle de partenaire.
   for (const f of [SQL_NET_VIP, RETOUR_NET_VIP]) assert.doesNotMatch(f.replace(/^--.*$/gm, ""), /insert into (prestations|partenaires)\b|update |insert into partenaires_prives/);
+});
+
+// ---- Relecture du lot (PR 340) -------------------------------------------------------------------------------------------------------------------------
+// Ce que la fenêtre de création fait d'un texte collé à la main : lireDuTexte (la fonction qu'elle appelle), puis le découpage en services et leurs offres.
+const fenetre = (texte, depuisSite = null) => { const d = lireDuTexte(texte, AJD, depuisSite); return { d, services: decouperServices(texte, d, contexte, AJD) }; };
+const RECAP_SAMUI = "Bonjour Anaïs, voici ma demande de réservation.\n\nDemande de réservation : Ang Thong en big boat, journée en groupe\nFormule : avec kayak\nDate : dimanche 20 décembre 2026\nCréneau : Matin, 09:00 à 13:00\nPersonnes : 1 adulte, 1 enfant (12 ans)\nPrise en charge : Hotel Example\nEstimation : 5 000 THB, à payer sur place après confirmation\nNom : Anna\nWhatsApp : +41791234567\nRéf : SAM-AB12";
+
+test("fenêtre de création : un texte collé à la main est lu avec la détection par la référence (extras tarifés, âge réglé), une demande du site garde son contexte", () => {
+  // Ao Nang collé : lunch box tarifée, enfant de 12 ans compté, extra impossible signalé sur la même offre.
+  const aon = fenetre(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { extras: "Lunch box, VIP Set" }));
+  assert.deepEqual(aon.d.carnet, { produit: "aonang-vip-hong", option: "standard" });
+  const o = aon.services[0].offres[0];
+  assert.deepEqual([o.extras.map((x) => [x.ligne, x.qte]), o.extrasManquants], [[["Lunch box", 3]], ["VIP Set"]]);
+  const nu = fenetre(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { extras: "" })).services[0].offres[0];
+  assert.equal(o.total, nu.total + 3 * 61);
+  // Samui collé (récapitulatif français avec « Réf : SAM- ») : enfant de 12 ans compté adulte.
+  const sam = fenetre(RECAP_SAMUI);
+  assert.deepEqual(sam.d.carnet, { produit: "ang-thong-big-boat", option: "with-kayak" });
+  assert.deepEqual([sam.d.adultes, sam.d.enfants, sam.d.plusGrands], [2, 0, 1]);
+  assert.deepEqual([sam.services[0].adultes, sam.services[0].enfants], [2, 0], "le service de la fenêtre porte les personnes réglées");
+  // Une demande du site du carnet : son contexte exact, jamais la référence relue ; une demande du site ordinaire (sans carnet) est lue avec la détection.
+  assert.equal(lireDuTexte(RECAP_SAMUI, AJD, { carnet: { produit: "ang-thong-speedboat-groupe", option: "standard" } }).carnet.produit, "ang-thong-speedboat-groupe");
+  assert.equal(lireDuTexte(RECAP_SAMUI, AJD, { carnet: null }).carnet.produit, "ang-thong-big-boat");
+  // Sans référence : message libre, rien d'ajouté.
+  assert.equal(fenetre(MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option", { ref: "" })).d.carnet, undefined);
+  // La vue n'appelle plus lireMessage elle-même, ni ne désactive la détection pour un texte collé.
+  const vue = lireFichier("src/gestion/js/views/demande.mjs");
+  assert.match(vue, /lireDuTexte\(texte, aujourdhui\(\), depuisSite\)/);
+  assert.doesNotMatch(vue, /detecterCarnet/);
+});
+
+test("« Lunch box » et « VIP Set » ne sont connus que du guide d'Ao Nang : dans Koh Samui ou Koh Lanta ils restent le texte du client", () => {
+  assert.equal(extrasPourOption("Lunch box", "ang-thong-big-boat", "with-kayak"), "Lunch box");
+  assert.equal(extrasPourOption("Lunch box, VIP Set", "4-islands", "private-longtail"), "Lunch box, VIP Set");
+  assert.equal(extrasPourOption("Add Koh Kradan", "ang-thong-big-boat", "with-kayak"), "Add Koh Kradan");
+  assert.equal(extrasPourOption("Add Koh Kradan", "aonang-vip-hong", "standard"), "Add Koh Kradan");
+  const samui = { carnet: { produit: "ang-thong-big-boat", option: "with-kayak" }, site: true, extras: "Lunch box", option: "With kayak" };
+  assert.deepEqual(extrasDeLaDemande(samui), { voulus: [], impossibles: [] });
+  assert.deepEqual(extrasDeLaDemande({ ...samui, carnet: { produit: "4-islands", option: "private-longtail" }, option: "Private longtail", prestation: "4 Islands" }), { voulus: [], impossibles: [] });
+  // Pas d'alerte : l'offre d'une demande de Samui ou de Lanta avec « Extras: Lunch box » n'a ni extra ni extra manquant.
+  const lanta = offreCollee("Booking request: 4 Islands – Private longtail\nDate: Sun 20 Dec 2026\nGuests: 2 adults\nExtras: Lunch box\nRef: LAN-AB12").offre;
+  assert.deepEqual([lanta.extras, lanta.extrasManquants], [undefined, undefined]);
+  // « Modifier » d'une demande de Koh Samui : la ligne « Extras: Lunch box » reste dans le message refait.
+  const ligne = { marque: "secret", produit_id: "ang-thong-big-boat", option_id: "with-kayak", option_titre: "With kayak", page_url: "https://zwaldtravelplanner.com/carnet/koh-samui-test/", date_service: "2026-12-20", adultes: 2, enfants: 0, message: "Booking request: Ang Thong Marine Park by big boat – With kayak\nGuests: 2 adults\nExtras: Lunch box" };
+  assert.match(texteDemande(ligne, { option_titre: "Without kayak" }), /^Extras: Lunch box$/m);
+  // Kradan reste propre au guide de Koh Lanta et au 4 Islands privé ; la lunch box à Ao Nang, jamais dans l'autre sens.
+  assert.deepEqual(extrasDuGuide("aonang").map((x) => x.ligne).sort(), ["Lunch box", "Lunch box", "VIP Set"]);
+  assert.deepEqual(extrasDuGuide("koh-lanta").map((x) => x.ligne), ["Add Koh Kradan"]);
+  assert.deepEqual(extrasDuGuide("koh-samui"), []);
+});
+
+test("message cité puis modifié : seul le bloc de la page tel qu'elle l'écrit est une demande du carnet", () => {
+  const bloc = MSG_AONANG("Hong Islands from Ao Nang, VIP option", "VIP option");
+  assert.equal(lireDuTexte(bloc, AJD).carnet.produit, "aonang-vip-hong");
+  // Un client cite l'ancien message et ajoute ses changements AVANT, APRÈS, ou cite avec « > » : message libre, ses modifications ne sont pas perdues.
+  for (const cite of [`Can we move it to the 22nd?\n\n${bloc}`, `${bloc}\n\nActually we are 5 people now`, `> ${bloc.split("\n").join("\n> ")}\nSame but Monday please`]) {
+    const lu = lireDuTexte(cite, AJD);
+    assert.equal(lu && lu.carnet, undefined, cite.slice(0, 40));
+  }
+  assert.equal(carnetDuMessage(`Hello\n${bloc}`), null);
+  assert.equal(carnetDuMessage(`${bloc}\nThanks!`), null);
+  // L'accueil de la page (WhatsApp français) précède le bloc, rien d'autre.
+  assert.ok(carnetDuMessage(RECAP_SAMUI));
+  assert.equal(carnetDuMessage(RECAP_SAMUI.replace("Bonjour Anaïs, voici ma demande de réservation.", "Bonjour")), null);
+});
+
+test("estimation française recopiée : « 1 250,50 THB » et « 1.250 THB » se lisent comme des montants, jamais en supprimant la ponctuation", () => {
+  assert.equal(montantFrancais("5 000"), 5000);
+  assert.equal(montantFrancais("5\u202f000"), 5000);
+  assert.equal(montantFrancais("1 250,50"), 1250.5);
+  assert.equal(montantFrancais("1.250"), 1250);
+  assert.equal(montantFrancais("1.250,50"), 1250.5);
+  assert.equal(montantFrancais("250.5"), 250.5);
+  assert.equal(montantFrancais("1,250"), 1250);
+  assert.equal(montantFrancais("abc"), 0);
+  assert.equal(montantFrancais(undefined), 0);
+  const recap = (v) => `Demande de réservation : Ang Thong en big boat, journée en groupe\nFormule : avec kayak\nPersonnes : 2 adultes\nEstimation : ${v} THB, à payer sur place après confirmation\nRéf : SAM-AB12`;
+  assert.equal(lireDuTexte(recap("1 250,50"), AJD).prixSite, "1,250.50 THB");
+  assert.equal(lireDuTexte(recap("1.250"), AJD).prixSite, "1,250 THB");
+  assert.equal(lireDuTexte(recap("5 000"), AJD).prixSite, "5,000 THB");
+  // Une seule capture de la référence dans le module.
+  const code = lireFichier("src/gestion/js/carnet-colle.mjs").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert.equal((code.match(/R\[ée\]f/g) || []).length, 1, "la référence n'est lue qu'à un endroit");
+});
+
+test("tarifs du carnet : la table clé vers identifiant est construite une seule fois, jamais parcourue à chaque appel", () => {
+  const code = lireFichier("src/gestion/js/carnet-ages.mjs").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert.match(code, /const IDS_TARIFS = new Map\(/);
+  assert.doesNotMatch(code, /for \(const p of PRODUITS_CARNET\) for \(const o of p\.options\)/);
+  assert.equal(idTarifCarnet("aonang-option-vip-set|standard|Per boat"), ID_TARIF("aonang-option-vip-set|standard|Per boat"));
+  assert.equal(idTarifCarnet("inconnu"), null);
+  assert.equal(estLExtra({ id: ID_TARIF(CLE_VIP_SET) }, EXTRAS_DU_SITE.find((x) => x.ligne === "VIP Set")), true);
+  assert.equal(estLExtra({ id: "autre", details: {} }, EXTRAS_DU_SITE[0]), false);
+  // 20 000 prestations de la base contre tous les extras : un temps de saisie, pas de parcours du catalogue du carnet.
+  const base = Array.from({ length: 20000 }, (_, i) => ({ id: `p${i}`, details: {} }));
+  const t0 = performance.now();
+  let n = 0;
+  for (const p of base) for (const x of EXTRAS_DU_SITE) if (estLExtra(p, x)) n++;
+  assert.equal(n, 0);
+  assert.ok(performance.now() - t0 < 250, "le test d'appartenance reste instantané");
+});
+
+test("fichiers suivis du lot : aucune marge ni valeur de net ou de commission dite (ni égalité net-vente) dans le dépôt public", () => {
+  for (const f of ["docs/gestion/verif-secret-aonang-lanta.mjs", "docs/gestion/carnet-aonang-lanta.md", "src/gestion/js/carnet-produits.mjs", "src/gestion/js/carnet-colle.mjs"]) {
+    const t = lireFichier(f);
+    assert.doesNotMatch(t, /aucune commission sur|net égal|commission nulle|net vaut|marge/i, f);
+  }
+  assert.match(lireFichier("docs/gestion/verif-secret-aonang-lanta.mjs"), /option sans net posé/);
 });
