@@ -1529,12 +1529,11 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
   }
   // Un lieu ne porte jamais de lien (22.11.2026) : un lien Maps lu devient le nom de l'établissement, un autre lien est retiré.
   const lieux = lieuxDuService(s, memo, avert);
-  // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : rien n'est deviné. La carte le dit, ne se valide pas d'un geste, et
-  // l'Assistant pose la question. Un transfert : hors catalogue, un trajet, une prestation de la famille « transfert », ou toute course de Taxi.
-  if (estTransfertService({ p, t, fonctionnement: fonctionnementDuService(ctx, entreprise) })) {
-    if (!lieux.lieu_pickup) avert.push("pickup_a_verifier");
-    if (!lieux.vers) avert.push("dropoff_a_verifier");
-  }
+  // Un lieu exigé qui manque (relecture de la PR 332) : rien n'est deviné. La carte le dit, montre un champ à remplir, ne se valide pas tant
+  // qu'il manque, et l'Assistant pose la question.
+  const exiges = lieuxExigesService({ p, t, fonctionnement: fonctionnementDuService(ctx, entreprise) });
+  if (exiges.pickup && !lieux.lieu_pickup) avert.push("pickup_a_verifier");
+  if (exiges.dropoff && !lieux.vers) avert.push("dropoff_a_verifier");
   return {
     texte: texte(s.texte, 160),
     offre: p ? { genre: "prestation", id: p.id } : t ? { genre: "trajet", id: t.id } : null,
@@ -1618,8 +1617,15 @@ export function partenairesCitesParMot(t, noms = []) {
 // Les lieux d'un service de carte, sans lien : { lieu_pickup, de, vers }. Un lien Maps résolu dans cet échange (memo.lieuxMaps) devient le nom
 // de l'établissement ; un lien non résolu est retiré et la carte avertit (« lieu_a_verifier ») : Nani vérifie la dépose avant de valider.
 // Un lien Maps lu dans la conversation mais pas résolu avertit aussi un transfert (de ou vers rempli) : son lieu est peut-être vague.
-// Un transfert, pour les lieux à vérifier : hors catalogue, un trajet, une prestation de la famille « transfert », ou toute course de Taxi.
-export const estTransfertService = ({ p = null, t = null, fonctionnement = "" } = {}) => fonctionnement === "taxi" || !!t || !p || p.famille === "transfert";
+// Les lieux qu'un service doit avoir (même règle que l'écran, agent-calc.mjs lieuxExiges) : un transfert (hors catalogue, un trajet, une
+// prestation de la famille « transfert ») a son pickup et son drop-off ; chez Taxi, toute course aussi, sauf une excursion (famille
+// « excursion », un aller-retour), qui n'exige que le pickup. Rend { pickup, dropoff }.
+export function lieuxExigesService({ p = null, t = null, fonctionnement = "" } = {}) {
+  const transfert = !!t || !p || p.famille === "transfert";
+  const course = fonctionnement === "taxi";
+  if (transfert || (course && p.famille !== "excursion")) return { pickup: true, dropoff: true };
+  return { pickup: course, dropoff: false };
+}
 export function lieuxDuService(s = {}, memo = {}, avert = []) {
   const lieux = Array.isArray(memo.lieuxMaps) ? memo.lieuxMaps : [];
   const out = {};

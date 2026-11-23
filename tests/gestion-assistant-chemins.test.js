@@ -15,7 +15,7 @@ const E = await import("../src/gestion/js/etat.mjs");
 await E.init();
 const { executer, refDe } = await import("../supabase/functions/agent/outils.js");
 const { tempsSimule } = await import("../supabase/functions/agent/planifier.js");
-const { reservationDepuisCarte, reservationModifiee } = await import("../src/gestion/js/agent-calc.mjs");
+const { reservationDepuisCarte, reservationModifiee, lieuxAVerifier } = await import("../src/gestion/js/agent-calc.mjs");
 const V = await import("../src/gestion/js/views/agent-valider.mjs");
 const { ouvrirDemande } = await import("../src/gestion/js/views/demande.mjs");
 const { ouvrirConfirmation } = await import("../src/gestion/js/views/confirmation.mjs");
@@ -163,26 +163,14 @@ test("un pickup explicite égal ou proche du drop-off n'est jamais vidé ni remp
   }
 });
 
-test("carte sans pickup ou sans drop-off : la fonction et l'écran le disent, rien n'est deviné, la carte ne se valide pas d'un geste", async () => {
-  const p = await catalogueProd("taxi");
-  // La fonction de l'Assistant : un transfert sans lieu porte l'avertissement (l'Assistant pose la question).
-  const sansPickup = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Krabi Airport"].id), lieu_pickup: "", de: "", vers: "Resort Exemple" })], { hotel: "Resort Exemple" }));
-  const sansDepose = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Ao Nang"].id), lieu_pickup: "Resort Exemple", de: "", vers: "" })], { hotel: "Resort Exemple" }));
-  const complete = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Pakbara Pier"].id), lieu_pickup: "Pakbara Pier", de: "", vers: "Resort Exemple" })], { hotel: "Resort Exemple" }));
-  const ajoutSans = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", (await E.inserer("dossiers", { ref: `S-${++n}`, client_id: null, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" })).id), service: service({ ref: refDe("P", p["Krabi Airport"].id), enfants: 2, lieu_pickup: "", de: "", vers: "" }) });
-  assert.ok(sansPickup.avertissements.includes("pickup_a_verifier") && !sansPickup.avertissements.includes("dropoff_a_verifier"));
-  assert.ok(sansDepose.avertissements.includes("dropoff_a_verifier") && !sansDepose.avertissements.includes("pickup_a_verifier"));
-  assert.ok(ajoutSans.avertissements.includes("pickup_a_verifier") && ajoutSans.avertissements.includes("dropoff_a_verifier"));
-  // Rien n'est deviné : la réservation préparée garde les lieux vides (ni l'hôtel, ni le libellé du tarif).
-  const vide = reservationDepuisCarte(ajoutSans.donnees, V.optionsCarte(ajoutSans));
-  assert.equal(vide.lieu_pickup, "");
-  assert.equal((vide.details || {}).drop_off, undefined);
-  // L'écran : l'onglet Assistant avec ces quatre cartes, tel quel (views/agent.mjs).
+// L'onglet Assistant (views/agent.mjs) tel quel, avec une conversation de test et ses cartes, servies par le magasin de démo comme celles de
+// la base ; le statut d'une carte décidée y est noté. Rend { vue, cartes, carteVue, fin }.
+let convs = 0;
+async function ongletAvec(liste) {
   await E.enregistrerReglages({ ...E.reglages(), agent_ia: true });
-  const conv = { id: "conv-lieux", entite_id: entite("taxi").id, user_id: E.etat.moi.user_id, titre: "Lieux", apercu: "", dossier_id: null, statut: "ouverte", cree_le: new Date().toISOString(), maj_le: new Date().toISOString() };
-  const cartes = [sansPickup, sansDepose, complete, ajoutSans].map((x, i) => ({ ...x, id: `carte-lieux-${i}`, conversation_id: conv.id, cree_le: new Date(Date.now() + i).toISOString() }));
+  const conv = { id: `conv-lieux-${++convs}`, entite_id: E.etat.entiteId, user_id: E.etat.moi.user_id, titre: "Lieux", apercu: "", dossier_id: null, statut: "ouverte", cree_le: new Date().toISOString(), maj_le: new Date().toISOString() };
+  const cartes = liste.map((x, i) => ({ ...x, id: `${conv.id}-carte-${i}`, conversation_id: conv.id, cree_le: new Date(Date.now() + i).toISOString() }));
   const st = E.etat.store;
-  // La conversation et ses cartes, servies par le magasin de démo comme celles de la base ; le statut d'une carte décidée y est noté.
   const origines = Object.fromEntries(["agentConversations", "agentFil", "agentAttente", "agentCarte", "agentMajConversation", "agentNoterApprentissages"].map((k) => [k, st[k]]));
   const nos = (id) => id === conv.id || cartes.some((x) => x.id === id);
   st.agentConversations = async (e) => [...(await origines.agentConversations.call(st, e)), conv];
@@ -196,36 +184,135 @@ test("carte sans pickup ou sans drop-off : la fonction et l'écran le disent, ri
   };
   st.agentMajConversation = async (id, patch) => (nos(id) ? Object.assign(conv, patch) : origines.agentMajConversation.call(st, id, patch));
   st.agentNoterApprentissages = async (...a) => (nos(a[1]) ? [] : origines.agentNoterApprentissages.call(st, ...a));
-  let vue = null;
+  const { vueAgent } = await import("../src/gestion/js/views/agent.mjs");
+  const vue = await vueAgent(conv.id);
+  dom.document.body.append(vue);
+  await dom.attendre(30);
+  // La carte affichée : l'élément qui porte data-carte (relu à chaque fois : la carte se redessine).
+  const carteVue = (x) => vue.querySelector(`[data-carte="${cartes[liste.indexOf(x)].id}"]`);
+  const principal = (x) => carteVue(x).querySelector("button.principal");
+  const champ = (x, cle) => carteVue(x).querySelectorAll("input.agent-lieu-champ").find((e) => e.getAttribute("data-lieu").endsWith(`:${cle}`));
+  const fin = () => (Object.assign(st, origines), vue.remove());
+  return { vue, cartes, carteVue, principal, champ, fin };
+}
+
+test("carte sans pickup ou sans drop-off : la fonction et l'écran le disent, rien n'est deviné, la validation attend le champ rempli", async () => {
+  const p = await catalogueProd("taxi");
+  // La fonction de l'Assistant : un transfert sans lieu porte l'avertissement (l'Assistant pose la question).
+  const sansPickup = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Krabi Airport"].id), lieu_pickup: "", de: "", vers: "Resort Exemple" })], { hotel: "Resort Exemple" }));
+  const sansDepose = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Ao Nang"].id), lieu_pickup: "Resort Exemple", de: "", vers: "" })], { hotel: "Resort Exemple" }));
+  const complete = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Pakbara Pier"].id), lieu_pickup: "Pakbara Pier", de: "", vers: "Resort Exemple" })], { hotel: "Resort Exemple" }));
+  const dossierAjout = await E.inserer("dossiers", { ref: `S-${++n}`, client_id: null, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
+  const ajoutSans = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", dossierAjout.id), service: service({ ref: refDe("P", p["Krabi Airport"].id), enfants: 2, lieu_pickup: "", de: "", vers: "" }) });
+  assert.ok(sansPickup.avertissements.includes("pickup_a_verifier") && !sansPickup.avertissements.includes("dropoff_a_verifier"));
+  assert.ok(sansDepose.avertissements.includes("dropoff_a_verifier") && !sansDepose.avertissements.includes("pickup_a_verifier"));
+  assert.ok(ajoutSans.avertissements.includes("pickup_a_verifier") && ajoutSans.avertissements.includes("dropoff_a_verifier"));
+  // Rien n'est deviné : la réservation préparée garde les lieux vides (ni l'hôtel, ni le libellé du tarif).
+  const vide = reservationDepuisCarte(ajoutSans.donnees, V.optionsCarte(ajoutSans));
+  assert.equal(vide.lieu_pickup, "");
+  assert.equal((vide.details || {}).drop_off, undefined);
+  const o = await ongletAvec([sansPickup, sansDepose, complete, ajoutSans]);
   try {
-    const { vueAgent } = await import("../src/gestion/js/views/agent.mjs");
-    vue = await vueAgent(conv.id);
-    dom.document.body.append(vue);
-    await dom.attendre(30);
-    const carteVue = (titre) => vue.querySelectorAll("article, li, div").filter((e) => e.textContent.includes(titre) && e.querySelector("button")).sort((a, b) => a.textContent.length - b.textContent.length)[0];
-    const texteDe = (x) => carteVue(x.donnees.client ? x.donnees.client.nom : "Dossier").textContent;
-    assert.match(texteDe(sansPickup), /Pickup à vérifier/);
-    assert.match(texteDe(sansDepose), /Drop-off à vérifier/);
-    assert.doesNotMatch(texteDe(complete), /à vérifier/);
-    const premierBouton = (x) => carteVue(x.donnees.client.nom).querySelectorAll("button").map((b) => b.textContent.trim()).filter((t) => !/Calculer le devis/.test(t))[0];
-    assert.equal(premierBouton(sansPickup), "Vérifier avant", "le geste unique n'est pas proposé");
-    assert.equal(premierBouton(sansDepose), "Vérifier avant");
-    assert.equal(premierBouton(complete), "Créer le dossier");
-    // « Tout valider » : la carte complète crée son dossier, les cartes sans lieu restent à valider, avec le motif, sans rien écrire.
+    assert.match(o.carteVue(sansPickup).textContent, /Pickup à vérifier/);
+    assert.match(o.carteVue(sansDepose).textContent, /Drop-off à vérifier/);
+    assert.doesNotMatch(o.carteVue(complete).textContent, /à vérifier/);
+    // Le champ à remplir, sous le service, seulement pour ce qui manque ; le bouton de la carte attend, « Vérifier avant » reste là.
+    assert.ok(o.champ(sansPickup, "lieu_pickup") && !o.champ(sansPickup, "vers"));
+    assert.ok(o.champ(sansDepose, "vers") && !o.champ(sansDepose, "lieu_pickup"));
+    assert.ok(!o.carteVue(complete).querySelector("input.agent-lieu-champ"));
+    assert.equal(o.principal(sansPickup).disabled, true);
+    assert.equal(o.principal(sansPickup).textContent, "Créer le dossier");
+    assert.ok(dom.boutons("Vérifier avant", o.carteVue(sansPickup)).length, "« Vérifier avant » reste disponible");
+    assert.equal(o.principal(ajoutSans).disabled, true);
+    assert.equal(o.principal(complete).disabled, false);
+    // « Tout valider » avant la saisie : la carte complète crée son dossier, les cartes sans lieu restent à valider, avec le motif, sans rien écrire.
     const avant = ecrits.length;
     dom.boutons("Tout valider").slice(-1)[0].click();
     await dom.attendre(120);
-    const dossiers = ecrits.slice(avant).filter((e) => e.op === "inserer" && e.table === "dossiers");
-    assert.equal(dossiers.length, 1, "seule la carte complète crée un dossier");
-    const resa = ecrits.slice(avant).filter((e) => e.op === "inserer" && e.table === "reservations");
-    assert.equal(resa.length, 1, "aucune réservation pour les cartes sans lieu");
-    assert.match(texteDe(sansPickup), /Pickup ou drop-off à vérifier/);
-    assert.equal(cartes.filter((x) => x.statut === "validee").length, 1, "une seule carte validée");
-    assert.equal(cartes[2].statut, "validee");
+    assert.equal(ecrits.slice(avant).filter((e) => e.op === "inserer" && e.table === "dossiers").length, 1, "seule la carte complète crée un dossier");
+    assert.equal(ecrits.slice(avant).filter((e) => e.op === "inserer" && e.table === "reservations").length, 1, "aucune réservation pour les cartes sans lieu");
+    assert.match(o.carteVue(sansPickup).textContent, /Pickup ou drop-off à compléter/);
+    assert.deepEqual(o.cartes.map((x) => x.statut), ["proposee", "proposee", "validee", "proposee"]);
+    // La saisie débloque la carte simple : le lien est retiré, le dossier se crée avec le pickup tapé.
+    dom.saisir(o.champ(sansPickup, "lieu_pickup"), "Villa Exemple https://maps.app.goo.gl/exemple3");
+    await dom.attendre(5);
+    assert.equal(o.principal(sansPickup).disabled, false, "débloquée dès que le champ est rempli");
+    assert.equal(dom.document.activeElement && dom.document.activeElement.getAttribute("data-lieu"), o.champ(sansPickup, "lieu_pickup").getAttribute("data-lieu"), "le curseur reste dans le champ");
+    const a1 = ecrits.length;
+    o.principal(sansPickup).click();
+    await dom.attendre(120);
+    const r1 = ecrits.slice(a1).find((e) => e.op === "inserer" && e.table === "reservations");
+    assert.ok(r1, "réservation créée");
+    comparer(ecrite(r1.id), { lieu_pickup: "Villa Exemple", drop_off: "Resort Exemple" }, "carte simple, pickup saisi");
+    // La carte « reservation » : les deux champs, puis l'ajout au dossier.
+    dom.saisir(o.champ(ajoutSans, "lieu_pickup"), "Krabi Airport");
+    assert.equal(o.principal(ajoutSans).disabled, true, "il manque encore le drop-off");
+    dom.saisir(o.champ(ajoutSans, "vers"), "Resort Exemple");
+    await dom.attendre(5);
+    assert.equal(o.principal(ajoutSans).disabled, false);
+    const a2 = ecrits.length;
+    o.principal(ajoutSans).click();
+    await dom.attendre(120);
+    const r2 = ecrits.slice(a2).find((e) => e.op === "inserer" && e.table === "reservations");
+    assert.ok(r2, "service ajouté");
+    comparer(ecrite(r2.id), { lieu_pickup: "Krabi Airport", drop_off: "Resort Exemple", partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "carte reservation, lieux saisis");
+    assert.equal(ecrite(r2.id).dossier_id, dossierAjout.id);
   } finally {
-    Object.assign(st, origines);
-    if (vue) vue.remove();
+    o.fin();
   }
+});
+
+test("carte mixte sans drop-off : le champ sur la carte, bloquée avant la saisie, puis les deux dossiers avec la dépose tapée", async () => {
+  const cs = await catalogueProd("excursions");
+  const ct = await catalogueProd("taxi");
+  dans("excursions");
+  const s1 = (await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", cs["Krabi Airport"].id), lieu_pickup: "Resort Exemple", vers: "", de: "" })]))).donnees.services[0];
+  dans("taxi");
+  const base = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", ct["Ao Nang"].id), lieu_pickup: "Villa Exemple", vers: "Hotel Plage Exemple", de: "" })]));
+  const donnees = { ...base.donnees, services: [{ ...s1, entite_id: entite("excursions").id, entreprise: "secret" }, { ...base.donnees.services[0], entite_id: entite("taxi").id, entreprise: "taxi" }], entreprises: ["secret", "taxi"] };
+  const mixte = { ...base, donnees, avertissements: ["dropoff_a_verifier"] };
+  for (const [a, b] of [["excursions", "taxi"], ["taxi", "excursions"]]) await E.etat.store.partagerClients(entite(a).id, entite(b).id, true);
+  await E.recharger();
+  dans("taxi");
+  const o = await ongletAvec([mixte]);
+  try {
+    assert.match(o.carteVue(mixte).textContent, /Drop-off à vérifier/);
+    assert.ok(o.champ(mixte, "vers"), "le champ du drop-off, sous le service de Secret");
+    assert.equal(o.principal(mixte).textContent, "Créer les deux dossiers");
+    assert.equal(o.principal(mixte).disabled, true, "bloquée avant la saisie");
+    const avant = ecrits.length;
+    dom.saisir(o.champ(mixte, "vers"), "Marina Exemple");
+    await dom.attendre(5);
+    assert.equal(o.principal(mixte).disabled, false);
+    o.principal(mixte).click();
+    await dom.attendre(200);
+    const dossiers = ecrits.slice(avant).filter((e) => e.op === "inserer" && e.table === "dossiers");
+    assert.equal(dossiers.length, 2, "deux dossiers liés");
+    const resas = ecrits.slice(avant).filter((e) => e.op === "inserer" && e.table === "reservations").map((e) => ecrite(e.id));
+    const parEntreprise = (slug) => resas.find((r) => r.entite_id === entite(slug).id);
+    comparer(parEntreprise("excursions"), { lieu_pickup: "Resort Exemple", drop_off: "Marina Exemple" }, "dossier Secret, dépose tapée");
+    comparer(parEntreprise("taxi"), { lieu_pickup: "Villa Exemple", drop_off: "Hotel Plage Exemple" }, "dossier Taxi, lieux de la carte");
+  } finally {
+    o.fin();
+  }
+});
+
+test("excursion chez Taxi (aller-retour) : le pickup est exigé, jamais le drop-off ; la fonction et l'écran disent la même chose", async () => {
+  dans("taxi");
+  const excursion = await E.inserer("prestations", { famille: "excursion", groupe: "Private Taxi", libelle: "Old Town tour", libelle_en: "Old Town tour", prix_vente: 1800, unite: "veh", actif: true });
+  const sansDepose = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", excursion.id), texte: "Old Town tour", lieu_pickup: "Resort Exemple", de: "", vers: "", vol: "" })]));
+  assert.ok(!(sansDepose.avertissements || []).includes("dropoff_a_verifier"), "fonction : pas de drop-off exigé");
+  assert.deepEqual(lieuxAVerifier(sansDepose, { prestations: E.etat.brut.prestations, taxi: true }), [], "écran : rien à remplir");
+  const r = await validerDossier(sansDepose);
+  assert.equal(r.ok, true, r.motif);
+  comparer(reservationsDu(r.dossier.id)[0], { lieu_pickup: "Resort Exemple", drop_off: undefined }, "excursion Taxi");
+  const sansPickup = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", excursion.id), texte: "Old Town tour", lieu_pickup: "", de: "", vers: "", vol: "" })]));
+  assert.deepEqual((sansPickup.avertissements || []).filter((a) => a.endsWith("_a_verifier")), ["pickup_a_verifier"]);
+  assert.deepEqual(lieuxAVerifier(sansPickup, { prestations: E.etat.brut.prestations, taxi: true }), ["pickup_a_verifier"]);
+  // Un transfert chez Taxi exige toujours les deux.
+  const p = await catalogueProd("taxi");
+  const transfert = await carteDe("proposer_dossier", dossierCarte([service({ ref: refDe("P", p["Ao Nang"].id), lieu_pickup: "Resort Exemple", de: "", vers: "" })]));
+  assert.deepEqual(lieuxAVerifier(transfert, { prestations: E.etat.brut.prestations, taxi: true }), ["dropoff_a_verifier"]);
 });
 
 // ---- 2. Carte « dossier », transfert libre ------------------------------------------------------------------------------------

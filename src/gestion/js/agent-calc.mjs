@@ -121,25 +121,48 @@ export function siegesAVerifier(carte) {
     return n > 0 && n > petitsDe(s, d);
   });
 }
-// Les lieux qu'un transfert d'une carte « dossier » ou « reservation » n'a pas (relecture de la PR 332 : rien n'est deviné, ni l'hôtel du client
-// ni le nom du tarif). Un transfert : hors catalogue, un trajet, une prestation de la famille « transfert », ou toute course de Taxi (`taxi`,
-// ou un service de l'entreprise Taxi dans l'espace unifié). Rend les codes ["pickup_a_verifier", "dropoff_a_verifier"] qui manquent : la carte
-// les affiche et ne se valide pas d'un geste, « Vérifier avant » ouvre la fiche pour les compléter. Comme la fonction (outils.js,
-// estTransfertService), pour les cartes faites avant elle aussi.
-export function lieuxAVerifier(carte, { prestations = [], taxi = false } = {}) {
+// Les lieux qu'un service d'une carte doit avoir (relecture de la PR 332 : rien n'est deviné, ni l'hôtel du client ni le nom du tarif), comme la
+// fonction (outils.js, lieuxExigesService). Un transfert (hors catalogue, un trajet, une prestation de la famille « transfert ») : pickup et
+// drop-off. Chez Taxi (`taxi`, ou un service de l'entreprise Taxi dans l'espace unifié), toute course est un transfert, sauf une excursion
+// (famille « excursion », un aller-retour) : le pickup seul. Ailleurs : rien. Rend { pickup, dropoff }.
+export function lieuxExiges(s = {}, { prestations = [], taxi = false } = {}) {
+  const o = s && s.offre;
+  const p = o && o.genre === "prestation" ? prestations.find((x) => x.id === o.id) || null : null;
+  // Espace unifié : l'entreprise du service décide (un tour de Secret dans une carte mixte n'est pas une course).
+  const course = s && s.entreprise ? s.entreprise === "taxi" : taxi;
+  const transfert = !o || o.genre === "trajet" || !!(p && p.famille === "transfert");
+  if (transfert || (course && !(p && p.famille === "excursion"))) return { pickup: true, dropoff: true };
+  return course ? { pickup: true, dropoff: false } : { pickup: false, dropoff: false };
+}
+// Les lieux qui manquent, service par service : [{ index, pickup, dropoff }] (vrai : à remplir). Une carte décidée ou une course : rien.
+export function lieuxManquants(carte, options = {}) {
   if (!carte || carte.statut !== "proposee" || (carte.donnees && carte.donnees.course)) return [];
-  const codes = new Set();
-  for (const s of servicesDeCarte(carte)) {
-    const o = s && s.offre;
-    const p = o && o.genre === "prestation" ? prestations.find((x) => x.id === o.id) || null : null;
-    // Espace unifié : l'entreprise du service décide (un tour de Secret dans une carte mixte n'est pas une course).
-    const course = s.entreprise ? s.entreprise === "taxi" : taxi;
-    const transfert = course || !o || o.genre === "trajet" || !!(p && p.famille === "transfert");
-    if (!transfert) continue;
-    if (!String(s.lieu_pickup || "").trim()) codes.add("pickup_a_verifier");
-    if (!sansLien(s.vers)) codes.add("dropoff_a_verifier");
-  }
-  return ["pickup_a_verifier", "dropoff_a_verifier"].filter((c) => codes.has(c));
+  return servicesDeCarte(carte)
+    .map((s, index) => {
+      const e = lieuxExiges(s, options);
+      return { index, pickup: e.pickup && !String((s && s.lieu_pickup) || "").trim(), dropoff: e.dropoff && !sansLien(s && s.vers) };
+    })
+    .filter((m) => m.pickup || m.dropoff);
+}
+// Les codes des lieux qui manquent à une carte « dossier » ou « reservation » : ["pickup_a_verifier", "dropoff_a_verifier"]. La carte les
+// affiche, montre un champ à remplir sous le service, et ne se valide pas tant qu'ils manquent ; aussi pour les cartes faites avant.
+export function lieuxAVerifier(carte, options = {}) {
+  const m = lieuxManquants(carte, options);
+  return [...(m.some((x) => x.pickup) ? ["pickup_a_verifier"] : []), ...(m.some((x) => x.dropoff) ? ["dropoff_a_verifier"] : [])];
+}
+// La carte avec les lieux remplis sur elle par la personne (`saisis` : index du service -> { lieu_pickup, vers }), sans lien. Un lieu que la
+// carte donne déjà n'est jamais remplacé : seul un champ vide se remplit.
+export function avecLieuxSaisis(donnees, genre, saisis = {}) {
+  if (!donnees || !saisis || !Object.keys(saisis).length) return donnees;
+  const remplir = (s, i) => {
+    const x = saisis[i];
+    if (!x || !s) return s;
+    const pickup = sansLien(x.lieu_pickup);
+    const vers = sansLien(x.vers);
+    return { ...s, ...(pickup && !String(s.lieu_pickup || "").trim() ? { lieu_pickup: pickup } : {}), ...(vers && !sansLien(s.vers) ? { vers } : {}) };
+  };
+  if (genre === "reservation") return { ...donnees, service: remplir(donnees.service, 0) };
+  return { ...donnees, services: (donnees.services || []).map(remplir) };
 }
 // Un transfert (sieges_requis, posé par la fonction) avec au moins un enfant ou un bébé, sans siège ni « aucun siège » (Jérémy, 22.11.2026) :
 // la carte ne se valide pas, ni d'un geste ni par « Vérifier avant » sans que le choix soit fait dans la fiche.

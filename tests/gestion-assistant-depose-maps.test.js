@@ -244,7 +244,7 @@ test("partenaire : une course de Taxi ajoutée par carte reçoit le chauffeur r�
   assert.equal("partenaire_id" in reservationDepuisCarte({ dossier_id: DOS, service: {} }), false);
   // Les deux chemins de l'écran (valider d'un geste, « Vérifier avant ») passent le chauffeur, calculé dans l'entreprise du dossier.
   const vue = lire("src/gestion/js/views/agent.mjs") + lire("src/gestion/js/views/agent-valider.mjs");
-  assert.equal((vue.match(/reservationDepuisCarte\(c\.donnees, optionsCarte\(c\)\)/g) || []).length, 2);
+  assert.equal((vue.match(/reservationDepuisCarte\((?:c\.donnees|donneesReservation\(c\)), optionsCarte\(c\)\)/g) || []).length, 2);
   assert.match(vue, /const partenaireId = chauffeurDeLaCarte\(c\);/);
   assert.match(vue, /chauffeurCarte\(\(c\.donnees \|\| \{\}\)\.service, \{ taxi: modeTaxi\(\), defaut: modeTaxi\(\) \? partenaireDeTaxi\(etat\.db\.partenaires, chauffeurRegle\(reglages\(\)\)\) : null/);
 });

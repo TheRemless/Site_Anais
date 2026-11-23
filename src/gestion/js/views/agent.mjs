@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte, lieuxAVerifier } from "../agent-calc.mjs";
+import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte, lieuxAVerifier, lieuxManquants, avecLieuxSaisis, sansLien } from "../agent-calc.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte, montantsDuTexte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
@@ -123,8 +123,8 @@ const AVERTISSEMENTS = {
   sieges_a_verifier: N_("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant »."),
   sieges_a_choisir: N_("Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant »."),
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
-  pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Complétez-le avec « Vérifier avant »."),
-  dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Complétez-le avec « Vérifier avant »."),
+  pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service."),
+  dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
   remarque_voucher_interne: N_("La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
@@ -829,7 +829,13 @@ export async function vueAgent(idOuvert = "") {
     const m = fil.messages || [];
     return `${m.length}:${(m[m.length - 1] || {}).cree_le || ""}`;
   };
-  const donneesCarte = (c) => donneesAvecDevis(c.id, carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees, { marque: marqueFil() });
+  // Les lieux remplis sur la carte par la personne (relecture de la PR 332) : carte -> index du service -> { lieu_pickup, vers }.
+  const lieuxSaisis = new Map();
+  // La carte avec ses entreprises corrigées d'un tap (espace unifié), sans les lieux saisis : ce qu'elle dit elle-même.
+  const donneesBrutes = (c) => (carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
+  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(donneesBrutes(c), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
+  // Une carte « reservation » avec les lieux remplis sur elle.
+  const donneesReservation = (c) => avecLieuxSaisis(c.donnees, "reservation", lieuxSaisis.get(c.id));
   const entrepriseDe = (id) => entitesAccessibles().find((e) => e.id === id) || null;
   const libelleEntreprise = (id) => {
     const e = entrepriseDe(id);
@@ -862,7 +868,43 @@ export async function vueAgent(idOuvert = "") {
   }
   const estCourse = (c) => c.genre === "dossier" && !!(c.donnees && c.donnees.course);
   // Les lieux d'un transfert qui manquent à la carte (« pickup_a_verifier », « dropoff_a_verifier »), avec les services de l'espace unifié.
-  const lieuxCarte = (c) => (["dossier", "reservation"].includes(c.genre) ? lieuxAVerifier({ ...c, donnees: c.genre === "dossier" ? donneesCarte(c) : c.donnees }, { prestations: etat.brut.prestations || [], taxi: modeTaxi() }) : []);
+  const optionsLieux = () => ({ prestations: etat.brut.prestations || [], taxi: modeTaxi() });
+  const lieuxCarte = (c) => (["dossier", "reservation"].includes(c.genre) ? lieuxAVerifier({ ...c, donnees: c.genre === "dossier" ? donneesCarte(c) : donneesReservation(c) }, optionsLieux()) : []);
+  // Sous un service dont la carte n'a pas le pickup ou le drop-off : le champ à remplir (relecture de la PR 332), pour toute carte, simple ou
+  // mixte. La valeur, sans lien, ne remplit que ce que la carte n'a pas ; la validation se débloque dès que tout est rempli.
+  function champsLieux(c, i) {
+    if (!["dossier", "reservation"].includes(c.genre)) return null;
+    const m = lieuxManquants({ ...c, donnees: c.genre === "dossier" ? donneesBrutes(c) : c.donnees }, optionsLieux()).find((x) => x.index === i);
+    if (!m) return null;
+    const saisi = (lieuxSaisis.get(c.id) || {})[i] || {};
+    const champ = (cle, libelle, aide) => {
+      const cible = `${c.id}:${i}:${cle}`;
+      const input = h("input", { type: "text", class: "agent-lieu-champ", value: saisi[cle] || "", autocomplete: "off", "data-lieu": cible, placeholder: aide, "aria-label": libelle });
+      input.addEventListener("input", () => {
+        const avant = lieuxCarte(c).length;
+        const tous = lieuxSaisis.get(c.id) || {};
+        lieuxSaisis.set(c.id, { ...tous, [i]: { ...(tous[i] || {}), [cle]: sansLien(input.value) } });
+        motifs.delete(c.id);
+        // Le bouton se débloque (ou se rebloque) dès que tout est rempli : la carte se redessine et le curseur reste dans le champ.
+        if (!avant !== !lieuxCarte(c).length) {
+          const fin = input.value.length;
+          redessiner(c);
+          const neuf = zoneFil.querySelector(`[data-lieu="${cible}"]`);
+          if (neuf) (neuf.focus(), neuf.setSelectionRange && neuf.setSelectionRange(fin, fin));
+        }
+      });
+      return h("label", { class: "agent-lieu-saisie" }, h("span", null, libelle), input);
+    };
+    return h("li", { class: "agent-lieux" }, m.pickup ? champ("lieu_pickup", tr("Pickup"), tr("Hôtel, aéroport, embarcadère")) : null, m.dropoff ? champ("vers", tr("Drop-off"), tr("Hôtel, aéroport, embarcadère")) : null);
+  }
+  // Les champs de lieu glissés sous chaque service de la liste de la carte.
+  const avecChampsLieux = (c, ul) => {
+    [...ul.children].forEach((li, i) => {
+      const champs = champsLieux(c, i);
+      if (champs) li.after(champs);
+    });
+    return ul;
+  };
   // « Envoyé par Jade », puis « Apporteur : pas de fiche chez Taxi » pour une entreprise de la carte sans fiche. Rien n'est bloqué : Nani
   // pourra créer la fiche plus tard. Écran interne seulement, jamais un document du client.
   const blocApporteurCarte = (apporteur, entiteIds) => [
@@ -887,7 +929,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, remarquesCarte(s)), prixTexte(s)))));
+      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, remarquesCarte(s)), prixTexte(s))))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -896,16 +938,16 @@ export async function vueAgent(idOuvert = "") {
       // tant qu'un service n'a pas d'entreprise.
       const aChoisir = u && (du.services || []).some((s) => !s.entite_id);
       action = { libelle: mixte ? tr("Créer les deux dossiers") : ailleurs ? tr("Créer le dossier chez {nom}", { nom: libelleEntreprise(ids[0]) }) : tr("Créer le dossier"), faire: () => valider(c), puis: mixte || ailleurs || aChoisir ? null : { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) } };
-      // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : pas de geste unique, « Vérifier avant » pour compléter le lieu.
-      if (lieuxCarte(c).length && !mixte && !ailleurs && !aChoisir) action = { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) };
+      // Un lieu exigé qui manque (relecture de la PR 332) : la validation attend le champ rempli sur la carte (« Vérifier avant » reste là).
+      if (lieuxCarte(c).length) action = { ...action, bloque: true };
       // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
       if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil }));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), remarquesCarte(s)), prixTexte(s))));
-      action = lieuxCarte(c).length ? { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } : { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), remarquesCarte(s)), prixTexte(s)))));
+      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, LIBELLES_MODIF[d.champ] ? h("span", null, tr(LIBELLES_MODIF[d.champ]), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
@@ -992,7 +1034,8 @@ export async function vueAgent(idOuvert = "") {
             { class: "actions gauche" },
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
-            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", onclick: (e) => action.faire(e.currentTarget) }, action.libelle), action) : null,
+            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
+            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque, onclick: (e) => action.faire(e.currentTarget) }, action.libelle), action) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
           )
@@ -1216,7 +1259,7 @@ export async function vueAgent(idOuvert = "") {
       else if (siegesAChoisir(c)) r = { ok: false, motif: tr("Un enfant ou un bébé voyage : child seat, baby seat ou aucun siège ? Demandez-le au client, ou choisissez avec « Vérifier avant ».") };
       // Un prix du client sous le net (revue de la PR 307) : jamais validé d'un geste.
       // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : jamais validé d'un geste, rien n'est deviné.
-      else if (lieuxCarte(c).length) r = { ok: false, motif: tr("Pickup ou drop-off à vérifier : la carte n'a pas tous les lieux du transfert. Complétez-les avec « Vérifier avant ».") };
+      else if (lieuxCarte(c).length) r = { ok: false, motif: tr("Pickup ou drop-off à compléter : remplissez le champ sur la carte.") };
       else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
@@ -1225,7 +1268,7 @@ export async function vueAgent(idOuvert = "") {
       else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
-      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte(c, tr("Service ajouté au dossier.")));
+      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier.")));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
@@ -1335,7 +1378,7 @@ export async function vueAgent(idOuvert = "") {
   function ouvrirReservation(c) {
     return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {
       // « Annuler » rend null : la carte reste à valider. La fermeture ramène dans l'entreprise de la conversation.
-      const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), async (res) => {
+      const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(donneesReservation(c), optionsCarte(c)), async (res) => {
         ferme();
         if (!res) return;
         toast(tr("Service ajouté au dossier."));
