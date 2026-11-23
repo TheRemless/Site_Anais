@@ -744,6 +744,8 @@ async function afficher() {
   for (const a of document.querySelectorAll("nav [data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute || (a.dataset.cle === "plus" && !ongletsMobiles().includes(cleRoute)));
   document.querySelector(".coque").classList.toggle("avec-plus", ECRANS_AVEC_PLUS.test(hash) && !!document.querySelector(".bouton-plus"));
   restaurerDefilement(hash);
+  // L'écran place lui-même son défilement une fois en place, avant l'affichage (fils WhatsApp, fil-defilement.mjs).
+  if (typeof noeud.apresInsertion === "function") noeud.apresInsertion();
   derniereVue = hash;
   majBadges();
 }

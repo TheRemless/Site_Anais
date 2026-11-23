@@ -44,7 +44,7 @@ test("demander : la demande « question » passe par la clé de « Créer le dos
   assert.equal(demandeAgent({ id: "w1", mode: "question" }).agent_conversation_id, null);
   const vue = lire("src/gestion/js/views/agent.mjs");
   // La question n'est envoyée qu'au clic (question rapide ou bouton Envoyer) : ouvrir ne fait qu'afficher les questions rapides.
-  assert.match(vue, /if \(questionWa\) \{\n\s+depuisWhatsAppEcran = true;\n\s+dessinerFil\(\);\n\s+\}/);
+  assert.match(vue, /if \(questionWa\) \{\n\s+depuisWhatsAppEcran = true;\n\s+dessinerFil\(\{ forcer: true \}\);\n\s+\}/);
   assert.match(vue, /whatsapp_mode: "question", whatsapp_pieces: \[\], texte \}/);
   assert.deepEqual(R.QUESTIONS_RAPIDES, ["Qu'y a-t-il à faire ?", "Résume", "Prépare les dossiers"]);
 });
@@ -84,7 +84,7 @@ test("liens : seulement la forme #/whatsapp?c=… construite par le code ; le me
   const wa = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(wa, /"data-message": m\.id/);
   assert.match(wa, /whatsappMessages\(c\.id, \{ inclure: messageCible\(lireAdresse\(location\.hash\)\) \}\)/, "le message ancien est chargé");
-  assert.match(wa, /if \(cle && cle !== messageMontre && montrerMessage\(racine, cible\)\) return void \(\(messageMontre = cle\), history\.replaceState\(null, "", adresseConversation\(ouverte\)\)\);/, "montré une fois, puis retiré de l'adresse");
+  assert.match(wa, /if \(cle && cle !== messageMontre && montrerMessage\(racine, cible\)\) \{\n\s+messageMontre = cle;\n\s+history\.replaceState\(null, "", adresseConversation\(ouverte\)\);/, "montré une fois, puis retiré de l'adresse");
   assert.equal(R.SURBRILLANCE_MS, 2000);
   const sb = lire("src/gestion/js/store-supabase.mjs");
   assert.match(sb, /if \(!inclure \|\| lus\.length < 500 \|\| lus\.some\(\(m\) => m\.id === inclure\)\) return lus;/);

@@ -31,6 +31,7 @@ import { boutonPasBien } from "./agent-retour.mjs";
 import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
 import { preparation, optionsCarte, enregistrerReservation, ajouterParCarte, validerUnifie } from "./agent-valider.mjs";
 import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
+import { suivreFil } from "../fil-defilement.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
 const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
 
@@ -176,6 +177,8 @@ const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && p
 
 // ---- Écran -----------------------------------------------------------------------------------------------------------------------
 
+// Le suivi du défilement du fil affiché (fil-defilement.mjs) : un seul à la fois, arrêté quand l'écran est refait.
+let suiviAgent = null;
 export async function vueAgent(idOuvert = "") {
   if (!disponible()) {
     const racine = h("div", { "data-titre": tr("Assistant") });
@@ -342,7 +345,7 @@ export async function vueAgent(idOuvert = "") {
     conv = id && conversations ? conversations.find((c) => c.id === id) || null : null;
     fil = { messages: [], cartes: [] };
     if (id && !conv) {
-      dessinerFil();
+      dessinerFil({ forcer: true });
       zoneFil.replaceChildren(h("p", { class: "aide" }, erreurTexte("conversation_introuvable")));
       return;
     }
@@ -354,7 +357,7 @@ export async function vueAgent(idOuvert = "") {
       fil = (await etat.store.agentFil(conv.id)) || fil;
     }
     dessinerListe();
-    dessinerFil();
+    dessinerFil({ forcer: true });
     // Message venu d'une autre entreprise (« Passer à … ») : il attend dans la zone de saisie, la personne l'envoie.
     // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61) : la demande part aussitôt, la fonction lit
     // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois, dans la conversation déjà
@@ -388,7 +391,7 @@ export async function vueAgent(idOuvert = "") {
     }
     if (questionWa) {
       depuisWhatsAppEcran = true;
-      dessinerFil();
+      dessinerFil({ forcer: true });
     }
     if (questionBoite) return void envoyer({ texte: questionBoite });
     champ.focus({ preventScroll: true });
@@ -532,17 +535,37 @@ export async function vueAgent(idOuvert = "") {
     avertissementLongueur.textContent = questionWa && champ.value.length >= QUESTION_MAX ? tr("Une question sur WhatsApp tient en {max} caractères au plus.", { max: QUESTION_MAX }) : "";
   }
   champ.addEventListener("input", verifierLongueur);
-  function dessinerFil() {
+  // `forcer` : à l'ouverture d'une conversation, le dernier message. Sinon (fil relu après une réponse, renommage), la position de la personne
+  // est gardée si elle lisait plus haut.
+  function dessinerFil({ forcer = false } = {}) {
+    const lisaitPlusHaut = !forcer && suiviAgent && suiviAgent.zone === zoneFil && !suiviAgent.ctrl.colle ? suiviAgent.ctrl.instantane() : null;
     const items = filDepuis(fil.messages, fil.cartes);
     zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map((it, i) => element(it, i)) : questionWa ? [] : [suggestions()]), questionsRapides()].filter(Boolean));
     majToutValider();
     colonneFil.replaceChildren(enTete(), zoneFil, barreTout, formulaire);
-    descendre();
+    if (lisaitPlusHaut === null) return descendre({ forcer: true });
+    zoneFil.append(boutonNouveaux);
+    suiviFil().observer();
+    suiviFil().garder(lisaitPlusHaut, { annoncer: !boutonNouveaux.hidden });
   }
-  const descendre = () => requestAnimationFrame(() => {
-    zoneFil.scrollTop = zoneFil.scrollHeight;
-    if (!matchMedia("(min-width: 900px)").matches) window.scrollTo({ top: document.documentElement.scrollHeight });
-  });
+  // Défilement (23.11.2026, fil-defilement.mjs) : le fil reste en bas pendant que les cartes et les images de voucher arrivent, tant que la
+  // personne n'a pas fait défiler elle-même. Si elle lit plus haut, la réponse qui arrive ne la déplace pas : « Nouveaux messages ↓ ».
+  const boutonNouveaux = h("button", { class: "agent-nouveaux", type: "button", hidden: true }, tr("Nouveaux messages"), " ↓");
+  const suiviFil = () => {
+    if (!suiviAgent || suiviAgent.zone !== zoneFil) {
+      if (suiviAgent) suiviAgent.ctrl.arreter();
+      suiviAgent = { zone: zoneFil, ctrl: suivreFil(zoneFil, { bouton: boutonNouveaux }) };
+    }
+    return suiviAgent.ctrl;
+  };
+  const descendre = ({ forcer = false } = {}) => {
+    // Le bouton reste le dernier élément du fil (collé en bas de la zone sur bureau).
+    if (boutonNouveaux.parentNode !== zoneFil || boutonNouveaux.nextSibling) zoneFil.append(boutonNouveaux);
+    const ctrl = suiviFil();
+    ctrl.observer();
+    if (forcer || ctrl.colle) ctrl.bas();
+    else boutonNouveaux.hidden = false;
+  };
 
   // « Pas bien » (migration 74) : dans l'entreprise de la conversation, pour qui peut y noter un apprentissage (agent-retour.mjs).
   const entiteDuFil = () => (conv && conv.entite_id) || etat.entiteId;
@@ -642,7 +665,8 @@ export async function vueAgent(idOuvert = "") {
     let bulle = null;
     let texteRecu = "";
     zoneFil.append(etape);
-    descendre();
+    // La personne vient d'écrire : son message et la réponse qui arrive, en bas.
+    descendre({ forcer: true });
     const corps = whatsapp
       ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" }
       : question
