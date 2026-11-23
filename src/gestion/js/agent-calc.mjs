@@ -219,7 +219,8 @@ export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surP
     libelle: s.libelle || s.texte || "",
     date_service: s.date || "",
     heure_pickup: s.heure_pickup || "",
-    lieu_pickup: s.lieu_pickup || "",
+    // Sans lieu de pickup, le départ lu (« de »), comme une carte « dossier » (propositionVersDemande, 23.11.2026).
+    lieu_pickup: s.lieu_pickup || sansLien(s.de),
     personnes: { adultes: s.adultes || 0, enfants: s.enfants || 0 },
     montant_vente: s.prix ?? null,
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
