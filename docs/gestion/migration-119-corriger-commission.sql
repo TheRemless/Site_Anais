@@ -73,6 +73,10 @@ begin
     raise exception 'corriger_commission:droits' using errcode = '42501';
   end if;
   select * into n from reservations_nets where reservation_id = r.id for update;
+  -- Sans la lecture de la feuille (objet avec les trois montants, même vides), rien ne prouve qu'on corrige la ligne vue : refus.
+  if p_lu is null or jsonb_typeof(p_lu) <> 'object' or not (p_lu ? 'commission_prevue' and p_lu ? 'commission_recue' and p_lu ? 'montant_vente') then
+    raise exception 'corriger_commission:lecture_manquante';
+  end if;
   -- Ce que la feuille a lu doit être encore vrai : sinon un encaissement, une saisie ou un prix changé entre-temps serait écrasé.
   if (n.commission_prevue is distinct from (p_lu->>'commission_prevue')::numeric)
      or (n.commission_recue is distinct from (p_lu->>'commission_recue')::numeric)

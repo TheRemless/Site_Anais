@@ -84,6 +84,16 @@ test("point 1 : une écriture concurrente est refusée (encaissement noté aprè
   assert.doesNotMatch(sql.slice(sql.indexOf("update reservations_nets set"), sql.indexOf("where id = n.id")), /commission_recue\s*=/);
 });
 
+test("point 1 : sans la lecture de la feuille (nulle, pas un objet, montant manquant), la correction est refusée", () => {
+  for (const lu of [null, undefined, [], 400, "x", { commission_prevue: 400, commission_recue: null }, {}]) {
+    const d = demo();
+    assert.throws(() => corrigerDemo(d, { lu }), /corriger_commission:lecture_manquante/, JSON.stringify(lu));
+    assert.equal(d.data.reservations_nets[0].commission_prevue, 400, "rien d'écrit");
+  }
+  assert.match(sql, /if p_lu is null or jsonb_typeof\(p_lu\) <> 'object' or not \(p_lu \? 'commission_prevue' and p_lu \? 'commission_recue' and p_lu \? 'montant_vente'\) then\s+raise exception 'corriger_commission:lecture_manquante';/);
+  assert.ok(sql.indexOf("corriger_commission:lecture_manquante") < sql.indexOf("corriger_commission:change"), "contrôlée avant la comparaison");
+});
+
 test("point 1 : droits et entreprise contrôlés (démo et base)", () => {
   assert.throws(() => corrigerDemo(demo({ droits: ["dossiers.ecrire"] })), /corriger_commission:droits/, "sans les nets");
   assert.throws(() => corrigerDemo(demo({ droits: ["partenaires.nets"] })), /corriger_commission:droits/, "sans l'écriture des dossiers");

@@ -327,7 +327,9 @@ export function corrigerLocal(data, droit, args, { ajd, maintenant }) {
   if (!args.entiteId || r.entite_id !== args.entiteId) refus("entite");
   if (!(droit(r.entite_id, "partenaires.nets") && droit(r.entite_id, "dossiers.ecrire"))) refus("droits");
   let n = (data.reservations_nets || []).find((x) => x.reservation_id === r.id) || null;
-  if (!memeLu(luCorrection(r, n), args.lu || {})) refus("change");
+  const lu = args.lu;
+  if (!lu || typeof lu !== "object" || Array.isArray(lu) || !["commission_prevue", "commission_recue", "montant_vente"].every((k) => k in lu)) refus("lecture_manquante");
+  if (!memeLu(luCorrection(r, n), lu)) refus("change");
   const res = correctionCommission(r, n, { mode: args.prix !== null && args.prix !== undefined ? "prix" : "commission", commission: args.commission, prix: args.prix, motif: args.motif, note: args.note });
   if (res.erreur) refus(res.erreur);
   const documents = args.documents || [];

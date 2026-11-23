@@ -72,6 +72,7 @@ const REFUS_CORRECTION = {
   entite: N_("L'entreprise a changé : rien n'a été corrigé. Rouvrez la liste."),
   documents: N_("La facture n'a pas pu suivre le nouveau prix : rien n'a été corrigé."),
   introuvable: N_("Ce service n'existe plus."),
+  lecture_manquante: N_("Ce service a changé depuis l'ouverture (encaissement, saisie ou prix) : rien n'a été corrigé. Vérifiez la liste."),
 };
 
 export function sectionCommissions({ rafraichir, ecrit }) {

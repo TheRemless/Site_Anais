@@ -126,6 +126,11 @@ await essaie(u.nani, "update reservations_nets set commission_recue = 250, commi
 r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 100, luJson: luAvant });
 n = await com(R.partiel);
 ok(!r.ok && code(r) === "change" && Number(n.commission_recue) === 250 && Number(n.commission_prevue) === 400 && !n.commission_recue_le, "écriture concurrente refusée : l'encaissement de 250 reste, rien n'est corrigé");
+// Sans la lecture de la feuille : nulle, pas un objet, ou sans les trois montants.
+for (const [quoi, luJson] of [["nulle", null], ["un tableau", "[]"], ["un nombre", "400"], ["une chaîne", JSON.stringify("x")], ["sans le prix", JSON.stringify({ commission_prevue: 400, commission_recue: 250 })], ["vide", "{}"]]) {
+  r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 300, luJson });
+  ok(!r.ok && code(r) === "lecture_manquante" && Number((await com(R.partiel)).commission_prevue) === 400, `lecture ${quoi} : refusée (${code(r)}), rien d'écrit`);
+}
 r = await corriger("nani", R.partiel, { entite: ent.taxi, commission: 200, luJson: await lu(R.partiel) });
 ok(!r.ok && code(r) === "sous_recu", "refusée sous le déjà reçu (contrôle de la base)");
 // Solde : la nouvelle commission égale le déjà reçu, commission_recue n'est jamais réécrite.
