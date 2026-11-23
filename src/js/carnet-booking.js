@@ -305,7 +305,7 @@
     if (a) parts.push(plural(a, "adulte", "adultes") + " × " + thb(p.adulte));
     if (c) parts.push(plural(c, "enfant", "enfants") + " × " + thb(p.enfant));
     if (free) parts.push(plural(free, "enfant", "enfants") + " de moins de " + p.enfantMin + " ans : gratuit");
-    return { amount: a * p.adulte + c * p.enfant, detail: parts.join(", "), confirmer: !!p.confirmer };
+    return { amount: a * p.adulte + c * p.enfant, detail: parts.join(", "), approx: !!p.approx, fixe: !!p.fixe };
   }
 
   // ---------- Contrôle de la feuille ----------
@@ -414,7 +414,7 @@
     else if (est && est.ok) lines.push("Estimation : " + thb(est.total) + ", à payer sur place après confirmation");
     if (est && est.ok && est.partial) lines.push(partialMessage(est.partial));
     var park = parkFee(offer, raw);
-    if (park) lines.push("Entrée du parc à payer sur place : " + (park.confirmer ? "environ " : "") + thb(park.amount));
+    if (park) lines.push("Entrée du parc à payer sur place : " + (park.approx ? "environ " : "") + thb(park.amount));
     lines.push("Nom : " + clean(raw.name));
     lines.push("WhatsApp : " + phoneE164(raw.whatsapp));
     if (clean(raw.message)) lines.push("Message : " + clean(raw.message));
@@ -472,7 +472,7 @@
     if (est && est.ok && est.partial) lines.push(partialMessageEn(est.partial));
     var park = parkFee(offer, raw);
     // Clé exacte « Park fee: » (Gestion la lit dans demande-calc.mjs et ajoute lui-même « paid on site ») ; les droits ne sont jamais dans le total.
-    if (park) lines.push("Park fee: " + (park.confirmer ? "about " : "") + thbEn(park.amount));
+    if (park) lines.push("Park fee: " + (park.approx ? "about " : "") + thbEn(park.amount));
     if (clean(raw.message)) lines.push("Message: " + clean(raw.message));
     lines.push("Ref: " + ref);
     return lines.join("\n");
@@ -838,8 +838,8 @@
       $("estimate-foot").hidden = !(est.ok && !est.onRequest); // pas de phrase « Estimation… » sans montant
       var park = parkFee(current, raw), pl = $("parc-line");
       pl.hidden = !park;
-      if (park) pl.textContent = park.confirmer
-        ? "À régler sur place, en espèces, hors estimation : environ " + thb(park.amount) + " de droits d" + APOS + "entrée du parc (" + park.detail + "). Montants à confirmer au moment de la réservation."
+      if (park) pl.textContent = park.fixe
+        ? "Droit d" + APOS + "entrée du parc national, fixé par le parc, à régler sur place en espèces, hors estimation : " + thb(park.amount) + (park.detail ? " (" + park.detail + ")" : "") + "."
         : "Entrée du parc, à payer sur place en espèces, hors estimation : " + thb(park.amount) + (park.detail ? " (" + park.detail + ")" : "") + ".";
     }
 

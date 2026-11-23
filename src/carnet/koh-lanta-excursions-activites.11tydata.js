@@ -11,10 +11,10 @@ const reglages = {
   prefixeRef: "LAN"
 };
 
-const PARC_4_ISLANDS = { adulte: 200, enfant: 100, enfantMin: 4, enfantMax: 11, regle: "de 4 à 11 ans" };
-const PARC_GRAND = { adulte: 400, enfant: 200, enfantMin: 4, enfantMax: 11, regle: "de 4 à 11 ans" };
-// Phi Phi : le site publie 400 et 200 THB sans âge ni gratuité : on ne présume rien et le montant est à confirmer.
-const PARC_PHI_PHI = { adulte: 400, enfant: 200, confirmer: true };
+const PARC_4_ISLANDS = { adulte: 200, enfant: 100, enfantMin: 4, enfantMax: 11, regle: "de 4 à 11 ans", fixe: true };
+const PARC_GRAND = { adulte: 400, enfant: 200, enfantMin: 4, enfantMax: 11, regle: "de 4 à 11 ans", fixe: true };
+// Phi Phi : le site publie 400 et 200 THB sans âge ni gratuité : aucun âge présumé, tout enfant au tarif enfant (« about » dans le message).
+const PARC_PHI_PHI = { adulte: 400, enfant: 200, approx: true, fixe: true };
 // Koh Rok : de la mi-octobre à la mi-mai (site). Les dates hors saison sont refusées, comme la fermeture d'Ang Thong à Koh Samui.
 const SAISON_KOH_ROK = { debut: "05-16", fin: "10-14", message: "Cette sortie a lieu de la mi-octobre à la mi-mai." };
 
