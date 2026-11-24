@@ -16,6 +16,7 @@ export const TH_NOTIF = {
   modifiee: "งานมีการเปลี่ยนแปลง", // Course modifiée
   annulee: "ยกเลิกงานแล้ว", // Course annulée
   retiree: "งานนี้ไม่ใช่ของคุณแล้ว", // Cette course ne vous est plus confiée
+  sans_date: "งานนี้ยังไม่กำหนดวัน", // La date de cette course n'est plus fixée (elle sort de l'écran en attendant)
   change: "เปลี่ยน:", // Changé : (suivi de ce qui a changé, séparé par des virgules)
   c_date: "วันที่", // la date
   c_heure: "เวลารับ", // l'heure de prise en charge
@@ -94,6 +95,8 @@ export function messageChangement(n) {
   if (n.genre === "annulee") return avecIcone({ titre: `${TH_NOTIF.annulee} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
   // Sortie de sa liste sans annulation (autre fiche, autre entreprise, supprimée) : ce qu'il avait vu, rien sur le pourquoi.
   if (n.genre === "retiree") return avecIcone({ titre: `${TH_NOTIF.retiree} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
+  // Date effacée : la course quitte son écran tant qu'elle n'a pas de nouvelle date. On rappelle celle qu'il avait vue.
+  if (n.genre === "sans_date") return avecIcone({ titre: `${TH_NOTIF.sans_date} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
   if (n.genre === "modifiee") {
     const quoi = changements(n.apercu_avant, c);
     return avecIcone({ titre: `${TH_NOTIF.modifiee} · ${quand(c)}`, corps: [quoi.length ? `${TH_NOTIF.change} ${quoi.join(", ")}` : "", base].filter(Boolean).join("\n"), tag, url: URL_ECRAN });
@@ -116,7 +119,9 @@ export function messageVeillePartenaire(courses = [], demain) {
 // 3. Une heure avant : ses courses dont la prise en charge tombe dans la fenêtre du passage « h1 » (40 à 60 minutes), dans le fuseau de
 // l'organisation. Même lecture de l'heure que les rappels des membres (heureService) ; les frais de parc sont écartés de la même façon.
 export function coursesH1(courses = [], maintenant, { fuseau, fenetre = FENETRE_H1 } = {}) {
-  const resas = courses.map((c) => ({ id: c.id, entite_id: c.entite_id, dossier_id: null, statut: "confirme", heure_pickup: c.heure, date_service: c.date_service, libelle: c.libelle, details: {}, course: c }));
+  // Les frais de parc sont déjà écartés par la base (partenaire_notif_courses, règle resserrée) : le filtre large des membres (estFraisDeParc,
+  // « national park » n'importe où dans le libellé) ne doit pas retirer une vraie course vers le parc. Un partenaire fictif le neutralise.
+  const resas = courses.map((c) => ({ id: c.id, entite_id: c.entite_id, dossier_id: null, statut: "confirme", heure_pickup: c.heure, date_service: c.date_service, libelle: c.libelle, partenaire_id: "partenaire", details: {}, course: c }));
   return servicesH1(resas, maintenant, { fenetre, fuseauDe: () => fuseau }).map((x) => ({ ...x, course: x.reservation.course }));
 }
 // Le rappel n'existe que si l'entreprise l'a (Réglages, « Rappel 1 h avant ») et si le compte ne l'a pas coupé (profils.rappel_h1).
