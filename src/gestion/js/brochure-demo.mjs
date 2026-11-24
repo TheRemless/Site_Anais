@@ -14,6 +14,8 @@ const trajet = (x) => ({
   mode: "VIP Bus/Van",
   depart: "",
   arrivee: "",
+  depart_precision: "",
+  arrivee_precision: "",
   lendemain: false,
   duree: "",
   periode: "",

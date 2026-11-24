@@ -97,7 +97,7 @@ test("fichiers : images et PDF reconnus à leur signature, pas plus de six, pas 
   assert.equal(verifierFichiers([{ media_type: "application/pdf", data: "JVBERi0" + "A".repeat(14_000_000) }]).erreur, "fichier_trop_lourd");
 });
 
-test("prompt : les fichiers puis la consigne, rien du catalogue ; Opus 5.5 avec repli, sortie JSON imposée", () => {
+test("prompt : les fichiers puis la consigne, rien du catalogue ; Opus 5.5 avec repli, JSON demandé dans la consigne", () => {
   const p = promptBrochure({ fichiers: [{ media_type: "image/jpeg", data: "/9j/AAAA" }, { media_type: "application/pdf", data: "JVBERi0AAAA" }], aujourdhui: AJD, lieu: "Koh Lanta (Thaïlande)" });
   const contenu = p.messages[0].content;
   assert.deepEqual(contenu.map((b) => b.type), ["image", "document", "text"]);
@@ -113,7 +113,9 @@ test("prompt : les fichiers puis la consigne, rien du catalogue ; Opus 5.5 avec 
   assert.deepEqual(params.betas, [BETA_REPLI]);
   assert.equal(params.fallbacks, "default");
   assert.equal(params.output_config.effort, "medium");
-  assert.equal(params.output_config.format.schema, SCHEMA_BROCHURE);
+  // Plus de sortie structurée (grammaire trop grosse, 24.11.2026) : le gabarit tiré du schéma est dans la consigne.
+  assert.ok(!("format" in params.output_config));
+  assert.ok(JSON.stringify(p.messages).includes('"partenaire_lu'));
   // Réflexion adaptative par défaut sur Opus 5.5 (paramètre non envoyé), marge de sortie pour 60 lignes, aucun réglage d'échantillonnage.
   assert.ok(!("thinking" in params), "Opus 5.5 : omettre thinking vaut adaptive");
   assert.equal(params.max_tokens, 64000);
@@ -341,7 +343,7 @@ test("horaires de bateau : départ connu inchangé, nouveau départ créé avec 
   const c = comparerBrochure(brochure, { partenaireId: RATTANA, prestations: [], trajets });
   assert.deepEqual(c.trajets.map((l) => [l.statut, l.cible && l.cible.id, l.coche]), [["inchange", "tj1", false], ["nouveau", null, true], ["prix_change", "tj2", true]]);
   const ops = planBrochure(c.trajets, { partenaireId: RATTANA, aujourdhui: AJD, numeroMax: 40 });
-  assert.deepEqual(ops[0].valeurs, { partenaire_id: RATTANA, de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "13:30", arrivee: "17:00", duree: "3 h 30", prix_adulte: 1900, prix_enfant: 1400, bebe: "", periode: "1 Nov 2026 - 30 Apr 2027", fenetres: [["2026-11-01", "2027-04-30"]], actif: true, numero: 41 });
+  assert.deepEqual(ops[0].valeurs, { partenaire_id: RATTANA, imprime: "Koh Lanta → Koh Lipe | Speedboat | 13:30 | 17:00 | 1,900 / 1,400", de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "13:30", arrivee: "17:00", duree: "3 h 30", prix_adulte: 1900, prix_enfant: 1400, bebe: "", periode: "1 Nov 2026 - 30 Apr 2027", fenetres: [["2026-11-01", "2027-04-30"]], actif: true, numero: 41 });
   assert.deepEqual([ops[1].action, ops[1].id, ops[1].valeurs], ["modifier", "tj2", { prix_adulte: 1300, duree: "1 h 30" }]);
 });
 

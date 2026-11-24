@@ -1,4 +1,4 @@
-// Vérifie la migration 124 (une ligne d'import de brochure écrite en une seule transaction) sur un Postgres en mémoire : schema.sql puis
+// Vérifie les migrations 124 (une ligne d'import de brochure écrite en une seule transaction) et 127 (ligne imprimée du trajet gardée) sur un Postgres en mémoire : schema.sql puis
 // toutes les migrations. Données fictives seulement (transporteur « Démo », prix ronds).
 // Contrôles : nouveau trajet et son net ensemble ; sans le droit « Prix nets », la ligne qui porte un net est refusée en entier (aucun trajet
 // créé) ; sans « Modifier les prix de vente », rien ; prix changé avec sa ligne enfant séparée ; une erreur au milieu ne laisse rien ;
@@ -105,6 +105,21 @@ const j = await ecrireLigne("admin", { table: "prestations", action: "creer", va
 ok(j.ok && j.ligne.libelle === "Transfert démo" && j.ligne.details.note === "Importé de la brochure." && j.nets === null, "nouveau tarif créé avec ses détails");
 const k = await ecrireLigne("admin", { table: "prestations", action: "modifier", id: "00000000-0000-4000-8000-000000000999", valeurs: { prix_vente: 1 } });
 ok(!k.ok && /existe plus/.test(k.err), "un tarif disparu est signalé");
+
+// ---- Migration 127 : le texte imprimé du trajet gardé en base ---------------------------------------------------------------------------
+const im = await ecrireLigne("admin", { table: "trajets", action: "creer", valeurs: trajet({ depart: "20:00", vers: "Nakhon Si Thammarat", imprime: "Lanta - Nakon | VIP Bus/Van | 20:00 | 04:00" }) });
+ok(im.ok && im.ligne.imprime === "Lanta - Nakon | VIP Bus/Van | 20:00 | 04:00", "migration 127 : le trajet garde sa ligne imprimée");
+const long = await ecrireLigne("admin", { table: "trajets", action: "creer", valeurs: trajet({ depart: "21:00", imprime: "x".repeat(900) }) });
+ok(long.ok && long.ligne.imprime.length === 400, "migration 127 : la ligne imprimée est coupée à 400 caractères");
+ok((await compte("select count(*)::int n from trajets where imprime is null")) === 0, "migration 127 : les trajets existants ont une ligne imprimée vide, jamais nulle");
+
+// ---- Retour de la 127 : la fonction de la 124 revient, la colonne part ; puis la 127 se repose ----------------------------------------------
+await db.exec(lire("retour-127-trajet-imprime.sql"));
+ok((await compte("select count(*)::int n from information_schema.columns where table_name = 'trajets' and column_name = 'imprime'")) === 0, "retour 127 : colonne imprime retirée");
+const apresRetour = await ecrireLigne("admin", { table: "trajets", action: "creer", valeurs: trajet({ depart: "22:00", imprime: "ignoré" }) });
+ok(apresRetour.ok && !("imprime" in apresRetour.ligne), "retour 127 : brochure_ecrire_ligne de la 124 écrit sans « imprime »");
+await db.exec(lire("migration-127-trajet-imprime.sql"));
+ok((await ecrireLigne("admin", { table: "trajets", action: "creer", valeurs: trajet({ depart: "23:00", imprime: "x" }) })).ligne.imprime === "x", "et la 127 se repose après son retour");
 
 // ---- Fermée à anon ---------------------------------------------------------------------------------------------------------------------
 let anonOk;

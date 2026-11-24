@@ -75,11 +75,11 @@ test("lecture : Opus 5.5 (réflexion adaptative par défaut), effort medium, 64 
   assert.ok(!("thinking" in p1), "Opus 5.5 : omettre thinking vaut adaptive");
   assert.equal(p1.output_config.effort, "medium");
   assert.equal(p1.max_tokens, 64000);
-  assert.equal(p1.output_config.format.schema, B.SCHEMA_BROCHURE);
+  assert.ok(!("format" in p1.output_config), "plus de sortie structurée");
   const p2 = B.parametresBrochure(B.promptRelecture({ fichiers: f, aujourdhui: AJD, brochure: demo().brochure }), { passe: "relecture" });
   assert.equal(p2.output_config.effort, "high");
   assert.equal(p2.max_tokens, 32000);
-  assert.equal(p2.output_config.format.schema, B.SCHEMA_RELECTURE);
+  assert.ok(!("format" in p2.output_config), "plus de sortie structurée");
   assert.equal(p2.system[0].text, p1.system[0].text, "la même consigne pour les deux passes");
   assert.deepEqual(p2.messages[0].content.map((b) => b.type), ["image", "text"]);
   assert.match(p2.messages[0].content[1].text, /"index":0/);
@@ -177,12 +177,14 @@ test("lieux : le catalogue d'abord (« Lanta » → « Koh Lanta »), puis la ta
   assert.deepEqual(n("Krabi A/P"), { nom: "Krabi Airport", imprime: "Krabi A/P", source: "table", a_verifier: false });
   assert.equal(n("Hadyai").nom, "Hat Yai");
   assert.equal(n("Hadyai").source, "table");
-  for (const [imprime, nom] of [["BKK", "Bangkok"], ["KL", "Kuala Lumpur"], ["Ipho", "Ipoh"], ["Phatthalang", "Phatthalung"], ["Nakon", "Nakhon Si Thammarat"], ["Padang", "Padang Besar"], ["Kolok", "Sungai Kolok"], ["Khaosan (BKK)", "Bangkok (Khao San Road)"], ["BKK (Khaosan)", "Bangkok (Khao San Road)"], ["Hadyai A/P", "Hat Yai Airport"]]) {
+  for (const [imprime, nom] of [["BKK", "Bangkok"], ["KL", "Kuala Lumpur"], ["Ipho", "Ipoh"], ["Phatthalang", "Phatthalung"], ["Kolok", "Sungai Kolok"], ["Khaosan (BKK)", "Bangkok (Khao San Road)"], ["BKK (Khaosan)", "Bangkok (Khao San Road)"], ["Hadyai A/P", "Hat Yai Airport"]]) {
     const r = n(imprime);
     assert.equal(r.nom, nom, imprime);
     assert.equal(r.a_verifier, false, imprime);
     assert.equal(r.imprime, imprime);
   }
+  // Noms ambigus (revue du 24.11.2026) : proposés, jamais réécrits d'office, « à vérifier ».
+  for (const [imprime, nom] of [["Nakon", "Nakhon Si Thammarat"], ["Nakhon", "Nakhon Si Thammarat"], ["Padang", "Padang Besar"]]) assert.deepEqual(n(imprime), { nom, imprime, source: "table", a_verifier: true }, imprime);
   // Sans catalogue, « Lanta » reste « Koh Lanta » par la table.
   assert.equal(C.normaliserLieu("Lanta").nom, "Koh Lanta");
 });
@@ -249,10 +251,15 @@ test("ligne illisible complétée à la main dans l'écran : prix, net et heures
   const padang = c.trajets.find((l) => l.lu.vers === "Padang Besar");
   assert.deepEqual([padang.statut, padang.coche], ["illisible", false]);
   assert.equal(C.planBrochure([{ ...padang, coche: true }], { partenaireId: PART, droitNets: true, aujourdhui: AJD }).length, 0, "une ligne illisible ne s'écrit jamais");
-  const faite = C.completerLigne(padang, { prix_adulte: "1,050", net_adulte: "850", arrivee: "15:45" }, { partenaireId: PART, trajets: CATALOGUE });
+  // « Padang » est ambigu : tant que le lieu n'est pas confirmé, la ligne complétée n'est pas cochée.
+  const sansLieu = C.completerLigne(padang, { prix_adulte: "1,050", net_adulte: "850", arrivee: "15:45" }, { partenaireId: PART, trajets: CATALOGUE });
+  assert.deepEqual([sansLieu.statut, sansLieu.coche, C.signauxLigne(sansLieu)], ["nouveau", false, ["lieu_a_verifier"]]);
+  const faite = C.completerLigne(sansLieu, { vers: "Padang Besar" }, { partenaireId: PART, trajets: CATALOGUE });
   assert.deepEqual([faite.statut, faite.coche, faite.lu.prix_adulte, faite.lu.net_adulte, faite.lu.net_source, faite.lu.duree], ["nouveau", true, 1050, 850, "saisi", "7 h 45"]);
   const [op] = C.planBrochure([faite], { partenaireId: PART, droitNets: true, aujourdhui: AJD, numeroMax: 3 });
   assert.deepEqual([op.action, op.valeurs.prix_adulte, op.valeurs.arrivee, op.valeurs.de, op.valeurs.vers, op.nets.valeurs], ["creer", 1050, "15:45", "Koh Lanta", "Padang Besar", { net_adulte: 850, net_enfant: null }]);
+  // Le texte imprimé de la ligne reste en base avec le trajet (colonne « imprime », migration 127).
+  assert.equal(op.valeurs.imprime, "Lanta → Padang | VIP Bus/Van | 08:00 | 15:45 | 1,050", "reconstruit des champs utiles, jamais la ligne recopiée");
   // Une saisie qui n'est pas un prix ne passe pas.
   assert.equal(C.completerLigne(padang, { prix_adulte: "abc" }, { partenaireId: PART, trajets: CATALOGUE }).statut, "illisible");
 });
@@ -302,14 +309,13 @@ test("relecture : une correction remplace sa ligne, une ligne signalée passe en
   const premiere = demo().brochure;
   const ipoh = { ...premiere.trajets[4], depart: "12:00", raison: "« 12.0 AM » lu 12:00." };
   const rel = {
-    trajets_corriges: [
+    trajets: [
       { index: 4, statut: "corrige", raison: "Départ « 12.0 AM » : midi.", ligne: ipoh },
       { index: 6, statut: "signale", raison: "Le 3 de 350 peut être un 8.", ligne: premiere.trajets[6] },
       { index: 99, statut: "corrige", raison: "?", ligne: premiere.trajets[0] },
+      { index: -1, statut: "ajoute", raison: "Ligne oubliée.", ligne: { ...premiere.trajets[1], vers: "Trang", vers_imprime: "Trang", depart: "10:00", arrivee: "12:30", duree: "", note: "" } },
     ],
-    tarifs_corriges: [],
-    trajets_oublies: [{ ...premiere.trajets[1], vers: "Trang", vers_imprime: "Trang", depart: "10:00", arrivee: "12:30", duree: "", note: "" }],
-    tarifs_oublies: [],
+    tarifs: [],
     fiche_corrigee: true,
     fiche: { partenaire_lu: premiere.partenaire_lu, partenaire_thai: premiere.partenaire_thai, lieu_depart: "Saladan office (main road)", contacts: premiere.contacts },
     remarques: "",
@@ -469,4 +475,136 @@ test("arrivée du lendemain lue ailleurs : « À vérifier » compte 26 h, l'Ass
   assert.match(simulerReponse(faits).message || JSON.stringify(simulerReponse(faits)), /08:00 - 06:00 \(next day\)/);
   const src = readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8");
   assert.equal((src.match(/arrivee_lendemain: true/g) || []).length, 2, "les deux recherches de trajets le disent");
+});
+
+// ---- Revue des PR 346 et 347 (24.11.2026) --------------------------------------------------------------------------------------------
+
+test("heure locale : « 18:30 (Malaysia time) » garde sa précision, ni lendemain déduit ni durée calculée ; écrite telle quelle au catalogue", () => {
+  const base = brochureDemoTransport().trajets[3];
+  const t = lu({ tarifs: [], trajets: [{ ...base, depart: "12:00", arrivee: "05:00 (Malaysia time)", lendemain: false, duree: "" }] }).brochure.trajets[0];
+  assert.deepEqual([t.arrivee, t.arrivee_precision, t.lendemain, t.duree], ["05:00", "(Malaysia time)", false, ""]);
+  const dit = lu({ tarifs: [], trajets: [{ ...base, depart: "12:00", arrivee: "05:00 (Malaysia time)", lendemain: true, duree: "" }] }).brochure.trajets[0];
+  assert.deepEqual([dit.lendemain, dit.duree], [true, ""]);
+  const [op] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [dit] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.deepEqual([op.valeurs.arrivee, op.valeurs.duree], ["05:00 (Malaysia time) (next day)", ""]);
+  // La relecture reçoit l'heure avec sa précision.
+  assert.equal(B.extractionPourRelecture({ ...demo().brochure, trajets: [t] }).trajets[0].arrivee, "05:00 (Malaysia time)");
+});
+
+test("nets sans le droit : la fonction et l'écran retirent chiffres, colonne « เก็บ », ligne imprimée et raisons qui en parlent", () => {
+  const b = demo().brochure;
+  const avecRaison = { ...b, trajets: b.trajets.map((t, i) => (i === 2 ? { ...t, raison: "Net couvert par du scotch." } : i === 0 ? { ...t, raison: "เก็บ 1,300 écrit à la main." } : t)) };
+  const serveur = B.masquerNets(avecRaison);
+  assert.deepEqual(C.masquerNets(avecRaison), serveur, "la même règle des deux côtés");
+  const texte = JSON.stringify(serveur);
+  for (const interdit of ["เก็บ", "1,300", "1300", "Net couvert"]) assert.ok(!texte.includes(interdit), interdit);
+  assert.ok(serveur.trajets.every((t) => t.net_adulte === null && t.net_enfant === null && t.net_texte === "" && !t.net_a_saisir));
+  assert.ok(!serveur.colonnes.some((c) => c.contenu === "net"));
+  assert.equal(serveur.trajets[0].imprime, "Lanta → Khaosan (BKK) | VIP Bus/Van | 08:00 | 06:00 | 1,650", "texte reconstruit des champs utiles");
+  assert.equal(serveur.trajets[0].raison, "", "une raison qui parle du net est retirée");
+  assert.equal(serveur.trajets[3].raison, "Arrivée 05:00 le lendemain.", "une raison sans net ni chiffre (hors heures) reste");
+  assert.equal(serveur.trajets[4].raison, "", "une raison qui cite un autre chiffre (« 12.0 AM ») est retirée par prudence");
+  const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
+  assert.match(index, /const voitNets = \(perms\.data \|\| \[\]\)\.includes\("partenaires\.nets"\)/);
+  assert.match(index, /valider = \(v\) => sansNets\(validerBrochure\(v\)\)/);
+  const ecran = readFileSync(new URL("../src/gestion/js/views/brochure.mjs", import.meta.url), "utf8");
+  assert.match(ecran, /const b = droitNets \? r\.brochure : masquerNets\(r\.brochure\)/);
+});
+
+test("sigles : « PP CRUISER » → « PP Cruiser », « BKK STD » restent, « LTD » → « Ltd »", () => {
+  assert.equal(C.casseNormale("PP CRUISER"), "PP Cruiser");
+  assert.equal(C.casseNormale("BKK EXPRESS VAN"), "BKK Express Van");
+  assert.equal(C.casseNormale("KOH DEMO TRANSPORT CO., LTD."), "Koh Demo Transport Co., Ltd.");
+  assert.equal(C.casseNormale("VIP DEMO VAN"), "VIP Demo Van");
+});
+
+test("fuite des nets : une colonne de net mal étiquetée (« autre ») n'apparaît ni en base ni à l'écran sans le droit", () => {
+  const b = brochureDemoTransport();
+  // La colonne « เก็บ » étiquetée « autre » : Claude n'y a pas reconnu un net, les chiffres restent dans la ligne imprimée et la raison.
+  const mal = { ...b, colonnes: b.colonnes.map((c) => (c.entete === "เก็บ" ? { ...c, contenu: "autre" } : c)), trajets: b.trajets.map((t) => ({ ...t, net_texte: "", net_adulte: null, net_source: "", raison: t.net_adulte ? `Chiffre manuscrit ${t.net_adulte.toLocaleString("en-US")} dans la dernière colonne.` : t.raison })) };
+  const r = lu(mal).brochure;
+  // Les nets qui ne sont le prix de vente d'aucune ligne (450 est aussi le prix de vente du trajet de Krabi Airport).
+  const ventes = new Set(b.trajets.map((t) => t.prix_adulte));
+  const nets = b.trajets.map((t) => t.net_adulte).filter((n) => n && !ventes.has(n)).map((n) => n.toLocaleString("en-US"));
+  assert.ok(nets.length >= 5);
+  // En base : le texte imprimé écrit avec le trajet est reconstruit, sans la ligne recopiée.
+  const ops = C.planBrochure(C.comparerBrochure(r, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, droitNets: false, aujourdhui: AJD });
+  assert.ok(ops.length >= 5);
+  for (const o of ops) for (const n of nets) assert.ok(!JSON.stringify(o.valeurs).includes(n) && !JSON.stringify(o.valeurs).includes(n.replace(",", "")), `${o.valeurs.vers} : ${n}`);
+  for (const o of ops) assert.ok(!/เก็บ|\[scotch\]/.test(o.valeurs.imprime), o.valeurs.imprime);
+  // À l'écran sans le droit (fonction et outil) : ni la ligne recopiée, ni la raison qui cite le chiffre.
+  for (const masque of [B.masquerNets(r), C.masquerNets(r)]) {
+    const texte = JSON.stringify(masque.trajets.map((t) => [t.imprime, t.raison, t.relecture_raison, t.illisible, t.prix_texte]));
+    for (const n of nets) assert.ok(!texte.includes(n), n);
+  }
+});
+
+test("heure de départ : sa précision est gardée ; « (next day) » ou « +1 » dans l'heure comptent comme lendemain, jamais en double", () => {
+  const base = brochureDemoTransport().trajets[3];
+  const v = (depart, arrivee) => lu({ tarifs: [], trajets: [{ ...base, depart, arrivee, lendemain: false, duree: "" }] }).brochure.trajets[0];
+  const a = v("07:00 (Malaysia time)", "15:00");
+  assert.deepEqual([a.depart, a.depart_precision, a.duree], ["07:00", "(Malaysia time)", ""]);
+  const b = v("12:00", "06:00 (next day)");
+  assert.deepEqual([b.arrivee, b.arrivee_precision, b.lendemain, b.duree], ["06:00", "", true, "18 h"]);
+  const c = v("20:00", "05:00 +1");
+  assert.deepEqual([c.arrivee_precision, c.lendemain, c.duree], ["", true, "9 h"]);
+  const [op] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [b] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.equal(op.valeurs.arrivee, "06:00 (next day)", "un seul « (next day) »");
+  const [opA] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [a] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.match(opA.valeurs.imprime, /07:00 \(Malaysia time\)/, "la précision du départ reste avec le trajet");
+});
+
+test("forme : seules les listes et les objets du premier niveau sont exigés, comme validerBrochure ; « fiche » seulement si elle est corrigée", () => {
+  const t = JSON.stringify({ ...brochureDemoTransport(), trajets: undefined });
+  const r = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: t }] }, B.SCHEMA_BROCHURE);
+  assert.deepEqual([r.ok, r.statut, r.raison, r.manque], [false, "json_invalide", "forme", ["trajets"]]);
+  // Une ligne sans « periode_debut » (ou sans prix) : pas de correction, validerBrochure remplit la valeur vide.
+  const sansPeriode = { ...brochureDemoTransport() };
+  sansPeriode.trajets = sansPeriode.trajets.map((x, i) => (i === 2 ? (({ periode_debut, prix_adulte, ...reste }) => reste)(x) : x));
+  const r2 = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(sansPeriode) }] }, B.SCHEMA_BROCHURE);
+  assert.equal(r2.ok, true);
+  assert.equal(B.validerBrochure(r2.valeur).brochure.trajets[2].periode_debut, "");
+  // Relecture sans fiche corrigée : « fiche » vide ne demande rien.
+  const rel = (x) => B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(x) }] }, B.SCHEMA_RELECTURE);
+  assert.equal(rel({ trajets: [], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" }).ok, true);
+  assert.equal(rel({ trajets: [], tarifs: [], fiche_corrigee: false, remarques: "" }).ok, true);
+  assert.deepEqual(rel({ trajets: [], tarifs: [], fiche_corrigee: true, remarques: "" }).manque, ["fiche"]);
+  assert.deepEqual(rel({ tarifs: [], fiche_corrigee: false }).manque, ["trajets"]);
+  const c = B.demandeCorrection({ model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x" }] }] }, { content: [] }, "forme", ["trajets"]);
+  assert.match(c.messages.at(-1).content[0].text, /des champs requis manquent \(trajets\)/);
+  assert.equal(B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(brochureDemoTransport()) }] }, B.SCHEMA_BROCHURE).ok, true, "la brochure fictive complète passe");
+});
+
+test("journal : une correction coupée par le délai compte les jetons de la première réponse, plus les siens s'il y en a", () => {
+  const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
+  assert.match(index, /premierMessage = premier;\s*\/\/[^\n]*\n\s*reponseClaude = null;/);
+  assert.match(index, /if \(partiel && usageAvant\) reponseClaude = \{ \.\.\.partiel, usage: additionner\(usageAvant, partiel\.usage\) \}/);
+  assert.match(index, /else if \(premierMessage && usageAvant\) reponseClaude = \{ \.\.\.premierMessage, usage: additionner\(usageAvant, \{\}\) \}/);
+});
+
+test("retour de la migration 127 : la fonction de la 124 revient avant le retrait de la colonne", () => {
+  const sql = readFileSync(new URL("../docs/gestion/retour-127-trajet-imprime.sql", import.meta.url), "utf8");
+  assert.ok(sql.indexOf("create or replace function brochure_ecrire_ligne") < sql.indexOf("alter table trajets drop column if exists imprime"));
+  assert.ok(!/imprime/.test(sql.slice(sql.indexOf("create or replace function"), sql.indexOf("alter table trajets drop"))), "la fonction rendue n'écrit pas « imprime »");
+});
+
+test("départ avec sa précision : « 07:00 (Malaysia time) » arrive tel quel au catalogue et sur le voucher ; même heure rapprochée au réimport", () => {
+  const base = brochureDemoTransport().trajets[3];
+  const t = lu({ tarifs: [], trajets: [{ ...base, depart: "07:00 (Malaysia time)", arrivee: "15:00", lendemain: false, duree: "" }] }).brochure.trajets[0];
+  const [op] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [t] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.equal(op.valeurs.depart, "07:00 (Malaysia time)");
+  assert.equal(C.departTexte("08:00", ""), "08:00");
+  // Réimport : le trajet du catalogue « 07:00 (Malaysia time) » est reconnu, pas recréé.
+  const existant = { id: "m1", partenaire_id: PART, actif: true, de: t.de, vers: t.vers, mode: t.mode, depart: "07:00 (Malaysia time)", arrivee: "15:00", duree: "", prix_adulte: t.prix_adulte, prix_enfant: null, periode: "", fenetres: [] };
+  const c = C.comparerBrochure({ tarifs: [], trajets: [t] }, { partenaireId: PART, trajets: [existant] });
+  assert.deepEqual([c.trajets[0].statut, c.trajets[0].cible && c.trajets[0].cible.id], ["inchange", "m1"]);
+  // Le voucher imprime le départ tel qu'au catalogue.
+  const REGL = { emetteur: { nom: "Agence test", adresse: "", telephone: "+66 00" }, apparence: {}, voucher: {}, devise: "THB" };
+  const r = { id: "R1", dossier_id: "D1", entite_id: "E", libelle: "Koh Lanta → Kuala Lumpur", date_service: "2026-12-01", heure_pickup: "06:30", lieu_pickup: "Hotel Test", personnes: { adultes: 1, enfants: 0, bebes: 0 }, statut: "confirme", montant_vente: 1950, details: {} };
+  const lignes = renderVoucher({ reservation: r, prestation: null, type: "billet", index: 1 }, { reglages: REGL, dossier: { ref: "INV-2026-099" }, client: { prenom: "Test", nom: "Client" }, resume: { total: 1950, recu: 0 }, trajet: { de: "Koh Lanta", vers: "Kuala Lumpur", depart: op.valeurs.depart, arrivee: op.valeurs.arrivee, mode: "VIP Bus/Van" } }).lignes;
+  assert.ok(lignes.some((l) => /07:00 \(Malaysia time\)/.test(l)), lignes.join("\n"));
+  // Le formulaire du trajet garde la précision quand l'heure est enregistrée.
+  const form = readFileSync(new URL("../src/gestion/js/views/trajets.mjs", import.meta.url), "utf8");
+  assert.match(form, /const departSaisi = \(\) => \(depart\.value \? \[depart\.value, precisionDepart\]\.filter\(Boolean\)\.join\(" "\) : ""\);/);
+  assert.match(form, /depart: departSaisi\(\)/);
 });

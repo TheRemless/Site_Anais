@@ -39,7 +39,7 @@ import {
   validerSituer,
   verifierFaitsItineraire,
 } from "./itineraire.js";
-import { controlerAccesBrochure, delaiPasse, fusionnerRelecture, parametresBrochure, promptBrochure, promptRelecture, validerBrochure, verifierExtraction, verifierFichiers } from "./brochure.js";
+import { SCHEMA_BROCHURE, SCHEMA_RELECTURE, controlerAccesBrochure, delaiPasse, demandeCorrection, fusionnerRelecture, lireBrochure, masquerNets, parametresBrochure, promptBrochure, promptRelecture, validerBrochure, verifierExtraction, verifierFichiers } from "./brochure.js";
 import { debutMois, estCreditEpuise, plafondRetenu, reprise } from "./budget.js";
 
 const USAGES_CONNUS = ["lire", "itineraire", "situer", "repondre_itineraire", "brochure"];
@@ -124,13 +124,16 @@ Deno.serve(async (req) => {
   // Une brochure (images, PDF, Claude Opus 5.5) se lit en deux appels de l'outil (« lecture », puis « relecture »), chacun en un seul passage de
   // 135 secondes au plus (ASSISTANT_BROCHURE_DELAI_MS sur une offre payante), sans nouvel essai : la lecture du corps (jusqu'à 13 Mo), les lectures de la base et le journal tiennent dans le reste
   // des 150 secondes. La réponse arrive en flux (marge de sortie de 64 000 jetons).
-  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? delaiPasse(Deno.env.get("ASSISTANT_BROCHURE_DELAI_MS")) : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
+  // Le « timeout » du client borne l'attente des en-têtes, pas un flux qui continue d'arriver : une passe de brochure s'arrête aussi par un
+  // AbortSignal posé sur le flux (24.11.2026, revue des PR 346 et 347). Arrêtée : « trop_long » à l'écran, et le journal s'écrit quand même.
+  const delaiBrochure = delaiPasse(Deno.env.get("ASSISTANT_BROCHURE_DELAI_MS"));
+  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? delaiBrochure : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
 
   const aujourdhui = dateBangkok();
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
   // Chaque usage prépare son appel (paramètres de l'API) et la façon de lire et contrôler la réponse.
   let parametres: Record<string, unknown>;
-  let lire: (m: Anthropic.Beta.BetaMessage) => { ok: boolean; statut?: string; categorie?: string | null; valeur?: unknown; sources?: unknown[] } = lireReponse;
+  let lire: (m: Anthropic.Beta.BetaMessage) => { ok: boolean; statut?: string; categorie?: string | null; valeur?: unknown; sources?: unknown[]; raison?: string; manque?: string[] } = lireReponse;
   let valider: (v: unknown, lu?: { sources?: unknown[] }) => Record<string, unknown>;
 
   if (usage === "lire") {
@@ -190,6 +193,11 @@ Deno.serve(async (req) => {
     }
     // Seconde passe (24.11.2026) : la première lecture revient du navigateur, contrôlée comme une réponse de Claude, et Claude relit les mêmes
     // fichiers avec elle. Le journal note un second appel « brochure ».
+    // Sans le droit « prix nets », aucun net ne repart vers le navigateur (ni chiffre, ni colonne, ni raison qui en parle).
+    // JSON demandé dans la consigne (plus de sortie structurée : grammaire trop grosse), extrait et contrôlé ici.
+    lire = (m) => lireBrochure(m, demande.passe === "relecture" ? SCHEMA_RELECTURE : SCHEMA_BROCHURE);
+    const voitNets = (perms.data || []).includes("partenaires.nets");
+    const sansNets = (r: Record<string, unknown>) => (r && r.ok && !voitNets ? { ...r, brochure: masquerNets(r.brochure) } : r);
     if (demande.passe === "relecture") {
       const premiere = verifierExtraction(demande.extraction);
       if (!premiere.ok) return json({ erreur: "extraction_invalide" }, 400);
@@ -197,11 +205,11 @@ Deno.serve(async (req) => {
       valider = (v) => {
         const fusion = fusionnerRelecture(premiere.brochure, v);
         const r = validerBrochure(fusion.brut);
-        return r.ok ? { ...r, relecture: fusion.compte } : r;
+        return sansNets(r.ok ? { ...r, relecture: fusion.compte } : r);
       };
     } else {
       parametres = parametresBrochure(promptBrochure({ fichiers: f.fichiers, aujourdhui, lieu: ra.lieu }));
-      valider = (v) => validerBrochure(v);
+      valider = (v) => sansNets(validerBrochure(v));
     }
   } else {
     // repondre_itineraire : les faits calculés dans l'outil, aux clés fermées (aucun net, aucune compagnie).
@@ -217,13 +225,32 @@ Deno.serve(async (req) => {
   let statut = "ok";
   let reponse: Record<string, unknown>;
   let code = 200;
+  const arret = usage === "brochure" ? new AbortController() : null;
+  const minuterie = arret ? setTimeout(() => arret.abort(), delaiBrochure) : null;
+  let flux: ReturnType<typeof anthropic.beta.messages.stream> | null = null;
+  // Les jetons de la première réponse quand la demande de correction est arrêtée en route : ils comptent aussi dans le journal.
+  let usageAvant: Record<string, unknown> | null = null;
+  let premierMessage: Anthropic.Beta.BetaMessage | null = null;
   try {
-    // Brochure : en flux, la réponse complète attendue à la fin (finalMessage), comme l'agent.
-    reponseClaude =
-      usage === "brochure"
-        ? await anthropic.beta.messages.stream(parametres as unknown as Parameters<typeof anthropic.beta.messages.stream>[0]).finalMessage()
-        : await anthropic.beta.messages.create(parametres as Anthropic.Beta.MessageCreateParamsNonStreaming);
+    // Brochure : en flux, la réponse complète attendue à la fin (finalMessage), comme l'agent, arrêtée au bout du délai d'une passe.
+    if (usage === "brochure" && arret) {
+      flux = anthropic.beta.messages.stream(parametres as unknown as Parameters<typeof anthropic.beta.messages.stream>[0], { signal: arret.signal });
+      reponseClaude = await flux.finalMessage();
+    } else reponseClaude = await anthropic.beta.messages.create(parametres as Anthropic.Beta.MessageCreateParamsNonStreaming);
     let lu = lire(reponseClaude);
+    // Brochure : un JSON illisible (texte complet mais mal formé), une seule demande de correction, sur le même délai (même AbortSignal).
+    if (!lu.ok && lu.statut === "json_invalide" && usage === "brochure" && arret && !arret.signal.aborted) {
+      const premier = reponseClaude;
+      usageAvant = premier.usage as unknown as Record<string, unknown>;
+      premierMessage = premier;
+      // Pendant la correction, aucune réponse complète : un arrêt au délai passe par le compte partiel ci-dessous (catch).
+      reponseClaude = null;
+      flux = anthropic.beta.messages.stream(demandeCorrection(parametres as { messages: unknown[] }, premier, lu.raison, lu.manque || []) as unknown as Parameters<typeof anthropic.beta.messages.stream>[0], { signal: arret.signal });
+      reponseClaude = await flux.finalMessage();
+      reponseClaude = { ...reponseClaude, usage: additionner(premier.usage, reponseClaude.usage) } as Anthropic.Beta.BetaMessage;
+      usageAvant = null;
+      lu = lire(reponseClaude);
+    }
     // Recherche web arrêtée en route par le serveur (« pause_turn ») : on renvoie la réponse telle quelle, une fois, pour qu'elle reprenne.
     if (!lu.ok && lu.statut === "pause") {
       const p = parametres as { messages: unknown[] };
@@ -248,8 +275,25 @@ Deno.serve(async (req) => {
       } else reponse = { ...v, usage, modele: reponseClaude.model };
     }
   } catch (err) {
+    // Un flux arrêté en route : ce qu'il a déjà consommé compte dans le journal (jetons et coût), si le SDK l'a gardé.
+    if (flux && !reponseClaude) {
+      try {
+        const partiel = (flux as unknown as { currentMessage?: Anthropic.Beta.BetaMessage }).currentMessage || null;
+        // Correction coupée par le délai : les jetons de la première réponse comptent toujours, plus ceux de la correction s'il y en a.
+        if (partiel && usageAvant) reponseClaude = { ...partiel, usage: additionner(usageAvant, partiel.usage) } as Anthropic.Beta.BetaMessage;
+        else if (premierMessage && usageAvant) reponseClaude = { ...premierMessage, usage: additionner(usageAvant, {}) } as Anthropic.Beta.BetaMessage;
+        else reponseClaude = partiel;
+      } catch {
+        reponseClaude = null;
+      }
+    }
     // Du plus précis au plus général : le crédit épuisé est à recharger, une limite d'Anthropic se réessaie plus tard, une clé refusée est à corriger par Jérémy.
-    if (estCreditEpuise(err)) {
+    if (arret && arret.signal.aborted) {
+      // Délai d'une passe atteint (AbortSignal) : la brochure est trop longue pour une passe, l'écran propose de l'envoyer en deux fois.
+      statut = "delai";
+      reponse = { erreur: "trop_long" };
+      code = 504;
+    } else if (estCreditEpuise(err)) {
       statut = "credit_epuise";
       reponse = { erreur: "credit_epuise" };
       code = 503;
@@ -278,6 +322,8 @@ Deno.serve(async (req) => {
       code = 502;
     }
     console.error("assistant :", statut, err instanceof Error ? err.message.slice(0, 300) : "");
+  } finally {
+    if (minuterie) clearTimeout(minuterie);
   }
 
   const { error: errJournal } = await admin.from("assistant_journal").insert(ligneJournal({ userId, entiteId, usage, statut, message: reponseClaude, modeleDemande: String((parametres as { model?: string }).model || ""), dureeMs: Date.now() - debut }));
