@@ -212,6 +212,8 @@ function formulaireTrajet(t, apres, options = {}) {
     champ(tr("Compagnie"), cie),
     h("div", { class: "grille-form" }, champ(tr("Départ"), [de, lieuxListe]), champ(tr("Arrivée"), vers), champ(tr("Type"), [mode, modes])),
     h("div", { class: "grille-form compacte" }, champ(tr("Heure de départ"), depart), champ(tr("Heure d'arrivée"), [arrivee, h("label", { class: "case", for: lendemain.id }, lendemain, tr("Le lendemain"))]), champ(tr("Durée"), duree)),
+    // Ce que la brochure imprimait pour ce trajet (import de brochure, migration 127) : lieux et heures tels qu'imprimés, en lecture seule.
+    t.imprime ? h("p", { class: "aide" }, tr("Imprimé sur la brochure : « {texte} »", { texte: t.imprime })) : null,
     h("div", { class: "grille-form compacte" }, champ(tr("Prix adulte"), ad, prixFige ? tr("Réservé à qui a le droit « Modifier les prix de vente ».") : null), champ(tr("Prix enfant"), ch), nets ? champ(tr("Net adulte"), adn) : null, nets ? champ(tr("Net enfant"), chn) : null),
     h("div", { class: "grille-form" }, champ(tr("Bébé"), bebe), champ(tr("Période, en clair"), periode, tr("Vide : « toute la période du contrat » quand il n'y a pas de fenêtre."))),
     h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Fenêtres de circulation")), fenetres.noeud, h("p", { class: "aide" }, tr("Du … au …, une ligne par période. Aucune fenêtre : le trajet circule toute l'année."))),

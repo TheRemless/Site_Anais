@@ -14,7 +14,8 @@ import { brochureDemoTransport } from "../src/gestion/js/brochure-demo.mjs";
 const MOTS_ACCEPTES = new Set(["type", "properties", "required", "additionalProperties", "items", "enum", "const", "anyOf", "allOf", "$ref", "$defs", "definitions", "description", "format", "title"]);
 const FORMATS = new Set(["date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"]);
 // Marge sous les limites : la limite interne de grammaire n'est pas chiffrée, on reste loin des limites qui le sont.
-const LIMITES = { union: 0, optionnels: 0, proprietes: 200, profondeur: 6 };
+// Propriétés : la version qui passait avant la PR 346 en avait 51 ; la relecture de la 346 en avait 141 (refusée). Plafond par schéma.
+const LIMITES = { union: 0, optionnels: 0, proprietes: { lecture: 80, relecture: 90 }, profondeur: 6 };
 
 function mesurer(schema) {
   const m = { union: 0, optionnels: 0, proprietes: 0, profondeur: 0, fautes: [] };
@@ -50,7 +51,7 @@ for (const [nom, schema] of [["lecture", SCHEMA_BROCHURE], ["relecture", SCHEMA_
     assert.deepEqual(m.fautes, []);
     assert.ok(m.union <= LIMITES.union, `${m.union} paramètres à type union (limite de l'API : 16)`);
     assert.ok(m.optionnels <= LIMITES.optionnels, `${m.optionnels} paramètres optionnels (limite de l'API : 24)`);
-    assert.ok(m.proprietes <= LIMITES.proprietes, `${m.proprietes} propriétés`);
+    assert.ok(m.proprietes <= LIMITES.proprietes[nom], `${m.proprietes} propriétés (plafond ${LIMITES.proprietes[nom]})`);
     assert.ok(m.profondeur <= LIMITES.profondeur, `profondeur ${m.profondeur}`);
     // Pas de récursion : le schéma se sérialise (une référence circulaire lèverait).
     assert.doesNotThrow(() => JSON.stringify(schema));
@@ -85,7 +86,8 @@ test("paramètres : Opus 5.5, pas de thinking ni d'échantillonnage, effort acce
   }
   // L'appel part en flux (64 000 jetons ne passent pas en un seul bloc).
   const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
-  assert.match(index, /usage === "brochure"\s*\?\s*await anthropic\.beta\.messages\.stream\(/);
+  assert.match(index, /flux = anthropic\.beta\.messages\.stream\(parametres as unknown as [^,]+, \{ signal: arret\.signal \}\)/);
+  assert.match(index, /setTimeout\(\(\) => arret\.abort\(\), delaiBrochure\)/);
 });
 
 test("un nombre absent rendu à 0 par Claude reste « vide » dans l'outil (prix, net)", () => {
@@ -108,4 +110,18 @@ test("erreur de l'API lisible : statut, type, message, requête ; jamais une cl�
   assert.match(index, /modeleDemande: String\(/);
   const ecran = readFileSync(new URL("../src/gestion/js/views/brochure.mjs", import.meta.url), "utf8");
   assert.match(ecran, /erreurLecture\(r && r\.erreur\) \+ detailApi\(r\)/);
+});
+
+test("relecture : chaque genre de ligne n'apparaît qu'une fois dans le schéma (plus de listes « corrigés » et « oubliés » en double)", () => {
+  assert.deepEqual(Object.keys(SCHEMA_RELECTURE.properties).sort(), ["fiche", "fiche_corrigee", "remarques", "tarifs", "trajets"]);
+  assert.deepEqual(SCHEMA_RELECTURE.properties.trajets.items.properties.statut.enum, ["corrige", "signale", "ajoute"]);
+});
+
+test("délai d'une passe : un AbortSignal arrête le flux, l'écran reçoit « trop_long », le journal s'écrit toujours", () => {
+  const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
+  assert.match(index, /if \(arret && arret\.signal\.aborted\) \{[\s\S]{0,200}statut = "delai";\s*reponse = \{ erreur: "trop_long" \};/);
+  assert.match(index, /finally \{\s*if \(minuterie\) clearTimeout\(minuterie\);\s*\}/);
+  // Le journal est écrit après le try/catch/finally, quel que soit le chemin.
+  const fin = index.slice(index.indexOf("finally {"));
+  assert.match(fin, /assistant_journal"\)\.insert\(ligneJournal/);
 });

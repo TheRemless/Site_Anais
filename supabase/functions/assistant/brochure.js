@@ -114,9 +114,10 @@ Liste de contrôle, à suivre pour chaque page
 1. Colonnes. Repère d'abord les en-têtes, dans toutes les langues (anglais, thaï, chinois, français), et note-les dans « colonnes ». Trajet : ROUTE, FROM/TO, DESTINATION, เส้นทาง, ต้นทาง/ปลายทาง. Type : CLASS, TYPE, VEHICLE. Départ : DEPARTURE, DEP, TIME, เวลาออก. Arrivée : ARRIVAL, ARR, ถึง. Prix de vente : PRICE, SELL, PUBLIC, RATE, ราคา, souvent imprimé en rouge ou écrit à la main. Net : NET, AGENT, COST, AGENCY RATE, ราคาทุน, ราคาเอเย่นต์, เก็บ (« ce qu'on encaisse » : c'est le net de l'agence). Note : NOTE, REMARK, หมายเหตุ. Une colonne sans en-tête qui donne, pour chaque ligne, un second prix inférieur ou égal au prix de vente est une colonne de net.
 2. Manuscrit. Un chiffre écrit à la main compte comme un chiffre imprimé : un prix de vente ou un net manuscrit se relève, avec « net_source » à « manuscrit ». Un chiffre barré et réécrit : garde le chiffre réécrit et dis-le dans « raison ».
 3. Nets. « net_adulte » et « net_enfant » : le net de la ligne s'il figure sur le document (colonne de net, mention « net », « agent rate », « เก็บ »), recopié dans « net_texte ». « net_source » : imprime ou manuscrit. Jamais un net déduit d'une remise, d'une commission ou d'un pourcentage ; jamais le prix de vente recopié comme net.
-4. Scotch et caches. Une case couverte (scotch, autocollant, doigt, pli, reflet) ne se devine pas. Un net caché : « net_cache » vrai, net à 0, la ligne reste lisible. Un prix de vente caché : prix à 0, « lisible » faux et « illisible » dit ce qui manque.
+4. Scotch et caches. Une case couverte (scotch, autocollant, doigt, pli, reflet) ne se devine pas. Un net caché : « net_cache » vrai, net à 0, la ligne reste lisible. Un prix de vente caché : prix à 0, « lisible » faux et « raison » dit ce qui manque.
 5. Cases fusionnées. Quand une case de prix couvre deux lignes (une seule case pour les départs de 08:00 et de 12:00), le prix vaut pour chacune : recopie-le sur chaque ligne, « prix_repris » vrai et dis-le dans « raison ». Si la case du second départ est vide sans cache, applique le même prix. Si elle est scotchée ou cachée, laisse le prix à 0 : ne devine pas.
 6. Fautes d'impression. Corrige seulement ce qui ne laisse aucun doute, et dis-le dans « raison » : « 12.0 AM » ou « 12.00 AM » pour midi entre deux départs du matin et de l'après-midi s'écrit 12:00 ; « 8.30 » s'écrit 08:30 ; une heure en AM/PM passe sur 24 heures. Un nom de lieu mal orthographié (« Ipho ») : garde l'orthographe imprimée dans « de_imprime » ou « vers_imprime » et donne le nom usuel dans « de » ou « vers ».
+6 bis. Heure locale. Une heure suivie d'une précision imprimée (« 18:30 (Malaysia time) », « 06:00 local time ») se recopie avec sa précision dans « depart » ou « arrivee » : ne la convertis pas.
 7. Lendemain. Une arrivée plus tôt que le départ, ou un trajet de nuit qui arrive au matin (départ 08:00, arrivée 06:00 ; départ 12:00, arrivée 05:00), arrive le lendemain : « lendemain » vrai, « arrivee » garde l'heure seule (06:00).
 8. Lignes coupées. Une ligne coupée par le bord d'une photo reste lisible si ses valeurs se lisent : « coupee » vrai. Une même ligne qui figure sur deux photos ne se relève qu'une fois.
 9. Aucun fait inventé. Avant de rendre, relis chaque ligne face à l'image : le prix, le net, les heures, les lieux. Une ligne qui manque est pire qu'une ligne signalée : relève toutes les lignes, même incomplètes.
@@ -133,7 +134,7 @@ Ce que tu rends
 - « sur_demande » est vrai quand la brochure dit « on request », « sur demande », « contact us » à la place du prix ; les prix restent alors à 0.
 - « unite » : pp par personne (un prix adulte avec un prix enfant est pp), ad par adulte seul, boat par bateau, veh par véhicule, grp par groupe, day par jour, ses par session, sup par personne supplémentaire, vide si la brochure ne le dit pas.
 - « age_enfant » : les âges imprimés pour le prix enfant (« 4-11 »), sinon vide. « horaires » : la prise en charge et le retour imprimés. « programme » : les étapes horaires du déroulé, une par ligne. « inclus », « conditions », « parc » (frais de parc imprimés seulement), « bateau », « capacite » : ce que la brochure imprime, une chose par ligne.
-- « lisible » faux seulement si le prix de vente ou le trajet (départ, arrivée du lieu, heure de départ) ne se lit pas ; « illisible » dit alors ce qui manque (« prix caché par du scotch »). Un net caché ne rend pas la ligne illisible.
+- « lisible » faux seulement si le prix de vente ou le trajet (départ, arrivée du lieu, heure de départ) ne se lit pas ; « raison » dit alors ce qui manque (« prix caché par du scotch »). Un net caché ne rend pas la ligne illisible.
 - « devise » : le code ISO de la devise (THB pour ฿, baht, บาท ou « .- » en Thaïlande, MYR pour RM).
 - « partenaire_lu » : le nom de l'entreprise tel qu'imprimé (en lettres latines), sinon vide. « partenaire_thai » : son nom en thaï s'il est imprimé, sinon vide. « lieu_depart » : le lieu de départ ou le bureau imprimé (« Saladan office »), sinon vide.
 - « contacts » : seulement les coordonnées du partenaire imprimées, recopiées telles quelles. « telephones » : un élément par numéro, avec l'indicatif s'il est imprimé, son « libelle » imprimé (« Office », « Booking », « คุณ A »), « whatsapp » vrai si le document le marque pour ce numéro (logo ou mot WhatsApp), « line » vrai s'il le marque pour LINE. E-mails, site web, identifiant LINE, adresse, nom de la personne à contacter : vides s'ils ne sont pas imprimés ; jamais une coordonnée trouvée ailleurs.
@@ -154,8 +155,8 @@ export function promptBrochure({ fichiers, aujourdhui, lieu = "" }) {
 }
 
 // Ce que la relecture reçoit de la première lecture : les lignes numérotées, sans ce que l'outil a calculé (statut, signaux).
-const CHAMPS_TARIF = ["imprime", "libelle", "groupe", "famille", "unite", "prix_texte", "prix_adulte", "prix_enfant", "age_enfant", "sur_demande", "net_texte", "net_adulte", "net_enfant", "net_source", "net_cache", "horaires", "duree", "programme", "inclus", "conditions", "parc", "bateau", "capacite", "coupee", "confiance", "raison", "lisible", "illisible"];
-const CHAMPS_TRAJET = ["imprime", "de_imprime", "vers_imprime", "de", "vers", "mode", "depart", "arrivee", "lendemain", "duree", "periode", "periode_debut", "periode_fin", "note", "prix_texte", "prix_adulte", "prix_enfant", "net_texte", "net_adulte", "net_enfant", "net_source", "net_cache", "prix_repris", "coupee", "confiance", "raison", "lisible", "illisible"];
+const CHAMPS_TARIF = ["imprime", "libelle", "groupe", "famille", "unite", "prix_texte", "prix_adulte", "prix_enfant", "age_enfant", "sur_demande", "net_texte", "net_adulte", "net_enfant", "net_source", "net_cache", "horaires", "duree", "programme", "inclus", "conditions", "parc", "bateau", "capacite", "coupee", "confiance", "raison", "lisible"];
+const CHAMPS_TRAJET = ["imprime", "de_imprime", "vers_imprime", "de", "vers", "mode", "depart", "arrivee", "lendemain", "duree", "periode", "periode_debut", "periode_fin", "note", "prix_texte", "prix_adulte", "prix_enfant", "net_texte", "net_adulte", "net_enfant", "net_source", "net_cache", "prix_repris", "coupee", "confiance", "raison", "lisible"];
 const garder = (x, champs) => Object.fromEntries(champs.map((k) => [k, x[k]]));
 export function extractionPourRelecture(b) {
   return {
@@ -166,7 +167,8 @@ export function extractionPourRelecture(b) {
     devise: b.devise,
     colonnes: b.colonnes,
     tarifs: b.tarifs.map((t, index) => ({ index, ...garder(t, CHAMPS_TARIF) })),
-    trajets: b.trajets.map((t, index) => ({ index, ...garder(t, CHAMPS_TRAJET) })),
+    // L'heure repart avec sa précision imprimée (« 18:30 (Malaysia time) »), comme Claude l'a lue.
+    trajets: b.trajets.map((t, index) => ({ index, ...garder(t, CHAMPS_TRAJET), depart: [t.depart, t.depart_precision].filter(Boolean).join(" "), arrivee: [t.arrivee, t.arrivee_precision].filter(Boolean).join(" ") })),
   };
 }
 
@@ -188,7 +190,7 @@ export function promptRelecture({ fichiers, aujourdhui, lieu = "", brochure }) {
 - les lieux imprimés et leur nom usuel ;
 - les lignes oubliées, en double, ou coupées par le bord d'une photo ;
 - le nom du partenaire, son nom thaï, son lieu de départ, ses numéros et leurs libellés, WhatsApp et LINE.
-Rends seulement ce qui change. « trajets_corriges » et « tarifs_corriges » : pour chaque ligne fausse ou douteuse, son « index », « statut » corrige (tu as relu et corrigé, la ligne complète corrigée dans « ligne ») ou signale (la ligne reste douteuse : recopie-la dans « ligne », « confiance » basse), et « raison » en une phrase. Une ligne juste ne figure pas dans la réponse. « trajets_oublies » et « tarifs_oublies » : les lignes complètes que la première lecture n'a pas relevées. « fiche_corrigee » vrai seulement si le nom, les contacts ou le lieu de départ étaient faux ; « fiche » rend alors la fiche complète corrigée. N'invente rien : une valeur que tu ne lis pas reste vide.
+Rends seulement ce qui change, dans « trajets » et « tarifs ». Pour chaque ligne fausse ou douteuse : son « index », « statut » corrige (tu as relu et corrigé, la ligne complète corrigée dans « ligne ») ou signale (la ligne reste douteuse : recopie-la dans « ligne », « confiance » basse), et « raison » en une phrase. Une ligne que la première lecture n'a pas relevée : « index » -1, « statut » ajoute, la ligne complète dans « ligne ». Une ligne juste ne figure pas dans la réponse. « fiche_corrigee » vrai seulement si le nom, les contacts ou le lieu de départ étaient faux ; « fiche » rend alors la fiche complète corrigée. N'invente rien : une valeur que tu ne lis pas reste vide.
 
 Extraction :
 ${extraction}`,
@@ -240,7 +242,6 @@ const TARIF = objet({
   confiance: { type: "string", enum: CONFIANCES },
   raison: S,
   lisible: B,
-  illisible: S,
 });
 const TRAJET = objet({
   imprime: S,
@@ -270,7 +271,6 @@ const TRAJET = objet({
   confiance: { type: "string", enum: CONFIANCES },
   raison: S,
   lisible: B,
-  illisible: S,
 });
 const TELEPHONE = objet({ numero: S, libelle: S, whatsapp: B, line: B });
 const CONTACTS = objet({ telephones: { type: "array", items: TELEPHONE }, emails: { type: "array", items: S }, web: S, line: S, adresse: S, personne: S });
@@ -285,12 +285,12 @@ export const SCHEMA_BROCHURE = objet({
   remarques: S,
 });
 
-const correction = (ligne) => objet({ index: { type: "integer" }, statut: { type: "string", enum: ["corrige", "signale"] }, raison: S, ligne });
+// Relecture (allégée le 24.11.2026) : une seule liste par genre, chaque ligne une fois dans le schéma. « index » -1 : ligne oubliée.
+// Avant : TRAJET et TARIF y figuraient deux fois chacun (141 propriétés, 16 paramètres à type union, la limite exacte de l'API).
+const changement = (ligne) => objet({ index: { type: "integer" }, statut: { type: "string", enum: ["corrige", "signale", "ajoute"] }, raison: S, ligne });
 export const SCHEMA_RELECTURE = objet({
-  trajets_corriges: { type: "array", items: correction(TRAJET) },
-  tarifs_corriges: { type: "array", items: correction(TARIF) },
-  trajets_oublies: { type: "array", items: TRAJET },
-  tarifs_oublies: { type: "array", items: TARIF },
+  trajets: { type: "array", items: changement(TRAJET) },
+  tarifs: { type: "array", items: changement(TARIF) },
   fiche_corrigee: B,
   fiche: objet(FICHE),
   remarques: S,
@@ -477,27 +477,36 @@ export function validerBrochure(v) {
       confiance: x.lisible === false && lisible ? "basse" : confianceDe(x.confiance),
       raison: texte(x.raison, 300),
       lisible,
-      illisible: lisible ? "" : prix.prix_retire ? "Prix rendu absent des chiffres relevés : à saisir." : texte(x.illisible, 200) || "Prix de vente illisible.",
+      illisible: lisible ? "" : prix.prix_retire ? "Prix rendu absent des chiffres relevés : à saisir." : texte(x.illisible, 200) || (x.lisible === false ? texte(x.raison, 200) : "") || "Prix de vente illisible.",
       ...suiviRelecture(x),
     });
   }
   const trajets = [];
-  const heure = (h) => (heureValide(texte(h, 5)) ? texte(h, 5) : "");
+  // Une heure et ce que la brochure imprime après elle (« 18:30 (Malaysia time) ») : la précision est gardée, jamais coupée en silence.
+  const heure = (h) => {
+    const t = texte(h, 60);
+    const m = /^([01]\d|2[0-3]):[0-5]\d/.exec(t);
+    return m ? { heure: m[0], precision: t.slice(5).trim().slice(0, 40) } : { heure: "", precision: "" };
+  };
   for (const x of v.trajets.slice(0, MAX_TRAJETS)) {
     if (!x || typeof x !== "object") continue;
     const deImprime = texte(x.de_imprime, 80) || texte(x.de, 80);
     const versImprime = texte(x.vers_imprime, 80) || texte(x.vers, 80);
     const de = texte(x.de, 80) || deImprime;
     const vers = texte(x.vers, 80) || versImprime;
-    const depart = heure(x.depart);
-    const arrivee = heure(x.arrivee);
+    const h1 = heure(x.depart);
+    const h2 = heure(x.arrivee);
+    const depart = h1.heure;
+    const arrivee = h2.heure;
+    // Une heure locale d'un autre fuseau (ou toute précision) : ni lendemain déduit, ni durée calculée ; seul ce que la brochure dit compte.
+    const precision = !!(h1.precision || h2.precision);
     const nom = de || vers ? `${de || "?"} → ${vers || "?"}` : "?";
     const prix = controlerPrix(x, avertissements, nom);
     if (!de && !vers && !depart && prix.prix_adulte === null) {
       avertissements.push("trajet_vide");
       continue;
     }
-    const lendemain = arriveLendemain(depart, arrivee, x.lendemain);
+    const lendemain = precision ? x.lendemain === true && !!arrivee : arriveLendemain(depart, arrivee, x.lendemain);
     const manque = !de || !vers ? "Trajet illisible : départ ou arrivée à saisir." : !depart ? "Heure de départ à saisir." : prix.prix_adulte === null ? (prix.prix_retire ? "Prix rendu absent des chiffres relevés : à saisir." : "Prix de vente à saisir.") : "";
     const lisible = !manque;
     const ligne = {
@@ -509,8 +518,10 @@ export function validerBrochure(v) {
       mode: texte(x.mode, 60),
       depart,
       arrivee,
+      depart_precision: h1.precision,
+      arrivee_precision: h2.precision,
       lendemain,
-      duree: texte(x.duree, 40) || dureeCalculee(depart, arrivee, lendemain),
+      duree: texte(x.duree, 40) || (precision ? "" : dureeCalculee(depart, arrivee, lendemain)),
       periode: texte(x.periode, 80),
       periode_debut: "",
       periode_fin: "",
@@ -521,7 +532,7 @@ export function validerBrochure(v) {
       confiance: x.lisible === false && lisible ? "basse" : confianceDe(x.confiance),
       raison: texte(x.raison, 300),
       lisible,
-      illisible: lisible ? "" : texte(x.illisible, 200) || manque,
+      illisible: lisible ? "" : texte(x.illisible, 200) || (x.lisible === false && !prix.prix_retire ? texte(x.raison, 200) : "") || manque,
       ...suiviRelecture(x),
     };
     if (dateValide(texte(x.periode_debut, 10)) && dateValide(texte(x.periode_fin, 10)) && x.periode_fin >= x.periode_debut) Object.assign(ligne, { periode_debut: x.periode_debut, periode_fin: x.periode_fin });
@@ -565,17 +576,19 @@ export function fusionnerRelecture(brochure, rel) {
       compte[statut === "signale" ? "signales" : "corriges"]++;
     }
   };
-  appliquer(tarifs, r.tarifs_corriges);
-  appliquer(trajets, r.trajets_corriges);
   const ajouter = (liste, oublies, max) => {
-    for (const x of Array.isArray(oublies) ? oublies : []) {
+    for (const x of oublies) {
       if (!x || typeof x !== "object" || liste.length >= max) continue;
       liste.push({ ...x, relecture: "ajoute", relecture_raison: texte(x.raison, 300) || "Ligne oubliée à la première lecture." });
       compte.ajoutes++;
     }
   };
-  ajouter(tarifs, r.tarifs_oublies, MAX_TARIFS);
-  ajouter(trajets, r.trajets_oublies, MAX_TRAJETS);
+  // Une liste par genre : les corrections (index connu) puis les lignes oubliées (statut « ajoute », ligne dans « ligne »).
+  for (const [liste, changements, max] of [[tarifs, r.tarifs, MAX_TARIFS], [trajets, r.trajets, MAX_TRAJETS]]) {
+    const tous = Array.isArray(changements) ? changements.filter((c) => c && typeof c === "object") : [];
+    appliquer(liste, tous.filter((c) => c.statut !== "ajoute"));
+    ajouter(liste, tous.filter((c) => c.statut === "ajoute" && c.ligne && typeof c.ligne === "object").map((c) => ({ ...c.ligne, raison: texte(c.raison, 300) || c.ligne.raison })), max);
+  }
   const fiche = r.fiche_corrigee === true && r.fiche && typeof r.fiche === "object" ? r.fiche : null;
   return {
     brut: {
@@ -605,4 +618,26 @@ export function verifierExtraction(x) {
   }
   if (taille > MAX_EXTRACTION) return { ok: false };
   return validerBrochure(x);
+}
+
+// Une brochure sans ses nets, pour qui n'a pas le droit « prix nets » (revue du 24.11.2026) : nets vidés, colonnes de net retirées, la ligne
+// imprimée sans ses cases de net (ou vide si les cases ne s'alignent pas sur les colonnes), et toute raison ou remarque qui parle d'un net ou en
+// cite un chiffre retirée. La même fonction existe côté outil (brochure-calc.mjs) ; un test vérifie qu'elles rendent la même chose.
+const MOTS_NET = /\bnets?\b|\bagent\b|\bcost\b|\bcommission|เก็บ|ราคาทุน|ราคาเอเย่นต์/i;
+export function masquerNets(brochure) {
+  const b = brochure || {};
+  const colonnes = Array.isArray(b.colonnes) ? b.colonnes : [];
+  const indexNets = colonnes.map((c, i) => (c && (c.contenu === "net" || c.contenu === "net_enfant") ? i : -1)).filter((i) => i >= 0);
+  const chiffres = (l) => [l.net_texte, l.net_adulte, l.net_enfant].filter((x) => x !== null && x !== undefined && x !== "").flatMap((x) => [String(x), Number(x).toLocaleString("en-US")]).filter((x) => x && x !== "NaN");
+  const sansNet = (t, l) => (typeof t === "string" && t && (MOTS_NET.test(t) || chiffres(l).some((c) => c.length >= 2 && t.includes(c))) ? "" : t || "");
+  const imprime = (t, l) => {
+    if (typeof t !== "string" || !t) return "";
+    if (!indexNets.length) return sansNet(t, l);
+    const cases = t.split("|");
+    // Les cases suivent les colonnes ; une colonne vide en fin de ligne (NOTE) peut manquer. Sinon, rien n'est montré.
+    if (cases.length > colonnes.length || cases.length <= Math.max(...indexNets)) return "";
+    return sansNet(cases.filter((_, i) => !indexNets.includes(i)).map((c) => c.trim()).join(" | "), l);
+  };
+  const ligne = (l) => ({ ...l, imprime: imprime(l.imprime, l), raison: sansNet(l.raison, l), relecture_raison: sansNet(l.relecture_raison, l), illisible: sansNet(l.illisible, l), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
+  return { ...b, colonnes: colonnes.filter((_, i) => !indexNets.includes(i)), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: MOTS_NET.test(b.remarques || "") ? "" : b.remarques || "" };
 }

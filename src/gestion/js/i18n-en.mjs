@@ -4296,6 +4296,7 @@ export const EN = {
   "{n} Mo": "{n} MB",
   "{n} ko": "{n} KB",
   "Importer une brochure": "Import a brochure",
+  "Imprimé sur la brochure : « {texte} »": "Printed on the brochure: “{texte}”",
   "Importer une brochure demande les droits « Modifier les partenaires » et « Modifier les prix de vente ».": "Importing a brochure requires the “Edit partners” and “Edit selling prices” rights.",
   "Un net ne s'écrit qu'avec le droit « Prix nets ». La ligne n'a pas été écrite.": "A net price is only saved with the “Net prices” right. The line was not saved.",
   "Cette ligne du catalogue n'existe plus : rechargez la fiche.": "This catalogue line no longer exists: reload the page.",

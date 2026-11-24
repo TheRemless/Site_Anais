@@ -341,7 +341,7 @@ test("horaires de bateau : départ connu inchangé, nouveau départ créé avec 
   const c = comparerBrochure(brochure, { partenaireId: RATTANA, prestations: [], trajets });
   assert.deepEqual(c.trajets.map((l) => [l.statut, l.cible && l.cible.id, l.coche]), [["inchange", "tj1", false], ["nouveau", null, true], ["prix_change", "tj2", true]]);
   const ops = planBrochure(c.trajets, { partenaireId: RATTANA, aujourdhui: AJD, numeroMax: 40 });
-  assert.deepEqual(ops[0].valeurs, { partenaire_id: RATTANA, de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "13:30", arrivee: "17:00", duree: "3 h 30", prix_adulte: 1900, prix_enfant: 1400, bebe: "", periode: "1 Nov 2026 - 30 Apr 2027", fenetres: [["2026-11-01", "2027-04-30"]], actif: true, numero: 41 });
+  assert.deepEqual(ops[0].valeurs, { partenaire_id: RATTANA, imprime: "Koh Lanta → Koh Lipe", de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "13:30", arrivee: "17:00", duree: "3 h 30", prix_adulte: 1900, prix_enfant: 1400, bebe: "", periode: "1 Nov 2026 - 30 Apr 2027", fenetres: [["2026-11-01", "2027-04-30"]], actif: true, numero: 41 });
   assert.deepEqual([ops[1].action, ops[1].id, ops[1].valeurs], ["modifier", "tj2", { prix_adulte: 1300, duree: "1 h 30" }]);
 });
 

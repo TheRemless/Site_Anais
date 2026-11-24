@@ -36,6 +36,7 @@ export const ABREVIATIONS_LIEUX = [
 ];
 const cle = (s) => sansAccents(s).replace(/[^a-z0-9]+/g, " ").trim();
 const VARIANTES = { "bkk khaosan": "Bangkok (Khao San Road)", khaosan: "Bangkok (Khao San Road)", "khao san": "Bangkok (Khao San Road)", "khao san road": "Bangkok (Khao San Road)", "had yai": "Hat Yai", nakhon: "Nakhon Si Thammarat", "nakhon si": "Nakhon Si Thammarat", "sungai golok": "Sungai Kolok", "ko lanta": "Koh Lanta" };
+export const AMBIGUS = new Set(["nakon", "nakhon", "padang"]);
 const NOMS_ENTIERS = new Map([...ABREVIATIONS_LIEUX.filter(([a]) => a !== "A/P").map(([a, b]) => [cle(a), b]), ...Object.entries(VARIANTES)]);
 // Dans un nom plus long : « Krabi A/P » → « Krabi Airport », « Hadyai A/P » → « Hat Yai Airport », « BKK Airport » → « Bangkok Airport ».
 const MOTS = [
@@ -65,7 +66,7 @@ function auCatalogue(nom, lieux) {
 // Un texte qui ressemble à une abréviation : capitales courtes (« BKK »), barre ou point (« A/P », « Nak. »).
 const abrege = (s) => /^[A-Z]{2,4}$/.test(s.trim()) || /[/.]/.test(s);
 
-// Le nom usuel d'un lieu imprimé. D'abord le catalogue, puis la table des abréviations, puis le nom proposé par la lecture (signalé « à vérifier »
+// Le nom usuel d'un lieu imprimé. D'abord le catalogue, puis la table des abréviations (un nom ambigu y reste « à vérifier »), puis le nom proposé par la lecture (signalé « à vérifier »
 // s'il ne vient ni de l'un ni de l'autre), sinon le texte imprimé tel quel (« à vérifier » s'il a l'air abrégé).
 // Rend { nom, imprime, source: "catalogue" | "table" | "lecture" | "imprime" | "", a_verifier }.
 export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
@@ -80,7 +81,9 @@ export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
     const remplace = MOTS.reduce((t, [re, nom]) => t.replace(re, nom), depuis).replace(/\s+/g, " ").trim();
     if (remplace !== depuis) table = remplace;
   }
-  if (table) return { nom: auCatalogue(table, lieux) || table, imprime: brut, source: "table", a_verifier: false };
+  // Un nom ambigu (« Nakon », « Nakhon » : Nakhon Si Thammarat, Ratchasima, Pathom… ; « Padang » : Padang Besar ou Padang en Indonésie) est
+  // proposé, jamais réécrit d'office : « à vérifier », et la ligne n'est pas cochée (revue du 24.11.2026).
+  if (table) return { nom: auCatalogue(table, lieux) || table, imprime: brut, source: "table", a_verifier: AMBIGUS.has(cle(depuis)) };
   if (propose && cle(propose) !== cle(brut)) {
     const catPropose = auCatalogue(propose, lieux);
     return catPropose ? { nom: catPropose, imprime: brut, source: "catalogue", a_verifier: false } : { nom: propose, imprime: brut, source: "lecture", a_verifier: true };
@@ -90,7 +93,11 @@ export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
 
 // Une arrivée du lendemain s'écrit comme au catalogue : « 06:00 (next day) ». lireArrivee fait l'inverse (le formulaire des trajets, le voucher).
 export const SUFFIXE_LENDEMAIN = " (next day)";
-export const arriveeTexte = (heure, lendemain = false) => (heure ? `${heure}${lendemain ? SUFFIXE_LENDEMAIN : ""}` : "");
+// `precision` : ce que la brochure imprime après l'heure (« (Malaysia time) »), gardé tel quel.
+export const arriveeTexte = (heure, lendemain = false, precision = "") => (heure ? `${heure}${precision ? ` ${precision}` : ""}${lendemain ? SUFFIXE_LENDEMAIN : ""}` : "");
+// Ce que la brochure imprime de la ligne, gardé en base avec le trajet (colonne « imprime », migration 127) : la ligne recopiée, sinon les
+// lieux tels qu'imprimés. Un nom de lieu ambigu ou corrigé garde ainsi sa trace.
+export const texteImprimeTrajet = (lu) => String(lu.imprime || [lu.de_imprime, lu.vers_imprime].filter(Boolean).join(" → ")).slice(0, 400);
 export function lireArrivee(texte) {
   const t = String(texte || "").trim();
   const m = /^(\d{1,2}:\d{2})\s*(?:\((?:next day|\+1|lendemain|le lendemain)\)|\+1)?$/i.exec(t);
@@ -99,6 +106,8 @@ export function lireArrivee(texte) {
 }
 const HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const minutes = (h) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+// Durée sûre d'une ligne lue : aucune quand une heure porte une précision (heure locale d'un autre fuseau, « (Malaysia time) »).
+export const dureeSure = (lu) => (lu.depart_precision || lu.arrivee_precision ? "" : dureeTrajet(lu.depart, lu.arrivee, lu.lendemain));
 // Durée d'un trajet, écrite comme au catalogue (« 22 h », « 1 h 30 »), quand départ et arrivée sont connus.
 export function dureeTrajet(depart, arrivee, lendemain) {
   if (!HEURE.test(depart || "") || !HEURE.test(arrivee || "")) return "";
@@ -277,8 +286,8 @@ export function completerLigne(ligne, saisie, { partenaireId, prestations = [], 
   if (ligne.genre === "trajet") {
     for (const k of ["depart", "arrivee"]) if (s[k] !== undefined && HEURE.test(String(s[k]))) (brut[k] = s[k]), (saisi[k] = true);
     if (s.lendemain !== undefined) (brut.lendemain = !!s.lendemain), (saisi.lendemain = true);
-    if (brut.depart && brut.arrivee && minutes(brut.arrivee) < minutes(brut.depart)) brut.lendemain = true;
-    if (saisi.depart || saisi.arrivee || saisi.lendemain) brut.duree = dureeTrajet(brut.depart, brut.arrivee, brut.lendemain);
+    if (brut.depart && brut.arrivee && !brut.depart_precision && !brut.arrivee_precision && minutes(brut.arrivee) < minutes(brut.depart)) brut.lendemain = true;
+    if (saisi.depart || saisi.arrivee || saisi.lendemain) brut.duree = dureeSure(brut);
     const lieuxSaisis = {};
     for (const k of ["de", "vers"]) if (s[k] !== undefined && String(s[k]).trim()) lieuxSaisis[k] = String(s[k]).trim();
     const avant = ligne.lieux || {};
@@ -426,7 +435,7 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
         table: "trajets",
         cle: l.cle,
         libelle: `${lu.de} → ${lu.vers}, ${lu.depart}`,
-        valeurs: { partenaire_id: partenaireId, de: lu.de, vers: lu.vers, mode: lu.mode, depart: lu.depart, arrivee: arriveeTexte(lu.arrivee, lu.lendemain), duree: lu.duree || dureeTrajet(lu.depart, lu.arrivee, lu.lendemain), prix_adulte: lu.prix_adulte, prix_enfant: lu.prix_enfant, bebe: "", periode: lu.periode || (fenetres.length ? "" : PERIODE_TOUTE[1]), fenetres, actif: true, numero },
+        valeurs: { partenaire_id: partenaireId, imprime: texteImprimeTrajet(lu), de: lu.de, vers: lu.vers, mode: lu.mode, depart: lu.depart, arrivee: arriveeTexte(lu.arrivee, lu.lendemain, lu.arrivee_precision), duree: lu.duree || dureeSure(lu), prix_adulte: lu.prix_adulte, prix_enfant: lu.prix_enfant, bebe: "", periode: lu.periode || (fenetres.length ? "" : PERIODE_TOUTE[1]), fenetres, actif: true, numero },
         enfant: null,
         nets: avecNet ? { table: "trajets_nets", cleParent: "trajet_id", valeurs: { net_adulte: lu.net_adulte, net_enfant: lu.net_enfant } } : null,
       });
@@ -437,9 +446,9 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
     if (lu.prix_adulte !== null && lu.prix_adulte !== nombre(c.prix_adulte)) patch.prix_adulte = lu.prix_adulte;
     if (lu.prix_enfant !== null && lu.prix_enfant !== nombre(c.prix_enfant)) patch.prix_enfant = lu.prix_enfant;
     // L'arrivée s'écrit si le catalogue n'en a pas, ou s'il a la même heure sans dire qu'elle est le lendemain.
-    const arrivee = arriveeTexte(lu.arrivee, lu.lendemain);
-    if (arrivee && (!c.arrivee || (lu.lendemain && c.arrivee === lu.arrivee))) patch.arrivee = arrivee;
-    if (!c.duree && (lu.duree || dureeTrajet(lu.depart, lu.arrivee, lu.lendemain))) patch.duree = lu.duree || dureeTrajet(lu.depart, lu.arrivee, lu.lendemain);
+    const arrivee = arriveeTexte(lu.arrivee, lu.lendemain, lu.arrivee_precision);
+    if (arrivee && (!c.arrivee || ((lu.lendemain || lu.arrivee_precision) && c.arrivee === lu.arrivee))) patch.arrivee = arrivee;
+    if (!c.duree && (lu.duree || dureeSure(lu))) patch.duree = lu.duree || dureeSure(lu);
     if (!Object.keys(patch).length && !avecNet) continue;
     const n = netsDe(trajetsNets, "trajet_id", c.id);
     ops.push({
@@ -506,12 +515,13 @@ export function memePartenaire(nomLu, nomPartenaire) {
 // ---- Fiche du nouveau partenaire ----------------------------------------------------------------------------------------------------------
 
 // Un nom imprimé tout en capitales s'écrit en casse normale : « LANTA DEMO TRANSPORT CO., LTD. » → « Lanta Demo Transport Co., Ltd. ».
-// Les sigles restent en capitales. Un nom qui a déjà des minuscules ne change pas.
+// Les sigles restent en capitales (connus, ou 2 à 4 lettres sans voyelle). Un nom qui a déjà des minuscules ne change pas.
 const SIGLES = new Set(["VIP", "ATV", "BKK", "KL", "TAT", "SUP", "THB", "KBV", "HKT", "USA", "UK", "II", "III", "IV"]);
 export function casseNormale(nom) {
   const t = String(nom || "").replace(/\s+/g, " ").trim();
   if (!t || /\p{Ll}/u.test(t)) return t;
-  return t.replace(/\p{Lu}+/gu, (m) => (SIGLES.has(m) ? m : m[0] + m.slice(1).toLowerCase()));
+  // Un sigle reste en capitales : connu (SIGLES), ou de 2 à 4 lettres sans voyelle (« PP », « BKK », « TRG ») : « PP CRUISER » → « PP Cruiser ».
+  return t.replace(/\p{Lu}+/gu, (m) => (m === "LTD" ? "Ltd" : SIGLES.has(m) || (m.length >= 2 && m.length <= 4 && !/[AEIOUY]/.test(m)) ? m : m[0] + m.slice(1).toLowerCase()));
 }
 
 // Groupe et catégorie d'un nouveau partenaire, d'après ce que la brochure vend : des bus et des minivans font un transporteur (« transport »,
@@ -554,4 +564,26 @@ export function fichePartenaireDepuisBrochure(brochure, partenaires = []) {
     groupe,
     contact: { personne: c.personne || "", telephones, emails: c.emails || [], line: c.line || "", web: c.web || "", adresse: c.adresse || "", embarcadere: String(b.lieu_depart || "").trim() },
   };
+}
+
+// Une brochure sans ses nets, pour qui n'a pas le droit « prix nets » (revue du 24.11.2026) : nets vidés, colonnes de net retirées, la ligne
+// imprimée sans ses cases de net (ou vide si les cases ne s'alignent pas sur les colonnes), et toute raison ou remarque qui parle d'un net ou en
+// cite un chiffre retirée. La même fonction existe côté outil (brochure-calc.mjs) ; un test vérifie qu'elles rendent la même chose.
+const MOTS_NET = /\bnets?\b|\bagent\b|\bcost\b|\bcommission|เก็บ|ราคาทุน|ราคาเอเย่นต์/i;
+export function masquerNets(brochure) {
+  const b = brochure || {};
+  const colonnes = Array.isArray(b.colonnes) ? b.colonnes : [];
+  const indexNets = colonnes.map((c, i) => (c && (c.contenu === "net" || c.contenu === "net_enfant") ? i : -1)).filter((i) => i >= 0);
+  const chiffres = (l) => [l.net_texte, l.net_adulte, l.net_enfant].filter((x) => x !== null && x !== undefined && x !== "").flatMap((x) => [String(x), Number(x).toLocaleString("en-US")]).filter((x) => x && x !== "NaN");
+  const sansNet = (t, l) => (typeof t === "string" && t && (MOTS_NET.test(t) || chiffres(l).some((c) => c.length >= 2 && t.includes(c))) ? "" : t || "");
+  const imprime = (t, l) => {
+    if (typeof t !== "string" || !t) return "";
+    if (!indexNets.length) return sansNet(t, l);
+    const cases = t.split("|");
+    // Les cases suivent les colonnes ; une colonne vide en fin de ligne (NOTE) peut manquer. Sinon, rien n'est montré.
+    if (cases.length > colonnes.length || cases.length <= Math.max(...indexNets)) return "";
+    return sansNet(cases.filter((_, i) => !indexNets.includes(i)).map((c) => c.trim()).join(" | "), l);
+  };
+  const ligne = (l) => ({ ...l, imprime: imprime(l.imprime, l), raison: sansNet(l.raison, l), relecture_raison: sansNet(l.relecture_raison, l), illisible: sansNet(l.illisible, l), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
+  return { ...b, colonnes: colonnes.filter((_, i) => !indexNets.includes(i)), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: MOTS_NET.test(b.remarques || "") ? "" : b.remarques || "" };
 }

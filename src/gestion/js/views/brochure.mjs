@@ -12,7 +12,7 @@ import { libelleUnite } from "../partenaires-calc.mjs";
 import { assistantActif } from "../assistant-calc.mjs";
 import { modeTrajet } from "../operations-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { DROITS_BROCHURE, comparerBrochure, changerCible, compter, planBrochure, ciblesPossibles, phraseAgeEnfant, memePartenaire, signauxLigne, completerLigne, fichePartenaireDepuisBrochure } from "../brochure-calc.mjs";
+import { DROITS_BROCHURE, comparerBrochure, changerCible, compter, planBrochure, ciblesPossibles, phraseAgeEnfant, memePartenaire, signauxLigne, completerLigne, fichePartenaireDepuisBrochure, masquerNets } from "../brochure-calc.mjs";
 import { GROUPES } from "./partenaires.mjs";
 import { messageErreur } from "./assistant-demande.mjs";
 import { preparer, tailleTexte, erreurFichier, LIMITES } from "../pieces-jointes.mjs";
@@ -177,7 +177,8 @@ function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
   // créé devient « inchangé », rien ne peut être créé deux fois. Ce que la personne a saisi dans une ligne est gardé (`saisies`).
   const saisies = new Map();
   function afficher(r, { faits = 0, echecs = [] } = {}) {
-    const b = r.brochure;
+    // Sans le droit « prix nets » (ou en Taxi) : la fonction ne les envoie déjà pas ; l'écran les retire aussi (texte imprimé, raisons).
+    const b = droitNets ? r.brochure : masquerNets(r.brochure);
     const partenaireId = partenaire ? partenaire.id : null;
     const comp = comparerBrochure(b, { partenaireId, prestations: etat.db.prestations, trajets: etat.db.trajets });
     const ctx = () => ({ partenaireId, prestations: etat.db.prestations, trajets: etat.db.trajets });

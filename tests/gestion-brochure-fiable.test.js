@@ -177,12 +177,14 @@ test("lieux : le catalogue d'abord (« Lanta » → « Koh Lanta »), puis la ta
   assert.deepEqual(n("Krabi A/P"), { nom: "Krabi Airport", imprime: "Krabi A/P", source: "table", a_verifier: false });
   assert.equal(n("Hadyai").nom, "Hat Yai");
   assert.equal(n("Hadyai").source, "table");
-  for (const [imprime, nom] of [["BKK", "Bangkok"], ["KL", "Kuala Lumpur"], ["Ipho", "Ipoh"], ["Phatthalang", "Phatthalung"], ["Nakon", "Nakhon Si Thammarat"], ["Padang", "Padang Besar"], ["Kolok", "Sungai Kolok"], ["Khaosan (BKK)", "Bangkok (Khao San Road)"], ["BKK (Khaosan)", "Bangkok (Khao San Road)"], ["Hadyai A/P", "Hat Yai Airport"]]) {
+  for (const [imprime, nom] of [["BKK", "Bangkok"], ["KL", "Kuala Lumpur"], ["Ipho", "Ipoh"], ["Phatthalang", "Phatthalung"], ["Kolok", "Sungai Kolok"], ["Khaosan (BKK)", "Bangkok (Khao San Road)"], ["BKK (Khaosan)", "Bangkok (Khao San Road)"], ["Hadyai A/P", "Hat Yai Airport"]]) {
     const r = n(imprime);
     assert.equal(r.nom, nom, imprime);
     assert.equal(r.a_verifier, false, imprime);
     assert.equal(r.imprime, imprime);
   }
+  // Noms ambigus (revue du 24.11.2026) : proposés, jamais réécrits d'office, « à vérifier ».
+  for (const [imprime, nom] of [["Nakon", "Nakhon Si Thammarat"], ["Nakhon", "Nakhon Si Thammarat"], ["Padang", "Padang Besar"]]) assert.deepEqual(n(imprime), { nom, imprime, source: "table", a_verifier: true }, imprime);
   // Sans catalogue, « Lanta » reste « Koh Lanta » par la table.
   assert.equal(C.normaliserLieu("Lanta").nom, "Koh Lanta");
 });
@@ -249,10 +251,15 @@ test("ligne illisible complétée à la main dans l'écran : prix, net et heures
   const padang = c.trajets.find((l) => l.lu.vers === "Padang Besar");
   assert.deepEqual([padang.statut, padang.coche], ["illisible", false]);
   assert.equal(C.planBrochure([{ ...padang, coche: true }], { partenaireId: PART, droitNets: true, aujourdhui: AJD }).length, 0, "une ligne illisible ne s'écrit jamais");
-  const faite = C.completerLigne(padang, { prix_adulte: "1,050", net_adulte: "850", arrivee: "15:45" }, { partenaireId: PART, trajets: CATALOGUE });
+  // « Padang » est ambigu : tant que le lieu n'est pas confirmé, la ligne complétée n'est pas cochée.
+  const sansLieu = C.completerLigne(padang, { prix_adulte: "1,050", net_adulte: "850", arrivee: "15:45" }, { partenaireId: PART, trajets: CATALOGUE });
+  assert.deepEqual([sansLieu.statut, sansLieu.coche, C.signauxLigne(sansLieu)], ["nouveau", false, ["lieu_a_verifier"]]);
+  const faite = C.completerLigne(sansLieu, { vers: "Padang Besar" }, { partenaireId: PART, trajets: CATALOGUE });
   assert.deepEqual([faite.statut, faite.coche, faite.lu.prix_adulte, faite.lu.net_adulte, faite.lu.net_source, faite.lu.duree], ["nouveau", true, 1050, 850, "saisi", "7 h 45"]);
   const [op] = C.planBrochure([faite], { partenaireId: PART, droitNets: true, aujourdhui: AJD, numeroMax: 3 });
   assert.deepEqual([op.action, op.valeurs.prix_adulte, op.valeurs.arrivee, op.valeurs.de, op.valeurs.vers, op.nets.valeurs], ["creer", 1050, "15:45", "Koh Lanta", "Padang Besar", { net_adulte: 850, net_enfant: null }]);
+  // Le texte imprimé de la ligne reste en base avec le trajet (colonne « imprime », migration 127).
+  assert.match(op.valeurs.imprime, /Lanta - Padang \| VIP Bus\/Van/);
   // Une saisie qui n'est pas un prix ne passe pas.
   assert.equal(C.completerLigne(padang, { prix_adulte: "abc" }, { partenaireId: PART, trajets: CATALOGUE }).statut, "illisible");
 });
@@ -302,14 +309,13 @@ test("relecture : une correction remplace sa ligne, une ligne signalée passe en
   const premiere = demo().brochure;
   const ipoh = { ...premiere.trajets[4], depart: "12:00", raison: "« 12.0 AM » lu 12:00." };
   const rel = {
-    trajets_corriges: [
+    trajets: [
       { index: 4, statut: "corrige", raison: "Départ « 12.0 AM » : midi.", ligne: ipoh },
       { index: 6, statut: "signale", raison: "Le 3 de 350 peut être un 8.", ligne: premiere.trajets[6] },
       { index: 99, statut: "corrige", raison: "?", ligne: premiere.trajets[0] },
+      { index: -1, statut: "ajoute", raison: "Ligne oubliée.", ligne: { ...premiere.trajets[1], vers: "Trang", vers_imprime: "Trang", depart: "10:00", arrivee: "12:30", duree: "", note: "" } },
     ],
-    tarifs_corriges: [],
-    trajets_oublies: [{ ...premiere.trajets[1], vers: "Trang", vers_imprime: "Trang", depart: "10:00", arrivee: "12:30", duree: "", note: "" }],
-    tarifs_oublies: [],
+    tarifs: [],
     fiche_corrigee: true,
     fiche: { partenaire_lu: premiere.partenaire_lu, partenaire_thai: premiere.partenaire_thai, lieu_depart: "Saladan office (main road)", contacts: premiere.contacts },
     remarques: "",
@@ -469,4 +475,44 @@ test("arrivée du lendemain lue ailleurs : « À vérifier » compte 26 h, l'Ass
   assert.match(simulerReponse(faits).message || JSON.stringify(simulerReponse(faits)), /08:00 - 06:00 \(next day\)/);
   const src = readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8");
   assert.equal((src.match(/arrivee_lendemain: true/g) || []).length, 2, "les deux recherches de trajets le disent");
+});
+
+// ---- Revue des PR 346 et 347 (24.11.2026) --------------------------------------------------------------------------------------------
+
+test("heure locale : « 18:30 (Malaysia time) » garde sa précision, ni lendemain déduit ni durée calculée ; écrite telle quelle au catalogue", () => {
+  const base = brochureDemoTransport().trajets[3];
+  const t = lu({ tarifs: [], trajets: [{ ...base, depart: "12:00", arrivee: "05:00 (Malaysia time)", lendemain: false, duree: "" }] }).brochure.trajets[0];
+  assert.deepEqual([t.arrivee, t.arrivee_precision, t.lendemain, t.duree], ["05:00", "(Malaysia time)", false, ""]);
+  const dit = lu({ tarifs: [], trajets: [{ ...base, depart: "12:00", arrivee: "05:00 (Malaysia time)", lendemain: true, duree: "" }] }).brochure.trajets[0];
+  assert.deepEqual([dit.lendemain, dit.duree], [true, ""]);
+  const [op] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [dit] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.deepEqual([op.valeurs.arrivee, op.valeurs.duree], ["05:00 (Malaysia time) (next day)", ""]);
+  // La relecture reçoit l'heure avec sa précision.
+  assert.equal(B.extractionPourRelecture({ ...demo().brochure, trajets: [t] }).trajets[0].arrivee, "05:00 (Malaysia time)");
+});
+
+test("nets sans le droit : la fonction et l'écran retirent chiffres, colonne « เก็บ », ligne imprimée et raisons qui en parlent", () => {
+  const b = demo().brochure;
+  const avecRaison = { ...b, trajets: b.trajets.map((t, i) => (i === 2 ? { ...t, raison: "Net couvert par du scotch." } : i === 0 ? { ...t, raison: "เก็บ 1,300 écrit à la main." } : t)) };
+  const serveur = B.masquerNets(avecRaison);
+  assert.deepEqual(C.masquerNets(avecRaison), serveur, "la même règle des deux côtés");
+  const texte = JSON.stringify(serveur);
+  for (const interdit of ["เก็บ", "1,300", "1300", "Net couvert"]) assert.ok(!texte.includes(interdit), interdit);
+  assert.ok(serveur.trajets.every((t) => t.net_adulte === null && t.net_enfant === null && t.net_texte === "" && !t.net_a_saisir));
+  assert.ok(!serveur.colonnes.some((c) => c.contenu === "net"));
+  assert.equal(serveur.trajets[0].imprime, "Lanta - Khaosan (BKK) | VIP Bus/Van | 08:00 | 06:00 | 1,650", "la case du net retirée, le reste gardé");
+  assert.equal(serveur.trajets[0].raison, "", "une raison qui parle du net est retirée");
+  assert.equal(serveur.trajets[4].raison, avecRaison.trajets[4].raison, "une raison sans net reste");
+  const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
+  assert.match(index, /const voitNets = \(perms\.data \|\| \[\]\)\.includes\("partenaires\.nets"\)/);
+  assert.match(index, /valider = \(v\) => sansNets\(validerBrochure\(v\)\)/);
+  const ecran = readFileSync(new URL("../src/gestion/js/views/brochure.mjs", import.meta.url), "utf8");
+  assert.match(ecran, /const b = droitNets \? r\.brochure : masquerNets\(r\.brochure\)/);
+});
+
+test("sigles : « PP CRUISER » → « PP Cruiser », « BKK STD » restent, « LTD » → « Ltd »", () => {
+  assert.equal(C.casseNormale("PP CRUISER"), "PP Cruiser");
+  assert.equal(C.casseNormale("BKK EXPRESS VAN"), "BKK Express Van");
+  assert.equal(C.casseNormale("KOH DEMO TRANSPORT CO., LTD."), "Koh Demo Transport Co., Ltd.");
+  assert.equal(C.casseNormale("VIP DEMO VAN"), "VIP Demo Van");
 });
