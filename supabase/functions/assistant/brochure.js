@@ -150,7 +150,8 @@ const dateDuJour = (aujourdhui, lieu) => {
 export function promptBrochure({ fichiers, aujourdhui, lieu = "" }) {
   return {
     system: [{ type: "text", text: consignesBrochure(lieu) }],
-    messages: [{ role: "user", content: [...blocsFichiers(fichiers), { type: "text", text: `${dateDuJour(aujourdhui, lieu)} Lis la brochure jointe (${fichiers.length} ${fichiers.length > 1 ? "fichiers" : "fichier"}) en suivant la liste de contrôle, ligne par ligne.\n\n${consigneJson(SCHEMA_BROCHURE)}` }] }],
+    // Point de cache sur la fin du premier message (fichiers et consigne) : une demande de correction relit ce préfixe au prix du cache.
+    messages: [{ role: "user", content: [...blocsFichiers(fichiers), { type: "text", cache_control: { type: "ephemeral" }, text: `${dateDuJour(aujourdhui, lieu)} Lis la brochure jointe (${fichiers.length} ${fichiers.length > 1 ? "fichiers" : "fichier"}) en suivant la liste de contrôle, ligne par ligne.\n\n${consigneJson(SCHEMA_BROCHURE)}` }] }],
   };
 }
 
@@ -184,6 +185,8 @@ export function promptRelecture({ fichiers, aujourdhui, lieu = "", brochure }) {
           ...blocsFichiers(fichiers),
           {
             type: "text",
+            // Point de cache, comme la lecture : la correction éventuelle relit ce préfixe au prix du cache.
+            cache_control: { type: "ephemeral" },
             text: `${dateDuJour(aujourdhui, lieu)} Une première lecture de cette brochure a donné l'extraction ci-dessous (JSON, lignes numérotées par « index »). Relis chaque page de l'image avec la liste de contrôle et compare, ligne par ligne :
 - le prix de vente et le net (chiffre exact, colonne juste, manuscrit compris, net caché marqué « net_cache ») ;
 - les heures (fautes AM/PM et « 12.0 », arrivée du lendemain) ;
@@ -373,24 +376,20 @@ export function extraireJson(texteReponse) {
   }
 }
 
-// Les champs requis absents d'une réponse, à la manière du schéma (objets et listes, chaque élément) : « trajets », « trajets[3].prix_adulte ».
-// Les types des valeurs simples ne sont pas exigés ici : validerBrochure les ramène à la forme attendue. Au plus 8 chemins.
+// Les champs absents d'une réponse qui empêchent de la lire, comme validerBrochure (revue du 24.11.2026) : seulement les listes et les objets du
+// premier niveau du schéma (« trajets », « tarifs », « contacts »…). Un champ simple absent d'une ligne (« periode_debut ») ne compte pas :
+// validerBrochure le remplace par sa valeur vide. « fiche » de la relecture n'est exigée que si « fiche_corrigee » est vrai.
 export function champsManquants(valeur, schema) {
+  if (!valeur || typeof valeur !== "object" || Array.isArray(valeur)) return ["(objet)"];
   const manque = [];
-  const voir = (v, s, chemin) => {
-    if (manque.length >= 8 || !s) return;
-    if (s.type === "object") {
-      if (!v || typeof v !== "object" || Array.isArray(v)) return void manque.push(chemin || "(objet)");
-      for (const k of s.required || []) {
-        if (!(k in v)) manque.push(chemin ? `${chemin}.${k}` : k);
-        else voir(v[k], s.properties[k], chemin ? `${chemin}.${k}` : k);
-      }
-    } else if (s.type === "array") {
-      if (!Array.isArray(v)) return void manque.push(chemin);
-      v.slice(0, MAX_TRAJETS).forEach((x, i) => voir(x, s.items, `${chemin}[${i}]`));
-    }
-  };
-  voir(valeur, schema, "");
+  for (const k of schema.required || []) {
+    const s = schema.properties[k] || {};
+    if (s.type !== "array" && s.type !== "object") continue;
+    if (k === "fiche" && valeur.fiche_corrigee !== true) continue;
+    const v = valeur[k];
+    const bon = s.type === "array" ? Array.isArray(v) : !!v && typeof v === "object" && !Array.isArray(v);
+    if (!bon) manque.push(k);
+  }
   return manque;
 }
 
@@ -408,8 +407,8 @@ export function lireBrochure(message, schema = null) {
   return manque.length ? { ok: false, statut: "json_invalide", raison: "forme", manque } : { ok: true, valeur: j.valeur };
 }
 
-// La seule demande de correction : la réponse telle quelle (blocs de réflexion compris, sans retouche), puis la consigne de correction. Un point
-// de cache sur le premier message de la personne (fichiers et consigne) : il ne se paie qu'au prix du cache si la correction est relancée.
+// La seule demande de correction : la réponse telle quelle (blocs de réflexion compris, sans retouche), puis la consigne de correction. Le
+// premier message (fichiers et consigne) a son point de cache dès le premier appel : la correction le relit au prix du cache.
 export function demandeCorrection(parametres, message, raison, manque = []) {
   const pourquoi =
     raison === "tronque"
@@ -419,12 +418,10 @@ export function demandeCorrection(parametres, message, raison, manque = []) {
         : raison === "forme"
           ? `des champs requis manquent (${manque.slice(0, 8).join(", ")})`
           : "son JSON ne se lit pas (virgule, guillemet ou accolade en trop ou en moins)";
-  const [premier, ...suite] = parametres.messages;
-  const contenu = Array.isArray(premier.content) ? premier.content : [{ type: "text", text: String(premier.content) }];
-  const avecCache = { ...premier, content: contenu.map((b, i) => (i === contenu.length - 1 ? { ...b, cache_control: { type: "ephemeral" } } : b)) };
+  // Le premier message porte déjà son point de cache (promptBrochure, promptRelecture) : la correction relit ce préfixe, écrit par le premier appel.
   return {
     ...parametres,
-    messages: [avecCache, ...suite, { role: "assistant", content: message.content }, { role: "user", content: [{ type: "text", text: `Ta réponse n'a pas pu être lue : ${pourquoi}. Rends seulement l'objet JSON complet et valide, de la forme demandée, avec tous les champs du gabarit, sans texte autour. Ne relis pas les images : reprends ta lecture telle quelle.` }] }],
+    messages: [...parametres.messages, { role: "assistant", content: message.content }, { role: "user", content: [{ type: "text", text: `Ta réponse n'a pas pu être lue : ${pourquoi}. Rends seulement l'objet JSON complet et valide, de la forme demandée, avec tous les champs du gabarit, sans texte autour. Ne relis pas les images : reprends ta lecture telle quelle.` }] }],
   };
 }
 

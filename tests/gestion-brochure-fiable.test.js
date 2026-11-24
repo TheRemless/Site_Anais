@@ -554,16 +554,24 @@ test("heure de départ : sa précision est gardée ; « (next day) » ou « +1 �
   assert.match(opA.valeurs.imprime, /07:00 \(Malaysia time\)/, "la précision du départ reste avec le trajet");
 });
 
-test("forme : un JSON lisible mais sans « trajets » ou sans champ requis demande la correction (une fois)", () => {
+test("forme : seules les listes et les objets du premier niveau sont exigés, comme validerBrochure ; « fiche » seulement si elle est corrigée", () => {
   const t = JSON.stringify({ ...brochureDemoTransport(), trajets: undefined });
   const r = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: t }] }, B.SCHEMA_BROCHURE);
   assert.deepEqual([r.ok, r.statut, r.raison, r.manque], [false, "json_invalide", "forme", ["trajets"]]);
-  const sansPrix = { ...brochureDemoTransport() };
-  sansPrix.trajets = sansPrix.trajets.map((x, i) => (i === 2 ? (({ prix_adulte, ...reste }) => reste)(x) : x));
-  const r2 = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(sansPrix) }] }, B.SCHEMA_BROCHURE);
-  assert.deepEqual(r2.manque, ["trajets[2].prix_adulte"]);
-  const c = B.demandeCorrection({ model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x" }] }] }, { content: [] }, "forme", r2.manque);
-  assert.match(c.messages.at(-1).content[0].text, /des champs requis manquent \(trajets\[2\]\.prix_adulte\)/);
+  // Une ligne sans « periode_debut » (ou sans prix) : pas de correction, validerBrochure remplit la valeur vide.
+  const sansPeriode = { ...brochureDemoTransport() };
+  sansPeriode.trajets = sansPeriode.trajets.map((x, i) => (i === 2 ? (({ periode_debut, prix_adulte, ...reste }) => reste)(x) : x));
+  const r2 = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(sansPeriode) }] }, B.SCHEMA_BROCHURE);
+  assert.equal(r2.ok, true);
+  assert.equal(B.validerBrochure(r2.valeur).brochure.trajets[2].periode_debut, "");
+  // Relecture sans fiche corrigée : « fiche » vide ne demande rien.
+  const rel = (x) => B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(x) }] }, B.SCHEMA_RELECTURE);
+  assert.equal(rel({ trajets: [], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" }).ok, true);
+  assert.equal(rel({ trajets: [], tarifs: [], fiche_corrigee: false, remarques: "" }).ok, true);
+  assert.deepEqual(rel({ trajets: [], tarifs: [], fiche_corrigee: true, remarques: "" }).manque, ["fiche"]);
+  assert.deepEqual(rel({ tarifs: [], fiche_corrigee: false }).manque, ["trajets"]);
+  const c = B.demandeCorrection({ model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x" }] }] }, { content: [] }, "forme", ["trajets"]);
+  assert.match(c.messages.at(-1).content[0].text, /des champs requis manquent \(trajets\)/);
   assert.equal(B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(brochureDemoTransport()) }] }, B.SCHEMA_BROCHURE).ok, true, "la brochure fictive complète passe");
 });
 
@@ -578,4 +586,25 @@ test("retour de la migration 127 : la fonction de la 124 revient avant le retrai
   const sql = readFileSync(new URL("../docs/gestion/retour-127-trajet-imprime.sql", import.meta.url), "utf8");
   assert.ok(sql.indexOf("create or replace function brochure_ecrire_ligne") < sql.indexOf("alter table trajets drop column if exists imprime"));
   assert.ok(!/imprime/.test(sql.slice(sql.indexOf("create or replace function"), sql.indexOf("alter table trajets drop"))), "la fonction rendue n'écrit pas « imprime »");
+});
+
+test("départ avec sa précision : « 07:00 (Malaysia time) » arrive tel quel au catalogue et sur le voucher ; même heure rapprochée au réimport", () => {
+  const base = brochureDemoTransport().trajets[3];
+  const t = lu({ tarifs: [], trajets: [{ ...base, depart: "07:00 (Malaysia time)", arrivee: "15:00", lendemain: false, duree: "" }] }).brochure.trajets[0];
+  const [op] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [t] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.equal(op.valeurs.depart, "07:00 (Malaysia time)");
+  assert.equal(C.departTexte("08:00", ""), "08:00");
+  // Réimport : le trajet du catalogue « 07:00 (Malaysia time) » est reconnu, pas recréé.
+  const existant = { id: "m1", partenaire_id: PART, actif: true, de: t.de, vers: t.vers, mode: t.mode, depart: "07:00 (Malaysia time)", arrivee: "15:00", duree: "", prix_adulte: t.prix_adulte, prix_enfant: null, periode: "", fenetres: [] };
+  const c = C.comparerBrochure({ tarifs: [], trajets: [t] }, { partenaireId: PART, trajets: [existant] });
+  assert.deepEqual([c.trajets[0].statut, c.trajets[0].cible && c.trajets[0].cible.id], ["inchange", "m1"]);
+  // Le voucher imprime le départ tel qu'au catalogue.
+  const REGL = { emetteur: { nom: "Agence test", adresse: "", telephone: "+66 00" }, apparence: {}, voucher: {}, devise: "THB" };
+  const r = { id: "R1", dossier_id: "D1", entite_id: "E", libelle: "Koh Lanta → Kuala Lumpur", date_service: "2026-12-01", heure_pickup: "06:30", lieu_pickup: "Hotel Test", personnes: { adultes: 1, enfants: 0, bebes: 0 }, statut: "confirme", montant_vente: 1950, details: {} };
+  const lignes = renderVoucher({ reservation: r, prestation: null, type: "billet", index: 1 }, { reglages: REGL, dossier: { ref: "INV-2026-099" }, client: { prenom: "Test", nom: "Client" }, resume: { total: 1950, recu: 0 }, trajet: { de: "Koh Lanta", vers: "Kuala Lumpur", depart: op.valeurs.depart, arrivee: op.valeurs.arrivee, mode: "VIP Bus/Van" } }).lignes;
+  assert.ok(lignes.some((l) => /07:00 \(Malaysia time\)/.test(l)), lignes.join("\n"));
+  // Le formulaire du trajet garde la précision quand l'heure est enregistrée.
+  const form = readFileSync(new URL("../src/gestion/js/views/trajets.mjs", import.meta.url), "utf8");
+  assert.match(form, /const departSaisi = \(\) => \(depart\.value \? \[depart\.value, precisionDepart\]\.filter\(Boolean\)\.join\(" "\) : ""\);/);
+  assert.match(form, /depart: departSaisi\(\)/);
 });

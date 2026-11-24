@@ -156,7 +156,11 @@ function formulaireTrajet(t, apres, options = {}) {
   const lieuxListe = h("datalist", { id: "f-lieux" }, lieux(etat.db.trajets).map((x) => h("option", { value: x })));
   const modes = h("datalist", { id: "f-modes" }, [...new Set(etat.db.trajets.map((x) => x.mode).filter(Boolean))].map((x) => h("option", { value: x })));
   const mode = h("input", { id: "f-mode", value: t.mode || "", list: "f-modes", placeholder: tr("Speedboat, ferry, minivan…") });
-  const depart = h("input", { id: "f-dep", type: "time", value: t.depart || "" });
+  // Un départ avec sa précision imprimée (« 07:00 (Malaysia time) », import de brochure) : l'heure dans le champ, la précision gardée et rappelée.
+  const dep = /^(\d{2}:\d{2})\s*(.*)$/.exec(t.depart || "") || ["", t.depart || "", ""];
+  const depart = h("input", { id: "f-dep", type: "time", value: dep[1] });
+  const precisionDepart = dep[2].trim();
+  const departSaisi = () => (depart.value ? [depart.value, precisionDepart].filter(Boolean).join(" ") : "");
   // Une arrivée du lendemain s'écrit « 06:00 (next day) » (import de brochure, 24.11.2026) : l'heure va dans le champ, le lendemain dans sa case.
   // Une arrivée écrite autrement (texte libre d'un ancien trajet) reste telle quelle tant que l'heure n'est pas changée.
   const arr = lireArrivee(t.arrivee);
@@ -181,7 +185,7 @@ function formulaireTrajet(t, apres, options = {}) {
   const actif = h("input", { id: "f-actif", type: "checkbox", checked: t.actif !== false });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const ecrit = peut("partenaires.ecrire");
-  const valeursSaisies = (fen) => ({ partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: depart.value, arrivee: arriveeSaisie(), duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : PERIODE_TOUTE[1]), fenetres: fen, actif: actif.checked });
+  const valeursSaisies = (fen) => ({ partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: departSaisi(), arrivee: arriveeSaisie(), duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : PERIODE_TOUTE[1]), fenetres: fen, actif: actif.checked });
   const messageFenetre = (lu) => ({ incomplete: tr("Fenêtre n° {n} : indiquez la date de début et la date de fin, ou retirez la ligne.", { n: lu.ligne + 1 }), ordre: tr("Fenêtre n° {n} : la date de fin est avant la date de début.", { n: lu.ligne + 1 }), date: tr("Fenêtre n° {n} : date illisible.", { n: lu.ligne + 1 }) })[lu.erreur];
   // Enregistre le trajet ; rend le trajet enregistré, ou null (erreur dite à la personne).
   const enregistrer = async () => {
@@ -211,7 +215,7 @@ function formulaireTrajet(t, apres, options = {}) {
     },
     champ(tr("Compagnie"), cie),
     h("div", { class: "grille-form" }, champ(tr("Départ"), [de, lieuxListe]), champ(tr("Arrivée"), vers), champ(tr("Type"), [mode, modes])),
-    h("div", { class: "grille-form compacte" }, champ(tr("Heure de départ"), depart), champ(tr("Heure d'arrivée"), [arrivee, h("label", { class: "case", for: lendemain.id }, lendemain, tr("Le lendemain"))]), champ(tr("Durée"), duree)),
+    h("div", { class: "grille-form compacte" }, champ(tr("Heure de départ"), depart, precisionDepart ? tr("Heure imprimée : {precision}", { precision: precisionDepart }) : null), champ(tr("Heure d'arrivée"), [arrivee, h("label", { class: "case", for: lendemain.id }, lendemain, tr("Le lendemain"))]), champ(tr("Durée"), duree)),
     // Ce que la brochure imprimait pour ce trajet (import de brochure, migration 127) : lieux et heures tels qu'imprimés, en lecture seule.
     t.imprime ? h("p", { class: "aide" }, tr("Imprimé sur la brochure : « {texte} »", { texte: t.imprime })) : null,
     h("div", { class: "grille-form compacte" }, champ(tr("Prix adulte"), ad, prixFige ? tr("Réservé à qui a le droit « Modifier les prix de vente ».") : null), champ(tr("Prix enfant"), ch), nets ? champ(tr("Net adulte"), adn) : null, nets ? champ(tr("Net enfant"), chn) : null),

@@ -4296,6 +4296,7 @@ export const EN = {
   "{n} Mo": "{n} MB",
   "{n} ko": "{n} KB",
   "Importer une brochure": "Import a brochure",
+  "Heure imprimée : {precision}": "Printed time: {precision}",
   "L'assistant a rendu une réponse illisible, même après une demande de correction : relancez la lecture.": "The assistant returned an unreadable answer, even after a request to correct it: start the reading again.",
   "Imprimé sur la brochure : « {texte} »": "Printed on the brochure: “{texte}”",
   "Importer une brochure demande les droits « Modifier les partenaires » et « Modifier les prix de vente ».": "Importing a brochure requires the “Edit partners” and “Edit selling prices” rights.",

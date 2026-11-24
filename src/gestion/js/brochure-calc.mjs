@@ -95,6 +95,8 @@ export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
 export const SUFFIXE_LENDEMAIN = " (next day)";
 // `precision` : ce que la brochure imprime après l'heure (« (Malaysia time) »), gardé tel quel.
 export const arriveeTexte = (heure, lendemain = false, precision = "") => (heure ? `${heure}${precision ? ` ${precision}` : ""}${lendemain ? SUFFIXE_LENDEMAIN : ""}` : "");
+// Le départ écrit au catalogue, avec sa précision imprimée (« 07:00 (Malaysia time) »), comme l'arrivée : le voucher l'imprime tel quel.
+export const departTexte = (heure, precision = "") => (heure ? `${heure}${precision ? ` ${precision}` : ""}` : "");
 // Ce que la brochure imprime du trajet, gardé en base (colonne « imprime », migration 127) : jamais la ligne recopiée (elle peut porter un net,
 // et trajets se lit avec le seul droit « voir les partenaires »), mais les champs utiles reconstruits : lieux et type tels qu'imprimés, heures
 // avec leur précision, prix de vente (texteSurLigne). Un nom de lieu ambigu ou corrigé garde ainsi sa trace.
@@ -190,7 +192,9 @@ export function comparerTarif(lu, cible, prestations = []) {
   return { statut: ecarts.length ? "prix_change" : "inchange", ecarts, infos };
 }
 
-const cleTrajet = (t) => `${cle(t.de)}|${cle(t.vers)}|${t.depart || ""}`;
+// L'heure de départ seule (« 07:00 » de « 07:00 (Malaysia time) ») : un départ avec sa précision au catalogue se rapproche de la même heure lue.
+const heureSeule = (h) => String(h || "").slice(0, 5);
+const cleTrajet = (t) => `${cle(t.de)}|${cle(t.vers)}|${heureSeule(t.depart)}`;
 
 export function comparerTrajet(lu, cible) {
   if (!lu.lisible) return { statut: "illisible", ecarts: [], infos: [] };
@@ -436,7 +440,7 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
         table: "trajets",
         cle: l.cle,
         libelle: `${lu.de} → ${lu.vers}, ${lu.depart}`,
-        valeurs: { partenaire_id: partenaireId, imprime: texteImprimeTrajet(lu), de: lu.de, vers: lu.vers, mode: lu.mode, depart: lu.depart, arrivee: arriveeTexte(lu.arrivee, lu.lendemain, lu.arrivee_precision), duree: lu.duree || dureeSure(lu), prix_adulte: lu.prix_adulte, prix_enfant: lu.prix_enfant, bebe: "", periode: lu.periode || (fenetres.length ? "" : PERIODE_TOUTE[1]), fenetres, actif: true, numero },
+        valeurs: { partenaire_id: partenaireId, imprime: texteImprimeTrajet(lu), de: lu.de, vers: lu.vers, mode: lu.mode, depart: departTexte(lu.depart, lu.depart_precision), arrivee: arriveeTexte(lu.arrivee, lu.lendemain, lu.arrivee_precision), duree: lu.duree || dureeSure(lu), prix_adulte: lu.prix_adulte, prix_enfant: lu.prix_enfant, bebe: "", periode: lu.periode || (fenetres.length ? "" : PERIODE_TOUTE[1]), fenetres, actif: true, numero },
         enfant: null,
         nets: avecNet ? { table: "trajets_nets", cleParent: "trajet_id", valeurs: { net_adulte: lu.net_adulte, net_enfant: lu.net_enfant } } : null,
       });
