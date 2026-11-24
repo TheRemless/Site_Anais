@@ -8,7 +8,7 @@ import { aujourdhui } from "../calc.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
 import { vide } from "./commun.mjs";
 import {
-  TEXTE_MAX, estLong, TYPES_BANDEAU, SECTIONS_SITE, nomSection, MODELES, modele, modelesDuType, texteBandeau, verifierBandeau, finProposee, ligneBandeau, etatBandeau,
+  TEXTE_MAX, estLong, longueurTexte, TYPES_BANDEAU, SECTIONS_SITE, nomSection, MODELES, modele, modelesDuType, texteBandeau, verifierBandeau, finProposee, ligneBandeau, etatBandeau,
   ETATS_BANDEAU, pagesLien, libelleLien, produitSite, produitsDeMarques, ordreAffichage,
 } from "../bandeau-calc.mjs";
 
@@ -71,12 +71,34 @@ export function noeudBandeau(b, marque, { ouvert = false } = {}) {
 function basculer(boite) {
   const ouvert = !boite.classList.contains("is-open");
   boite.classList.toggle("is-open", ouvert);
+  const p = boite.querySelector(".site-notice__text");
+  if (ouvert && TEXTES.has(p)) p.textContent = TEXTES.get(p);
+  else if (!ouvert) couper(p);
   const plus = boite.querySelector(".site-notice__more");
   plus.setAttribute("aria-expanded", String(ouvert));
   plus.textContent = ouvert ? "Less" : "More";
 }
 // Après l'affichage : « More » seulement si le texte dépasse vraiment deux lignes (comme le site). Une paire replié/ouvert dont le texte
 // tient en deux lignes ne garde que le replié, annoncé « en entier ».
+// Replié : le plus long début coupé après un mot entier qui tient en deux lignes avec « … » (même règle que cut() du site).
+const TEXTES = new WeakMap();
+function couper(p) {
+  const entier = TEXTES.get(p) ?? p.textContent;
+  TEXTES.set(p, entier);
+  p.textContent = entier;
+  if (p.scrollHeight <= p.clientHeight + 1) return false;
+  const parts = entier.split(/(\s+)/);
+  const debut = (k) => `${parts.slice(0, 2 * k - 1).join("").replace(/[\s.,;:!?\u2014\u2013-]+$/, "")}…`;
+  let lo = 0, hi = Math.ceil(parts.length / 2) - 1, meilleur = "";
+  while (lo < hi) {
+    const mil = (lo + hi + 1) >> 1;
+    p.textContent = debut(mil);
+    if (p.scrollHeight <= p.clientHeight + 1) ((lo = mil), (meilleur = p.textContent));
+    else hi = mil - 1;
+  }
+  p.textContent = meilleur || entier;
+  return true;
+}
 function ajusterApercus(zone) {
   // Écran plus large que la place : mis en page à sa vraie largeur (375 ou 1280 px, bordure comprise), puis réduit d'un bloc.
   for (const el of zone.querySelectorAll(".bsite-zoom")) {
@@ -85,7 +107,7 @@ function ajusterApercus(zone) {
   }
   for (const boite of zone.querySelectorAll(".site-notice--long:not(.is-open)")) {
     const p = boite.querySelector(".site-notice__text");
-    const deborde = p.scrollHeight > p.clientHeight + 1;
+    const deborde = couper(p);
     boite.querySelector(".site-notice__more").hidden = !deborde;
     const paire = boite.closest(".bsite-paire");
     if (!paire) continue;
@@ -165,8 +187,9 @@ function ouvrirSaisie(existant = null) {
     ? { ...structuredClone(existant), valeurs: { ...(existant.valeurs || {}) } }
     : { type: "sea", modele: "sea-today", valeurs: {}, marques: [marqueEntreprise], cible: "tout", sections: [], produits: [], lien: "aucun", lien_page: null, debut: new Date().toISOString(), fin: finProposee("sea-today", {}, ajd), fermable: true, priorite: 2, actif: true };
   let finManuelle = !!existant;
-  const zoneApercu = h("div", { "aria-live": "polite" });
-  const compteur = h("p", { class: "bsite-compteur", id: "bsite-compteur" });
+  const zoneApercu = h("div");
+  // Seul le compteur est annoncé au lecteur d'écran ; l'aperçu, recréé à chaque frappe, ne l'est pas.
+  const compteur = h("p", { class: "bsite-compteur", id: "bsite-compteur", "aria-live": "polite" });
   const repli = h("p", { class: "aide bsite-repli" });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const blocModeles = h("div", { class: "bsite-modeles", role: "radiogroup", "aria-label": tr("Modèle") });
@@ -187,9 +210,13 @@ function ouvrirSaisie(existant = null) {
     }
     fin.disabled = sansFin.checked;
     const t = texte();
-    compteur.textContent = tr("{n} caractères sur {max}", { n: t.length, max: TEXTE_MAX });
-    compteur.classList.toggle("trop", t.length > TEXTE_MAX);
-    repli.textContent = estLong(t) ? tr("Plus de 140 caractères ou plusieurs lignes : le site montre les deux premières lignes, puis « More » ouvre le reste.") : tr("Le site l'affiche en entier.");
+    // Pas de limite de saisie sur le champ : on peut coller un texte trop long, le compteur passe en rouge et l'enregistrement est refusé (trop_long).
+    const n = longueurTexte(t);
+    compteur.textContent = n > TEXTE_MAX ? tr("{n} caractères sur {max} : raccourcissez de {r}.", { n, max: TEXTE_MAX, r: n - TEXTE_MAX }) : tr("{n} caractères sur {max}", { n, max: TEXTE_MAX });
+    compteur.classList.toggle("trop", n > TEXTE_MAX);
+    repli.textContent = estLong(t)
+      ? tr("Plus de 140 caractères ou plusieurs lignes : le site montre les deux premières lignes, puis « More » ouvre le reste. Replié, un téléphone n'en montre qu'environ 60 caractères : mettez l'essentiel dans une première ligne courte, puis un retour à la ligne.")
+      : tr("Le site l'affiche en entier.");
     zoneApercu.firstElementChild?.fin?.();
     zoneApercu.replaceChildren(apercu({ ...b, texte: t }, { complet: true }));
   }
@@ -231,7 +258,7 @@ function ouvrirSaisie(existant = null) {
       }
       if (k === "date" || k === "date2") return champ(tr(CHAMPS_LIBELLES[k]), h("input", { type: "date", value: valeur(k), min: ajd, onchange: (e) => poser(k, e.target.value) }));
       if (k === "de" || k === "a") return champ(tr(CHAMPS_LIBELLES[k]), h("input", { type: "time", value: valeur(k), onchange: (e) => poser(k, e.target.value) }));
-      return champ(tr(CHAMPS_LIBELLES[k]), h("textarea", { rows: 6, maxlength: String(TEXTE_MAX), lang: "en", "aria-describedby": "bsite-compteur", oninput: (e) => ((b.valeurs.texte = e.target.value), maj()) }, valeur(k)), tr("Écrit tel quel sur le site. Retour à la ligne permis : une première ligne courte sert de titre quand le texte est replié."));
+      return champ(tr(CHAMPS_LIBELLES[k]), h("textarea", { rows: 6, lang: "en", "aria-describedby": "bsite-compteur", oninput: (e) => ((b.valeurs.texte = e.target.value), maj()) }, valeur(k)), tr("Écrit tel quel sur le site. Retour à la ligne permis : une première ligne courte sert de titre quand le texte est replié."));
     });
     blocChamps.replaceChildren(...controles);
   }

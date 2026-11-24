@@ -137,7 +137,8 @@ Lisible à 375 px : le texte passe à la ligne, le lien suit le texte, la croix 
 
 Un texte de 140 caractères au plus, sans retour à la ligne, garde exactement le rendu ci-dessus. Au-delà, ou avec un retour à la ligne :
 
-- le texte est replié sur **deux lignes** (coupe avec « … »), à toutes les largeurs ; sur mobile le bandeau ne dépasse jamais deux lignes de texte et une ligne de boutons (90 px environ, contre 130 px pour un texte de 140 caractères en un bloc) ;
+- les longueurs se comptent en **caractères visibles, en points de code** (un emoji = 1, comme `length()` de Postgres) : Gestion, la base et le site comptent de la même façon ;
+- le texte est replié sur **deux lignes**, à toutes les largeurs, coupé après un mot entier avec « … » collé au mot (jamais au milieu d'un nombre) ; sur mobile le bandeau ne dépasse jamais deux lignes de texte et une ligne de boutons (90 px environ, contre 130 px pour un texte de 140 caractères en un bloc) ;
 - dessous, une ligne avec le bouton **More** (puis **Less**) et le lien, qui reste ainsi visible replié ; le bouton n'apparaît que si le texte dépasse vraiment deux lignes (mesuré à l'affichage, à chaque changement de largeur et quand la police arrive) ;
 - `aria-expanded` et `aria-controls` sur le bouton, Entrée et Espace l'ouvrent, Échap referme et rend le focus au bouton, zone de toucher de 44 px ;
 - ouvert, le bandeau montre tout le texte (au plus la hauteur de l'écran moins l'en-tête, le texte défile alors dans le bandeau) ; jamais de texte qui défile tout seul, aucune animation ;
@@ -168,6 +169,8 @@ Transfers run as usual…</p>
 /* Bouton et lien de la hauteur d'une ligne, zone de toucher de 44 px par ::before. */
 .site-notice__more::before, .site-notice__actions .site-notice__link::before { content: ""; position: absolute; top: 50%; left: 50%; width: max(100% + 16px, 44px); height: 44px; transform: translate(-50%, -50%); }
 ```
+
+**Hauteur réservée.** Le bandeau du haut reste en position fixe sous l'en-tête, mais sa hauteur est mise dans `--notice-h` (ResizeObserver : affichage, dépli, repli, fermeture) et s'ajoute au `padding-top` du corps, à `scroll-padding-top` et aux `scroll-margin-top` et `top` collants : il ne recouvre plus le titre de la page (défaut corrigé aussi pour les textes courts). La hauteur repliée est gardée par contexte de page (`stt-notice-h:<marque>:<section>:<produit>`, avec la largeur) et posée par un petit script dans le `<head>` avant l'affichage : aucun saut dès la deuxième page vue. À la toute première page d'une visite, la hauteur n'est connue qu'à l'arrivée de la réponse.
 
 Une première ligne courte suivie d'un retour à la ligne sert de titre replié (« Christmas week », puis le détail) : pas de champ titre à part.
 

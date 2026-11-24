@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { origineAdmise, lireOrigines, ORIGINES_DEFAUT, lireDemande, dateValide, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, LIMITE_APPAREIL, LIMITE_TOTALE, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
 import { reponsePublique, bandeauPublic, choisirBandeau, enLigne, resumeWhatsApp } from "../supabase/functions/bandeau-site/calc.js";
 import { texteDemande, changements, reponseConfirmation, reponseRefus, imposerTotal, chiffresDemandes, trierDemandes, dateAnglaise, montantAnglais, cheminPage, titreOption, nomProduit } from "../src/gestion/js/demandes-site-calc.mjs";
-import { MODELES, texteBandeau, verifierBandeau, finProposee, etiquetteCarte, ligneBandeau, etatBandeau, libelleLien, pagesLien, TEXTE_MAX, TEXTE_REPLIE, estLong, nettoyerTexteLibre } from "../src/gestion/js/bandeau-calc.mjs";
+import { MODELES, texteBandeau, verifierBandeau, finProposee, etiquetteCarte, ligneBandeau, etatBandeau, libelleLien, pagesLien, TEXTE_MAX, TEXTE_REPLIE, estLong, nettoyerTexteLibre, longueurTexte } from "../src/gestion/js/bandeau-calc.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
 import { lireMessage } from "../src/gestion/js/demande-calc.mjs";
 
@@ -401,9 +401,13 @@ test("bandeau long : migration 126 (texte 600, valeurs 2500), écran avec compte
   assert.match(sql, /^begin;$/m);
   const vue = fs.readFileSync(new URL("../src/gestion/js/views/bandeau-site.mjs", import.meta.url), "utf8");
   assert.match(vue, /trop_long: N_\("Le texte fait \{n\} caractères : \{max\} au plus\."\)/);
-  assert.match(vue, /tr\("\{n\} caractères sur \{max\}", \{ n: t\.length, max: TEXTE_MAX \}\)/);
+  assert.match(vue, /tr\("\{n\} caractères sur \{max\}", \{ n, max: TEXTE_MAX \}\)/);
   assert.match(vue, /"aria-describedby": "bsite-compteur"/);
-  assert.match(vue, /maxlength: String\(TEXTE_MAX\)/);
+  assert.doesNotMatch(vue, /maxlength/, "pas de maxlength : le compteur et trop_long refusent un texte trop long, même collé");
+  assert.match(vue, /const compteur = h\("p", \{ class: "bsite-compteur", id: "bsite-compteur", "aria-live": "polite" \}\);/);
+  assert.equal((vue.match(/aria-live/g) || []).length, 1, "aria-live sur le compteur seulement, jamais sur l'aperçu");
+  assert.match(vue, /const n = longueurTexte\(t\);/, "compteur en caractères visibles (points de code)");
+  assert.match(vue, /mettez l'essentiel dans une première ligne courte, puis un retour à la ligne/);
   assert.match(vue, /apercu\(\{ \.\.\.b, texte: t \}, \{ complet: true \}\)/);
   assert.match(vue, /"data-largeur": "377"/);
   assert.match(vue, /"data-largeur": "1284"/);
@@ -417,4 +421,22 @@ test("bandeau long : migration 126 (texte 600, valeurs 2500), écran avec compte
     assert.ok(fs.existsSync(new URL(`../src/gestion/assets/fonts/${f}`, import.meta.url)), f);
     assert.match(css, new RegExp(f.replace(/\./g, "\\.")));
   }
+});
+
+test("bandeau long : caractères comptés en points de code (emoji, drapeaux), comme Postgres et le site ; refus au-delà de 600", () => {
+  const vague = "\u{1F30A}", drapeau = "\u{1F1F9}\u{1F1ED}", famille = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+  assert.equal(longueurTexte(vague), 1, "un emoji compte 1 (2 unités UTF-16)");
+  assert.equal(longueurTexte(drapeau), 2, "un drapeau : deux points de code, comme length() de Postgres");
+  assert.equal(longueurTexte(famille), 5);
+  assert.equal(longueurTexte("Café"), 4);
+  assert.equal(estLong(vague.repeat(140)), false, "140 emoji : rendu d'un bloc");
+  assert.equal(estLong(vague.repeat(141)), true);
+  const base = { modele: "libre", marques: ["secret"], cible: "tout", sections: [], produits: [], lien: "aucun", debut: "2026-11-16T01:00:00Z", fin: null };
+  assert.deepEqual(verifierBandeau({ ...base, valeurs: { texte: vague.repeat(600) } }, AJD), [], "600 emoji passent (1200 unités UTF-16)");
+  assert.deepEqual(verifierBandeau({ ...base, valeurs: { texte: vague.repeat(601) } }, AJD)[0], { code: "trop_long", longueur: 601 });
+  assert.deepEqual(verifierBandeau({ ...base, valeurs: { texte: drapeau.repeat(301) } }, AJD)[0], { code: "trop_long", longueur: 602 });
+  assert.deepEqual(verifierBandeau({ ...base, valeurs: { texte: "x".repeat(650) } }, AJD)[0], { code: "trop_long", longueur: 650 }, "texte collé de 650 caractères : refusé");
+  assert.equal(resumeWhatsApp(vague.repeat(140)), vague.repeat(140), "140 emoji : message tel quel");
+  const r = resumeWhatsApp(`${"Rough sea ".repeat(20)}${vague}`);
+  assert.ok(Array.from(r).length <= 140 && r.endsWith("…"), r);
 });

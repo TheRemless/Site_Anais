@@ -1882,6 +1882,7 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .site-notice__link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
 .site-notice__close { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -12px -12px -12px 0; font-size: 22px; line-height: 1; }
 /* Texte long (migration 126) : replié sur deux lignes, « More » ouvre le reste. Mêmes règles que le site (src/js/notice.js). */
+.site-notice--long .site-notice__inner { padding-bottom: 13px; }
 .site-notice--long .site-notice__body { min-width: 0; max-width: 80ch; }
 .site-notice--long .site-notice__text { white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .site-notice--long.is-open .site-notice__text { display: block; -webkit-line-clamp: none; line-clamp: none; }

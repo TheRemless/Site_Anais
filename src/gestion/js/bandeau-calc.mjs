@@ -9,7 +9,10 @@ import { N_ } from "./i18n.mjs";
 // le site replie le texte sur deux lignes avec un bouton « More » ; jusque-là il l'affiche comme avant, d'un bloc.
 export const TEXTE_MAX = 600;
 export const TEXTE_REPLIE = 140;
-export const estLong = (texte) => String(texte || "").length > TEXTE_REPLIE || /\n/.test(texte || "");
+// Longueur en caractères visibles, comptés en points de code : un emoji ou une lettre accentuée compte 1, comme length() de Postgres
+// (contrainte de la migration 126) et comme le site (notice.js). Un drapeau (deux points de code) compte 2, des deux côtés.
+export const longueurTexte = (texte) => Array.from(String(texte || "")).length;
+export const estLong = (texte) => longueurTexte(texte) > TEXTE_REPLIE || /\n/.test(texte || "");
 // Texte libre : retours à la ligne gardés (une ligne vide au plus), espaces en trop retirés sur chaque ligne.
 export const nettoyerTexteLibre = (t) =>
   String(t || "")
@@ -99,7 +102,7 @@ export function verifierBandeau(b, aujourdhui) {
   const erreurs = [];
   const { texte, manque } = texteBandeau(b.modele, b.valeurs, aujourdhui);
   if (manque.length) erreurs.push({ code: "champ_vide", champs: manque });
-  if (texte.length > TEXTE_MAX) erreurs.push({ code: "trop_long", longueur: texte.length });
+  if (longueurTexte(texte) > TEXTE_MAX) erreurs.push({ code: "trop_long", longueur: longueurTexte(texte) });
   if (!b.marques || !b.marques.length) erreurs.push({ code: "marque" });
   if (b.cible === "produits" && !(b.produits || []).length) erreurs.push({ code: "produits" });
   if (b.cible === "sections" && !(b.sections || []).length) erreurs.push({ code: "sections" });

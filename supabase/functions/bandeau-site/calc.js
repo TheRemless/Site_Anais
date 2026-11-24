@@ -12,10 +12,11 @@ export const enLigne = (b, maintenant) => b.actif !== false && Date.parse(b.debu
 // ligne, coupée à 140 caractères sur un mot avec « … », pour que le visiteur n'envoie pas 600 caractères qu'il n'a pas écrits.
 export function resumeWhatsApp(texte) {
   const t = String(texte || "");
-  if (t.length <= 140 && !/\n/.test(t)) return t;
+  const n = (x) => Array.from(x).length;
+  if (n(t) <= 140 && !/\n/.test(t)) return t;
   const ligne = t.split("\n")[0].trim();
-  if (ligne.length <= 140) return ligne === t ? ligne : `${ligne.replace(/[.:;,]$/, "")}…`;
-  const coupe = ligne.slice(0, 139);
+  if (n(ligne) <= 140) return ligne === t ? ligne : `${ligne.replace(/[.:;,]$/, "")}…`;
+  const coupe = Array.from(ligne).slice(0, 139).join("");
   return `${coupe.slice(0, Math.max(coupe.lastIndexOf(" "), 80)).replace(/[\s.:;,]+$/, "")}…`;
 }
 
