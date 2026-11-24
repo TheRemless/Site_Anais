@@ -271,7 +271,7 @@ function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
       const arrivee = lu.arrivee ? (lu.lendemain ? tr("arrivée {heure} le lendemain", { heure: heureArrivee }) : tr("arrivée {heure}", { heure: heureArrivee })) : "";
       const titre =
         l.genre === "trajet"
-          ? h("strong", null, `${lu.de || "?"} → ${lu.vers || "?"}, ${[lu.depart || "—", lu.depart_precision].filter(Boolean).join(" ")}`, arrivee ? ` (${arrivee}${lu.duree ? `, ${lu.duree}` : ""})` : "")
+          ? h("strong", null, `${lu.de || "?"} → ${lu.vers || "?"}, ${[lu.depart || "—", lu.depart_precision].filter(Boolean).join(" ")}`, arrivee ? ` (${arrivee}${lu.duree ? `, ${lu.duree_calculee ? tr("{duree}, calculée des heures", { duree: lu.duree }) : lu.duree}` : ""})` : "")
           : !l.cible && l.statut !== "illisible"
             ? h("input", { class: "brochure-libelle", value: l.libelle, "aria-label": tr("Libellé de la nouvelle prestation"), oninput: (e) => (l.libelle = e.target.value) })
             : h("strong", null, l.cible ? l.cible.libelle : lu.libelle);

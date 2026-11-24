@@ -307,7 +307,7 @@ test("nets écrits selon le droit « prix nets » : sans lui, aucune opération 
 
 test("relecture : une correction remplace sa ligne, une ligne signalée passe en confiance basse, une ligne oubliée s'ajoute, un index inconnu s'ignore", () => {
   const premiere = demo().brochure;
-  const ipoh = { ...premiere.trajets[4], depart: "12:00", raison: "« 12.0 AM » lu 12:00." };
+  const ipoh = { ...premiere.trajets[4], depart: "12:30", raison: "« 12.0 AM » relu 12:30." };
   const rel = {
     trajets: [
       { index: 4, statut: "corrige", raison: "Départ « 12.0 AM » : midi.", ligne: ipoh },
@@ -607,4 +607,142 @@ test("départ avec sa précision : « 07:00 (Malaysia time) » arrive tel quel a
   const form = readFileSync(new URL("../src/gestion/js/views/trajets.mjs", import.meta.url), "utf8");
   assert.match(form, /const departSaisi = \(\) => \(depart\.value \? \[depart\.value, precisionDepart\]\.filter\(Boolean\)\.join\(" "\) : ""\);/);
   assert.match(form, /depart: departSaisi\(\)/);
+});
+
+// ---- Retouches après l'essai réel du 24.11.2026 --------------------------------------------------------------------------------------
+
+test("lieux hors catalogue en casse de titre, sigles gardés ; l'imprimé reste à côté", () => {
+  const n = (x) => C.normaliserLieu(x, { lieux: C.lieuxDuCatalogue(CATALOGUE) });
+  for (const [imprime, nom] of [["TRANG", "Trang"], ["TRANG Airport", "Trang Airport"], ["TRANG TRAIN STATION", "Trang Train Station"], ["SONGKHLA", "Songkhla"], ["SATUN", "Satun"], ["PENANG", "Penang"], ["BUTTERWORTH", "Butterworth"], ["HADYAI A/P", "Hat Yai Airport"]]) {
+    assert.equal(n(imprime).nom, nom, imprime);
+    assert.equal(n(imprime).imprime, imprime);
+  }
+  assert.equal(n("TRG").nom, "TRG", "un sigle reste en capitales");
+  assert.equal(n("PP CRUISER PIER").nom, "PP Cruiser Pier");
+  assert.equal(n("LANTA").nom, "Koh Lanta", "le catalogue passe avant");
+  assert.equal(C.casseLieu("Krabi Airport"), "Krabi Airport", "un nom déjà en casse mixte ne change pas");
+});
+
+test("relecture : « Corrigé » seulement si une valeur visible change ; une forme différente (virgule, 0, durée) est ignorée", () => {
+  // Comme l'essai réel : les durées ne sont pas imprimées, la première lecture les a calculées des heures.
+  const premiere = lu({ ...brochureDemoTransport(), trajets: brochureDemoTransport().trajets.map((t) => ({ ...t, duree: "" })) }).brochure;
+  // Les 10 lignes renvoyées « corrigées » sans rien changer de visible : net_texte sans virgule, 0 pour l'enfant, durée vidée.
+  const bruit = premiere.trajets.map((t, index) => ({ index, statut: "corrige", raison: "net_texte recopié avec sa virgule ; prix et net enfant absents mis à 0 ; durée calculée retirée car elle n'est pas imprimée.", ligne: { ...t, net_texte: String(t.net_adulte || ""), prix_enfant: 0, net_enfant: 0, duree: "" } }));
+  const f = B.fusionnerRelecture(premiere, { trajets: bruit, tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  assert.equal(f.compte.corriges, 0);
+  const r = lu(f.brut).brochure;
+  assert.ok(r.trajets.every((t) => t.relecture === "" && t.relecture_raison === ""));
+  // Un vrai changement (prix) reste « corrigé », avec une raison lisible.
+  const vrai = B.fusionnerRelecture(premiere, { trajets: [{ index: 1, statut: "corrige", raison: "Prix relu 680 : le 5 était un 8.", ligne: { ...premiere.trajets[1], prix_texte: "680", prix_adulte: 680 } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  assert.equal(vrai.compte.corriges, 1);
+  assert.deepEqual([lu(vrai.brut).brochure.trajets[1].relecture, lu(vrai.brut).brochure.trajets[1].relecture_raison], ["corrige", "Prix relu 680 : le 5 était un 8."]);
+  // Un lendemain ajouté ou une heure changée comptent aussi.
+  assert.equal(B.changeVisible(premiere.trajets[1], { ...premiere.trajets[1], arrivee: "13:00 (next day)" }), true);
+  assert.equal(B.changeVisible(premiere.trajets[1], { ...premiere.trajets[1], depart: "08:30" }), true);
+  assert.equal(B.changeVisible(premiere.trajets[1], { ...premiere.trajets[1], vers: "Trang" }), true);
+});
+
+test("raisons : une phrase pour la personne, jamais un nom de champ ni une remarque sur 0, la durée ou la virgule", () => {
+  for (const t of ["net_texte recopié avec sa virgule.", "prix et net enfant absents mis à 0.", "Durée calculée retirée car elle n'est pas imprimée.", "prix_enfant = 0", "Valeur null remplacée.", "Corrigé dans le JSON."]) assert.equal(B.raisonLisible(t), "", t);
+  // De vraies phrases restent, même avec « à 0 », « virgule » ou « champ » (revue de la PR 354).
+  for (const t of ["« 12.0 AM » lu 12:00 : départ de midi.", "Net couvert par du scotch.", "Ligne coupée par le bas de la photo 2.", "Prix enfant à 0 sur la brochure : gratuit sous 4 ans.", "1,500 lu 1 500 : la virgule sépare les milliers.", "Le champ de prix est taché."]) assert.equal(B.raisonLisible(t), t, t);
+  const t = lu({ tarifs: [], trajets: [{ ...brochureDemoTransport().trajets[0], raison: "net_texte recopié avec sa virgule." }] }).brochure.trajets[0];
+  assert.equal(t.raison, "");
+  const consigne = B.promptBrochure({ fichiers: [{ media_type: "image/jpeg", data: "/9j/AAAA" }], aujourdhui: AJD }).system[0].text;
+  assert.match(consigne, /Jamais un nom de champ, ni une remarque sur les valeurs à 0, la durée ou la forme du JSON/);
+});
+
+test("durée : calculée des heures quand elle n'est pas imprimée, et dite « calculée » ; une durée imprimée reste telle quelle", () => {
+  const base = brochureDemoTransport().trajets[0];
+  const calc = lu({ tarifs: [], trajets: [{ ...base, duree: "" }] }).brochure.trajets[0];
+  assert.deepEqual([calc.duree, calc.duree_calculee], ["22 h", true]);
+  assert.deepEqual(B.validerBrochure({ tarifs: [], trajets: [calc] }).brochure.trajets[0].duree_calculee, true, "le drapeau tient au second contrôle (relecture)");
+  const imprimee = lu({ tarifs: [], trajets: [{ ...base, duree: "21 h 30" }] }).brochure.trajets[0];
+  assert.deepEqual([imprimee.duree, imprimee.duree_calculee], ["21 h 30", false]);
+  const ecran = readFileSync(new URL("../src/gestion/js/views/brochure.mjs", import.meta.url), "utf8");
+  assert.match(ecran, /lu\.duree_calculee \? tr\("\{duree\}, calculée des heures"/);
+});
+
+// ---- Revue de la PR 354 --------------------------------------------------------------------------------------------------------------
+
+test("relecture : une vraie correction de n'importe quel champ écrit ou affiché est gardée (trajets et tarifs)", () => {
+  // Une durée imprimée différente du calcul (5 h 15 pour 08:00 → 13:00) : sa correction compte.
+  const premiere = lu({ ...brochureDemoTransport(), trajets: brochureDemoTransport().trajets.map((t, i) => (i === 1 ? { ...t, duree: "5 h 15", duree_calculee: false } : t)) }).brochure;
+  const trajet = premiere.trajets[1];
+  for (const [champ, valeur] of [["mode", "VIP Bus"], ["periode", "1 Nov 2026 - 30 Apr 2027"], ["duree", "5 h 30"], ["note", "change in Satun"]]) {
+    const f = B.fusionnerRelecture(premiere, { trajets: [{ index: 1, statut: "corrige", raison: `${champ} relu.`, ligne: { ...trajet, [champ]: valeur } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+    assert.equal(f.compte.corriges, 1, champ);
+    const r = lu(f.brut).brochure.trajets[1];
+    assert.equal(r[champ], valeur, champ);
+    assert.equal(r.relecture, "corrige", champ);
+    assert.deepEqual(r.relecture_champs, [champ], champ);
+  }
+  const tarif = { imprime: "Sunset tour 1,500 / 1,100", libelle: "Sunset tour", groupe: "Sunset trips", famille: "excursion", unite: "pp", prix_texte: "1,500 / 1,100", prix_adulte: 1500, prix_enfant: 1100, age_enfant: "4-11", sur_demande: false, net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, horaires: "13:00 - 19:30", duree: "", programme: "13:00 Pick-up", inclus: "Snacks", conditions: "Weather permitting", parc: "", bateau: "", capacite: "", coupee: false, confiance: "haute", raison: "", lisible: true };
+  const avecTarif = { ...premiere, tarifs: [lu({ tarifs: [tarif], trajets: [] }).brochure.tarifs[0]] };
+  for (const [champ, valeur] of [["unite", "ad"], ["age_enfant", "3-10"], ["parc", "Park fee 200 per adult"], ["inclus", "Snacks\nSnorkel set"], ["conditions", "Min. 2 people"], ["horaires", "13:30 - 19:30"], ["programme", "13:30 Pick-up"], ["famille", "activite"], ["groupe", "Evening trips"]]) {
+    const f = B.fusionnerRelecture(avecTarif, { trajets: [], tarifs: [{ index: 0, statut: "corrige", raison: "Relu.", ligne: { ...tarif, [champ]: valeur } }], fiche_corrigee: false, fiche: {}, remarques: "" });
+    assert.equal(f.compte.corriges, 1, champ);
+    const r = lu(f.brut).brochure.tarifs[0];
+    assert.equal(r[champ], valeur, champ);
+    assert.deepEqual(r.relecture_champs, [champ], champ);
+  }
+  // Les champs de forme seuls ne comptent pas.
+  assert.deepEqual(B.champsChanges(trajet, { ...trajet, prix_texte: "650.-", net_texte: "500", imprime: "autre", raison: "x", confiance: "moyenne" }), []);
+});
+
+test("durée calculée : jamais renvoyée à la relecture, le drapeau tient après une correction ; une ligne ajoutée garde sa phrase par défaut", () => {
+  const base = brochureDemoTransport().trajets[1];
+  const premiere = lu({ ...brochureDemoTransport(), trajets: [{ ...base, duree: "" }] }).brochure;
+  assert.equal(premiere.trajets[0].duree_calculee, true);
+  assert.equal(B.extractionPourRelecture(premiere).trajets[0].duree, "", "la durée calculée ne part pas");
+  const ligneRelue = { ...B.extractionPourRelecture(premiere).trajets[0], prix_texte: "680", prix_adulte: 680 };
+  delete ligneRelue.index;
+  const f = B.fusionnerRelecture(premiere, { trajets: [{ index: 0, statut: "corrige", raison: "Prix relu.", ligne: ligneRelue }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  const r = lu(f.brut).brochure.trajets[0];
+  assert.deepEqual([r.prix_adulte, r.duree, r.duree_calculee], [680, "5 h", true]);
+  // Ligne ajoutée avec une raison technique : la phrase par défaut la remplace.
+  const ajout = B.fusionnerRelecture(premiere, { trajets: [{ index: -1, statut: "ajoute", raison: "net_texte manquant.", ligne: { ...base, depart: "16:00", arrivee: "21:00" } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  assert.equal(lu(ajout.brut).brochure.trajets.at(-1).relecture_raison, "Ligne oubliée à la première lecture.");
+});
+
+test("lignes illisibles : leur motif passe par le même filtre ; sans le droit des nets, une correction du seul net ne s'annonce pas", () => {
+  const base = brochureDemoTransport().trajets[8];
+  const t = lu({ tarifs: [], trajets: [{ ...base, illisible: "prix_adulte mis à 0 (scotch).", raison: "" }] }).brochure.trajets[0];
+  assert.equal(t.illisible, "Prix de vente à saisir.");
+  const premiere = demo().brochure;
+  const f = B.fusionnerRelecture(premiere, { trajets: [{ index: 1, statut: "corrige", raison: "Net relu 520.", ligne: { ...premiere.trajets[1], net_texte: "520", net_adulte: 520 } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  const r = lu(f.brut).brochure;
+  assert.deepEqual([r.trajets[1].relecture, r.trajets[1].relecture_champs], ["corrige", ["net_adulte"]]);
+  for (const masque of [B.masquerNets(r), C.masquerNets(r)]) assert.deepEqual([masque.trajets[1].relecture, masque.trajets[1].relecture_raison], ["", ""]);
+  // Une correction du prix reste annoncée sans le droit.
+  const g = B.fusionnerRelecture(premiere, { trajets: [{ index: 1, statut: "corrige", raison: "Prix relu.", ligne: { ...premiere.trajets[1], prix_texte: "680", prix_adulte: 680 } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  assert.equal(B.masquerNets(lu(g.brut).brochure).trajets[1].relecture, "corrige");
+});
+
+test("casse : « MCDONALD'S » → « McDonald's », « ST » → « St », « MT. » → « Mt. », sigles connus gardés", () => {
+  for (const [a, b] of [["MCDONALD'S", "McDonald's"], ["ST", "St"], ["MT. KINABALU", "Mt. Kinabalu"], ["ST JOHN PIER", "St John Pier"], ["MACDONALD HOUSE", "MacDonald House"], ["MACAU", "Macau"], ["MACKEREL BAY", "Mackerel Bay"], ["MCKINLEY", "McKinley"], ["VIP PIER", "VIP Pier"], ["KHAOSAN (BKK)", "Khaosan (BKK)"]]) {
+    assert.equal(C.casseLieu(a), b, a);
+    assert.equal(C.casseNormale(a), b, a);
+  }
+  assert.equal(C.casseNormale("KOH DEMO TRANSPORT CO., LTD."), "Koh Demo Transport Co., Ltd.");
+  assert.equal(C.casseLieu("Krabi A/P"), "Krabi A/P");
+});
+
+test("cas réel : une durée non marquée calculée (« 22 h » pour 08:00 → 06:00 le lendemain), vidée ou recopiée à la relecture, n'est pas une correction", () => {
+  // La première lecture rend « 22 h » sans drapeau, comme le modèle l'a fait sur la brochure de Lanta Transport.
+  const brut = brochureDemoTransport();
+  const premiere = lu({ ...brut, trajets: brut.trajets.map((t) => { const { duree_calculee, ...reste } = t; return reste; }) }).brochure;
+  assert.ok(premiere.trajets.every((t) => !t.duree || t.duree_calculee), "une durée égale au calcul est « calculée »");
+  for (const duree of ["", "22 h"]) {
+    const rel = premiere.trajets.map((t, index) => ({ index, statut: "corrige", raison: "", ligne: { ...t, duree: index === 0 ? duree : t.duree === "" ? "" : "" } }));
+    const f = B.fusionnerRelecture(premiere, { trajets: rel, tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+    assert.equal(f.compte.corriges, 0, `durée « ${duree} »`);
+    const r = lu(f.brut).brochure;
+    assert.ok(r.trajets.every((t) => t.relecture === ""), `aucune ligne « Corrigé » (durée « ${duree} »)`);
+    assert.deepEqual([r.trajets[0].duree, r.trajets[0].duree_calculee], ["22 h", true]);
+  }
+  // Recopiée telle quelle : le drapeau reste vrai.
+  assert.equal(lu({ tarifs: [], trajets: [{ ...premiere.trajets[0], duree: "22 h", duree_calculee: false }] }).brochure.trajets[0].duree_calculee, true);
+  assert.deepEqual(B.champsChanges(premiere.trajets[0], { ...premiere.trajets[0], duree: "" }), []);
+  assert.deepEqual(B.champsChanges(premiere.trajets[0], { ...premiere.trajets[0], duree: "22 h" }), []);
 });

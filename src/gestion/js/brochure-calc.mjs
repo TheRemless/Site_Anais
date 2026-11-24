@@ -66,6 +66,15 @@ function auCatalogue(nom, lieux) {
 // Un texte qui ressemble à une abréviation : capitales courtes (« BKK »), barre ou point (« A/P », « Nak. »).
 const abrege = (s) => /^[A-Z]{2,4}$/.test(s.trim()) || /[/.]/.test(s);
 
+// Un lieu hors du catalogue en casse de titre (retour de l'essai réel du 24.11.2026 : « TRANG TRAIN STATION », « SONGKHLA ») : chaque mot tout
+// en capitales passe en casse de titre, sauf un sigle (connu, ou 2 à 4 lettres sans voyelle : « TRG », « KL »). Les mots déjà en casse mixte
+// ne changent pas (« TRANG Airport » → « Trang Airport »). Le texte imprimé reste visible à côté.
+export function casseLieu(nom) {
+  return String(nom || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[\p{L}'’.]+/gu, casseMot);
+}
 // Le nom usuel d'un lieu imprimé. D'abord le catalogue, puis la table des abréviations (un nom ambigu y reste « à vérifier »), puis le nom proposé par la lecture (signalé « à vérifier »
 // s'il ne vient ni de l'un ni de l'autre), sinon le texte imprimé tel quel (« à vérifier » s'il a l'air abrégé).
 // Rend { nom, imprime, source: "catalogue" | "table" | "lecture" | "imprime" | "", a_verifier }.
@@ -83,12 +92,12 @@ export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
   }
   // Un nom ambigu (« Nakon », « Nakhon » : Nakhon Si Thammarat, Ratchasima, Pathom… ; « Padang » : Padang Besar ou Padang en Indonésie) est
   // proposé, jamais réécrit d'office : « à vérifier », et la ligne n'est pas cochée (revue du 24.11.2026).
-  if (table) return { nom: auCatalogue(table, lieux) || table, imprime: brut, source: "table", a_verifier: AMBIGUS.has(cle(depuis)) };
+  if (table) return { nom: auCatalogue(table, lieux) || casseLieu(table), imprime: brut, source: "table", a_verifier: AMBIGUS.has(cle(depuis)) };
   if (propose && cle(propose) !== cle(brut)) {
     const catPropose = auCatalogue(propose, lieux);
-    return catPropose ? { nom: catPropose, imprime: brut, source: "catalogue", a_verifier: false } : { nom: propose, imprime: brut, source: "lecture", a_verifier: true };
+    return catPropose ? { nom: catPropose, imprime: brut, source: "catalogue", a_verifier: false } : { nom: casseLieu(propose), imprime: brut, source: "lecture", a_verifier: true };
   }
-  return { nom: depuis, imprime: brut, source: "imprime", a_verifier: abrege(depuis) };
+  return { nom: casseLieu(depuis), imprime: brut, source: "imprime", a_verifier: abrege(depuis) };
 }
 
 // Une arrivée du lendemain s'écrit comme au catalogue : « 06:00 (next day) ». lireArrivee fait l'inverse (le formulaire des trajets, le voucher).
@@ -525,8 +534,22 @@ const SIGLES = new Set(["VIP", "ATV", "BKK", "KL", "TAT", "SUP", "THB", "KBV", "
 export function casseNormale(nom) {
   const t = String(nom || "").replace(/\s+/g, " ").trim();
   if (!t || /\p{Ll}/u.test(t)) return t;
-  // Un sigle reste en capitales : connu (SIGLES), ou de 2 à 4 lettres sans voyelle (« PP », « BKK », « TRG ») : « PP CRUISER » → « PP Cruiser ».
-  return t.replace(/\p{Lu}+/gu, (m) => (m === "LTD" ? "Ltd" : SIGLES.has(m) || (m.length >= 2 && m.length <= 4 && !/[AEIOUY]/.test(m)) ? m : m[0] + m.slice(1).toLowerCase()));
+  return t.replace(/[\p{L}'’.]+/gu, casseMot);
+}
+// Un mot tout en capitales mis en casse de titre (revues du 24.11.2026). Un sigle reste en capitales : connu (SIGLES), ou de 2 à 4 lettres sans
+// voyelle (« PP », « BKK », « TRG »). Les abréviations courantes suivent leur usage : « ST » → « St », « MT. » → « Mt. », « LTD. » → « Ltd. ».
+// Rien en capitale après une apostrophe (« MCDONALD'S » → « McDonald's ») ; « Mc » garde sa capitale intérieure, « Mac » seulement pour des noms connus.
+// Un mot qui a déjà des minuscules ne change pas.
+const ABREGES_CASSE = { LTD: "Ltd", ST: "St", MT: "Mt", MR: "Mr", MRS: "Mrs", DR: "Dr", CO: "Co" };
+// « Mac » garde sa capitale intérieure seulement pour des noms connus (« MACKEREL BAY » reste « Mackerel Bay ») ; « Mc » toujours.
+const MAC_CONNUS = { MACDONALD: "MacDonald", MACKENZIE: "MacKenzie", MACLEOD: "MacLeod", MACARTHUR: "MacArthur", MACGREGOR: "MacGregor" };
+export function casseMot(mot) {
+  const lettres = mot.replace(/[^\p{L}]/gu, "");
+  if (lettres.length < 2 || /\p{Ll}/u.test(mot) || !/\p{Lu}/u.test(mot)) return mot;
+  if (ABREGES_CASSE[lettres]) return mot.replace(lettres, ABREGES_CASSE[lettres]);
+  if (SIGLES.has(lettres) || (lettres.length <= 4 && !/[AEIOUY]/.test(lettres))) return mot;
+  if (MAC_CONNUS[lettres]) return mot.replace(lettres, MAC_CONNUS[lettres]);
+  return (mot[0] + mot.slice(1).toLowerCase()).replace(/^Mc(\p{Ll})/u, (_, c) => `Mc${c.toUpperCase()}`);
 }
 
 // Groupe et catégorie d'un nouveau partenaire, d'après ce que la brochure vend : des bus et des minivans font un transporteur (« transport »,
@@ -591,6 +614,8 @@ export function texteSurLigne(l) {
 export function masquerNets(brochure) {
   const b = brochure || {};
   const colonnes = Array.isArray(b.colonnes) ? b.colonnes : [];
-  const ligne = (l) => ({ ...l, imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
+  // Une correction de la relecture qui ne porte que sur le net ne s'annonce pas (« Corrigé à la relecture ») à qui ne voit pas les nets.
+  const netSeul = (l) => l.relecture === "corrige" && Array.isArray(l.relecture_champs) && l.relecture_champs.length > 0 && l.relecture_champs.every((k) => ["net_adulte", "net_enfant", "net_cache"].includes(k));
+  const ligne = (l) => ({ ...l, ...(netSeul(l) ? { relecture: "", relecture_raison: "", relecture_champs: [] } : {}), imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: netSeul(l) ? "" : sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
   return { ...b, colonnes: colonnes.filter((c) => c && c.contenu !== "net" && c.contenu !== "net_enfant" && !MOTS_NET.test(c.entete || "")), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: sansChiffre(b.remarques) };
 }
