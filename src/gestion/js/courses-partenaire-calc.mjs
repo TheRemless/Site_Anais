@@ -81,6 +81,7 @@ export const TH = {
   ref: "เลขที่จอง", // Référence de la réservation
   ref_partenaire: "เลขอ้างอิงของคุณ", // Votre référence
   // Notifications sur ce téléphone (migration 123, 24.11.2026).
+  reglages: "ตั้งค่า", // Réglages (mini menu de la barre : notifications, déconnexion)
   notif_activer: "เปิดการแจ้งเตือน", // Activer les notifications
   notif_aide: "แจ้งเตือนเมื่อมีงานใหม่หรืองานเปลี่ยน สรุปงานพรุ่งนี้ตอนเย็น และก่อนรับลูกค้า 1 ชั่วโมง", // Prévenir d'une course nouvelle ou modifiée, résumé des courses de demain le soir, et 1 h avant la prise en charge
   notif_actives: "เปิดการแจ้งเตือนแล้ว", // Notifications activées
@@ -99,6 +100,10 @@ export const TH = {
 
 // Ce que montre le bloc des notifications pour une situation du téléphone (rappels.mjs, situation()) : le texte, et s'il y a un bouton
 // pour activer (« inactif »), pour couper (« actif ») ou aucun (iPhone sans l'app sur l'écran d'accueil, refus, téléphone sans notifications).
+// Le bloc reste en haut de l'écran seulement tant qu'il y a quelque chose à faire : activer, ou ajouter l'app à l'écran d'accueil (iPhone).
+// Activées, refusées par le téléphone ou impossibles : il n'est que dans le menu « ตั้งค่า » (24.11.2026, Jérémy).
+export const blocNotifEnHaut = (situation) => situation === "inactif" || situation === "installer" || !situation;
+
 export function blocNotifTh(situation) {
   if (situation === "actif") return { etat: "actif", texte: TH.notif_actives, bouton: TH.notif_couper };
   if (situation === "installer") return { etat: "installer", texte: TH.notif_iphone, bouton: null };
