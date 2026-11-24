@@ -20,8 +20,18 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { STATUTS_SUIVIS, DEPOT, changement, lireSuivi, notification } from "../ameliorations/calc.js";
-import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
+import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce, avecFamilles } from "./calc.js";
 import { messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1, fonctionAbsente } from "./partenaire.js";
+
+// La famille de la prestation de chaque réservation (une prestation « frais » est un frais de parc, quel que soit son libellé : revue du
+// 24.11.2026). Rend une Map id de prestation → famille ; une erreur de lecture rend une Map vide (la règle du libellé reste).
+// deno-lint-ignore no-explicit-any
+async function famillesDe(db: any, lignes: Array<{ prestation_id?: string | null }>) {
+  const ids = [...new Set(lignes.map((r) => r.prestation_id).filter(Boolean))] as string[];
+  if (!ids.length) return new Map<string, string>();
+  const lu = await db.from("prestations").select("id, famille").in("id", ids);
+  return new Map<string, string>(lu.error ? [] : (lu.data || []).map((p: { id: string; famille: string }) => [p.id, p.famille]));
+}
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
@@ -186,8 +196,9 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
   const membres = { data: c.membres };
   const roles = { data: c.roles };
   // La veille : les services qui partent demain. Le lendemain : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
-  const reservations = await db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, lieu_pickup, date_service, libelle, partenaire_id, details").in("entite_id", retenues).or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule");
+  const reservations = await db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, lieu_pickup, date_service, libelle, partenaire_id, prestation_id, details").in("entite_id", retenues).or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule");
   if (reservations.error) throw new Error(reservations.error.message);
+  reservations.data = avecFamilles(reservations.data!, await famillesDe(db, reservations.data!));
 
   // Les dossiers des services : annulés à écarter, et l'hôtel du client quand la réservation n'a pas de lieu de pickup (même règle que la feuille du jour).
   const dossiersIds = [...new Set(reservations.data!.map((r) => r.dossier_id))];
@@ -288,9 +299,10 @@ async function servicesH1ParOrganisation(db: ReturnType<typeof createClient>, ma
   // Seules les entreprises de services (Secret, Taxi) qui ont le rappel allumé ; ZTP a le sien la veille du départ, pas un par service.
   const actives = [...new Set(reglages.data!.filter((l) => rappelAvantActif(l.valeur) && modeRappel(l.valeur) === "service").map((l) => l.entite_id))];
   if (!actives.length) return out;
-  const reservations = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").in("entite_id", actives).in("date_service", datesH1(maintenant, [...new Set([...fuseauOrg.values()])])).neq("statut", "annule");
+  const reservations = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, prestation_id, lieu_pickup, personnes, details").in("entite_id", actives).in("date_service", datesH1(maintenant, [...new Set([...fuseauOrg.values()])])).neq("statut", "annule");
   if (reservations.error) throw new Error(reservations.error.message);
   if (!reservations.data!.length) return out;
+  reservations.data = avecFamilles(reservations.data!, await famillesDe(db, reservations.data!));
   const dossiersIds = [...new Set(reservations.data!.map((r) => r.dossier_id))];
   const dossiers = await db.from("dossiers").select("id, annule, client_id").in("id", dossiersIds);
   if (dossiers.error) throw new Error(dossiers.error.message);
@@ -323,9 +335,10 @@ async function rappelForce(demande: { service_id?: string; maintenant?: string }
   const maintenant = demande.maintenant && !Number.isNaN(Date.parse(demande.maintenant)) ? Date.parse(demande.maintenant) : Date.now();
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const debut = Date.now();
-  const lue = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").eq("id", demande.service_id).maybeSingle();
+  const lue = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, prestation_id, lieu_pickup, personnes, details").eq("id", demande.service_id).maybeSingle();
   if (lue.error) return json({ erreur: lue.error.message }, 500);
   if (!lue.data) return json({ erreur: "service_introuvable" }, 404);
+  lue.data = avecFamilles([lue.data], await famillesDe(db, [lue.data]))[0];
   const ent = await db.from("entites").select("organisation_id").eq("id", lue.data.entite_id).maybeSingle();
   if (ent.error) return json({ erreur: ent.error.message }, 500);
   // Même réponse qu'un service absent : une autre organisation n'apprend pas qu'il existe.

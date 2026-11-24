@@ -137,7 +137,7 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   // Services à venir (17.11.2026, audit n° 45) : hors dossiers annulés, services annulés et frais de parc. L'heure et le lieu ne comptent que pour les jours
   // proches (`horizon_jours`), le prix, le net et la commission pour tous. Le lieu est celui de la feuille du jour : le lieu de pickup, sinon l'hôtel du client.
   const limite = aujourdhui ? plusJours(aujourdhui, regle.horizon_jours) : "9999-12-31";
-  const aVenir = (db.reservations || []).filter((r) => r.statut !== "annule" && !annules.has(r.dossier_id) && dossiers.has(r.dossier_id) && r.date_service && r.date_service >= aujourdhui && !estFraisDeParc(r));
+  const aVenir = (db.reservations || []).filter((r) => r.statut !== "annule" && !annules.has(r.dossier_id) && dossiers.has(r.dossier_id) && r.date_service && r.date_service >= aujourdhui && !estFraisDeParc(r, (db.prestations || []).find((p) => p.id === r.prestation_id) || null));
   const proches = aVenir.filter((r) => r.date_service <= limite);
   const service = (r) => ({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: `${dossiers.get(r.dossier_id).ref || ""} · ${r.libelle || ""}`, detail: [dateTexte(r.date_service), nomClient(clientDuDossier.get(r.dossier_id))].filter(Boolean).join(" · ") });
   const parDate = (a, b) => String(a.date_service).localeCompare(String(b.date_service));

@@ -1,4 +1,4 @@
-// Vérifie la migration 128 (frais de parc : un libellé qui EST un frais) sur un Postgres en mémoire : schema.sql puis toutes les migrations.
+// Vérifie la migration 128 (frais de parc : un libellé qui COMMENCE par un frais, ou la famille « frais ») sur un Postgres en mémoire : schema.sql puis toutes les migrations.
 // La même liste de cas que tests/gestion-notifications-partenaire.test.js (outil et fonction rappels). Puis : rejeu, retour en arrière, rejeu.
 //   GESTION_SQL=<repo>/docs/gestion/ node verif-frais-parc.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -32,8 +32,8 @@ ok(migrations.includes(MIG) && migrations.indexOf(MIG) > migrations.indexOf("mig
 for (const f of migrations) await db.exec(lire(f));
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
 
-const OUI = ["Koh Rok and Koh Ha, park fees", "Koh Rok park fee", "Koh Rok et Koh Ha, frais de parc", "Frais d'entrée du parc", "Frais d’entrée du parc national", "Park entrance fee", "National park fees: 4 Islands", "Entrance fee Koh Phi Phi", "Droits d'entrée Maya Bay", "Droit du parc national"];
-const NON = ["Private taxi: Hotel Test → Mu Ko Lanta National Park", "Ko Lanta National Park", "National park tour", "Fill-Feel @ Long Beach Resort → Nang Thong Bay Resort", "4 Islands", "Mangrove tour + fishing park", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)", "Private taxi: Hotel → Emerald Pool (park fees paid on site)", "Temple tour incl. entrance fee", "Private taxi with entrance fees", "Tiger Cave tour + entrance fee", "Transfer -> National park fees office"];
+const OUI = ["Frais d'entrée du parc", "Frais d’entrée du parc national", "Frais de parc Koh Rok et Koh Ha", "Park entrance fee", "Park fees Koh Rok", "National park fees: 4 Islands", "Entrance fee Koh Phi Phi", "Droits d'entrée Maya Bay", "Droit du parc national"];
+const NON = ["Private taxi: Hotel Test → Mu Ko Lanta National Park", "Ko Lanta National Park", "National park tour", "Fill-Feel @ Long Beach Resort → Nang Thong Bay Resort", "4 Islands", "Mangrove tour + fishing park", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)", "Private taxi: Hotel → Emerald Pool (park fees paid on site)", "Temple tour incl. entrance fee", "Private taxi with entrance fees", "Tiger Cave tour + entrance fee", "Transfer -> National park fees office", "Private taxi to Emerald Pool and entrance fee", "Taxi Hotel - Tiger Cave Temple, entrance fee", "Koh Rok park fee", "Koh Rok and Koh Ha, park fees", "Koh Rok et Koh Ha, frais de parc"];
 const est = async (l) => (await un("select frais_de_parc_libelle($1) as f", [l])).f;
 const fautesOui = [];
 for (const l of OUI) if ((await est(l)) !== true) fautesOui.push(l);
@@ -46,7 +46,7 @@ const corps = (await un("select prosrc from pg_proc where proname = 'partenaire_
 ok(/frais_de_parc_libelle\(r\.libelle\)/.test(corps) && /coalesce\(p\.famille, ''\) <> 'frais'/.test(corps), "partenaire_notif_courses utilise la règle et garde la famille « frais »");
 
 await db.exec(lire(MIG));
-ok((await est("Koh Rok park fee")) === true, "la migration 128 se rejoue sans effet");
+ok((await est("Park fee Koh Rok")) === true && (await est("Koh Rok park fee")) === false, "la migration 128 se rejoue sans effet");
 await db.exec(lire("retour-128-frais-parc-libelle.sql"));
 ok(!(await un("select count(*)::int n from pg_proc where proname = 'frais_de_parc_libelle'")).n && /~\*/.test((await un("select prosrc from pg_proc where proname = 'partenaire_notif_courses'")).prosrc), "retour : la fonction de la 125 revient, l'aide est retirée");
 await db.exec(lire(MIG));

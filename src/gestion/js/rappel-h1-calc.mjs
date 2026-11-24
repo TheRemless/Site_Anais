@@ -2,7 +2,7 @@
 // Heure et début d'un service (recopie de supabase/functions/rappels/calc.js, un test vérifie l'accord), services des deux prochaines heures,
 // texte du rappel au client (prêt à copier, jamais envoyé seul) et détails utiles pour le partenaire. Rien n'est écrit pour le partenaire
 // (Jérémy, 14.11.2026 : Anaïs lui écrit elle-même) : seulement son nom, son téléphone et ce qu'il faut lui dire.
-import { personnesTexte, consigneCheckinFiche, notePasseport, fraisDeParc, typeVoucher, estFraisDeParc } from "./operations-calc.mjs";
+import { personnesTexte, consigneCheckinFiche, notePasseport, fraisDeParc, typeVoucher, estFraisDeParc, fraisAvec } from "./operations-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 
 // Fuseau de chaque organisation (organisations.fuseau, migration 42). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
@@ -76,9 +76,10 @@ export const modeRappel = (reglages) => (["excursions", "taxi"].includes(reglage
 export const etatRappel = (r) => ({ client: ((r && r.details) || {}).rappel_client_le || null, partenaire: ((r && r.details) || {}).rappel_partenaire_le || null });
 
 // Services qui commencent dans les `heures` prochaines heures (ou ont commencé il y a moins de `apres` minutes), pas annulés, avec une heure.
-export function prochainsServices(reservations, maintenant, { heures = 2, apres = 15, ecartes = new Set(), fuseau = FUSEAU_DEFAUT } = {}) {
+export function prochainsServices(reservations, maintenant, { heures = 2, apres = 15, ecartes = new Set(), fuseau = FUSEAU_DEFAUT, prestationDe = null } = {}) {
+  const estFrais = fraisAvec(prestationDe);
   return reservations
-    .filter((r) => r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFraisDeParc(r))
+    .filter((r) => r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFrais(r))
     .map((r) => ({ reservation: r, debut: debutService(r, fuseau) }))
     .filter((x) => x.debut !== null && x.debut - maintenant <= heures * 3600000 && maintenant - x.debut <= apres * 60000)
     .map((x) => ({ ...x, minutes: Math.round((x.debut - maintenant) / 60000) }))

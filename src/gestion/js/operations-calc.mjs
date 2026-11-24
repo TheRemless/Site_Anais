@@ -44,7 +44,7 @@ export function rolesDuService(lignes, langue = "en") {
   const mots = { driver: fr ? ["conducteur", "conducteurs"] : ["driver", "drivers"], passenger: fr ? ["passager", "passagers"] : ["passenger", "passengers"] };
   return ["driver", "passenger"].filter((k) => compte[k] > 0).map((k) => `${compte[k]} ${mots[k][compte[k] > 1 ? 1 : 0]}`).join(" + ");
 }
-export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId, regleDe = null } = {}) {
+export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId, regleDe = null, prestationDe = null } = {}) {
   const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
   const groupes = new Map();
   const lignesDoc = (doc.contenu && doc.contenu.lignes) || [];
@@ -52,7 +52,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
   const base = (l) => `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}`;
   const programmes = new Set(lignesDoc.filter((x) => estLigneSupplement(x) && prefixeProgramme(nomSansEnfant(x))).map((x) => `${base(x)}|${prefixeProgramme(nomSansEnfant(x))}`));
   for (const l of lignesDoc) {
-    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id) || estFraisDeParc({ partenaire_id: l.partenaire_id, libelle: l.titre || l.libelle })) continue;
+    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id) || estFraisDeParc({ partenaire_id: l.partenaire_id, libelle: l.titre || l.libelle }, prestationDe && l.prestation_id ? prestationDe(l.prestation_id) : null)) continue;
     const prog = prefixeProgramme(nomSansEnfant(l));
     const cle = `${base(l)}|${prog && programmes.has(`${base(l)}|${prog}`) ? prog : sansAccentsMin(nomSansEnfant(l))}`;
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
@@ -259,23 +259,21 @@ export const detailsAvecEnvoi = (details, cible, date) => ({ ...(details || {}),
 
 // Frais de parc : une somme à payer sur l'île, pas un service qui part. Ni heure de pickup, ni prestataire : ils ne figurent ni dans l'agenda, ni dans la feuille
 // du jour, ni dans les alertes « pickup à compléter », et leur ligne de facture ne crée pas de réservation.
-// Le libellé EST un frais (revue du 24.11.2026) : le mot-clé ouvre ou ferme la partie principale du libellé, celle avant une parenthèse ou une
-// flèche. « Koh Rok park fee », « Frais d'entrée du parc », « National park fees: 4 Islands » sont des frais ; « Private taxi: Hotel → Tiger Cave
-// Temple (entrance fee not included) », « Temple tour incl. entrance fee » ou une course vers un parc n'en sont pas. Même motif et même découpe
-// dans supabase/functions/rappels/calc.js et la migration 128 (frais_de_parc_libelle) : un test compare les trois.
+// Le libellé EST un frais (revues du 24.11.2026) : il COMMENCE par le mot-clé, dans sa partie principale (avant une parenthèse ou une flèche).
+// « Frais d'entrée du parc », « National park fees: 4 Islands », « Entrance fee Koh Phi Phi » sont des frais. « Koh Rok park fee » ne l'est
+// plus par son libellé seul (« Private taxi to Emerald Pool and entrance fee », « Taxi Hotel - Tiger Cave Temple, entrance fee » finissent
+// aussi par le mot-clé) : un frais nommé autrement se reconnaît par la famille de sa prestation, « frais ». Même motif et même découpe dans
+// supabase/functions/rappels/calc.js et la migration 128 (frais_de_parc_libelle) : un test compare les trois.
 export const MOTIF_FRAIS_PARC = "frais (de|du) parc|frais d['’]entr[ée]e|(national )?park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)";
 const FRAIS_DEBUT = new RegExp(`^\\s*(${MOTIF_FRAIS_PARC})`, "i");
-const FRAIS_FIN = new RegExp(`(${MOTIF_FRAIS_PARC})[\\s.!]*$`, "i");
-const FRAIS_ACCOMPAGNE = new RegExp(`(incl\\.?|including|included|with|without|not|plus|avec|sans|compris|inclus|\\+)\\s*(${MOTIF_FRAIS_PARC})[\\s.!]*$`, "i");
 export const partiePrincipale = (libelle) => String(libelle || "").split(/\(|→|->/)[0].trim();
-export const libelleEstFrais = (libelle) => {
-  const p = partiePrincipale(libelle);
-  return FRAIS_DEBUT.test(p) || (FRAIS_FIN.test(p) && !FRAIS_ACCOMPAGNE.test(p));
-};
+export const libelleEstFrais = (libelle) => FRAIS_DEBUT.test(partiePrincipale(libelle));
 // Ancien nom gardé pour les imports : le motif seul (il ne suffit plus, voir libelleEstFrais).
 export const FRAIS_PARC = new RegExp(MOTIF_FRAIS_PARC, "i");
 // `prestation` (facultatif) : la prestation de la réservation ; une prestation de la famille « frais » est toujours un frais.
 export const estFraisDeParc = (r, prestation = null) => !!r && ((!!prestation && prestation.famille === "frais") || (!r.partenaire_id && libelleEstFrais(r.libelle)));
+// Le test des frais avec la prestation de chaque réservation : `prestationDe(id)` rend la prestation (ou rien).
+export const fraisAvec = (prestationDe = null) => (r) => estFraisDeParc(r, prestationDe && r && r.prestation_id ? prestationDe(r.prestation_id) : null);
 
 // Dernier jour d'un service : le retour d'une location (`details.retour_date`), sinon le jour du service. Un retour avant la prise est une erreur de saisie
 // et ne compte pas. Les étapes d'après le service (avis, commission, « en retard », rappel de 9h) se calculent sur ce jour-là, pas sur celui de la prise.
@@ -289,10 +287,11 @@ export function dateFinService(r) {
 export const locationEnCours = (r, ajd) => !!r && !!r.date_service && r.date_service < ajd && dateFinService(r) >= ajd;
 
 // `netDe(r)` (facultatif) renvoie la ligne privée de la réservation : une commission reçue ou un net payé prouvent que le service a eu lieu.
-export function agenda(reservations, ajd, ecartees = new Set(), { netDe = () => null } = {}) {
+export function agenda(reservations, ajd, ecartees = new Set(), { netDe = () => null, prestationDe = null } = {}) {
+  const estFrais = fraisAvec(prestationDe);
   const demain = ajouterJours(ajd, 1);
   const hier = ajouterJours(ajd, -1);
-  const actives = reservations.filter((r) => r.statut !== "annule" && !ecartees.has(r.dossier_id) && !estFraisDeParc(r));
+  const actives = reservations.filter((r) => r.statut !== "annule" && !ecartees.has(r.dossier_id) && !estFrais(r));
   const tri = (a, b) => (a.date_service || "").localeCompare(b.date_service || "") || (a.heure_pickup || "99").localeCompare(b.heure_pickup || "99") || a.libelle.localeCompare(b.libelle);
   return {
     aujourdhui: actives.filter((r) => r.date_service === ajd).sort(tri),
@@ -1422,11 +1421,12 @@ export function controlesVoucher(r, client = {}, type = "") {
 
 // ---- Feuille du jour ---------------------------------------------------------------------------------------------
 // Les réservations d'une date, par partenaire, pour le chauffeur ou le capitaine : heure, client, téléphone, hôtel, personnes, prestation.
-// `contexte.client(r)` renvoie le client d'une réservation, `contexte.partenaire(id)` son nom.
+// `contexte.client(r)` renvoie le client d'une réservation, `contexte.partenaire(id)` son nom, `contexte.prestation(id)` (facultatif) sa prestation.
 export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()) {
   const groupes = new Map();
+  const estFrais = fraisAvec(contexte.prestation || null);
   for (const r of reservations) {
-    if (r.date_service !== date || r.statut === "annule" || ecartees.has(r.dossier_id) || estFraisDeParc(r)) continue;
+    if (r.date_service !== date || r.statut === "annule" || ecartees.has(r.dossier_id) || estFrais(r)) continue;
     const cle = r.partenaire_id || "";
     const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, nom: (r.partenaire_id && contexte.partenaire(r.partenaire_id)) || "", lignes: [], adultes: 0, enfants: 0 };
     const c = contexte.client(r) || {};

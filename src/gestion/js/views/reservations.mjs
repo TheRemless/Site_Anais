@@ -782,7 +782,7 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
     }
   }
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
-  const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
+  const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe, prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null });
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
   const clientDuDossier = (dossier && etat.db.clients.find((c) => c.id === dossier.client_id)) || {};
   if (!nouvelles.length) {
@@ -846,7 +846,7 @@ export function sectionReservationsDossier(d, doc) {
   const rs = etat.db.reservations.filter((r) => r.dossier_id === d.id).sort((a, b) => (a.date_service || "9999").localeCompare(b.date_service || "9999"));
   const ecrit = peut("dossiers.ecrire");
   const rafraichir = () => naviguer(location.hash);
-  const manquantes = doc ? reservationsDepuisDocument(doc, { existantes: rs }).length : 0;
+  const manquantes = doc ? reservationsDepuisDocument(doc, { existantes: rs, prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null }).length : 0;
   return h(
     "section",
     null,

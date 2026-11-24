@@ -17,6 +17,8 @@ export function ouvrirFeuilleDuJour() {
   const alertes = h("div", { class: "feuille-alertes", "aria-live": "polite" });
   const corps = h("div", { class: "feuille-jour" });
   const contexte = {
+    // La prestation d'une réservation : un frais de la famille « frais » ne figure pas sur la feuille.
+    prestation: (id) => etat.db.prestations.find((p) => p.id === id) || null,
     client: (r) => {
       const d = etat.db.dossiers.find((x) => x.id === r.dossier_id);
       return d ? etat.db.clients.find((c) => c.id === d.client_id) || null : null;

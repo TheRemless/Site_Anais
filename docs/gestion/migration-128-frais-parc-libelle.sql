@@ -5,11 +5,11 @@
 -- Revue de la PR 347 : le motif de la 125 reconnaissait « entrance fees? » ou « droits d'entrée » n'importe où dans le libellé. Une course Taxi
 -- sans partenaire comme « Private taxi: Hotel → Tiger Cave Temple (entrance fee not included) » était prise pour un frais : pas de réservation
 -- depuis la facture, pas de rappel, pas de notification au chauffeur.
--- Après : frais_de_parc_libelle(libelle) ne garde que la partie principale (avant une parenthèse ou une flèche) et n'y reconnaît un frais que si le
--- mot-clé l'ouvre (« Frais d'entrée du parc », « National park fees: 4 Islands ») ou la ferme (« Koh Rok park fee », « …, frais de parc »), sans
--- « incl. », « with », « avec », « + »… juste avant. Même motif et même découpe que libelleEstFrais de l'outil (operations-calc.mjs) et de la
--- fonction rappels (calc.js) : un test compare les trois. La famille de prestation « frais » reste un frais.
-
+-- Après : frais_de_parc_libelle(libelle) ne garde que la partie principale (avant une parenthèse ou une flèche) et n'y reconnaît un frais que si
+-- elle COMMENCE par le mot-clé (« Frais d'entrée du parc », « National park fees: 4 Islands », « Entrance fee Koh Phi Phi »). Un mot-clé en fin
+-- de libellé ne compte pas (« Private taxi to Emerald Pool and entrance fee », « Taxi Hotel - Tiger Cave Temple, entrance fee » : des courses).
+-- Un frais nommé autrement (« Koh Rok park fee ») se reconnaît par la famille de sa prestation, « frais », comme avant. Même motif et même
+-- découpe que libelleEstFrais de l'outil (operations-calc.mjs) et de la fonction rappels (calc.js) : un test compare les trois.
 begin;
 
 create or replace function frais_de_parc_libelle(p_libelle text) returns boolean
@@ -17,8 +17,6 @@ language sql immutable set search_path = public as $$
   with m as (select 'frais (de|du) parc|frais d[''’]entr[ée]e|(national )?park (entrance )?fees?|entrance fees?|droits? (d[''’]entr[ée]e|(de|du) parc)'::text as motif),
   q as (select btrim(regexp_replace(coalesce(p_libelle, ''), '(\(|→|->).*$', '')) as principal)
   select q.principal ~* ('^\s*(' || m.motif || ')')
-      or (q.principal ~* ('(' || m.motif || ')[\s.!]*$')
-          and not q.principal ~* ('(incl\.?|including|included|with|without|not|plus|avec|sans|compris|inclus|\+)\s*(' || m.motif || ')[\s.!]*$'))
   from m, q
 $$;
 

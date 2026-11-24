@@ -8,8 +8,9 @@ import { TH_NOTIF, ICONE, dateTh, personnesTh, destinationTh, trajetTh, changeme
 import { entitesLisibles, destinatairesH1, rappelVeille, servicesH1, messageH1, instantLocal, FRAIS_PARC as FRAIS_PARC_FONCTION, MOTIF_FRAIS_PARC as MOTIF_FRAIS_PARC_FONCTION, libelleEstFrais as libelleEstFraisFonction } from "../supabase/functions/rappels/calc.js";
 import { FRAIS_PARC, MOTIF_FRAIS_PARC, estFraisDeParc } from "../src/gestion/js/operations-calc.mjs";
 // Les cas de la règle des frais de parc, partagés avec la vérification de la base (docs/gestion/verif-frais-parc.mjs en a la même liste).
-const FRAIS_OUI = ["Koh Rok and Koh Ha, park fees", "Koh Rok park fee", "Koh Rok et Koh Ha, frais de parc", "Frais d'entrée du parc", "Frais d’entrée du parc national", "Park entrance fee", "National park fees: 4 Islands", "Entrance fee Koh Phi Phi", "Droits d'entrée Maya Bay", "Droit du parc national"];
-const FRAIS_NON = ["Private taxi: Hotel Test → Mu Ko Lanta National Park", "Ko Lanta National Park", "National park tour", "Fill-Feel @ Long Beach Resort → Nang Thong Bay Resort", "4 Islands", "Mangrove tour + fishing park", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)", "Private taxi: Hotel → Emerald Pool (park fees paid on site)", "Temple tour incl. entrance fee", "Private taxi with entrance fees", "Tiger Cave tour + entrance fee", "Transfer -> National park fees office"];
+const FRAIS_OUI = ["Frais d'entrée du parc", "Frais d’entrée du parc national", "Frais de parc Koh Rok et Koh Ha", "Park entrance fee", "Park fees Koh Rok", "National park fees: 4 Islands", "Entrance fee Koh Phi Phi", "Droits d'entrée Maya Bay", "Droit du parc national"];
+// Les trois derniers sont des frais nommés autrement : seule la famille « frais » de leur prestation les reconnaît (revue du 24.11.2026).
+const FRAIS_NON = ["Private taxi: Hotel Test → Mu Ko Lanta National Park", "Ko Lanta National Park", "National park tour", "Fill-Feel @ Long Beach Resort → Nang Thong Bay Resort", "4 Islands", "Mangrove tour + fishing park", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)", "Private taxi: Hotel → Emerald Pool (park fees paid on site)", "Temple tour incl. entrance fee", "Private taxi with entrance fees", "Tiger Cave tour + entrance fee", "Transfer -> National park fees office", "Private taxi to Emerald Pool and entrance fee", "Taxi Hotel - Tiger Cave Temple, entrance fee", "Koh Rok park fee", "Koh Rok and Koh Ha, park fees", "Koh Rok et Koh Ha, frais de parc"];
 import * as ecran from "../src/gestion/js/courses-partenaire-calc.mjs";
 
 const SOURCE = fs.readFileSync(new URL("../supabase/functions/rappels/partenaire.js", import.meta.url), "utf8");
@@ -254,7 +255,7 @@ test("écran thaï : la vue se lit sans erreur de syntaxe (aucun nom déclaré d
   }
 });
 
-test("frais de parc : une seule règle (outil, fonction rappels, base), un libellé qui EST un frais, jamais une course qui en parle", () => {
+test("frais de parc : une seule règle (outil, fonction rappels, base), un libellé qui COMMENCE par un frais ou la famille « frais », jamais une course qui en parle", () => {
   // Même motif et même découpe dans l'outil, la fonction rappels et la base (migration 128, frais_de_parc_libelle).
   assert.equal(MOTIF_FRAIS_PARC, MOTIF_FRAIS_PARC_FONCTION);
   assert.equal(FRAIS_PARC.source, FRAIS_PARC_FONCTION.source);
@@ -273,12 +274,13 @@ test("frais de parc : une seule règle (outil, fonction rappels, base), un libel
     assert.equal(libelleEstFraisFonction(l), false, `rappels : ${l}`);
   }
   assert.equal(estFraisDeParc({ libelle: "Koh Rok park fee", partenaire_id: "p1" }), false, "un service d'un partenaire n'est jamais des frais");
-  assert.equal(estFraisDeParc({ libelle: "Koh Rok and Koh Ha", partenaire_id: null }, { famille: "frais" }), true, "la famille « frais » suffit");
+  assert.equal(estFraisDeParc({ libelle: "Koh Rok park fee", partenaire_id: null }, { famille: "frais" }), true, "la famille « frais » suffit");
+  assert.equal(estFraisDeParc({ libelle: "Koh Rok park fee", partenaire_id: "p1" }, { famille: "frais" }), true, "même chez un partenaire");
   // Les membres : une vraie course, même si elle parle d'un droit d'entrée, a son rappel une heure avant (calc.js) ; des frais n'en ont pas.
   const debut = instantLocal("Asia/Bangkok", 2026, 11, 25, 9, 30);
   const r = (id, libelle) => ({ id, entite_id: "T", dossier_id: "d", statut: "confirme", heure_pickup: "09:30", date_service: "2026-11-25", libelle, partenaire_id: null, personnes: {} });
-  const ids = servicesH1([r("course", "Private taxi: Hotel Test → Mu Ko Lanta National Park"), r("temple", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"), r("frais", "Koh Rok park fee")], debut - 58 * 60000).map((x) => x.reservation.id);
-  assert.deepEqual(ids, ["course", "temple"]);
+  const ids = servicesH1([r("course", "Private taxi: Hotel Test → Mu Ko Lanta National Park"), r("temple", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"), r("frais", "Park fee Koh Rok"), { ...r("famille", "Koh Rok park fee"), prestation_id: "pf", famille_prestation: "frais" }, r("fin", "Private taxi to Emerald Pool and entrance fee")], debut - 58 * 60000).map((x) => x.reservation.id);
+  assert.deepEqual(ids, ["course", "temple", "fin"]);
 });
 
 test("écran thaï : le bloc des notifications ne reste en haut que tant qu'il y a quelque chose à faire, sinon il est dans le menu « ตั้งค่า »", () => {

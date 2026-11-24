@@ -28,7 +28,7 @@ export function construireCopie({ brut, entites, utilisateur, aujourdhui, mainte
         return d ? (brut.clients || []).find((c) => c.id === d.client_id) || null : null;
       };
       const partenaire = (id) => (brut.partenaires || []).find((p) => p.id === id) || null;
-      const contexte = { client: clientDe, partenaire: (id) => (partenaire(id) || {}).nom || "" };
+      const contexte = { client: clientDe, partenaire: (id) => (partenaire(id) || {}).nom || "", prestation: (id) => (brut.prestations || []).find((p) => p.id === id) || null };
       return {
         id: e.id,
         nom: e.nom,

@@ -14,7 +14,7 @@ import { resteBloque } from "./agent-calc.mjs";
 import { e164 } from "./whatsapp-voucher-calc.mjs";
 import { estRetourDepart } from "./trajet-calc.mjs";
 import { nomsInterdits as nomsCommuns } from "./noms-interdits-calc.mjs";
-import { estFraisDeParc, hotelEtChambre, separerChambreLigne, remplirGabarit, gabaritsPropose } from "./operations-calc.mjs";
+import { fraisAvec, hotelEtChambre, separerChambreLigne, remplirGabarit, gabaritsPropose } from "./operations-calc.mjs";
 
 // ---- Heure ---------------------------------------------------------------------------------------------------------------------------
 // La section entre dans l'accueil à 17h, une heure avant la notification « N services demain » de la fonction « rappels », et y reste
@@ -47,10 +47,11 @@ export const joursDuPoint = (ajd, demain, heureLocale) => (Number(heureLocale) <
 
 // Les services des `jours`, hors annulés, hors dossiers annulés, hors frais de parc (une somme à payer, pas un service qui part). Ceux
 // d'aujourd'hui dont l'heure est passée (`minuteMaintenant`) n'y sont pas. Triés par jour puis en vraies heures ; sans heure, à la fin.
-export function pickupsDuPoint(reservations = [], jours = [], { ecartes = new Set(), ajd = "", minuteMaintenant = 0 } = {}) {
+export function pickupsDuPoint(reservations = [], jours = [], { ecartes = new Set(), ajd = "", minuteMaintenant = 0, prestationDe = null } = {}) {
+  const estFrais = fraisAvec(prestationDe);
   const voulus = new Set(jours);
   return (reservations || [])
-    .filter((r) => r && voulus.has(r.date_service) && r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFraisDeParc(r))
+    .filter((r) => r && voulus.has(r.date_service) && r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFrais(r))
     .filter((r) => r.date_service !== ajd || !heureNormalisee(r.heure_pickup) || minutesDe(r.heure_pickup) >= minuteMaintenant)
     .sort((a, b) => a.date_service.localeCompare(b.date_service) || minutesDe(a.heure_pickup) - minutesDe(b.heure_pickup) || String(a.libelle || "").localeCompare(String(b.libelle || "")));
 }

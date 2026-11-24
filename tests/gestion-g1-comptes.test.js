@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 import { estFraisDeParc, agenda, feuilleDuJour, reservationsDepuisDocument } from "../src/gestion/js/operations-calc.mjs";
 import { libelleClient } from "../src/gestion/js/partenaires-calc.mjs";
 
-const frais = { id: "f", dossier_id: "d", libelle: "Koh Rok et Koh Ha, frais de parc", partenaire_id: null, date_service: "2026-11-12", statut: "confirme", heure_pickup: "", personnes: { adultes: 2 } };
+const frais = { id: "f", dossier_id: "d", libelle: "Frais de parc Koh Rok et Koh Ha", partenaire_id: null, date_service: "2026-11-12", statut: "confirme", heure_pickup: "", personnes: { adultes: 2 } };
 const tour = { id: "t", dossier_id: "d", libelle: "4 Islands", partenaire_id: "p1", date_service: "2026-11-12", statut: "confirme", heure_pickup: "08:00", personnes: { adultes: 2 } };
 
 test("frais de parc : une somme à payer sur l'île, pas un service qui part", () => {
   assert.equal(estFraisDeParc(frais), true);
-  assert.equal(estFraisDeParc({ ...frais, libelle: "Koh Rok park fee" }), true);
+  assert.equal(estFraisDeParc({ ...frais, libelle: "Park fee Koh Rok" }), true);
+  // Nommé autrement, seule la famille de sa prestation le reconnaît (revue du 24.11.2026).
+  assert.equal(estFraisDeParc({ ...frais, libelle: "Koh Rok park fee" }), false);
+  assert.equal(estFraisDeParc({ ...frais, libelle: "Koh Rok park fee", prestation_id: "pf" }, { famille: "frais" }), true);
   assert.equal(estFraisDeParc(tour), false);
   assert.equal(estFraisDeParc({ ...frais, partenaire_id: "p1" }), false, "un service d'un partenaire n'est jamais pris pour des frais");
 });
@@ -24,14 +27,14 @@ test("agenda et feuille du jour : les frais de parc n'y figurent pas (pas de lig
 
 test("une ligne de frais de parc ne crée pas de réservation", () => {
   const ligne = (id, libelle, partenaire_id) => ({ id, kind: "ligne", libelle, intro: "(par personne)", unite: 400, qte: 2, prestation_id: "x" + id, partenaire_id, date_service: "2026-11-12" });
-  const r = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [ligne("1", "4 Islands", "p1"), ligne("2", "Koh Rok et Koh Ha, frais de parc", null)] } }, { uid: () => "r" });
+  const r = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [ligne("1", "4 Islands", "p1"), ligne("2", "Frais de parc Koh Rok et Koh Ha", null)] } }, { uid: () => "r" });
   assert.equal(r.length, 1);
   assert.equal(r[0].reservation.libelle, "4 Islands");
 });
 
 test("facture : une course Taxi sans partenaire qui parle d'un droit d'entrée crée sa réservation (revue de la PR 347)", () => {
   const ligne = (id, titre) => ({ id, kind: "service", libre: true, titre, libelle: titre, partenaire_id: null, qte: 1, prix: 1500, date_service: "2026-11-25" });
-  const r = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [ligne("1", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"), ligne("2", "Koh Rok park fee")] } }, { uid: () => "r" });
+  const r = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [ligne("1", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"), ligne("2", "Park fee Koh Rok")] } }, { uid: () => "r" });
   assert.deepEqual(r.map((x) => x.reservation.libelle), ["Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"]);
 });
 
@@ -47,7 +50,7 @@ import { rappelVeille } from "../supabase/functions/rappels/calc.js";
 test("rappel de 18 h : les frais de parc ne comptent pas comme un service qui part", () => {
   const rs = [
     { entite_id: "S", dossier_id: "d1", statut: "confirme", heure_pickup: "08:00", date_service: "2026-11-12", libelle: "4 Islands", partenaire_id: "p1" },
-    { entite_id: "S", dossier_id: "d1", statut: "confirme", heure_pickup: "", date_service: "2026-11-12", libelle: "Koh Rok et Koh Ha, frais de parc", partenaire_id: null },
+    { entite_id: "S", dossier_id: "d1", statut: "confirme", heure_pickup: "", date_service: "2026-11-12", libelle: "Frais de parc Koh Rok et Koh Ha", partenaire_id: null },
   ];
   const m = rappelVeille(rs, "2026-11-12", { entiteIds: null, nomEntite: () => "Secret" });
   assert.match(m.titre, /^1 service /, "un seul service demain, pas deux");
@@ -102,4 +105,26 @@ test("numéro de téléphone : une seule normalisation, +66 deviné seulement po
   assert.equal(lienWhatsApp("0041 79 123 45 67", "Hi"), "https://wa.me/41791234567?text=Hi", "plus de « wa.me/0041… »");
   assert.equal(lienWhatsApp("079 123 45 67", "Hi"), "https://wa.me/?text=Hi", "sans indicatif : WhatsApp laisse choisir le contact");
   assert.equal(lienWhatsApp("081-9789025", "x", { thaiLocal: true }), "https://wa.me/66819789025?text=x");
+});
+
+test("membres : la prestation de famille « frais » passée partout (agenda, feuille du jour, facture), même nommée « Koh Rok park fee »", async () => {
+  const { fraisAvec } = await import("../src/gestion/js/operations-calc.mjs");
+  const prestations = [{ id: "pf", famille: "frais" }, { id: "pt", famille: "excursion" }];
+  const prestationDe = (id) => prestations.find((p) => p.id === id) || null;
+  const r = (id, libelle, prestation_id) => ({ id, dossier_id: "d", libelle, partenaire_id: null, prestation_id, date_service: "2026-11-12", statut: "confirme", heure_pickup: "08:00", personnes: { adultes: 2 } });
+  const liste = [r("f", "Koh Rok park fee", "pf"), r("t", "Private taxi to Emerald Pool and entrance fee", "pt")];
+  assert.deepEqual(liste.filter((x) => !fraisAvec(prestationDe)(x)).map((x) => x.id), ["t"]);
+  const ag = agenda(liste, "2026-11-12", new Set(), { prestationDe });
+  assert.ok(!JSON.stringify(ag).includes("Koh Rok park fee") && JSON.stringify(ag).includes("Emerald Pool"));
+  const feuille = feuilleDuJour(liste, "2026-11-12", { client: () => null, partenaire: () => "", prestation: prestationDe });
+  assert.deepEqual(feuille.flatMap((g) => g.lignes.map((l) => l.reservation ? l.reservation.id : l.id)).filter(Boolean).length, 1);
+  const ligne = (id, titre, prestation_id) => ({ id, kind: "service", libre: !prestation_id, prestation_id, titre, libelle: titre, partenaire_id: null, qte: 1, prix: 100, date_service: "2026-11-12" });
+  const facture = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [ligne("1", "Koh Rok park fee", "pf"), ligne("2", "Private taxi to Emerald Pool and entrance fee", null)] } }, { uid: () => "r", prestationDe });
+  assert.deepEqual(facture.map((x) => x.reservation.libelle), ["Private taxi to Emerald Pool and entrance fee"]);
+  // Chaque appel des écrans passe la prestation.
+  const { readFileSync } = await import("node:fs");
+  const lireF = (f) => readFileSync(new URL(f, import.meta.url), "utf8");
+  for (const [f, motif] of [["../src/gestion/js/views/dashboard.mjs", /agenda\([^;]*prestationDe/], ["../src/gestion/js/views/point-soir.mjs", /pickupsDuPoint\([^;]*prestationDe/], ["../src/gestion/js/views/reservation-rappel.mjs", /prochainsServices\([^;]*prestationDe/], ["../src/gestion/js/views/feuille-jour.mjs", /prestation: \(id\) =>/], ["../src/gestion/js/feuille-hors-ligne-calc.mjs", /prestation: \(id\) =>/], ["../src/gestion/js/feuille-calc.mjs", /fraisAvec\(contexte\.prestation/], ["../src/gestion/js/a-verifier-calc.mjs", /estFraisDeParc\(r, \(db\.prestations/], ["../supabase/functions/rappels/index.ts", /avecFamilles\(\[lue\.data\]/]]) assert.match(lireF(f), motif, f);
+  assert.equal((lireF("../src/gestion/js/views/reservations.mjs").match(/reservationsDepuisDocument\([^;]*prestationDe/g) || []).length, 2);
+  assert.equal((lireF("../supabase/functions/rappels/index.ts").match(/reservations\.data = avecFamilles/g) || []).length, 2);
 });
