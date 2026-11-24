@@ -73,43 +73,65 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
 
   // Les notifications de ce téléphone (migration 123) : un bouton pour les activer, l'état « activées », ou ce qui les empêche (iPhone sans l'app
   // sur l'écran d'accueil). Même abonnement que les rappels des membres (rappels.mjs, abonner_rappels) ; les envois en thaï sont faits par la
-  // fonction « rappels ». Démonstration : le bouton se montre, rien ne s'abonne.
+  // fonction « rappels ». Couper est discret (lien, zone tactile de 44 px) et demande une confirmation en thaï.
+  // Démonstration : rien ne s'abonne, l'état est seulement joué à l'écran (pour voir les deux états et la confirmation).
   const notif = h("section", { class: "cp-notif", "aria-live": "polite" });
-  const dessinerNotif = (sit, { message = "", erreur = false, occupe = false } = {}) => {
+  const enDemo = () => etat.store.mode !== "supabase";
+  let sitDemo = "inactif";
+  const relire = async () => (enDemo() ? sitDemo : situation(etat.store));
+  const dessinerNotif = (sit, { message = "", erreur = false, occupe = false, confirmer = false } = {}) => {
     const b = blocNotifTh(sit);
-    const agir = async () => {
-      if (etat.store.mode !== "supabase") return dessinerNotif(sit, { message: TH.notif_demo });
+    const agir = async (couper) => {
       dessinerNotif(sit, { occupe: true });
       try {
-        if (b.etat === "actif") await desactiver(etat.store);
+        if (enDemo()) sitDemo = couper ? "inactif" : "actif";
+        else if (couper) await desactiver(etat.store);
         else {
           await activer(etat.store);
           await essai({ titre: TH.notif_actives, corps: TH.notif_essai }).catch(() => {});
         }
-        dessinerNotif(await situation(etat.store));
+        dessinerNotif(await relire(), { message: enDemo() ? TH.notif_demo : "" });
       } catch {
         let s2 = sit;
         try {
-          s2 = await situation(etat.store);
+          s2 = await relire();
         } catch {
           /* on garde l'état affiché */
         }
         dessinerNotif(s2, { message: s2 === "refuse" ? "" : TH.notif_erreur, erreur: s2 !== "refuse" });
       }
     };
+    const actif = b.etat === "actif";
+    const boutons = !b.bouton
+      ? null
+      : !actif
+        ? h("button", { class: "principal cp-bouton cp-notif-bouton", type: "button", disabled: occupe, onclick: () => agir(false) }, occupe ? TH.notif_en_cours : b.bouton)
+        : confirmer
+          ? h(
+              "div",
+              { class: "cp-notif-confirmer", role: "group", "aria-label": TH.notif_confirmer },
+              h("p", { class: "cp-notif-question" }, TH.notif_confirmer),
+              h(
+                "div",
+                { class: "cp-notif-choix" },
+                h("button", { class: "secondaire cp-bouton", type: "button", onclick: () => agir(true) }, TH.notif_oui_couper),
+                h("button", { class: "principal cp-bouton", type: "button", onclick: () => dessinerNotif(sit) }, TH.notif_garder)
+              )
+            )
+          : h("button", { class: "cp-notif-lien", type: "button", disabled: occupe, onclick: () => dessinerNotif(sit, { confirmer: true }) }, b.bouton);
     // append() du DOM écrirait « null » : seuls les blocs présents sont ajoutés.
     vider(notif).append(
       ...[
-        h("p", { class: `cp-notif-texte cp-notif-${b.etat}` }, b.etat === "actif" ? `${b.texte} ✓` : b.texte),
-        b.bouton ? h("button", { class: b.etat === "actif" ? "secondaire cp-bouton cp-notif-bouton" : "principal cp-bouton cp-notif-bouton", type: "button", disabled: occupe, onclick: agir }, occupe ? TH.notif_en_cours : b.bouton) : null,
+        h("p", { class: `cp-notif-texte cp-notif-${b.etat}` }, actif ? `${b.texte} ✓` : b.texte),
+        boutons,
         message ? h("p", { class: erreur ? "cp-msg erreur" : "cp-msg", role: erreur ? "alert" : "status" }, message) : null,
       ].filter(Boolean)
     );
+    if (confirmer) notif.querySelector(".cp-notif-choix .principal")?.focus();
   };
   const lireNotif = async () => {
-    if (etat.store.mode !== "supabase") return dessinerNotif("inactif");
     try {
-      dessinerNotif(await situation(etat.store));
+      dessinerNotif(await relire());
     } catch {
       dessinerNotif("indisponible");
     }

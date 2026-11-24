@@ -1,6 +1,7 @@
 // Notifications du partenaire chauffeur (Mr. Brown, VIP Taxi Lanta, migration 123), en thaï. Logique pure : la fonction « rappels » et les tests.
 // Trois notifications, sur les seules courses de partenaire_notif_courses() (la règle de son écran, partenaire_courses_de en base) :
-//   1. une course nouvelle, modifiée ou annulée (rendue par partenaire_notifs_changements(), qui regroupe une rafale de changements) ;
+//   1. une course nouvelle, modifiée, annulée ou qui ne lui est plus confiée (rendue par partenaire_notifs_changements(), qui regroupe une
+//      rafale de changements) ;
 //   2. le soir, à l'heure de la veille de l'entreprise Taxi, ses courses de demain : heure et trajet, sans nom de client ;
 //   3. une heure avant chaque prise en charge, au passage « h1 » (même fenêtre que les rappels des membres).
 // Aucun net, prix, commission, note ni référence n'arrive ici : la base ne les rend pas. Le nom du client n'est écrit que dans « nouvelle course »
@@ -14,8 +15,9 @@ export const TH_NOTIF = {
   nouvelle: "งานใหม่", // Nouvelle course
   modifiee: "งานมีการเปลี่ยนแปลง", // Course modifiée
   annulee: "ยกเลิกงานแล้ว", // Course annulée
-  change: "เปลี่ยน", // Changé : (suivi de ce qui a changé)
-  c_date: "วัน", // la date
+  retiree: "งานนี้ไม่ใช่ของคุณแล้ว", // Cette course ne vous est plus confiée
+  change: "เปลี่ยน:", // Changé : (suivi de ce qui a changé, séparé par des virgules)
+  c_date: "วันที่", // la date
   c_heure: "เวลารับ", // l'heure de prise en charge
   c_pickup: "จุดรับ", // le lieu de prise en charge
   c_dropoff: "จุดส่ง", // la destination
@@ -63,6 +65,10 @@ export function trajetTh(c = {}) {
 const heureTh = (c) => texte(c.heure) || TH_NOTIF.sans_heure;
 const quand = (c) => [dateTh(c.date_service), heureTh(c)].filter(Boolean).join(" ");
 const URL_ECRAN = "/gestion/#/";
+// L'icône de VIP Taxi Lanta (copie de celle du site /taxi/, images/taxi/apple-touch-icon.png, 180 px), servie avec l'outil : il reconnaît
+// d'un coup d'œil d'où vient la notification.
+export const ICONE = "/gestion/assets/vip-taxi-180.png";
+const avecIcone = (m) => ({ ...m, icone: ICONE });
 
 // Ce qui a changé entre la dernière notification et maintenant : les libellés, dans l'ordre de la course.
 export function changements(avant = {}, apres = {}) {
@@ -82,14 +88,19 @@ export function messageChangement(n) {
   const c = (n && n.apercu) || {};
   const id = (n && n.reservation_id) || c.id || "";
   const base = [trajetTh(c), personnesTh(c)].filter(Boolean).join(" · ");
-  if (n.genre === "annulee") return { titre: `${TH_NOTIF.annulee} · ${quand(c)}`, corps: base, tag: `p-course-${id}`, url: URL_ECRAN };
+  // Même tag pour toute la vie de la course : la dernière notification remplace la précédente sur le téléphone. Le service worker la fait
+  // sonner de nouveau (renotify, tags « p- ») : une annulation n'arrive jamais en silence.
+  const tag = `p-course-${id}`;
+  if (n.genre === "annulee") return avecIcone({ titre: `${TH_NOTIF.annulee} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
+  // Sortie de sa liste sans annulation (autre fiche, autre entreprise, supprimée) : ce qu'il avait vu, rien sur le pourquoi.
+  if (n.genre === "retiree") return avecIcone({ titre: `${TH_NOTIF.retiree} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
   if (n.genre === "modifiee") {
     const quoi = changements(n.apercu_avant, c);
-    return { titre: `${TH_NOTIF.modifiee} · ${quand(c)}`, corps: [quoi.length ? `${TH_NOTIF.change} ${quoi.join(" · ")}` : "", base].filter(Boolean).join("\n"), tag: `p-course-${id}`, url: URL_ECRAN };
+    return avecIcone({ titre: `${TH_NOTIF.modifiee} · ${quand(c)}`, corps: [quoi.length ? `${TH_NOTIF.change} ${quoi.join(", ")}` : "", base].filter(Boolean).join("\n"), tag, url: URL_ECRAN });
   }
   // Nouvelle course : le nom du client y est, comme sur son écran.
   const client = texte(c.client) ? `${TH_NOTIF.client} ${texte(c.client)}` : "";
-  return { titre: `${TH_NOTIF.nouvelle} · ${quand(c)}`, corps: [base, client].filter(Boolean).join(" · "), tag: `p-course-${id}`, url: URL_ECRAN };
+  return avecIcone({ titre: `${TH_NOTIF.nouvelle} · ${quand(c)}`, corps: [base, client].filter(Boolean).join(" · "), tag, url: URL_ECRAN });
 }
 
 // 2. Le soir : ses courses de demain, heure et trajet, sans nom de client. null s'il n'en a aucune (rien n'est envoyé).
@@ -99,7 +110,7 @@ export function messageVeillePartenaire(courses = [], demain) {
   if (!liste.length) return null;
   const lignes = liste.slice(0, VEILLE_MAX).map((c) => `${heureTh(c)} ${trajetTh(c)}`);
   if (liste.length > VEILLE_MAX) lignes.push(TH_NOTIF.veille_plus.replace("{n}", String(liste.length - VEILLE_MAX)));
-  return { titre: TH_NOTIF.veille_titre.replace("{n}", String(liste.length)), corps: lignes.join("\n"), tag: "p-veille", url: URL_ECRAN };
+  return avecIcone({ titre: TH_NOTIF.veille_titre.replace("{n}", String(liste.length)), corps: lignes.join("\n"), tag: "p-veille", url: URL_ECRAN });
 }
 
 // 3. Une heure avant : ses courses dont la prise en charge tombe dans la fenêtre du passage « h1 » (40 à 60 minutes), dans le fuseau de
@@ -113,7 +124,7 @@ export const h1Actif = (reglagesEntreprise, profil) => rappelAvantActif(reglages
 
 export function messageH1Partenaire({ course: c, minutes }) {
   const debut = minutes >= 55 && minutes <= 60 ? TH_NOTIF.h1_heure : TH_NOTIF.h1_minutes.replace("{m}", String(Math.max(0, minutes)));
-  return { titre: `${debut} · ${heureTh(c)}`, corps: [trajetTh(c), personnesTh(c)].filter(Boolean).join(" · "), tag: `p-h1-${c.id}`, url: URL_ECRAN };
+  return avecIcone({ titre: `${debut} · ${heureTh(c)}`, corps: [trajetTh(c), personnesTh(c)].filter(Boolean).join(" · "), tag: `p-h1-${c.id}`, url: URL_ECRAN });
 }
 
 // Clés des envois déjà faits (partenaires_notifs_envois) : un résumé par soir, un rappel par course et par heure de début.

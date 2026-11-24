@@ -95,7 +95,7 @@ for (const t of ["partenaires_notifs_courses", "partenaires_notifs_etat", "parte
 }
 ok(!(await commeRole("service_role", "select * from partenaires_notifs_courses")).ok, "les empreintes ne se lisent que par la fonction");
 ok((await commeRole("service_role", "select * from partenaires_notifs_envois")).ok, "la clé de service lit et marque les envois");
-ok(/for update of a/.test(lire(MIG)), "les passages concurrents sont sérialisés (for update sur partenaires_acces)");
+ok(/for no key update of a/.test(lire(MIG)), "les passages concurrents sont sérialisés (for no key update sur partenaires_acces)");
 
 // ---- Règle commune : l'écran voit exactement ce que voit la notification -----------------------------------------------------------
 let r = await essaie(u.brown, "select id from partenaire_courses() order by id");
@@ -197,11 +197,77 @@ await db.query("update reservations set statut = 'annule' where id = $1", [R.aut
 await passage();
 await vieillir();
 ok((await passage()).length === 0, "l'annulation d'une course d'une autre fiche ne lui parvient pas");
-// Une course sans partenaire confiée ensuite à l'autre fiche sort de sa liste sans notification d'annulation.
+
+// ---- Sortie de sa liste sans annulation (relecture du 24.11.2026, point B1) -------------------------------------------------------
+// Une course déjà notifiée qui ne lui est plus confiée : « retiree », avec ce qu'il avait vu. Seule la date (passée, au-delà de 60 jours) se tait.
+const sortie = async (id, quoi) => {
+  await passage();
+  await vieillir();
+  const x = await passage();
+  return x.length === 1 && x[0].genre === "retiree" && x[0].reservation_id === id && x[0].apercu.pickup === "Hotel Test A" && x[0].apercu.date_service === (quoi.date || x[0].apercu.date_service);
+};
+const notifiee = async () => {
+  const id = await course(ent.taxi, P.vip, 6);
+  await passage();
+  await vieillir();
+  const x = await passage();
+  if (!(x.length === 1 && x[0].genre === "nouvelle" && x[0].reservation_id === id)) throw new Error("course de départ non notifiée");
+  return id;
+};
 await db.query("update reservations set partenaire_id = $2 where id = $1", [R.sansPartenaire, P.autreTaxi]);
+ok(await sortie(R.sansPartenaire, { date: await jour(2) }), "course sans partenaire confiée à une autre fiche : « ne vous est plus confiée »");
+await vieillir();
+ok((await passage()).length === 0, "pas de doublon");
+await db.query("update reservations set partenaire_id = null where id = $1", [R.sansPartenaire]);
 await passage();
 await vieillir();
-ok((await passage()).length === 0 && !(await suivies()).includes(R.sansPartenaire), "course confiée à une autre fiche : oubliée, rien envoyé");
+n = await passage();
+ok(n.length === 1 && n[0].genre === "nouvelle", "revenue dans sa liste : de nouveau une course");
+R.fiche = await notifiee();
+await db.query("update reservations set partenaire_id = $2 where id = $1", [R.fiche, P.autreTaxi]);
+ok(await sortie(R.fiche, {}), "course de sa fiche confiée à une autre fiche : notifiée");
+R.secretPassee = await notifiee();
+{
+  // Déplacée dans un dossier de Secret (la course et son dossier changent d'entreprise ensemble).
+  const c = (await un("insert into clients (entite_id, prenom, nom) values ($1, 'Test', 'Secret') returning id", [ent.secret])).id;
+  const d = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'S-TEST', $2) returning id", [ent.secret, c])).id;
+  await db.query("update reservations set entite_id = $2, dossier_id = $3, partenaire_id = $4 where id = $1", [R.secretPassee, ent.secret, d, P.secret]);
+}
+ok(await sortie(R.secretPassee, {}), "course passée chez Secret : notifiée, sans rien dire de Secret");
+R.supprimee = await notifiee();
+await db.query("delete from reservations where id = $1", [R.supprimee]);
+ok(await sortie(R.supprimee, {}), "course supprimée (fiche retirée) : notifiée avec ce qu'il avait vu");
+await vieillir();
+ok((await passage()).length === 0, "et une seule fois");
+// Sorties par la date : silencieuses.
+R.loin = await notifiee();
+await db.query("update reservations set date_service = $2 where id = $1", [R.loin, await jour(70)]);
+await passage();
+await vieillir();
+ok((await passage()).length === 0 && !(await suivies()).includes(R.loin), "repoussée au-delà de 60 jours : oubliée, rien envoyé");
+R.hier = await notifiee();
+await db.query("update reservations set date_service = $2 where id = $1", [R.hier, await jour(-1)]);
+await passage();
+await vieillir();
+ok((await passage()).length === 0 && !(await suivies()).includes(R.hier), "passée : oubliée, rien envoyé");
+// Créée puis confiée à une autre fiche dans le délai : rien.
+R.vite = await course(ent.taxi, P.vip, 7);
+await passage();
+await db.query("update reservations set partenaire_id = $2 where id = $1", [R.vite, P.autreTaxi]);
+await passage();
+await vieillir();
+ok((await passage()).length === 0, "créée puis confiée à une autre fiche dans le délai : aucune notification");
+// Frais de parc : jamais dans ses notifications (même filtre que les rappels des membres).
+R.parc = await (async () => {
+  const id = await course(ent.taxi, null, 3);
+  await db.query("update reservations set libelle = 'Frais de parc test' where id = $1", [id]);
+  return id;
+})();
+await passage();
+await vieillir();
+ok((await passage()).length === 0 && !(await suivies()).includes(R.parc) && !(await db.query("select id from partenaire_notif_courses($1)", [u.brown])).rows.some((x) => x.id === R.parc), "frais de parc : ni suivis ni notifiés");
+r = await essaie(u.brown, "select id from partenaire_courses() where id = $1", [R.parc]);
+ok(r.ok && r.rows.length === 1, "… alors qu'ils restent sur son écran (rien ne change pour l'écran)");
 
 // ---- Compte désactivé, partenaire désactivé, accès retiré -------------------------------------------------------------------------
 await db.query("update profils set actif = false where user_id = $1", [u.brown]);

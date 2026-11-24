@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
         }
       }
       // Le partenaire chauffeur : ses courses de demain, en thaï, à l'heure de la veille de son entreprise (comptes à part, hors du suivi des membres).
-      let partenaires = null;
+      let partenaires: Record<string, unknown> | null = null;
       if (t === "veille" && retenues.length) {
         try {
           partenaires = await partenairesVeille(db, retenues, cible, demande);
@@ -151,7 +151,8 @@ Deno.serve(async (req) => {
       resultats.push({ organisation: org, fuseau, heure, type: t, cible, ...res, ...(erreur ? { erreur } : {}), ...(partenaires ? { partenaires } : {}) });
     }
   }
-  return json({ resultats }, resultats.some((r) => r.erreur) ? 500 : 200);
+  // Une panne du résumé du partenaire se voit aussi : statut 500 et `partenaires.erreur` dans la ligne du résultat.
+  return json({ resultats }, resultats.some((r) => r.erreur || (r.partenaires && r.partenaires.erreur)) ? 500 : 200);
 });
 
 // Envoie les rappels d'un type pour une date cible, pour les entreprises `retenues`, et renvoie les comptes. Lève une erreur si la base répond mal : l'appelant la note.
@@ -243,8 +244,10 @@ async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
   } catch (err) {
     const erreur = String((err && err.message) || err).slice(0, 300);
     // Panne avant de savoir quelle organisation est concernée : pas de ligne de suivi (elle serait chez un client au hasard), le journal de la fonction la garde.
+    // Le passage du partenaire chauffeur part quand même (il lit ses courses par ses propres fonctions), puis la réponse dit la panne.
     console.error("rappel h1 :", erreur);
-    return json({ type: "h1", ...total, erreur }, 500);
+    const partenaires = await partenairesH1Protege(db, maintenant, demande);
+    return json({ type: "h1", ...total, erreur, partenaires }, 500);
   }
   for (const [org, { fuseau, services, dossiers }] of parOrganisation) {
     const debut = Date.now();
@@ -259,16 +262,11 @@ async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
     for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += res[k];
     if (erreur) erreurs.push(erreur);
   }
-  // Le partenaire chauffeur, après les membres et à part : ses courses changées et le rappel d'une heure avant.
-  let partenaires: Record<string, unknown>;
-  try {
-    partenaires = await partenairesH1(db, maintenant, demande);
-  } catch (err) {
-    partenaires = { erreur: String((err && err.message) || err).slice(0, 300) };
-    console.error("notifications du partenaire :", partenaires.erreur);
-  }
+  // Le partenaire chauffeur, après les membres et à part : ses courses changées et le rappel d'une heure avant. Sa panne se voit (statut 500,
+  // `partenaires.erreur`) sans toucher aux envois ni au suivi des membres.
+  const partenaires = await partenairesH1Protege(db, maintenant, demande);
   const erreur = erreurs.join(" ; ").slice(0, 300);
-  return json({ type: "h1", ...total, ...(erreur ? { erreur } : {}), partenaires }, erreur ? 500 : 200);
+  return json({ type: "h1", ...total, ...(erreur ? { erreur } : {}), partenaires }, erreur || partenaires.erreur ? 500 : 200);
 }
 
 async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number, organisation: string | null, fuseau: string) {
@@ -621,6 +619,17 @@ async function envoyerAuPartenaire(db: Db, abos: Array<{ id: string; user_id: st
         compte.retires++;
       } else compte.echecs++;
     }
+  }
+}
+
+// Le passage du partenaire, qui ne lève jamais : sa panne revient dans `erreur` (journal de la fonction, statut 500 de la réponse).
+async function partenairesH1Protege(db: Db, maintenant: number, demande: { user_id?: string }): Promise<Record<string, unknown>> {
+  try {
+    return await partenairesH1(db, maintenant, demande);
+  } catch (err) {
+    const erreur = String((err && err.message) || err).slice(0, 300);
+    console.error("notifications du partenaire :", erreur);
+    return { erreur };
   }
 }
 

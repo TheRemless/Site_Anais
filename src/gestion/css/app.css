@@ -2679,6 +2679,12 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .cp-notif-installer, .cp-notif-refuse { font-weight: 600; }
 .cp-notif-bouton { align-self: stretch; min-height: 52px; }
 .cp-notif .cp-msg { min-height: 0; }
+/* Couper : un lien discret, zone tactile de 44 px quand même ; la confirmation garde deux vrais boutons. */
+.cp-notif-lien { align-self: flex-start; min-height: 44px; padding: 10px 0; background: none; border: 0; color: var(--texte-2); font-size: 15px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
+.cp-notif-lien:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+.cp-notif-question { margin: 0; font-weight: 600; }
+.cp-notif-choix { display: flex; gap: 8px; margin-top: 8px; }
+.cp-notif-choix .cp-bouton { flex: 1; min-height: 48px; }
 
 /* Sièges par type (22.11.2026) : child seats, baby seats, « Aucun siège » sur une ligne, repliés sur mobile. */
 .sieges-types { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; }

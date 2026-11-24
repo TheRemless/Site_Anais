@@ -71,11 +71,13 @@ Trois notifications en thaï, sur les seules courses de son écran (même règle
 
 | Quand | Ce qu'elle dit | Ce qu'elle ne dit jamais |
 |---|---|---|
-| Une course de sa liste est créée, ou sa date, son heure, son lieu de prise en charge, sa destination, ses personnes changent, ou elle est annulée | Date, heure, trajet, personnes ; ce qui a changé ; le nom du client seulement pour une nouvelle course | Prix, commission, net, note, référence |
+| Une course de sa liste est créée, ou sa date, son heure, son lieu de prise en charge, sa destination, ses personnes changent, ou elle est annulée, ou elle ne lui est plus confiée | Date, heure, trajet, personnes ; ce qui a changé ; le nom du client seulement pour une nouvelle course | Prix, commission, net, note, référence, et pourquoi une course lui est retirée |
 | Le soir, à l'heure de la veille de l'entreprise Taxi (Réglages, rappels, 18 h par défaut) | Nombre de courses de demain, puis l'heure et le trajet de chacune. Rien s'il n'en a aucune | Nom de client |
 | Une heure avant chaque prise en charge (passage « h1 », toutes les 5 minutes) | Heure, trajet, personnes | Nom de client |
 
-Une rafale de changements sur une course ne donne qu'une notification : elle part quand la course n'a plus bougé depuis 10 minutes (empreinte dans `partenaires_notifs_courses`). Une course créée puis annulée dans ces 10 minutes ne donne rien. Le premier passage après l'activation enregistre ses courses sans rien envoyer. Une course qui sort de sa liste sans être annulée (confiée à une autre fiche, passée) est oubliée sans notification. Une course réservée à plus de 60 jours arrive comme « nouvelle » le jour où elle entre dans sa liste.
+Une rafale de changements sur une course ne donne qu'une notification : elle part quand la course n'a plus bougé depuis 10 minutes (empreinte dans `partenaires_notifs_courses`). Une course créée puis annulée dans ces 10 minutes ne donne rien. Le premier passage après l'activation enregistre ses courses sans rien envoyer. Une course déjà notifiée qui sort de sa liste sans être annulée (confiée à une autre fiche, passée chez Secret, supprimée), alors que sa date est encore à venir, lui est annoncée à part : « งานนี้ไม่ใช่ของคุณแล้ว » (cette course ne vous est plus confiée), avec la date, l'heure et le trajet. Seules les sorties par la date restent silencieuses : course passée, ou repoussée au-delà de 60 jours. Une course réservée à plus de 60 jours arrive comme « nouvelle » le jour où elle entre dans sa liste. Les frais de parc ne sont jamais notifiés (ils restent sur son écran).
+
+Chaque notification est marquée envoyée **avant** l'envoi, dans la même transaction que la lecture : deux passages qui se chevauchent n'envoient jamais deux fois la même. En échange, un téléphone injoignable à ce moment (réseau Apple ou Google en panne) ne la reçoit pas et elle n'est pas renvoyée ; l'écran, lui, est toujours juste. Les notifications d'une même course remplacent la précédente sur le téléphone et sonnent à chaque fois, avec l'icône de VIP Taxi Lanta.
 
 ### Mise en route (Jérémy)
 
@@ -92,11 +94,11 @@ select (select count(*) from abonnements_push p where p.user_id = a.user_id) as 
 from partenaires_acces a;
 ```
 
-La réponse de la fonction (journal Supabase, passage « h1 ») porte un bloc `partenaires` : changements, rappels une heure avant, envois, échecs. Les lignes de `rappels_suivi` restent celles des membres.
+La réponse de la fonction (journal Supabase, passage « h1 ») porte un bloc `partenaires` : changements, rappels une heure avant, envois, échecs. Une panne de ce passage rend le statut 500 avec `partenaires.erreur` (visible dans les exécutions du cron), sans toucher aux envois ni à `rappels_suivi` des membres. Si la lecture des services des membres échoue, le passage du partenaire part quand même.
 
 ### Couper les notifications
 
-- Lui-même : **ปิดการแจ้งเตือน** sur son écran (retire l'abonnement de ce téléphone), ou les réglages du téléphone.
+- Lui-même : le lien discret **ปิดการแจ้งเตือน** sur son écran, puis **ปิด** pour confirmer (retire l'abonnement de ce téléphone), ou les réglages du téléphone.
 - Le rappel d'une heure avant seulement : `update profils set rappel_h1 = false where user_id = (select user_id from partenaires_acces);` (ou couper « Rappel 1 h avant » de l'entreprise Taxi, qui le coupe aussi pour l'équipe).
 - Le résumé du soir suit l'heure de la veille de l'entreprise Taxi : la couper la coupe aussi pour l'équipe.
 - Tout, tout de suite : désactiver le compte ou le partenaire (voir ci-dessous). Au passage suivant, ses empreintes sont effacées et plus rien ne part. Supprimer sa ligne `partenaires_acces` efface tout (cascade).

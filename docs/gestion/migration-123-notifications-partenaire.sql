@@ -15,12 +15,18 @@
 --    les courses d'un autre.
 -- 2. partenaire_notif_courses(user) : ses courses d'aujourd'hui et des jours suivants (sous-ensemble de partenaire_courses_de), réduites à
 --    la liste blanche des notifications : date, heure, pickup, destination, aller-retour et programme, personnes, nom du client (écrit
---    seulement dans « nouvelle course »), libellé (pour écarter les frais de parc). Jamais un net, une marge, un prix, une commission, une note,
+--    seulement dans « nouvelle course »), libellé. Les frais de parc (une somme à payer sur l'île, pas une course) n'y sont pas, même filtre
+--    que les rappels des membres (servicesH1). Jamais un net, une marge, un prix, une commission, une note,
 --    une référence de dossier. Réservée à la clé de service.
 -- 3. partenaire_notifs_changements() : compare ses courses aux empreintes gardées et rend les notifications à envoyer, en une transaction,
---    la ligne partenaires_acces du compte verrouillée (for update) : deux passages qui se chevauchent ne notifient pas deux fois.
+--    la ligne partenaires_acces du compte verrouillée (for no key update : la clé n'est pas touchée, une insertion qui la référence n'attend
+--    pas) : deux passages qui se chevauchent ne notifient pas deux fois.
 --    Le premier passage d'un compte (ou après une coupure) enregistre ses courses sans rien envoyer : jamais une avalanche à l'activation.
 --    Compte désactivé, partenaire désactivé, accès retiré ou aucun téléphone abonné : ses empreintes sont effacées, rien ne part.
+--    Une course déjà notifiée qui sort de sa liste sans être annulée (confiée à une autre fiche, passée chez Secret, supprimée), date encore
+--    dans sa fenêtre : « ne vous est plus confiée ». Seules les sorties par la date (passée, au-delà de 60 jours) restent silencieuses.
+--    Une notification est marquée envoyée AVANT l'envoi : un téléphone injoignable à ce moment ne la reçoit pas, elle n'est pas renvoyée
+--    (jamais deux fois la même, au prix d'une perdue en cas de panne).
 -- 4. partenaires_notifs_envois : une ligne par résumé de la veille et par rappel d'une heure avant envoyés (aucun double envoi, même forcé).
 
 begin;
@@ -156,7 +162,10 @@ language sql stable security definer set search_path = public as $$
     c.adultes, c.enfants, c.bebes, c.client, coalesce(c.libelle, ''), a.jour, a.entite_id
   from partenaire_acces_de(p_user) a
   cross join lateral partenaire_courses_de(p_user) c
+  join reservations r on r.id = c.id
   where c.date_service >= a.jour
+    -- Frais de parc : même règle que estFraisDeParc (supabase/functions/rappels/calc.js), sans partenaire et au libellé reconnu.
+    and not (r.partenaire_id is null and coalesce(r.libelle, '') ~* '(frais de parc|park fee|national park)')
   order by c.date_service, c.heure
 $$;
 revoke all on function partenaire_notif_courses(uuid) from public, anon, authenticated;
@@ -168,7 +177,8 @@ revoke all on function partenaire_notif_courses(uuid) from public, anon, authent
 -- ce qui a changé. Aucune table n'est lisible par l'API : seule la fonction ci-dessous y écrit.
 create table if not exists partenaires_notifs_courses (
   user_id uuid not null references partenaires_acces (user_id) on delete cascade,
-  reservation_id uuid not null references reservations (id) on delete cascade,
+  -- Pas de clé étrangère vers reservations : une course supprimée doit pouvoir lui être annoncée (« ne vous est plus confiée »).
+  reservation_id uuid not null,
   empreinte_vue text not null,
   vue_le timestamptz not null default now(),
   empreinte_envoyee text,
@@ -205,9 +215,9 @@ $$;
 revoke all on function partenaire_notif_empreinte(jsonb) from public, anon, authenticated;
 
 -- Les notifications de courses à envoyer maintenant, pour chaque compte partenaire valable qui a au moins un téléphone abonné.
--- genre : « nouvelle » (pas encore notifiée, ou rétablie après une annulation), « modifiee », « annulee ». Une course qui change encore
--- attend : elle part quand son empreinte n'a plus bougé depuis `p_delai`. Créée puis annulée dans le délai : rien ne part.
--- Une course qui sort de sa liste sans être annulée (date passée, confiée à une autre fiche, au-delà de 60 jours) est oubliée sans notification.
+-- genre : « nouvelle » (pas encore notifiée, ou revenue dans sa liste), « modifiee », « annulee », « retiree » (ne lui est plus confiée).
+-- Une course qui change encore attend : elle part quand son empreinte n'a plus bougé depuis `p_delai`. Créée puis annulée ou retirée dans le
+-- délai : rien ne part. Sortie de sa liste par la date (passée, au-delà de 60 jours) : oubliée sans notification.
 create or replace function partenaire_notifs_changements(p_delai interval default interval '10 minutes')
 returns table (user_id uuid, reservation_id uuid, genre text, apercu jsonb, apercu_avant jsonb)
 language plpgsql security definer set search_path = public as $$
@@ -218,7 +228,7 @@ declare
 begin
   -- Résumés et rappels de plus de trois jours : plus utiles pour éviter un double envoi.
   delete from partenaires_notifs_envois e where e.envoye_le < now() - interval '3 days';
-  for v_user in select a.user_id from partenaires_acces a order by a.user_id for update of a loop
+  for v_user in select a.user_id from partenaires_acces a order by a.user_id for no key update of a loop
     select * into v_acces from partenaire_acces_de(v_user);
     if v_acces.partenaire_id is null or not exists (select 1 from abonnements_push p where p.user_id = v_user) then
       -- Coupé (compte, partenaire, entreprise) ou aucun téléphone : on oublie tout. Au retour, la première prise ne notifie rien.
@@ -236,21 +246,28 @@ begin
       continue;
     end if;
 
-    -- Les courses suivies qui ne sont plus dans sa liste : annulées (course ou dossier) dans son périmètre et pas encore passées, elles
-    -- deviennent « annule » ; sinon elles sont oubliées.
+    -- Les courses suivies qui ne sont plus dans sa liste (relecture du 24.11.2026, point B1) :
+    --   * annulées (course ou dossier) dans son périmètre, date à venir : « annule » ;
+    --   * sorties autrement (confiée à une autre fiche, passée chez Secret, supprimée…), date encore dans sa fenêtre (aujourd'hui à 60 jours) :
+    --     « retire », il doit savoir qu'il ne la fait plus ;
+    --   * sorties par la date (passée, ou repoussée au-delà de 60 jours) : oubliées sans notification.
     update partenaires_notifs_courses x set empreinte_vue = 'annule', vue_le = now()
     from reservations r join dossiers d on d.id = r.dossier_id
     where x.user_id = v_user and x.reservation_id = r.id and x.empreinte_vue <> 'annule'
       and r.entite_id = v_acces.entite_id and (r.partenaire_id is null or r.partenaire_id = v_acces.partenaire_id)
       and (r.statut = 'annule' or d.annule) and r.date_service >= v_acces.jour
       and not exists (select 1 from partenaire_notif_courses(v_user) c where c.id = x.reservation_id);
+    update partenaires_notifs_courses x set empreinte_vue = 'retire', vue_le = now()
+    where x.user_id = v_user and x.empreinte_vue not in ('annule', 'retire')
+      and not exists (select 1 from partenaire_notif_courses(v_user) c where c.id = x.reservation_id)
+      and (exists (select 1 from reservations r where r.id = x.reservation_id and r.date_service between v_acces.jour and v_acces.jour + 60)
+        or (not exists (select 1 from reservations r where r.id = x.reservation_id) and (x.apercu->>'date_service')::date >= v_acces.jour));
+    -- Hors de sa liste et hors de sa fenêtre de dates : oubliée.
     delete from partenaires_notifs_courses x
     where x.user_id = v_user
       and not exists (select 1 from partenaire_notif_courses(v_user) c where c.id = x.reservation_id)
-      and not exists (
-        select 1 from reservations r join dossiers d on d.id = r.dossier_id
-        where r.id = x.reservation_id and r.entite_id = v_acces.entite_id and (r.partenaire_id is null or r.partenaire_id = v_acces.partenaire_id)
-          and (r.statut = 'annule' or d.annule) and r.date_service >= v_acces.jour);
+      and not exists (select 1 from reservations r where r.id = x.reservation_id and r.date_service between v_acces.jour and v_acces.jour + 60)
+      and not (not exists (select 1 from reservations r where r.id = x.reservation_id) and (x.apercu->>'date_service')::date >= v_acces.jour);
 
     -- Les courses de sa liste : nouvelles, ou changées depuis le dernier passage (le délai repart).
     insert into partenaires_notifs_courses as x (user_id, reservation_id, empreinte_vue, vue_le, apercu)
@@ -259,9 +276,10 @@ begin
       set empreinte_vue = excluded.empreinte_vue, apercu = excluded.apercu,
           vue_le = case when x.empreinte_vue is distinct from excluded.empreinte_vue then now() else x.vue_le end;
 
-    -- Créée puis annulée avant d'être notifiée : rien à dire.
-    update partenaires_notifs_courses x set empreinte_envoyee = 'annule', apercu_envoye = x.apercu
-    where x.user_id = v_user and x.empreinte_vue = 'annule' and x.empreinte_envoyee is null;
+    -- Jamais notifiée (ou déjà annoncée annulée ou retirée) puis annulée ou retirée : rien à dire.
+    update partenaires_notifs_courses x set empreinte_envoyee = x.empreinte_vue, apercu_envoye = x.apercu
+    where x.user_id = v_user and x.empreinte_vue in ('annule', 'retire')
+      and (x.empreinte_envoyee is null or x.empreinte_envoyee in ('annule', 'retire'));
 
     return query
     with pretes as (
@@ -274,7 +292,8 @@ begin
       returning x.reservation_id
     )
     select v_user, p.reservation_id,
-      case when p.empreinte_vue = 'annule' then 'annulee' when p.empreinte_envoyee is null or p.empreinte_envoyee = 'annule' then 'nouvelle' else 'modifiee' end,
+      case when p.empreinte_vue = 'annule' then 'annulee' when p.empreinte_vue = 'retire' then 'retiree'
+           when p.empreinte_envoyee is null or p.empreinte_envoyee in ('annule', 'retire') then 'nouvelle' else 'modifiee' end,
       p.apercu, p.apercu_envoye
     from pretes p join marquees m on m.reservation_id = p.reservation_id;
   end loop;

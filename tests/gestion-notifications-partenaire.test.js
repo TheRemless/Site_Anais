@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { TH_NOTIF, dateTh, personnesTh, destinationTh, trajetTh, changements, messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1, VEILLE_MAX } from "../supabase/functions/rappels/partenaire.js";
+import { execFileSync } from "node:child_process";
+import { TH_NOTIF, ICONE, dateTh, personnesTh, destinationTh, trajetTh, changements, messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1, VEILLE_MAX } from "../supabase/functions/rappels/partenaire.js";
 import { entitesLisibles, destinatairesH1, rappelVeille, servicesH1, messageH1, instantLocal } from "../supabase/functions/rappels/calc.js";
 import * as ecran from "../src/gestion/js/courses-partenaire-calc.mjs";
 
@@ -52,6 +53,8 @@ test("1. nouvelle course : date, heure, trajet, personnes et nom du client (déj
   assert.equal(m.corps, "Hotel Test A → Airport Test · ผู้ใหญ่ 2 · เด็ก 1 · ลูกค้า Test Client");
   assert.equal(m.tag, "p-course-r1");
   assert.equal(m.url, "/gestion/#/");
+  assert.equal(m.icone, ICONE);
+  assert.ok(fs.existsSync(new URL(`../src${ICONE}`, import.meta.url)), "l'icône de VIP Taxi Lanta est servie avec l'outil");
   sansSecret(m);
   const sansHeure = messageChangement({ reservation_id: "r1", genre: "nouvelle", apercu: course({ heure: "", pickup: "" }) });
   assert.match(sansHeure.titre, new RegExp(TH_NOTIF.sans_heure));
@@ -63,7 +66,7 @@ test("1. nouvelle course : date, heure, trajet, personnes et nom du client (déj
 test("1. course modifiée : ce qui a changé, le nouvel état, sans nom de client", () => {
   const m = messageChangement({ reservation_id: "r1", genre: "modifiee", apercu: course({ heure: "10:00", pickup: "Hotel Test C", adultes: 3 }), apercu_avant: course() });
   assert.equal(m.titre, `${TH_NOTIF.modifiee} · ${ecran.dateTh("2026-11-25")} 10:00`);
-  assert.equal(m.corps, `${TH_NOTIF.change} ${TH_NOTIF.c_heure} · ${TH_NOTIF.c_pickup} · ${TH_NOTIF.c_personnes}\nHotel Test C → Airport Test · ผู้ใหญ่ 3 · เด็ก 1`);
+  assert.equal(m.corps, "เปลี่ยน: เวลารับ, จุดรับ, จำนวนคน\nHotel Test C → Airport Test · ผู้ใหญ่ 3 · เด็ก 1");
   assert.ok(!m.corps.includes("Test Client"));
   sansSecret(m);
   assert.deepEqual(changements(course(), course({ date_service: "2026-11-26", dropoff: "Pier Test" })), [TH_NOTIF.c_date, TH_NOTIF.c_dropoff]);
@@ -78,6 +81,27 @@ test("1. course annulée : ce qu'il avait vu, sans nom de client", () => {
   assert.equal(m.corps, "Hotel Test A → Airport Test · ผู้ใหญ่ 2 · เด็ก 1");
   assert.equal(m.tag, "p-course-r1", "remplace la notification précédente de la même course sur le téléphone");
   sansSecret(m);
+});
+
+test("1. course qui ne lui est plus confiée : un texte à part, date, heure et trajet, rien sur le pourquoi", () => {
+  const m = messageChangement({ reservation_id: "r1", genre: "retiree", apercu: course(), apercu_avant: course() });
+  assert.equal(TH_NOTIF.retiree, "งานนี้ไม่ใช่ของคุณแล้ว");
+  assert.equal(m.titre, `งานนี้ไม่ใช่ของคุณแล้ว · ${ecran.dateTh("2026-11-25")} 09:30`);
+  assert.equal(m.corps, "Hotel Test A → Airport Test · ผู้ใหญ่ 2 · เด็ก 1");
+  assert.notEqual(m.titre.split(" · ")[0], TH_NOTIF.annulee);
+  assert.ok(!m.corps.includes("Test Client"));
+  sansSecret(m);
+});
+
+test("service worker : les notifications du partenaire sonnent de nouveau (renotify) et portent l'icône de Taxi, une adresse de l'outil seulement", () => {
+  const sw = fs.readFileSync(new URL("../src/gestion/sw.js", import.meta.url), "utf8");
+  assert.match(sw, /startsWith\("p-"\)/);
+  assert.match(sw, /renotify: true/);
+  const regle = /\/\^\\\/gestion\\\/assets\\\/\[\\w\.-\]\+\\\.png\$\//;
+  assert.match(sw, regle, "seule une image de /gestion/assets/ est acceptée");
+  for (const m of [messageChangement({ reservation_id: "r", genre: "nouvelle", apercu: course() }), messageVeillePartenaire([course()], "2026-11-25"), messageH1Partenaire({ course: course(), minutes: 58 })]) {
+    assert.ok(m.tag.startsWith("p-") && m.icone === ICONE);
+  }
 });
 
 test("2. résumé de la veille : nombre de courses de demain, puis chaque heure et chaque trajet, sans nom de client", () => {
@@ -141,7 +165,11 @@ test("envois des membres inchangés : le compte partenaire n'y entre jamais et n
 
 test("fonction rappels : le passage du partenaire est à part, après les membres, et ne lit ses courses que par la base", () => {
   // Une panne du passage du partenaire est attrapée : la réponse des membres et leur ligne de suivi ne changent pas.
-  assert.match(INDEX, /try \{\n\s+partenaires = await partenairesH1\(db, maintenant, demande\);\n\s+\} catch/);
+  assert.match(INDEX, /async function partenairesH1Protege[\s\S]*?try \{\n\s+return await partenairesH1\(db, maintenant, demande\);\n\s+\} catch/);
+  // Sa panne se voit : statut 500 (passage h1 et passage de la veille), même quand la lecture des services des membres a échoué avant.
+  assert.match(INDEX, /erreur \|\| partenaires\.erreur \? 500 : 200/);
+  assert.match(INDEX, /r\.partenaires && r\.partenaires\.erreur\)\) \? 500 : 200/);
+  assert.match(INDEX, /console\.error\("rappel h1 :", erreur\);\n\s+const partenaires = await partenairesH1Protege\(db, maintenant, demande\);/);
   assert.match(INDEX, /try \{\n\s+partenaires = await partenairesVeille\(db, retenues, cible, demande\);\n\s+\} catch/);
   const partie = INDEX.slice(INDEX.indexOf("// ---- Partenaire chauffeur (migration 123)"));
   assert.ok(partie.length > 1000);
@@ -166,6 +194,18 @@ test("écran thaï : le bloc des notifications selon la situation du téléphone
   assert.equal(ecran.blocNotifTh("indisponible").bouton, null);
   assert.equal(ecran.blocNotifTh(undefined).etat, "inactif");
   const css = fs.readFileSync(new URL("../src/gestion/css/app.css", import.meta.url), "utf8");
-  const regle = css.split("\n").find((l) => l.startsWith(".cp-notif-bouton"));
-  assert.ok(Number((/min-height: (\d+)px/.exec(regle) || [])[1]) >= 44, "bouton d'au moins 44 px");
+  for (const sel of [".cp-notif-bouton", ".cp-notif-lien", ".cp-notif-choix .cp-bouton"]) {
+    const regle = css.split("\n").find((l) => l.startsWith(sel + " {"));
+    assert.ok(Number((/min-height: (\d+)px/.exec(regle) || [])[1]) >= 44, `${sel} : au moins 44 px`);
+  }
+  // Couper demande une confirmation en thaï avant d'agir.
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/courses-partenaire.mjs", import.meta.url), "utf8");
+  assert.match(vue, /dessinerNotif\(sit, \{ confirmer: true \}\)/);
+  assert.match(vue, /onclick: \(\) => agir\(true\) \}, TH\.notif_oui_couper/);
+});
+
+test("écran thaï : la vue se lit sans erreur de syntaxe (aucun nom déclaré deux fois)", () => {
+  for (const f of ["../src/gestion/js/views/courses-partenaire.mjs", "../src/gestion/sw.js", "../supabase/functions/rappels/partenaire.js"]) {
+    execFileSync(process.execPath, ["--check", new URL(f, import.meta.url).pathname], { stdio: "pipe" });
+  }
 });

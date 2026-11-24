@@ -85,6 +85,9 @@ export const TH = {
   notif_aide: "แจ้งเตือนเมื่อมีงานใหม่หรืองานเปลี่ยน สรุปงานพรุ่งนี้ตอนเย็น และก่อนรับลูกค้า 1 ชั่วโมง", // Prévenir d'une course nouvelle ou modifiée, résumé des courses de demain le soir, et 1 h avant la prise en charge
   notif_actives: "เปิดการแจ้งเตือนแล้ว", // Notifications activées
   notif_couper: "ปิดการแจ้งเตือน", // Couper les notifications
+  notif_confirmer: "ปิดการแจ้งเตือนบนโทรศัพท์เครื่องนี้ใช่ไหม จะไม่รู้เมื่อมีงานใหม่หรืองานเปลี่ยน", // Couper les notifications sur ce téléphone ? Vous ne saurez plus quand une course arrive ou change
+  notif_oui_couper: "ปิด", // Couper
+  notif_garder: "ไม่ปิด", // Ne pas couper
   notif_en_cours: "กำลังเปิด…", // Activation…
   notif_erreur: "เปิดไม่ได้ ลองใหม่อีกครั้ง", // Activation impossible, réessayer
   notif_iphone: "บนไอโฟน ต้องเพิ่มแอปนี้ไปที่หน้าจอโฮมก่อน กดปุ่มแชร์ แล้วเลือก “เพิ่มไปยังหน้าจอโฮม” จากนั้นเปิดแอปจากหน้าจอโฮม", // Sur iPhone, ajouter d'abord l'app à l'écran d'accueil : bouton Partager, « Sur l'écran d'accueil », puis ouvrir l'app depuis l'écran d'accueil
