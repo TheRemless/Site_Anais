@@ -18,6 +18,7 @@ const trajet = (x) => ({
   arrivee_precision: "",
   lendemain: false,
   duree: "",
+  duree_calculee: false,
   periode: "",
   periode_debut: "",
   periode_fin: "",
@@ -107,6 +108,8 @@ export function brochureDemoTransport() {
       ligne("Sungai Kolok", "Kolok", "08:00", "16:00", "8 h", 1100, 900),
       ligne("Padang Besar", "Padang", "08:00", "15:30", "7 h 30", null, null, { lisible: false, illisible: "Prix de vente caché par du scotch.", confiance: "basse" }),
       ligne("Bangkok", "BKK", "14:00", "08:00", "18 h", 1550, 1250, { lendemain: true }),
+      // Un lieu hors table imprimé en capitales, sans durée imprimée : nom en casse de titre à l'écran, durée calculée des heures.
+      ligne("TRANG TRAIN STATION", "TRANG TRAIN STATION", "10:00", "12:30", "2 h 30", 420, 320, { duree_calculee: true }),
     ],
     remarques: "",
     relue: false,

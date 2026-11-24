@@ -66,6 +66,15 @@ function auCatalogue(nom, lieux) {
 // Un texte qui ressemble à une abréviation : capitales courtes (« BKK »), barre ou point (« A/P », « Nak. »).
 const abrege = (s) => /^[A-Z]{2,4}$/.test(s.trim()) || /[/.]/.test(s);
 
+// Un lieu hors du catalogue en casse de titre (retour de l'essai réel du 24.11.2026 : « TRANG TRAIN STATION », « SONGKHLA ») : chaque mot tout
+// en capitales passe en casse de titre, sauf un sigle (connu, ou 2 à 4 lettres sans voyelle : « TRG », « KL »). Les mots déjà en casse mixte
+// ne changent pas (« TRANG Airport » → « Trang Airport »). Le texte imprimé reste visible à côté.
+export function casseLieu(nom) {
+  return String(nom || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\p{Lu}{2,}/gu, (m) => (SIGLES.has(m) || (m.length <= 4 && !/[AEIOUY]/.test(m)) ? m : m[0] + m.slice(1).toLowerCase()));
+}
 // Le nom usuel d'un lieu imprimé. D'abord le catalogue, puis la table des abréviations (un nom ambigu y reste « à vérifier »), puis le nom proposé par la lecture (signalé « à vérifier »
 // s'il ne vient ni de l'un ni de l'autre), sinon le texte imprimé tel quel (« à vérifier » s'il a l'air abrégé).
 // Rend { nom, imprime, source: "catalogue" | "table" | "lecture" | "imprime" | "", a_verifier }.
@@ -83,12 +92,12 @@ export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
   }
   // Un nom ambigu (« Nakon », « Nakhon » : Nakhon Si Thammarat, Ratchasima, Pathom… ; « Padang » : Padang Besar ou Padang en Indonésie) est
   // proposé, jamais réécrit d'office : « à vérifier », et la ligne n'est pas cochée (revue du 24.11.2026).
-  if (table) return { nom: auCatalogue(table, lieux) || table, imprime: brut, source: "table", a_verifier: AMBIGUS.has(cle(depuis)) };
+  if (table) return { nom: auCatalogue(table, lieux) || casseLieu(table), imprime: brut, source: "table", a_verifier: AMBIGUS.has(cle(depuis)) };
   if (propose && cle(propose) !== cle(brut)) {
     const catPropose = auCatalogue(propose, lieux);
-    return catPropose ? { nom: catPropose, imprime: brut, source: "catalogue", a_verifier: false } : { nom: propose, imprime: brut, source: "lecture", a_verifier: true };
+    return catPropose ? { nom: catPropose, imprime: brut, source: "catalogue", a_verifier: false } : { nom: casseLieu(propose), imprime: brut, source: "lecture", a_verifier: true };
   }
-  return { nom: depuis, imprime: brut, source: "imprime", a_verifier: abrege(depuis) };
+  return { nom: casseLieu(depuis), imprime: brut, source: "imprime", a_verifier: abrege(depuis) };
 }
 
 // Une arrivée du lendemain s'écrit comme au catalogue : « 06:00 (next day) ». lireArrivee fait l'inverse (le formulaire des trajets, le voucher).

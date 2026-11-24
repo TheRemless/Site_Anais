@@ -307,7 +307,7 @@ test("nets écrits selon le droit « prix nets » : sans lui, aucune opération 
 
 test("relecture : une correction remplace sa ligne, une ligne signalée passe en confiance basse, une ligne oubliée s'ajoute, un index inconnu s'ignore", () => {
   const premiere = demo().brochure;
-  const ipoh = { ...premiere.trajets[4], depart: "12:00", raison: "« 12.0 AM » lu 12:00." };
+  const ipoh = { ...premiere.trajets[4], depart: "12:30", raison: "« 12.0 AM » relu 12:30." };
   const rel = {
     trajets: [
       { index: 4, statut: "corrige", raison: "Départ « 12.0 AM » : midi.", ligne: ipoh },
@@ -607,4 +607,56 @@ test("départ avec sa précision : « 07:00 (Malaysia time) » arrive tel quel a
   const form = readFileSync(new URL("../src/gestion/js/views/trajets.mjs", import.meta.url), "utf8");
   assert.match(form, /const departSaisi = \(\) => \(depart\.value \? \[depart\.value, precisionDepart\]\.filter\(Boolean\)\.join\(" "\) : ""\);/);
   assert.match(form, /depart: departSaisi\(\)/);
+});
+
+// ---- Retouches après l'essai réel du 24.11.2026 --------------------------------------------------------------------------------------
+
+test("lieux hors catalogue en casse de titre, sigles gardés ; l'imprimé reste à côté", () => {
+  const n = (x) => C.normaliserLieu(x, { lieux: C.lieuxDuCatalogue(CATALOGUE) });
+  for (const [imprime, nom] of [["TRANG", "Trang"], ["TRANG Airport", "Trang Airport"], ["TRANG TRAIN STATION", "Trang Train Station"], ["SONGKHLA", "Songkhla"], ["SATUN", "Satun"], ["PENANG", "Penang"], ["BUTTERWORTH", "Butterworth"], ["HADYAI A/P", "Hat Yai Airport"]]) {
+    assert.equal(n(imprime).nom, nom, imprime);
+    assert.equal(n(imprime).imprime, imprime);
+  }
+  assert.equal(n("TRG").nom, "TRG", "un sigle reste en capitales");
+  assert.equal(n("PP CRUISER PIER").nom, "PP Cruiser Pier");
+  assert.equal(n("LANTA").nom, "Koh Lanta", "le catalogue passe avant");
+  assert.equal(C.casseLieu("Krabi Airport"), "Krabi Airport", "un nom déjà en casse mixte ne change pas");
+});
+
+test("relecture : « Corrigé » seulement si une valeur visible change ; une forme différente (virgule, 0, durée) est ignorée", () => {
+  const premiere = demo().brochure;
+  // Les 10 lignes renvoyées « corrigées » sans rien changer de visible : net_texte sans virgule, 0 pour l'enfant, durée vidée.
+  const bruit = premiere.trajets.map((t, index) => ({ index, statut: "corrige", raison: "net_texte recopié avec sa virgule ; prix et net enfant absents mis à 0 ; durée calculée retirée car elle n'est pas imprimée.", ligne: { ...t, net_texte: String(t.net_adulte || ""), prix_enfant: 0, net_enfant: 0, duree: "" } }));
+  const f = B.fusionnerRelecture(premiere, { trajets: bruit, tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  assert.equal(f.compte.corriges, 0);
+  const r = lu(f.brut).brochure;
+  assert.ok(r.trajets.every((t) => t.relecture === "" && t.relecture_raison === ""));
+  // Un vrai changement (prix) reste « corrigé », avec une raison lisible.
+  const vrai = B.fusionnerRelecture(premiere, { trajets: [{ index: 1, statut: "corrige", raison: "Prix relu 680 : le 5 était un 8.", ligne: { ...premiere.trajets[1], prix_texte: "680", prix_adulte: 680 } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+  assert.equal(vrai.compte.corriges, 1);
+  assert.deepEqual([lu(vrai.brut).brochure.trajets[1].relecture, lu(vrai.brut).brochure.trajets[1].relecture_raison], ["corrige", "Prix relu 680 : le 5 était un 8."]);
+  // Un lendemain ajouté ou une heure changée comptent aussi.
+  assert.equal(B.changeVisible(premiere.trajets[1], { ...premiere.trajets[1], arrivee: "13:00 (next day)" }), true);
+  assert.equal(B.changeVisible(premiere.trajets[1], { ...premiere.trajets[1], depart: "08:30" }), true);
+  assert.equal(B.changeVisible(premiere.trajets[1], { ...premiere.trajets[1], vers: "Trang" }), true);
+});
+
+test("raisons : une phrase pour la personne, jamais un nom de champ ni une remarque sur 0, la durée ou la virgule", () => {
+  for (const t of ["net_texte recopié avec sa virgule.", "prix et net enfant absents mis à 0.", "Durée calculée retirée car elle n'est pas imprimée.", "prix_enfant = 0", "Valeur null remplacée.", "Corrigé dans le JSON."]) assert.equal(B.raisonLisible(t), "", t);
+  for (const t of ["« 12.0 AM » lu 12:00 : départ de midi.", "Net couvert par du scotch.", "Ligne coupée par le bas de la photo 2."]) assert.equal(B.raisonLisible(t), t, t);
+  const t = lu({ tarifs: [], trajets: [{ ...brochureDemoTransport().trajets[0], raison: "net_texte recopié avec sa virgule." }] }).brochure.trajets[0];
+  assert.equal(t.raison, "");
+  const consigne = B.promptBrochure({ fichiers: [{ media_type: "image/jpeg", data: "/9j/AAAA" }], aujourdhui: AJD }).system[0].text;
+  assert.match(consigne, /Jamais un nom de champ, ni une remarque sur les valeurs à 0, la durée ou la forme du JSON/);
+});
+
+test("durée : calculée des heures quand elle n'est pas imprimée, et dite « calculée » ; une durée imprimée reste telle quelle", () => {
+  const base = brochureDemoTransport().trajets[0];
+  const calc = lu({ tarifs: [], trajets: [{ ...base, duree: "" }] }).brochure.trajets[0];
+  assert.deepEqual([calc.duree, calc.duree_calculee], ["22 h", true]);
+  assert.deepEqual(B.validerBrochure({ tarifs: [], trajets: [calc] }).brochure.trajets[0].duree_calculee, true, "le drapeau tient au second contrôle (relecture)");
+  const imprimee = lu({ tarifs: [], trajets: [{ ...base, duree: "21 h 30" }] }).brochure.trajets[0];
+  assert.deepEqual([imprimee.duree, imprimee.duree_calculee], ["21 h 30", false]);
+  const ecran = readFileSync(new URL("../src/gestion/js/views/brochure.mjs", import.meta.url), "utf8");
+  assert.match(ecran, /lu\.duree_calculee \? tr\("\{duree\}, calculée des heures"/);
 });
