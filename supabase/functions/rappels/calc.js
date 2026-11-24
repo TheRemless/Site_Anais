@@ -105,9 +105,22 @@ export function entitesLisibles({ profil, membres, roles, entites }) {
 }
 
 // Frais de parc : une somme à payer sur l'île, pas un service qui part (même règle que dans l'outil, operations-calc.mjs).
-// Même motif que FRAIS_PARC de l'outil (operations-calc.mjs) et de la migration 125 : un libellé qui contient un frais, jamais « national park » seul.
-export const FRAIS_PARC = /frais (de|du) parc|frais d['’]entr[ée]e|park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)/i;
-const estFraisDeParc = (r) => !r.partenaire_id && FRAIS_PARC.test(r.libelle || "");
+// Le libellé EST un frais (revue du 24.11.2026) : le mot-clé ouvre ou ferme la partie principale du libellé, celle avant une parenthèse ou une
+// flèche. « Koh Rok park fee », « Frais d'entrée du parc », « National park fees: 4 Islands » sont des frais ; « Private taxi: Hotel → Tiger Cave
+// Temple (entrance fee not included) », « Temple tour incl. entrance fee » ou une course vers un parc n'en sont pas. Même motif et même découpe
+// dans src/gestion/js/operations-calc.mjs et la migration 128 (frais_de_parc_libelle) : un test compare les trois.
+export const MOTIF_FRAIS_PARC = "frais (de|du) parc|frais d['’]entr[ée]e|(national )?park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)";
+const FRAIS_DEBUT = new RegExp(`^\\s*(${MOTIF_FRAIS_PARC})`, "i");
+const FRAIS_FIN = new RegExp(`(${MOTIF_FRAIS_PARC})[\\s.!]*$`, "i");
+const FRAIS_ACCOMPAGNE = new RegExp(`(incl\\.?|including|included|with|without|not|plus|avec|sans|compris|inclus|\\+)\\s*(${MOTIF_FRAIS_PARC})[\\s.!]*$`, "i");
+export const partiePrincipale = (libelle) => String(libelle || "").split(/\(|→|->/)[0].trim();
+export const libelleEstFrais = (libelle) => {
+  const p = partiePrincipale(libelle);
+  return FRAIS_DEBUT.test(p) || (FRAIS_FIN.test(p) && !FRAIS_ACCOMPAGNE.test(p));
+};
+// Ancien nom gardé pour les imports : le motif seul (il ne suffit plus, voir libelleEstFrais).
+export const FRAIS_PARC = new RegExp(MOTIF_FRAIS_PARC, "i");
+const estFraisDeParc = (r) => !r.partenaire_id && libelleEstFrais(r.libelle);
 
 // Dernier jour d'un service : le retour d'une location (details.retour_date), sinon le jour du service (même règle que dans l'outil, operations-calc.mjs).
 const dateFinService = (r) => {

@@ -29,6 +29,12 @@ test("une ligne de frais de parc ne crée pas de réservation", () => {
   assert.equal(r[0].reservation.libelle, "4 Islands");
 });
 
+test("facture : une course Taxi sans partenaire qui parle d'un droit d'entrée crée sa réservation (revue de la PR 347)", () => {
+  const ligne = (id, titre) => ({ id, kind: "service", libre: true, titre, libelle: titre, partenaire_id: null, qte: 1, prix: 1500, date_service: "2026-11-25" });
+  const r = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [ligne("1", "Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"), ligne("2", "Koh Rok park fee")] } }, { uid: () => "r" });
+  assert.deepEqual(r.map((x) => x.reservation.libelle), ["Private taxi: Hotel → Tiger Cave Temple (entrance fee not included)"]);
+});
+
 test("traduction : « demi-journée » devient « half day », pas « demi-full day »", () => {
   assert.equal(libelleClient("Kayak mangroves, demi-journée"), "Kayak mangroves, half day");
   assert.equal(libelleClient("Excursion d'une demi-journée"), "Half-day trip");

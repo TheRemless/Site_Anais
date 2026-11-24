@@ -120,7 +120,7 @@ export function messageVeillePartenaire(courses = [], demain) {
 // 3. Une heure avant : ses courses dont la prise en charge tombe dans la fenêtre du passage « h1 » (40 à 60 minutes), dans le fuseau de
 // l'organisation. Même lecture de l'heure que les rappels des membres (heureService) ; les frais de parc sont écartés de la même façon.
 export function coursesH1(courses = [], maintenant, { fuseau, fenetre = FENETRE_H1 } = {}) {
-  // Les frais de parc sont déjà écartés par la base (partenaire_notif_courses : famille « frais » et FRAIS_PARC) : la liste n'est pas refiltrée
+  // Les frais de parc sont déjà écartés par la base (partenaire_notif_courses : famille « frais » et frais_de_parc_libelle, migration 128) : la liste n'est pas refiltrée
   // ici (un partenaire fictif neutralise estFraisDeParc), la base reste la seule à décider.
   const resas = courses.map((c) => ({ id: c.id, entite_id: c.entite_id, dossier_id: null, statut: "confirme", heure_pickup: c.heure, date_service: c.date_service, libelle: c.libelle, partenaire_id: "partenaire", details: {}, course: c }));
   return servicesH1(resas, maintenant, { fenetre, fuseauDe: () => fuseau }).map((x) => ({ ...x, course: x.reservation.course }));
