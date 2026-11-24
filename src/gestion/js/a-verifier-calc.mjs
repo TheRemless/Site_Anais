@@ -74,7 +74,9 @@ export function ecartDuree(trajet) {
   const a = minutesDepuisHeure(trajet.arrivee);
   const duree = minutesDepuisDuree(trajet.duree);
   if (d === null || a === null || duree === null) return null;
-  const calculee = (a - d + 1440) % 1440;
+  // « 10:00 (next day) » après un départ à 08:00 : 26 h, pas 2 h (arrivée du lendemain écrite par l'import de brochure, 24.11.2026).
+  const lendemain = /\(next day\)/i.test(String(trajet.arrivee || ""));
+  const calculee = (a - d + 1440) % 1440 + (lendemain && a > d ? 1440 : 0);
   return Math.abs(calculee - duree);
 }
 

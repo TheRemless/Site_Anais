@@ -243,7 +243,7 @@ export function validerSituer(v, { hotels, lieux, sources }) {
 // Les faits que l'outil envoie. Seules ces clés passent : un net, une marge ou un nom de compagnie n'ont aucune place où se glisser.
 const CLES_FAITS = ["langue", "prenom", "adultes", "enfants", "bebes", "devise", "trajets"];
 const CLES_TRAJET = ["date", "de", "vers", "au_catalogue", "mode", "duree", "horaires", "prix_adulte", "prix_enfant", "a_payer_sur_place"];
-const CLES_HORAIRE = ["depart", "arrivee"];
+const CLES_HORAIRE = ["depart", "arrivee", "lendemain"];
 
 export function verifierFaitsItineraire(f) {
   if (!f || typeof f !== "object" || Array.isArray(f)) return { ok: false, erreur: "faits_invalides" };
@@ -272,7 +272,7 @@ export function verifierFaitsItineraire(f) {
         au_catalogue: t.au_catalogue === true,
         mode: t.au_catalogue === true ? texte(t.mode, 60) : "",
         duree: t.au_catalogue === true ? texte(t.duree, 40) : "",
-        horaires: t.au_catalogue === true ? (Array.isArray(t.horaires) ? t.horaires : []).slice(0, 8).map((h) => ({ depart: heureValide(h && h.depart) ? h.depart : "", arrivee: heureValide(h && h.arrivee) ? h.arrivee : "" })).filter((h) => h.depart) : [],
+        horaires: t.au_catalogue === true ? (Array.isArray(t.horaires) ? t.horaires : []).slice(0, 8).map((h) => ({ depart: heureValide(h && h.depart) ? h.depart : "", arrivee: heureValide(h && h.arrivee) ? h.arrivee : "", ...(h && h.lendemain === true && heureValide(h.arrivee) ? { lendemain: true } : {}) })).filter((h) => h.depart) : [],
         prix_adulte: t.au_catalogue === true ? nombre(t.prix_adulte) : null,
         prix_enfant: t.au_catalogue === true ? nombre(t.prix_enfant) : null,
         a_payer_sur_place: t.a_payer_sur_place === true,
@@ -286,7 +286,7 @@ const consignesReponse = () => `Tu rédiges un brouillon de réponse WhatsApp à
 
 Règles absolues :
 - Chaque date, lieu, horaire, durée et prix vient des faits fournis, à l'identique. Aucun autre chiffre, aucun total, aucune remise, aucune disponibilité promise.
-- Un trajet par paragraphe court ou par ligne : sa date, de où vers où, puis les horaires au choix (départ et arrivée quand elle est donnée) et le prix par adulte, et par enfant s'il est donné. Plusieurs horaires : le client choisit, dis-le simplement.
+- Un trajet par paragraphe court ou par ligne : sa date, de où vers où, puis les horaires au choix (départ et arrivée quand elle est donnée ; « lendemain » vrai : l'arrivée est le lendemain, dis-le, « next day » en anglais) et le prix par adulte, et par enfant s'il est donné. Plusieurs horaires : le client choisit, dis-le simplement.
 - Un trajet marqué « au_catalogue » faux : dis que nous ne proposons pas ce trajet, mais que tu peux te renseigner. Rien d'autre sur ce trajet.
 - Jamais de nom de compagnie ni de bateau, jamais de raison interne (prix d'achat, marge, commission, partenaire).
 - Un prix « a_payer_sur_place » se paie sur place, dis-le.

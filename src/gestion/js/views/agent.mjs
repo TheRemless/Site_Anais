@@ -18,6 +18,7 @@ import { aujourdhui, formatMontant } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
 import { phraseInterne } from "../agent-apprendre-texte.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
+import { morceauxGras } from "../markdown-sur.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
 import { espaceUnifie, carteUnifiee, avecCorrections, entrepriseSuivante, badgeModifiable, carteDeLEntreprise, ouvrirDansEntreprise, conversationsDesDeux, ordreEnvois, marqueUnifiee, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
@@ -607,7 +608,9 @@ export async function vueAgent(idOuvert = "") {
     if (m.message) return nom ? tr("voir le message ({nom})", { nom }) : tr("voir le message");
     return nom ? tr("voir la conversation ({nom})", { nom }) : tr("voir la conversation");
   };
-  const avecCitations = (l) => morceauxCitations(l).map((m) => (m.lien ? h("a", { class: "agent-citation", href: m.lien }, libelleCitation(m)) : m.texte));
+  // Le gras Markdown (« **…** ») devient un <strong> ; le texte reste du texte (morceauxGras, jamais de HTML).
+  const avecGras = (t) => morceauxGras(t).map((g) => (g.gras ? h("strong", null, g.texte) : g.texte));
+  const avecCitations = (l) => morceauxCitations(l).flatMap((m) => (m.lien ? [h("a", { class: "agent-citation", href: m.lien }, libelleCitation(m))] : avecGras(m.texte)));
   const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), ...avecCitations(l)] : avecCitations(l)))));
   function bulleWhatsApp(echange, { nom = nomWaLiee() || (conv ? titreDe(conv) : "") } = {}) {
     const n = echange.messages.length;

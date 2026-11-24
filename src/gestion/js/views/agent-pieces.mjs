@@ -171,7 +171,7 @@ export function carteBrochure(c, { valider }) {
     h("ul", { class: "agent-joints envoyes" }, (d.fichiers || []).map((f) => h("li", null, h("span", { class: "agent-joint" }, h("span", { class: "agent-joint-type", "aria-hidden": "true" }, estPdf(f.media_type) ? "PDF" : icone("image", 18)), h("span", { class: "agent-joint-nom" }, f.nom))))),
     h("label", { for: choix.id }, tr("Partenaire")),
     choix,
-    h("p", { class: "aide" }, tr("L'assistant relit les fichiers, recopie les prix imprimés et les compare au catalogue. Vous cochez ce qui entre ; rien n'est écrit avant « Enregistrer »."))
+    h("p", { class: "aide" }, tr("L'assistant lit puis relit les fichiers, relève les prix et les nets qui y figurent et les compare au catalogue. Vous cochez ce qui entre ; rien n'est écrit avant « Enregistrer »."))
   ];
   if (!droitsImport()) return { corps: [...corps, h("p", { class: "aide" }, tr("Votre rôle ne permet pas de modifier les tarifs."))], action: null };
   return {

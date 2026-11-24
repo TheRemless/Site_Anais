@@ -105,8 +105,8 @@ test("prompt : les fichiers puis la consigne, rien du catalogue ; Opus 5.5 avec 
   assert.match(contenu[2].text, /2026-11-20 \(vendredi\)/);
   const tout = JSON.stringify(p);
   for (const interdit of ["prix_vente", "prestations_nets", "Rattana", "marge"]) assert.ok(!tout.includes(interdit), interdit);
-  assert.match(p.system[0].text, /Ne devine jamais un chiffre/);
-  assert.match(p.system[0].text, /Ne déduis jamais un net/);
+  assert.match(p.system[0].text, /ne se devine pas/);
+  assert.match(p.system[0].text, /Jamais un net déduit/);
   const params = parametresBrochure(p);
   assert.equal(params.model, MODELE_BROCHURE);
   assert.equal(MODELE_BROCHURE, "claude-opus-5-5");
@@ -114,7 +114,10 @@ test("prompt : les fichiers puis la consigne, rien du catalogue ; Opus 5.5 avec 
   assert.equal(params.fallbacks, "default");
   assert.equal(params.output_config.effort, "medium");
   assert.equal(params.output_config.format.schema, SCHEMA_BROCHURE);
-  assert.ok(!("thinking" in params) && !("temperature" in params));
+  // Réflexion adaptative écrite (la seule possible sur Opus 5.5), marge de sortie pour 60 lignes, aucun réglage d'échantillonnage.
+  assert.deepEqual(params.thinking, { type: "adaptive" });
+  assert.equal(params.max_tokens, 64000);
+  assert.ok(!("temperature" in params));
   // Le schéma ne porte que des contraintes acceptées par les sorties structurées.
   const s = JSON.stringify(SCHEMA_BROCHURE);
   for (const c of ["minimum", "maximum", "minLength", "maxLength", "maxItems"]) assert.ok(!s.includes(c), c);
@@ -160,7 +163,7 @@ test("un prix absent des mots imprimés rend la ligne illisible ; un net non imp
   assert.equal(brochure.tarifs[0].lisible, false);
   assert.equal(brochure.tarifs[0].prix_adulte, null);
   assert.equal(brochure.tarifs[0].prix_enfant, null);
-  assert.match(brochure.tarifs[0].illisible, /absent du texte imprimé/);
+  assert.match(brochure.tarifs[0].illisible, /absent des chiffres relevés/);
   assert.equal(brochure.tarifs[1].net_adulte, null);
   assert.deepEqual(avertissements, ["prix_non_imprime:Phi Phi Bamboo Island + Sunset", "net_retire:Rok Haa Island + Sunset"]);
   // Un net vraiment imprimé (« Agent rate ») est gardé tel quel.
@@ -171,15 +174,16 @@ test("un prix absent des mots imprimés rend la ligne illisible ; un net non imp
   assert.equal(r.brochure.tarifs[0].net_enfant, 2300);
 });
 
-test("ligne marquée illisible par Claude : ses prix ne passent pas ; ligne sans nom retirée ; heure de départ invalide signalée", () => {
+test("ligne marquée illisible par Claude mais au prix de vente lisible : gardée lisible, en lecture douteuse ; ligne sans nom retirée ; heure de départ invalide signalée", () => {
   const v = structuredClone(LAZY_DAY);
   Object.assign(v.tarifs[1], { lisible: false, illisible: "Prix enfant caché par un pli", prix_enfant: null });
   v.tarifs.push({ ...vide, libelle: "  ", prix_texte: "1,000", prix_adulte: 1000 });
   v.trajets.push({ de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "8h", arrivee: "", duree: "", periode: "", periode_debut: "", periode_fin: "", prix_texte: "1,900 / 1,400", prix_adulte: 1900, prix_enfant: 1400, net_texte: "", net_adulte: null, net_enfant: null, lisible: true, illisible: "" });
   const { brochure, avertissements } = lire(v);
   assert.equal(brochure.tarifs.length, 2);
-  assert.equal(brochure.tarifs[1].lisible, false);
-  assert.equal(brochure.tarifs[1].illisible, "Prix enfant caché par un pli");
+  // Règle du 24.11.2026 : seul le prix de vente (ou le trajet) rend une ligne illisible. Le prix adulte se lit, la ligne reste lisible.
+  assert.equal(brochure.tarifs[1].lisible, true);
+  assert.equal(brochure.tarifs[1].confiance, "basse");
   assert.equal(brochure.trajets[0].lisible, false);
   assert.match(brochure.trajets[0].illisible, /Heure de départ/);
   assert.ok(avertissements.includes("ligne_sans_nom"));
@@ -337,7 +341,7 @@ test("horaires de bateau : départ connu inchangé, nouveau départ créé avec 
   const c = comparerBrochure(brochure, { partenaireId: RATTANA, prestations: [], trajets });
   assert.deepEqual(c.trajets.map((l) => [l.statut, l.cible && l.cible.id, l.coche]), [["inchange", "tj1", false], ["nouveau", null, true], ["prix_change", "tj2", true]]);
   const ops = planBrochure(c.trajets, { partenaireId: RATTANA, aujourdhui: AJD, numeroMax: 40 });
-  assert.deepEqual(ops[0].valeurs, { partenaire_id: RATTANA, de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "13:30", arrivee: "17:00", duree: "", prix_adulte: 1900, prix_enfant: 1400, bebe: "", periode: "1 Nov 2026 - 30 Apr 2027", fenetres: [["2026-11-01", "2027-04-30"]], actif: true, numero: 41 });
+  assert.deepEqual(ops[0].valeurs, { partenaire_id: RATTANA, de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "13:30", arrivee: "17:00", duree: "3 h 30", prix_adulte: 1900, prix_enfant: 1400, bebe: "", periode: "1 Nov 2026 - 30 Apr 2027", fenetres: [["2026-11-01", "2027-04-30"]], actif: true, numero: 41 });
   assert.deepEqual([ops[1].action, ops[1].id, ops[1].valeurs], ["modifier", "tj2", { prix_adulte: 1300, duree: "1 h 30" }]);
 });
 

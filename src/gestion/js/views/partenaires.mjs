@@ -58,6 +58,7 @@ export function telephone(t) {
     { class: "tel" },
     d ? h("a", { href: `tel:${d}` }, t.numero) : h("span", null, t.numero),
     t.libelle ? h("span", { class: "tag" }, t.libelle) : null,
+    t.line ? h("span", { class: "tag", title: tr("Répond sur LINE") }, "LINE") : null,
     d && t.whatsapp ? h("a", { class: "bouton-icone lien", href: `https://wa.me/${d.replace("+", "")}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp {numero}", { numero: t.numero }), title: tr("WhatsApp") }, icone("whatsapp")) : null,
     h("button", { class: "bouton-icone lien", type: "button", "aria-label": tr("Copier {numero}", { numero: t.numero }), title: tr("Copier"), onclick: () => copier(t.numero) }, icone("copier"))
   );
@@ -471,7 +472,12 @@ function ligneTelephone(t = {}) {
   const numero = h("input", { id: `tel-n-${k}`, type: "tel", value: t.numero || "", placeholder: exemple("telephone_partenaire"), "aria-label": tr("Numéro") });
   const libelle = h("input", { id: `tel-l-${k}`, value: t.libelle || "", placeholder: tr("Réservations, bureau…"), "aria-label": tr("Libellé du numéro") });
   const wa = h("input", { id: `tel-w-${k}`, type: "checkbox", checked: !!t.whatsapp });
-  return { noeud: h("div", { class: "ligne-saisie tel-ligne" }, numero, libelle, h("label", { class: "case", for: wa.id }, wa, tr("WhatsApp"))), valeur: () => ({ numero: numero.value.trim(), libelle: libelle.value.trim(), whatsapp: wa.checked }) };
+  // LINE (24.11.2026) : le numéro répond sur LINE, comme imprimé sur la brochure d'un partenaire thaï.
+  const line = h("input", { id: `tel-line-${k}`, type: "checkbox", checked: !!t.line });
+  return {
+    noeud: h("div", { class: "ligne-saisie tel-ligne" }, numero, libelle, h("label", { class: "case", for: wa.id }, wa, tr("WhatsApp")), h("label", { class: "case", for: line.id }, line, "LINE")),
+    valeur: () => ({ numero: numero.value.trim(), libelle: libelle.value.trim(), whatsapp: wa.checked, ...(line.checked ? { line: true } : {}) }),
+  };
 }
 
 export function formulairePartenaire(p, apres) {
@@ -569,7 +575,7 @@ export function formulairePartenaire(p, apres) {
     apporteur ? h("label", { class: "case", for: "p-apporteur" }, apporteur, tr("Apporteur d'affaires : envoie des clients (travel planner, agence)")) : null,
     h("h3", null, tr("Contact")),
     h("div", { class: "grille-form" }, champ(tr("Personne"), personne), champ(tr("E-mails, séparés par des virgules"), emails), champ(tr("Line"), line), champ(tr("Site"), web)),
-    h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Téléphones")), tels.noeud, h("p", { class: "aide" }, tr("Un numéro par ligne. Cochez WhatsApp pour le bouton WhatsApp de la fiche."))),
+    h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Téléphones")), tels.noeud, h("p", { class: "aide" }, tr("Un numéro par ligne. Cochez WhatsApp pour le bouton WhatsApp de la fiche, LINE si le numéro répond sur LINE."))),
     // Taxi : ni embarcadère, ni check-in, ni contrat. Les champs masqués gardent leur valeur et s'enregistrent tels quels.
     h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), taxi ? null : champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
     h("h3", null, tr("Règles")),

@@ -765,6 +765,25 @@ export async function enregistrerHotelLieu(ligne) {
 }
 
 // Enregistre ou crée la ligne liée d'un élément (net d'une prestation, net d'un trajet, données privées d'un partenaire).
+// Une ligne d'import de brochure en une transaction (migration 124) : la base écrit le tarif ou le trajet, sa ligne enfant et ses nets, ou rien.
+// Les lignes rendues prennent leur place dans l'état. `op` : { table, action, id?, valeurs, enfant?, nets? } (planBrochure).
+export async function ecrireLigneBrochure(op) {
+  return ecrire(async () => {
+    const r = await etat.store.brochureEcrire({ entite_id: etat.entiteId, table: op.table, action: op.action, id: op.id || null, valeurs: op.valeurs || {}, enfant: op.enfant ? { id: op.enfant.id, valeurs: op.enfant.valeurs } : null, nets: op.nets ? { valeurs: op.nets.valeurs } : null });
+    const placer = (table, ligne) => {
+      if (!ligne || !etat.brut[table]) return;
+      const i = etat.brut[table].findIndex((x) => x.id === ligne.id);
+      if (i >= 0) etat.brut[table][i] = ligne;
+      else etat.brut[table].push(ligne);
+    };
+    placer(op.table, r && r.ligne);
+    placer("prestations", r && r.enfant);
+    placer(op.table === "prestations" ? "prestations_nets" : "trajets_nets", r && r.nets);
+    rebatir();
+    return r;
+  });
+}
+
 export async function enregistrerLie(table, cle, parentId, valeurs) {
   const existante = etat.db[table].find((r) => r[cle] === parentId);
   return existante ? modifier(table, existante.id, valeurs) : inserer(table, { [cle]: parentId, ...valeurs });

@@ -546,6 +546,16 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (error) throw new Error(error.message);
       return data || null;
     },
+    // Une ligne d'import de brochure (tarif ou trajet, ligne enfant séparée, nets) en une seule transaction (migration 124). Les droits sont
+    // contrôlés par la base : rend { ligne, enfant, nets } tels qu'enregistrés, ou une erreur et rien n'est écrit.
+    async brochureEcrire(op) {
+      const { data, error } = await sb.rpc("brochure_ecrire_ligne", { p_op: op });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /Could not find the function/i.test(error.message || "")) throw new Error("migration_124_manquante");
+        throw new Error(error.message);
+      }
+      return data;
+    },
     // Demandes du site et WhatsApp reliés (migration 72). La base vérifie tout et rend { relie, motif, demande | conversation } ;
     // null tant que la fonction manque (l'outil ne relie rien et le dit discrètement).
     async demandeSiteRelier(demandeId, dossierId) {

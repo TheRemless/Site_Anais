@@ -1,21 +1,118 @@
-// « Importer une brochure », côté outil : la logique pure (sans écran). La fonction « assistant » (usage « brochure ») rend ce qui est imprimé
-// sur la brochure ; ici on le compare au catalogue du partenaire (nouveau, prix changé, inchangé, illisible) puis on prépare les écritures des
-// lignes cochées. Rien ne s'écrit sans la personne : l'écran (views/brochure.mjs) montre chaque ligne et n'enregistre que ce qu'elle garde.
+// « Importer une brochure », côté outil : la logique pure (sans écran). La fonction « assistant » (usage « brochure », deux passes : lecture puis
+// relecture) rend ce qui figure sur la brochure ; ici on normalise les lieux, on marque l'arrivée du lendemain, on compare au catalogue du
+// partenaire (nouveau, prix changé, inchangé, illisible) puis on prépare les écritures des lignes cochées. Rien ne s'écrit sans la personne :
+// l'écran (views/brochure.mjs) montre chaque ligne et n'enregistre que ce qu'elle garde, une ligne par transaction (brochure_ecrire_ligne,
+// migration 124).
 //
-// Règles de Jérémy : la brochure fait foi pour les prix de vente ; le net n'est jamais déduit (il ne s'écrit que s'il est imprimé et que la
-// personne a le droit « prix nets ») ; une ligne illisible est signalée et ne s'enregistre pas.
+// Règles de Jérémy : la brochure fait foi pour les prix de vente ; un net s'écrit s'il figure sur le document, imprimé ou écrit à la main, et
+// que la personne a le droit « prix nets » ; il n'est jamais déduit. Une ligne n'est illisible que si son prix de vente ou son trajet ne se lit
+// pas : un net caché la laisse lisible (« net à saisir »), et une ligne illisible se complète à la main dans l'écran avant de s'enregistrer.
+// Un nom de lieu incertain est signalé « à vérifier », jamais inventé.
 import { sansAccents, PERIODE_TOUTE } from "./partenaires-calc.mjs";
 import { prestationEnfantSeparee, prixEnfantDe } from "./demande-calc.mjs";
 import { assistantActif } from "./assistant-calc.mjs";
+import { modeTrajet } from "./operations-calc.mjs";
+import { brochureDemoTransport } from "./brochure-demo.mjs";
 
 export const DROITS_BROCHURE = ["partenaires.lire", "partenaires.ecrire", "partenaires.prix"];
 export const brochureDisponible = (regl, permissions = []) => assistantActif(regl) && DROITS_BROCHURE.every((p) => permissions.includes(p));
+
+// ---- Lieux et heures --------------------------------------------------------------------------------------------------------------------
+
+// Les abréviations d'une brochure de transporteur (essai du 24.11.2026). La fonction donne la même liste à Claude (ABREVIATIONS_PROMPT,
+// assistant/brochure.js) ; ici elle s'applique après les noms déjà au catalogue. Une variante d'écriture va dans VARIANTES.
+export const ABREVIATIONS_LIEUX = [
+  ["Lanta", "Koh Lanta"],
+  ["BKK", "Bangkok"],
+  ["KL", "Kuala Lumpur"],
+  ["Hadyai", "Hat Yai"],
+  ["A/P", "Airport"],
+  ["Ipho", "Ipoh"],
+  ["Phatthalang", "Phatthalung"],
+  ["Nakon", "Nakhon Si Thammarat"],
+  ["Padang", "Padang Besar"],
+  ["Kolok", "Sungai Kolok"],
+  ["Khaosan (BKK)", "Bangkok (Khao San Road)"],
+];
+const cle = (s) => sansAccents(s).replace(/[^a-z0-9]+/g, " ").trim();
+const VARIANTES = { "bkk khaosan": "Bangkok (Khao San Road)", khaosan: "Bangkok (Khao San Road)", "khao san": "Bangkok (Khao San Road)", "khao san road": "Bangkok (Khao San Road)", "had yai": "Hat Yai", nakhon: "Nakhon Si Thammarat", "nakhon si": "Nakhon Si Thammarat", "sungai golok": "Sungai Kolok", "ko lanta": "Koh Lanta" };
+const NOMS_ENTIERS = new Map([...ABREVIATIONS_LIEUX.filter(([a]) => a !== "A/P").map(([a, b]) => [cle(a), b]), ...Object.entries(VARIANTES)]);
+// Dans un nom plus long : « Krabi A/P » → « Krabi Airport », « Hadyai A/P » → « Hat Yai Airport », « BKK Airport » → « Bangkok Airport ».
+const MOTS = [
+  [/\bA\s*\/\s*P\b\.?|\bAPT\b\.?/gi, "Airport"],
+  [/\bBKK\b/gi, "Bangkok"],
+  [/\bKL\b/g, "Kuala Lumpur"],
+  [/\bHad\s?yai\b/gi, "Hat Yai"],
+  [/\bIpho\b/gi, "Ipoh"],
+  [/\bPhatthalang\b/gi, "Phatthalung"],
+];
+
+// Les lieux déjà au catalogue (départs et arrivées des trajets de l'entreprise), un par nom.
+export function lieuxDuCatalogue(trajets = []) {
+  const vus = new Map();
+  for (const t of trajets) for (const l of [t.de, t.vers]) if (l && !vus.has(cle(l))) vus.set(cle(l), String(l).trim());
+  return [...vus.values()];
+}
+// Le nom du catalogue qui est ce lieu : même nom, ou le même précédé de « Koh » / « Ko » (« Lanta » → « Koh Lanta »). Un seul, sinon aucun.
+function auCatalogue(nom, lieux) {
+  const k = cle(nom);
+  if (!k) return "";
+  const memes = lieux.filter((l) => cle(l) === k);
+  if (memes.length) return memes[0];
+  const avecKoh = lieux.filter((l) => cle(l) === `koh ${k}` || cle(l) === `ko ${k}`);
+  return avecKoh.length === 1 ? avecKoh[0] : "";
+}
+// Un texte qui ressemble à une abréviation : capitales courtes (« BKK »), barre ou point (« A/P », « Nak. »).
+const abrege = (s) => /^[A-Z]{2,4}$/.test(s.trim()) || /[/.]/.test(s);
+
+// Le nom usuel d'un lieu imprimé. D'abord le catalogue, puis la table des abréviations, puis le nom proposé par la lecture (signalé « à vérifier »
+// s'il ne vient ni de l'un ni de l'autre), sinon le texte imprimé tel quel (« à vérifier » s'il a l'air abrégé).
+// Rend { nom, imprime, source: "catalogue" | "table" | "lecture" | "imprime" | "", a_verifier }.
+export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
+  const brut = String(imprime || "").trim();
+  const propose = String(suggestion || "").trim();
+  if (!brut && !propose) return { nom: "", imprime: "", source: "", a_verifier: false };
+  const depuis = brut || propose;
+  const cat = auCatalogue(depuis, lieux);
+  if (cat) return { nom: cat, imprime: brut, source: "catalogue", a_verifier: false };
+  let table = NOMS_ENTIERS.get(cle(depuis)) || "";
+  if (!table) {
+    const remplace = MOTS.reduce((t, [re, nom]) => t.replace(re, nom), depuis).replace(/\s+/g, " ").trim();
+    if (remplace !== depuis) table = remplace;
+  }
+  if (table) return { nom: auCatalogue(table, lieux) || table, imprime: brut, source: "table", a_verifier: false };
+  if (propose && cle(propose) !== cle(brut)) {
+    const catPropose = auCatalogue(propose, lieux);
+    return catPropose ? { nom: catPropose, imprime: brut, source: "catalogue", a_verifier: false } : { nom: propose, imprime: brut, source: "lecture", a_verifier: true };
+  }
+  return { nom: depuis, imprime: brut, source: "imprime", a_verifier: abrege(depuis) };
+}
+
+// Une arrivée du lendemain s'écrit comme au catalogue : « 06:00 (next day) ». lireArrivee fait l'inverse (le formulaire des trajets, le voucher).
+export const SUFFIXE_LENDEMAIN = " (next day)";
+export const arriveeTexte = (heure, lendemain = false) => (heure ? `${heure}${lendemain ? SUFFIXE_LENDEMAIN : ""}` : "");
+export function lireArrivee(texte) {
+  const t = String(texte || "").trim();
+  const m = /^(\d{1,2}:\d{2})\s*(?:\((?:next day|\+1|lendemain|le lendemain)\)|\+1)?$/i.exec(t);
+  if (!m) return { heure: "", lendemain: false, autre: t };
+  return { heure: m[1].padStart(5, "0"), lendemain: /next day|\+1|lendemain/i.test(t), autre: "" };
+}
+const HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const minutes = (h) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+// Durée d'un trajet, écrite comme au catalogue (« 22 h », « 1 h 30 »), quand départ et arrivée sont connus.
+export function dureeTrajet(depart, arrivee, lendemain) {
+  if (!HEURE.test(depart || "") || !HEURE.test(arrivee || "")) return "";
+  const d = minutes(arrivee) - minutes(depart) + (lendemain || minutes(arrivee) < minutes(depart) ? 1440 : 0);
+  if (d <= 0) return "";
+  const h = Math.floor(d / 60);
+  const m = d % 60;
+  return !h ? `${m} min` : m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+}
 
 // ---- Rapprochement avec le catalogue ------------------------------------------------------------------------------------------------------
 
 // Mots qui ne distinguent pas deux programmes (« Koh », « trip », « small group »…). Pluriels ramenés au singulier.
 const VIDES = new Set(["the", "and", "with", "by", "of", "to", "for", "in", "on", "de", "du", "des", "la", "le", "les", "et", "en", "au", "aux", "a", "un", "une", "koh", "ko", "trip", "tour", "small", "group", "groupe", "island", "ile", "iles", "excursion", "pp", "per", "person", "par", "personne", "adult", "adulte"]);
-const cle = (s) => sansAccents(s).replace(/[^a-z0-9]+/g, " ").trim();
 export function motsCles(...textes) {
   const out = new Set();
   for (const t of textes)
@@ -96,12 +193,37 @@ export function comparerTrajet(lu, cible) {
   return { statut: ecarts.length ? "prix_change" : "inchange", ecarts, infos: [] };
 }
 
-// Coché d'office : une ligne nouvelle (lisible) et un prix changé sur un tarif reconnu sans doute. Un rapprochement « probable » attend que la
-// personne vérifie que c'est bien ce tarif. Une ligne illisible ne se coche pas.
-export const cocheParDefaut = (ligne) => ligne.statut === "nouveau" || (ligne.statut === "prix_change" && ligne.confiance !== "probable");
+// Ce qui demande un regard avant d'enregistrer : un lieu au nom incertain, une lecture douteuse (confiance basse, ligne signalée à la
+// relecture), un net au-dessus du prix de vente. « net_a_saisir » se montre sans retenir la ligne : elle s'enregistre avec un net vide.
+export function signauxLigne(ligne) {
+  const lu = ligne.lu || {};
+  const s = [];
+  if (ligne.lieux && ((ligne.lieux.de && ligne.lieux.de.a_verifier) || (ligne.lieux.vers && ligne.lieux.vers.a_verifier))) s.push("lieu_a_verifier");
+  if (lu.confiance === "basse") s.push("confiance_basse");
+  if (lu.relecture === "signale") s.push("relecture_signale");
+  if (lu.net_superieur) s.push("net_superieur");
+  if (lu.net_a_saisir && !lu.sur_demande) s.push("net_a_saisir");
+  return s;
+}
+const RETENUS = ["lieu_a_verifier", "confiance_basse", "relecture_signale", "net_superieur"];
+
+// Coché d'office : une ligne nouvelle (lisible) et un prix changé sur un tarif reconnu sans doute, sans rien qui demande un regard. Un
+// rapprochement « probable » attend que la personne vérifie que c'est bien ce tarif. Une ligne illisible ne se coche pas.
+export const cocheParDefaut = (ligne) => (ligne.statut === "nouveau" || (ligne.statut === "prix_change" && ligne.confiance !== "probable")) && !signauxLigne(ligne).some((x) => RETENUS.includes(x));
+
+// Une ligne de trajet lue, ses lieux ramenés au nom usuel (catalogue, puis table des abréviations). Le texte imprimé reste dans `lieux`.
+function trajetNormalise(brut, lieux, saisis = {}) {
+  const de = saisis.de !== undefined ? { nom: saisis.de, imprime: brut.de_imprime || "", source: "saisi", a_verifier: false } : normaliserLieu(brut.de_imprime || brut.de, { suggestion: brut.de, lieux });
+  const vers = saisis.vers !== undefined ? { nom: saisis.vers, imprime: brut.vers_imprime || "", source: "saisi", a_verifier: false } : normaliserLieu(brut.vers_imprime || brut.vers, { suggestion: brut.vers, lieux });
+  return { lu: { ...brut, de: de.nom, vers: vers.nom }, lieux: { de, vers } };
+}
+
+// Le trajet du catalogue d'une ligne lue : même départ, même arrivée, même heure, pas déjà pris par une autre ligne.
+const cibleTrajet = (lu, sesTrajets, pris) => (lu.lisible ? sesTrajets.find((t) => !pris.has(t.id) && cleTrajet(t) === cleTrajet(lu)) || null : null);
 
 // Toutes les lignes de la brochure face au catalogue du partenaire. Rend { tarifs, trajets, absents } ; chaque ligne garde ce qui a été lu
-// (`lu`), son tarif ou trajet du catalogue (`cible`), son statut, et un identifiant stable (`cle`) pour l'écran.
+// (`lu`, lieux normalisés ; `brut`, tel que la fonction l'a rendu), son tarif ou trajet du catalogue (`cible`), son statut, et un identifiant
+// stable (`cle`) pour l'écran. `trajets` : tous ceux de l'entreprise (leurs lieux servent à la normalisation) ; seuls ceux du partenaire se comparent.
 export function comparerBrochure(brochure, { partenaireId, prestations = [], trajets = [] }) {
   const cibles = ciblesPossibles(partenaireId, prestations);
   const deja = new Set();
@@ -109,16 +231,18 @@ export function comparerBrochure(brochure, { partenaireId, prestations = [], tra
     const r = lu.lisible ? rapprocherTarif(lu, cibles.filter((p) => !deja.has(p.id))) : { cible: null, confiance: "", score: 0 };
     if (r.cible) deja.add(r.cible.id);
     const c = comparerTarif(lu, r.cible, prestations);
-    const ligne = { cle: `t${i}`, genre: "prestation", lu, cible: r.cible, confiance: r.confiance, proche: r.proche || null, libelle: lu.libelle, ...c };
+    const ligne = { cle: `t${i}`, genre: "prestation", lu, brut: lu, cible: r.cible, confiance: r.confiance, proche: r.proche || null, libelle: lu.libelle, ...c };
     return { ...ligne, coche: cocheParDefaut(ligne) };
   });
-  const sesTrajets = trajets.filter((t) => t.partenaire_id === partenaireId);
+  const lieux = lieuxDuCatalogue(trajets);
+  const sesTrajets = partenaireId ? trajets.filter((t) => t.partenaire_id === partenaireId) : [];
   const dejaT = new Set();
-  const lignesTrajets = (brochure.trajets || []).map((lu, i) => {
-    const cible = lu.lisible ? sesTrajets.find((t) => !dejaT.has(t.id) && cleTrajet(t) === cleTrajet(lu)) || null : null;
+  const lignesTrajets = (brochure.trajets || []).map((brut, i) => {
+    const { lu, lieux: noms } = trajetNormalise(brut, lieux);
+    const cible = cibleTrajet(lu, sesTrajets, dejaT);
     if (cible) dejaT.add(cible.id);
     const c = comparerTrajet(lu, cible);
-    const ligne = { cle: `j${i}`, genre: "trajet", lu, cible, confiance: cible ? "sure" : "", ...c };
+    const ligne = { cle: `j${i}`, genre: "trajet", lu, brut, lieux: noms, cible, confiance: cible ? "sure" : "", ...c };
     return { ...ligne, coche: cocheParDefaut(ligne) };
   });
   // Ce que le catalogue a et que la brochure ne montre pas : rien n'y change, la liste aide à repérer un programme arrêté.
@@ -131,6 +255,55 @@ export function changerCible(ligne, cible, prestations = []) {
   const c = comparerTarif(ligne.lu, cible, prestations);
   const neuve = { ...ligne, cible, confiance: cible ? "sure" : "", proche: null, ...c };
   return { ...neuve, coche: cocheParDefaut(neuve) };
+}
+
+const prixSaisi = (v) => {
+  const n = Number(String(v ?? "").replace(/[\s,']/g, ""));
+  return v === "" || v === null || v === undefined || !Number.isFinite(n) || n <= 0 ? null : Math.round(n * 100) / 100;
+};
+
+// Une ligne complétée ou corrigée à la main dans l'écran (24.11.2026) : prix de vente, prix enfant, nets, heures, lieux. Ce qui est saisi
+// remplace ce qui a été lu ; un champ laissé vide garde la lecture. La ligne redevient lisible quand son prix de vente et son trajet sont là,
+// puis elle est comparée de nouveau au catalogue. `pris` : les tarifs ou trajets du catalogue déjà visés par les autres lignes.
+// `saisie` : { prix_adulte, prix_enfant, net_adulte, net_enfant, depart, arrivee, lendemain, de, vers } (textes de l'écran).
+export function completerLigne(ligne, saisie, { partenaireId, prestations = [], trajets = [], pris = new Set() } = {}) {
+  const s = saisie || {};
+  const brut = { ...ligne.brut };
+  const nombres = {};
+  for (const k of ["prix_adulte", "prix_enfant", "net_adulte", "net_enfant"]) if (s[k] !== undefined && String(s[k]).trim() !== "") nombres[k] = prixSaisi(s[k]);
+  Object.assign(brut, Object.fromEntries(Object.entries(nombres).filter(([, v]) => v !== null)));
+  if (nombres.net_adulte || nombres.net_enfant) Object.assign(brut, { net_source: "saisi", net_cache: false, net_superieur: false });
+  const saisi = { ...(ligne.saisi || {}), ...Object.fromEntries(Object.keys(nombres).filter((k) => nombres[k] !== null).map((k) => [k, true])) };
+  if (ligne.genre === "trajet") {
+    for (const k of ["depart", "arrivee"]) if (s[k] !== undefined && HEURE.test(String(s[k]))) (brut[k] = s[k]), (saisi[k] = true);
+    if (s.lendemain !== undefined) (brut.lendemain = !!s.lendemain), (saisi.lendemain = true);
+    if (brut.depart && brut.arrivee && minutes(brut.arrivee) < minutes(brut.depart)) brut.lendemain = true;
+    if (saisi.depart || saisi.arrivee || saisi.lendemain) brut.duree = dureeTrajet(brut.depart, brut.arrivee, brut.lendemain);
+    const lieuxSaisis = {};
+    for (const k of ["de", "vers"]) if (s[k] !== undefined && String(s[k]).trim()) lieuxSaisis[k] = String(s[k]).trim();
+    const avant = ligne.lieux || {};
+    const garde = { ...(avant.de && avant.de.source === "saisi" ? { de: avant.de.nom } : {}), ...(avant.vers && avant.vers.source === "saisi" ? { vers: avant.vers.nom } : {}), ...lieuxSaisis };
+    const n = trajetNormalise(brut, lieuxDuCatalogue(trajets), garde);
+    n.lu.lisible = !!(n.lu.de && n.lu.vers && HEURE.test(n.lu.depart || "") && n.lu.prix_adulte !== null);
+    n.lu.illisible = n.lu.lisible ? "" : brut.illisible || ligne.brut.illisible;
+    // Un prix, un net ou une heure saisis : la personne a regardé les chiffres. Un lieu corrigé seul ne lève pas un doute sur le prix.
+    if (Object.keys(saisi).length && n.lu.lisible) n.lu.confiance = "haute";
+    if (n.lu.net_adulte !== null && n.lu.net_a_saisir) n.lu.net_a_saisir = false;
+    const sesTrajets = partenaireId ? trajets.filter((t) => t.partenaire_id === partenaireId) : [];
+    const cible = cibleTrajet(n.lu, sesTrajets, pris);
+    const c = comparerTrajet(n.lu, cible);
+    const neuve = { ...ligne, lu: n.lu, brut, lieux: n.lieux, saisi, cible, confiance: cible ? "sure" : "", ...c };
+    return { ...neuve, coche: n.lu.lisible && cocheParDefaut(neuve) };
+  }
+  const lu = { ...brut, lisible: brut.sur_demande || brut.prix_adulte !== null, ...(saisi.prix_adulte || saisi.prix_enfant ? { saisi_main: true } : {}) };
+  lu.illisible = lu.lisible ? "" : lu.illisible;
+  if (Object.keys(saisi).length) lu.confiance = "haute";
+  if (lu.net_adulte !== null) lu.net_a_saisir = false;
+  const cibles = ciblesPossibles(partenaireId, prestations).filter((p) => !pris.has(p.id));
+  const r = ligne.cible && !pris.has(ligne.cible.id) ? { cible: ligne.cible, confiance: ligne.confiance } : lu.lisible ? rapprocherTarif(lu, cibles) : { cible: null, confiance: "" };
+  const c = comparerTarif(lu, r.cible, prestations);
+  const neuve = { ...ligne, lu, brut, saisi, cible: r.cible, confiance: r.confiance, proche: r.proche || null, ...c };
+  return { ...neuve, coche: lu.lisible && cocheParDefaut(neuve) };
 }
 
 export function compter(lignes) {
@@ -153,7 +326,7 @@ export function phraseAgeEnfant(age, langue = "en") {
 
 const puces = (t) => String(t || "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => (/^[•\-*]/.test(l) ? `• ${l.replace(/^[•\-*]\s*/, "")}` : `• ${l}`));
 const dateFr = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : "");
-const noteImport = (lu, aujourdhui) => `Importé de la brochure le ${dateFr(aujourdhui)}${lu.prix_texte ? ` (prix imprimé : « ${lu.prix_texte} »)` : ""}.`;
+const noteImport = (lu, aujourdhui) => `Importé de la brochure le ${dateFr(aujourdhui)}${lu.prix_texte ? ` (prix imprimé : « ${lu.prix_texte} »)` : ""}${lu.saisi_main ? ", prix complété à la main" : ""}.`;
 
 // Détails d'une prestation nouvelle : seulement ce que la brochure imprime (un champ vide n'est pas écrit). Le déroulé et les inclus vont
 // ensemble dans « Inclus », une puce par ligne, comme les fiches faites à la main.
@@ -179,8 +352,10 @@ const uniteNouvelle = (lu) => lu.unite || (lu.prix_enfant !== null ? "pp" : "");
 const TEXTES = ["horaires", "duree", "capacite", "bateau", "inclus", "parc", "conditions"];
 
 // Les opérations à faire pour les lignes cochées, dans l'ordre : { genre, action: "creer" | "modifier", table, id, valeurs, enfant, nets, cle, libelle }.
-// `enfant` : la ligne enfant séparée d'un ancien tarif à mettre à jour. `nets` : seulement si `droitNets` et un net imprimé (jamais déduit) ;
-// il complète la ligne de nets existante sans effacer l'autre valeur. Une ligne cochée qui ne change rien ne donne aucune opération.
+// `enfant` : la ligne enfant séparée d'un ancien tarif à mettre à jour. `nets` : seulement si `droitNets` et un net qui figure sur le document,
+// imprimé ou écrit à la main, ou saisi dans l'écran (jamais déduit) ; il complète la ligne de nets existante sans effacer l'autre valeur.
+// Un net caché ou absent laisse la ligne s'enregistrer, sans net. Une ligne cochée qui ne change rien ne donne aucune opération.
+// Chaque opération s'écrit en une transaction (brochure_ecrire_ligne, migration 124) : la ligne, sa ligne enfant et ses nets ensemble.
 export function planBrochure(lignes, { partenaireId, prestations = [], prestationsNets = [], trajetsNets = [], droitNets = false, langue = "en", aujourdhui = "", ordreMax = 0, numeroMax = 0 } = {}) {
   const ops = [];
   let ordre = ordreMax;
@@ -251,7 +426,7 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
         table: "trajets",
         cle: l.cle,
         libelle: `${lu.de} → ${lu.vers}, ${lu.depart}`,
-        valeurs: { partenaire_id: partenaireId, de: lu.de, vers: lu.vers, mode: lu.mode, depart: lu.depart, arrivee: lu.arrivee, duree: lu.duree, prix_adulte: lu.prix_adulte, prix_enfant: lu.prix_enfant, bebe: "", periode: lu.periode || (fenetres.length ? "" : PERIODE_TOUTE[1]), fenetres, actif: true, numero },
+        valeurs: { partenaire_id: partenaireId, de: lu.de, vers: lu.vers, mode: lu.mode, depart: lu.depart, arrivee: arriveeTexte(lu.arrivee, lu.lendemain), duree: lu.duree || dureeTrajet(lu.depart, lu.arrivee, lu.lendemain), prix_adulte: lu.prix_adulte, prix_enfant: lu.prix_enfant, bebe: "", periode: lu.periode || (fenetres.length ? "" : PERIODE_TOUTE[1]), fenetres, actif: true, numero },
         enfant: null,
         nets: avecNet ? { table: "trajets_nets", cleParent: "trajet_id", valeurs: { net_adulte: lu.net_adulte, net_enfant: lu.net_enfant } } : null,
       });
@@ -261,8 +436,10 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
     const patch = {};
     if (lu.prix_adulte !== null && lu.prix_adulte !== nombre(c.prix_adulte)) patch.prix_adulte = lu.prix_adulte;
     if (lu.prix_enfant !== null && lu.prix_enfant !== nombre(c.prix_enfant)) patch.prix_enfant = lu.prix_enfant;
-    if (!c.arrivee && lu.arrivee) patch.arrivee = lu.arrivee;
-    if (!c.duree && lu.duree) patch.duree = lu.duree;
+    // L'arrivée s'écrit si le catalogue n'en a pas, ou s'il a la même heure sans dire qu'elle est le lendemain.
+    const arrivee = arriveeTexte(lu.arrivee, lu.lendemain);
+    if (arrivee && (!c.arrivee || (lu.lendemain && c.arrivee === lu.arrivee))) patch.arrivee = arrivee;
+    if (!c.duree && (lu.duree || dureeTrajet(lu.depart, lu.arrivee, lu.lendemain))) patch.duree = lu.duree || dureeTrajet(lu.depart, lu.arrivee, lu.lendemain);
     if (!Object.keys(patch).length && !avecNet) continue;
     const n = netsDe(trajetsNets, "trajet_id", c.id);
     ops.push({
@@ -284,7 +461,10 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
 
 // Réponse simulée de la fonction pour la démonstration (aucune brochure n'est lue) : tirée du catalogue du partenaire pour montrer les quatre
 // statuts. Un tarif inchangé, un prix changé, un tarif nouveau, une ligne illisible, et un horaire de bateau s'il en a.
+// Un nouveau partenaire (carte de l'onglet Assistant) : la brochure fictive d'un transporteur en minivan (brochure-demo.mjs), avec ses nets
+// manuscrits, son scotch, ses arrivées du lendemain et ses lieux abrégés.
 export function simulerBrochure({ partenaireId, prestations = [], trajets = [], nouveau = false }) {
+  if (nouveau) return { ok: true, usage: "brochure", modele: "demo", brochure: brochureDemoTransport(), avertissements: [] };
   const siens = ciblesPossibles(partenaireId, prestations).filter((p) => p.actif !== false && nombre(p.prix_vente) !== null);
   const vide = { groupe: "", famille: "excursion", unite: "pp", prix_enfant: null, age_enfant: "", sur_demande: false, net_texte: "", net_adulte: null, net_enfant: null, horaires: "", duree: "", programme: "", inclus: "", conditions: "", parc: "", bateau: "", capacite: "", lisible: true, illisible: "" };
   const fmt = (n) => Math.round(n).toLocaleString("en-US");
@@ -321,4 +501,57 @@ export function memePartenaire(nomLu, nomPartenaire) {
   if (!lu.size) return true;
   const sien = motsCles(nomPartenaire);
   return [...lu].some((m) => sien.has(m));
+}
+
+// ---- Fiche du nouveau partenaire ----------------------------------------------------------------------------------------------------------
+
+// Un nom imprimé tout en capitales s'écrit en casse normale : « LANTA DEMO TRANSPORT CO., LTD. » → « Lanta Demo Transport Co., Ltd. ».
+// Les sigles restent en capitales. Un nom qui a déjà des minuscules ne change pas.
+const SIGLES = new Set(["VIP", "ATV", "BKK", "KL", "TAT", "SUP", "THB", "KBV", "HKT", "USA", "UK", "II", "III", "IV"]);
+export function casseNormale(nom) {
+  const t = String(nom || "").replace(/\s+/g, " ").trim();
+  if (!t || /\p{Ll}/u.test(t)) return t;
+  return t.replace(/\p{Lu}+/gu, (m) => (SIGLES.has(m) ? m : m[0] + m.slice(1).toLowerCase()));
+}
+
+// Groupe et catégorie d'un nouveau partenaire, d'après ce que la brochure vend : des bus et des minivans font un transporteur (« transport »,
+// « Land transfers and taxis »), des ferries et des speedboats une compagnie de bateaux. La catégorie reprend d'abord une valeur déjà en base :
+// la catégorie par défaut si elle y est écrite telle quelle, sinon la plus fréquente des partenaires du même groupe. Rien de déduit : « autre ».
+export const CATEGORIES_PAR_DEFAUT = { transport: "Land transfers and taxis", mer: "Ferries and speedboats", location: "Rentals", activite: "Activities" };
+export function categorieDeduite(brochure, partenaires = []) {
+  const b = brochure || {};
+  const modes = (b.trajets || []).map((t) => modeTrajet(t));
+  const route = modes.filter((m) => m === "route" || m === "mixte").length;
+  const eau = modes.filter((m) => m === "bateau").length;
+  const familles = (b.tarifs || []).map((t) => t.famille);
+  const plus = (f) => familles.filter((x) => x === f).length;
+  let groupe = "autre";
+  if (route || eau) groupe = route >= eau ? "transport" : "mer";
+  else if (familles.length) {
+    const [f] = ["transfert", "location", "activite", "excursion"].map((f) => [f, plus(f)]).sort((x, y) => y[1] - x[1])[0];
+    groupe = { transfert: "transport", location: "location", activite: "activite", excursion: (b.tarifs || []).some((t) => t.bateau) ? "mer" : "autre" }[f];
+  }
+  const defaut = groupe === "mer" && !(b.trajets || []).length ? "" : CATEGORIES_PAR_DEFAUT[groupe] || "";
+  const existantes = partenaires.map((p) => String(p.categorie || "").trim()).filter(Boolean);
+  if (defaut && existantes.includes(defaut)) return { groupe, categorie: defaut };
+  const compte = new Map();
+  for (const p of partenaires) if (p.groupe === groupe && p.categorie && p.categorie !== "apporteur") compte.set(p.categorie, (compte.get(p.categorie) || 0) + 1);
+  const frequente = [...compte].sort((x, y) => y[1] - x[1])[0];
+  return { groupe, categorie: groupe === "autre" ? "" : frequente ? frequente[0] : defaut };
+}
+
+// La fiche d'un partenaire créé depuis sa brochure : nom en casse normale, nom thaï, catégorie et groupe, lieu de départ, numéros avec leur
+// libellé et leurs cases WhatsApp et LINE, tels qu'imprimés. Le formulaire habituel s'ouvre avec, rien n'est créé sans « Enregistrer ».
+export function fichePartenaireDepuisBrochure(brochure, partenaires = []) {
+  const b = brochure || {};
+  const c = b.contacts || {};
+  const { groupe, categorie } = categorieDeduite(b, partenaires);
+  const telephones = (c.telephones || []).map((t) => (typeof t === "string" ? { numero: t, libelle: "", whatsapp: false, line: false } : { numero: t.numero || "", libelle: t.libelle || "", whatsapp: !!t.whatsapp, line: !!t.line })).filter((t) => t.numero);
+  return {
+    nom: casseNormale(b.partenaire_lu),
+    nom_thai: String(b.partenaire_thai || "").trim(),
+    categorie,
+    groupe,
+    contact: { personne: c.personne || "", telephones, emails: c.emails || [], line: c.line || "", web: c.web || "", adresse: c.adresse || "", embarcadere: String(b.lieu_depart || "").trim() },
+  };
 }
