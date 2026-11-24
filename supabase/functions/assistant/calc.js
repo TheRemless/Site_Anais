@@ -471,9 +471,11 @@ export function coutEstime(usage, modele = MODELE) {
 }
 
 // Ligne du journal : qui, quoi, combien, jamais le contenu du message ni la réponse.
-export function ligneJournal({ userId, entiteId, usage, statut, message, dureeMs }) {
+// `modeleDemande` : le modèle appelé, noté quand l'appel échoue avant toute réponse (sinon le journal notait le modèle par défaut, Haiku 5.5,
+// pour un échec d'Opus 5.5 : constat du 24.11.2026 sur l'import de brochure).
+export function ligneJournal({ userId, entiteId, usage, statut, message, dureeMs, modeleDemande = "" }) {
   const u = (message && message.usage) || {};
-  const modele = (message && message.model) || MODELE;
+  const modele = (message && message.model) || modeleDemande || MODELE;
   return {
     user_id: userId,
     entite_id: entiteId,
@@ -500,4 +502,16 @@ export function parametresAppel(usage, prompt, schema, modele = MODELE) {
     system: prompt.system,
     messages: prompt.messages,
   };
+}
+
+// Ce qu'une erreur de l'API d'Anthropic dit d'elle-même, lisible dans la réponse d'erreur (24.11.2026) : statut HTTP, type, message coupé à 300
+// caractères, identifiant de requête. Jamais la clé ni les en-têtes. Un 400 « Schema is too complex for compilation » se lit ainsi d'un coup.
+export function detailErreurApi(err) {
+  if (!err || typeof err !== "object") return null;
+  const corps = err.error && typeof err.error === "object" ? err.error : {};
+  const e = corps.error && typeof corps.error === "object" ? corps.error : corps;
+  const texte = (x, max) => (typeof x === "string" ? x.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[clé]").slice(0, max) : "");
+  const statut = Number.isInteger(err.status) ? err.status : null;
+  const detail = { statut, type: texte(e.type, 60), message: texte(e.message || err.message, 300), requete: texte(err.requestID || err.request_id || "", 80) };
+  return detail.statut || detail.type || detail.message ? detail : null;
 }

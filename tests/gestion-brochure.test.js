@@ -114,8 +114,8 @@ test("prompt : les fichiers puis la consigne, rien du catalogue ; Opus 5.5 avec 
   assert.equal(params.fallbacks, "default");
   assert.equal(params.output_config.effort, "medium");
   assert.equal(params.output_config.format.schema, SCHEMA_BROCHURE);
-  // Réflexion adaptative écrite (la seule possible sur Opus 5.5), marge de sortie pour 60 lignes, aucun réglage d'échantillonnage.
-  assert.deepEqual(params.thinking, { type: "adaptive" });
+  // Réflexion adaptative par défaut sur Opus 5.5 (paramètre non envoyé), marge de sortie pour 60 lignes, aucun réglage d'échantillonnage.
+  assert.ok(!("thinking" in params), "Opus 5.5 : omettre thinking vaut adaptive");
   assert.equal(params.max_tokens, 64000);
   assert.ok(!("temperature" in params));
   // Le schéma ne porte que des contraintes acceptées par les sorties structurées.

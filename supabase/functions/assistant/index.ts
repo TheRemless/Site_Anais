@@ -15,6 +15,7 @@ import {
   controlerAcces,
   dateBangkok,
   debutJourBangkok,
+  detailErreurApi,
   ligneJournal,
   lireReponse,
   parametresAppel,
@@ -266,18 +267,20 @@ Deno.serve(async (req) => {
       reponse = { erreur: usage === "brochure" ? "trop_long" : "indisponible" };
       code = 504;
     } else if (err instanceof Anthropic.APIError) {
-      statut = "erreur_api";
-      reponse = { erreur: "indisponible" };
+      // Le statut, le type et le message de l'API reviennent à l'écran (detail_api) et dans le statut du journal : un 400 se lit la prochaine fois.
+      const detail = detailErreurApi(err);
+      statut = detail && detail.statut ? `erreur_api_${detail.statut}` : "erreur_api";
+      reponse = { erreur: "indisponible", ...(detail ? { detail_api: detail } : {}) };
       code = 502;
     } else {
       statut = "erreur";
       reponse = { erreur: "indisponible" };
       code = 502;
     }
-    console.error("assistant :", statut, err instanceof Error ? err.message.slice(0, 200) : "");
+    console.error("assistant :", statut, err instanceof Error ? err.message.slice(0, 300) : "");
   }
 
-  const { error: errJournal } = await admin.from("assistant_journal").insert(ligneJournal({ userId, entiteId, usage, statut, message: reponseClaude, dureeMs: Date.now() - debut }));
+  const { error: errJournal } = await admin.from("assistant_journal").insert(ligneJournal({ userId, entiteId, usage, statut, message: reponseClaude, modeleDemande: String((parametres as { model?: string }).model || ""), dureeMs: Date.now() - debut }));
   if (errJournal) console.error("journal de l'assistant non écrit :", errJournal.message);
   return json(reponse, code);
 });
