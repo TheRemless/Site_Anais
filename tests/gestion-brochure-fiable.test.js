@@ -259,7 +259,7 @@ test("ligne illisible complétée à la main dans l'écran : prix, net et heures
   const [op] = C.planBrochure([faite], { partenaireId: PART, droitNets: true, aujourdhui: AJD, numeroMax: 3 });
   assert.deepEqual([op.action, op.valeurs.prix_adulte, op.valeurs.arrivee, op.valeurs.de, op.valeurs.vers, op.nets.valeurs], ["creer", 1050, "15:45", "Koh Lanta", "Padang Besar", { net_adulte: 850, net_enfant: null }]);
   // Le texte imprimé de la ligne reste en base avec le trajet (colonne « imprime », migration 127).
-  assert.match(op.valeurs.imprime, /Lanta - Padang \| VIP Bus\/Van/);
+  assert.equal(op.valeurs.imprime, "Lanta → Padang | VIP Bus/Van | 08:00 | 15:45 | 1,050", "reconstruit des champs utiles, jamais la ligne recopiée");
   // Une saisie qui n'est pas un prix ne passe pas.
   assert.equal(C.completerLigne(padang, { prix_adulte: "abc" }, { partenaireId: PART, trajets: CATALOGUE }).statut, "illisible");
 });
@@ -500,9 +500,10 @@ test("nets sans le droit : la fonction et l'écran retirent chiffres, colonne «
   for (const interdit of ["เก็บ", "1,300", "1300", "Net couvert"]) assert.ok(!texte.includes(interdit), interdit);
   assert.ok(serveur.trajets.every((t) => t.net_adulte === null && t.net_enfant === null && t.net_texte === "" && !t.net_a_saisir));
   assert.ok(!serveur.colonnes.some((c) => c.contenu === "net"));
-  assert.equal(serveur.trajets[0].imprime, "Lanta - Khaosan (BKK) | VIP Bus/Van | 08:00 | 06:00 | 1,650", "la case du net retirée, le reste gardé");
+  assert.equal(serveur.trajets[0].imprime, "Lanta → Khaosan (BKK) | VIP Bus/Van | 08:00 | 06:00 | 1,650", "texte reconstruit des champs utiles");
   assert.equal(serveur.trajets[0].raison, "", "une raison qui parle du net est retirée");
-  assert.equal(serveur.trajets[4].raison, avecRaison.trajets[4].raison, "une raison sans net reste");
+  assert.equal(serveur.trajets[3].raison, "Arrivée 05:00 le lendemain.", "une raison sans net ni chiffre (hors heures) reste");
+  assert.equal(serveur.trajets[4].raison, "", "une raison qui cite un autre chiffre (« 12.0 AM ») est retirée par prudence");
   const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
   assert.match(index, /const voitNets = \(perms\.data \|\| \[\]\)\.includes\("partenaires\.nets"\)/);
   assert.match(index, /valider = \(v\) => sansNets\(validerBrochure\(v\)\)/);
@@ -515,4 +516,66 @@ test("sigles : « PP CRUISER » → « PP Cruiser », « BKK STD » restent, « 
   assert.equal(C.casseNormale("BKK EXPRESS VAN"), "BKK Express Van");
   assert.equal(C.casseNormale("KOH DEMO TRANSPORT CO., LTD."), "Koh Demo Transport Co., Ltd.");
   assert.equal(C.casseNormale("VIP DEMO VAN"), "VIP Demo Van");
+});
+
+test("fuite des nets : une colonne de net mal étiquetée (« autre ») n'apparaît ni en base ni à l'écran sans le droit", () => {
+  const b = brochureDemoTransport();
+  // La colonne « เก็บ » étiquetée « autre » : Claude n'y a pas reconnu un net, les chiffres restent dans la ligne imprimée et la raison.
+  const mal = { ...b, colonnes: b.colonnes.map((c) => (c.entete === "เก็บ" ? { ...c, contenu: "autre" } : c)), trajets: b.trajets.map((t) => ({ ...t, net_texte: "", net_adulte: null, net_source: "", raison: t.net_adulte ? `Chiffre manuscrit ${t.net_adulte.toLocaleString("en-US")} dans la dernière colonne.` : t.raison })) };
+  const r = lu(mal).brochure;
+  // Les nets qui ne sont le prix de vente d'aucune ligne (450 est aussi le prix de vente du trajet de Krabi Airport).
+  const ventes = new Set(b.trajets.map((t) => t.prix_adulte));
+  const nets = b.trajets.map((t) => t.net_adulte).filter((n) => n && !ventes.has(n)).map((n) => n.toLocaleString("en-US"));
+  assert.ok(nets.length >= 5);
+  // En base : le texte imprimé écrit avec le trajet est reconstruit, sans la ligne recopiée.
+  const ops = C.planBrochure(C.comparerBrochure(r, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, droitNets: false, aujourdhui: AJD });
+  assert.ok(ops.length >= 5);
+  for (const o of ops) for (const n of nets) assert.ok(!JSON.stringify(o.valeurs).includes(n) && !JSON.stringify(o.valeurs).includes(n.replace(",", "")), `${o.valeurs.vers} : ${n}`);
+  for (const o of ops) assert.ok(!/เก็บ|\[scotch\]/.test(o.valeurs.imprime), o.valeurs.imprime);
+  // À l'écran sans le droit (fonction et outil) : ni la ligne recopiée, ni la raison qui cite le chiffre.
+  for (const masque of [B.masquerNets(r), C.masquerNets(r)]) {
+    const texte = JSON.stringify(masque.trajets.map((t) => [t.imprime, t.raison, t.relecture_raison, t.illisible, t.prix_texte]));
+    for (const n of nets) assert.ok(!texte.includes(n), n);
+  }
+});
+
+test("heure de départ : sa précision est gardée ; « (next day) » ou « +1 » dans l'heure comptent comme lendemain, jamais en double", () => {
+  const base = brochureDemoTransport().trajets[3];
+  const v = (depart, arrivee) => lu({ tarifs: [], trajets: [{ ...base, depart, arrivee, lendemain: false, duree: "" }] }).brochure.trajets[0];
+  const a = v("07:00 (Malaysia time)", "15:00");
+  assert.deepEqual([a.depart, a.depart_precision, a.duree], ["07:00", "(Malaysia time)", ""]);
+  const b = v("12:00", "06:00 (next day)");
+  assert.deepEqual([b.arrivee, b.arrivee_precision, b.lendemain, b.duree], ["06:00", "", true, "18 h"]);
+  const c = v("20:00", "05:00 +1");
+  assert.deepEqual([c.arrivee_precision, c.lendemain, c.duree], ["", true, "9 h"]);
+  const [op] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [b] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.equal(op.valeurs.arrivee, "06:00 (next day)", "un seul « (next day) »");
+  const [opA] = C.planBrochure(C.comparerBrochure({ tarifs: [], trajets: [a] }, { partenaireId: PART, trajets: CATALOGUE }).trajets.map((l) => ({ ...l, coche: true })), { partenaireId: PART, aujourdhui: AJD });
+  assert.match(opA.valeurs.imprime, /07:00 \(Malaysia time\)/, "la précision du départ reste avec le trajet");
+});
+
+test("forme : un JSON lisible mais sans « trajets » ou sans champ requis demande la correction (une fois)", () => {
+  const t = JSON.stringify({ ...brochureDemoTransport(), trajets: undefined });
+  const r = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: t }] }, B.SCHEMA_BROCHURE);
+  assert.deepEqual([r.ok, r.statut, r.raison, r.manque], [false, "json_invalide", "forme", ["trajets"]]);
+  const sansPrix = { ...brochureDemoTransport() };
+  sansPrix.trajets = sansPrix.trajets.map((x, i) => (i === 2 ? (({ prix_adulte, ...reste }) => reste)(x) : x));
+  const r2 = B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(sansPrix) }] }, B.SCHEMA_BROCHURE);
+  assert.deepEqual(r2.manque, ["trajets[2].prix_adulte"]);
+  const c = B.demandeCorrection({ model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x" }] }] }, { content: [] }, "forme", r2.manque);
+  assert.match(c.messages.at(-1).content[0].text, /des champs requis manquent \(trajets\[2\]\.prix_adulte\)/);
+  assert.equal(B.lireBrochure({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(brochureDemoTransport()) }] }, B.SCHEMA_BROCHURE).ok, true, "la brochure fictive complète passe");
+});
+
+test("journal : une correction coupée par le délai compte les jetons de la première réponse, plus les siens s'il y en a", () => {
+  const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
+  assert.match(index, /premierMessage = premier;\s*\/\/[^\n]*\n\s*reponseClaude = null;/);
+  assert.match(index, /if \(partiel && usageAvant\) reponseClaude = \{ \.\.\.partiel, usage: additionner\(usageAvant, partiel\.usage\) \}/);
+  assert.match(index, /else if \(premierMessage && usageAvant\) reponseClaude = \{ \.\.\.premierMessage, usage: additionner\(usageAvant, \{\}\) \}/);
+});
+
+test("retour de la migration 127 : la fonction de la 124 revient avant le retrait de la colonne", () => {
+  const sql = readFileSync(new URL("../docs/gestion/retour-127-trajet-imprime.sql", import.meta.url), "utf8");
+  assert.ok(sql.indexOf("create or replace function brochure_ecrire_ligne") < sql.indexOf("alter table trajets drop column if exists imprime"));
+  assert.ok(!/imprime/.test(sql.slice(sql.indexOf("create or replace function"), sql.indexOf("alter table trajets drop"))), "la fonction rendue n'écrit pas « imprime »");
 });

@@ -95,9 +95,10 @@ export function normaliserLieu(imprime, { suggestion = "", lieux = [] } = {}) {
 export const SUFFIXE_LENDEMAIN = " (next day)";
 // `precision` : ce que la brochure imprime après l'heure (« (Malaysia time) »), gardé tel quel.
 export const arriveeTexte = (heure, lendemain = false, precision = "") => (heure ? `${heure}${precision ? ` ${precision}` : ""}${lendemain ? SUFFIXE_LENDEMAIN : ""}` : "");
-// Ce que la brochure imprime de la ligne, gardé en base avec le trajet (colonne « imprime », migration 127) : la ligne recopiée, sinon les
-// lieux tels qu'imprimés. Un nom de lieu ambigu ou corrigé garde ainsi sa trace.
-export const texteImprimeTrajet = (lu) => String(lu.imprime || [lu.de_imprime, lu.vers_imprime].filter(Boolean).join(" → ")).slice(0, 400);
+// Ce que la brochure imprime du trajet, gardé en base (colonne « imprime », migration 127) : jamais la ligne recopiée (elle peut porter un net,
+// et trajets se lit avec le seul droit « voir les partenaires »), mais les champs utiles reconstruits : lieux et type tels qu'imprimés, heures
+// avec leur précision, prix de vente (texteSurLigne). Un nom de lieu ambigu ou corrigé garde ainsi sa trace.
+export const texteImprimeTrajet = (lu) => texteSurLigne(lu);
 export function lireArrivee(texte) {
   const t = String(texte || "").trim();
   const m = /^(\d{1,2}:\d{2})\s*(?:\((?:next day|\+1|lendemain|le lendemain)\)|\+1)?$/i.exec(t);
@@ -566,24 +567,26 @@ export function fichePartenaireDepuisBrochure(brochure, partenaires = []) {
   };
 }
 
-// Une brochure sans ses nets, pour qui n'a pas le droit « prix nets » (revue du 24.11.2026) : nets vidés, colonnes de net retirées, la ligne
-// imprimée sans ses cases de net (ou vide si les cases ne s'alignent pas sur les colonnes), et toute raison ou remarque qui parle d'un net ou en
-// cite un chiffre retirée. La même fonction existe côté outil (brochure-calc.mjs) ; un test vérifie qu'elles rendent la même chose.
+// Une brochure sans ses nets, pour qui n'a pas le droit « prix nets » (revues du 24.11.2026) : nets vidés, colonnes de net retirées, et plus
+// aucun texte imprimé brut. La ligne imprimée est remplacée par un texte reconstruit des seuls champs utiles (lieux et type imprimés, heures,
+// prix de vente : texteSurLigne), jamais par la ligne recopiée : une colonne de net mal étiquetée (« autre ») n'y passe donc pas. Une raison,
+// une remarque ou un motif d'illisibilité qui parle d'un net ou cite un chiffre (hors heures) est retiré. La même fonction existe côté outil
+// (brochure-calc.mjs) ; un test vérifie qu'elles rendent la même chose.
 const MOTS_NET = /\bnets?\b|\bagent\b|\bcost\b|\bcommission|เก็บ|ราคาทุน|ราคาเอเย่นต์/i;
+const sansChiffre = (t) => (typeof t === "string" && t && !MOTS_NET.test(t) && !/\d/.test(t.replace(/\b\d{1,2}[:.h]\d{2}\b/g, "")) ? t : "");
+const montantsVente = (l) => [l.prix_adulte, l.prix_enfant].filter((x) => typeof x === "number" && x > 0).map((x) => x.toLocaleString("en-US")).join(" / ");
+// Le texte imprimé sûr d'une ligne, reconstruit champ par champ : ce qui s'écrit en base (trajets.imprime) et ce qui se montre sans le droit.
+export function texteSurLigne(l) {
+  const x = l || {};
+  const heure = (h, p) => [h, p].filter(Boolean).join(" ");
+  const morceaux = "de" in x || "vers" in x
+    ? [[x.de_imprime || x.de, x.vers_imprime || x.vers].filter(Boolean).join(" → "), x.mode, heure(x.depart, x.depart_precision), heure(x.arrivee, x.arrivee_precision), montantsVente(x)]
+    : [x.libelle, montantsVente(x)];
+  return morceaux.map((m) => String(m || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" | ").slice(0, 400);
+}
 export function masquerNets(brochure) {
   const b = brochure || {};
   const colonnes = Array.isArray(b.colonnes) ? b.colonnes : [];
-  const indexNets = colonnes.map((c, i) => (c && (c.contenu === "net" || c.contenu === "net_enfant") ? i : -1)).filter((i) => i >= 0);
-  const chiffres = (l) => [l.net_texte, l.net_adulte, l.net_enfant].filter((x) => x !== null && x !== undefined && x !== "").flatMap((x) => [String(x), Number(x).toLocaleString("en-US")]).filter((x) => x && x !== "NaN");
-  const sansNet = (t, l) => (typeof t === "string" && t && (MOTS_NET.test(t) || chiffres(l).some((c) => c.length >= 2 && t.includes(c))) ? "" : t || "");
-  const imprime = (t, l) => {
-    if (typeof t !== "string" || !t) return "";
-    if (!indexNets.length) return sansNet(t, l);
-    const cases = t.split("|");
-    // Les cases suivent les colonnes ; une colonne vide en fin de ligne (NOTE) peut manquer. Sinon, rien n'est montré.
-    if (cases.length > colonnes.length || cases.length <= Math.max(...indexNets)) return "";
-    return sansNet(cases.filter((_, i) => !indexNets.includes(i)).map((c) => c.trim()).join(" | "), l);
-  };
-  const ligne = (l) => ({ ...l, imprime: imprime(l.imprime, l), raison: sansNet(l.raison, l), relecture_raison: sansNet(l.relecture_raison, l), illisible: sansNet(l.illisible, l), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
-  return { ...b, colonnes: colonnes.filter((_, i) => !indexNets.includes(i)), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: MOTS_NET.test(b.remarques || "") ? "" : b.remarques || "" };
+  const ligne = (l) => ({ ...l, imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
+  return { ...b, colonnes: colonnes.filter((c) => c && c.contenu !== "net" && c.contenu !== "net_enfant" && !MOTS_NET.test(c.entete || "")), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: sansChiffre(b.remarques) };
 }

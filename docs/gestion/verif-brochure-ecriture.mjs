@@ -113,6 +113,14 @@ const long = await ecrireLigne("admin", { table: "trajets", action: "creer", val
 ok(long.ok && long.ligne.imprime.length === 400, "migration 127 : la ligne imprimée est coupée à 400 caractères");
 ok((await compte("select count(*)::int n from trajets where imprime is null")) === 0, "migration 127 : les trajets existants ont une ligne imprimée vide, jamais nulle");
 
+// ---- Retour de la 127 : la fonction de la 124 revient, la colonne part ; puis la 127 se repose ----------------------------------------------
+await db.exec(lire("retour-127-trajet-imprime.sql"));
+ok((await compte("select count(*)::int n from information_schema.columns where table_name = 'trajets' and column_name = 'imprime'")) === 0, "retour 127 : colonne imprime retirée");
+const apresRetour = await ecrireLigne("admin", { table: "trajets", action: "creer", valeurs: trajet({ depart: "22:00", imprime: "ignoré" }) });
+ok(apresRetour.ok && !("imprime" in apresRetour.ligne), "retour 127 : brochure_ecrire_ligne de la 124 écrit sans « imprime »");
+await db.exec(lire("migration-127-trajet-imprime.sql"));
+ok((await ecrireLigne("admin", { table: "trajets", action: "creer", valeurs: trajet({ depart: "23:00", imprime: "x" }) })).ligne.imprime === "x", "et la 127 se repose après son retour");
+
 // ---- Fermée à anon ---------------------------------------------------------------------------------------------------------------------
 let anonOk;
 try { await db.exec("set role anon;"); await db.query("select brochure_ecrire_ligne('{}'::jsonb)"); anonOk = true; } catch { anonOk = false; } finally { await db.exec("reset role;"); }

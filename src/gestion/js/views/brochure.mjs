@@ -12,7 +12,7 @@ import { libelleUnite } from "../partenaires-calc.mjs";
 import { assistantActif } from "../assistant-calc.mjs";
 import { modeTrajet } from "../operations-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { DROITS_BROCHURE, comparerBrochure, changerCible, compter, planBrochure, ciblesPossibles, phraseAgeEnfant, memePartenaire, signauxLigne, completerLigne, fichePartenaireDepuisBrochure, masquerNets } from "../brochure-calc.mjs";
+import { DROITS_BROCHURE, comparerBrochure, changerCible, compter, planBrochure, ciblesPossibles, phraseAgeEnfant, memePartenaire, signauxLigne, completerLigne, fichePartenaireDepuisBrochure, masquerNets, texteSurLigne } from "../brochure-calc.mjs";
 import { GROUPES } from "./partenaires.mjs";
 import { messageErreur } from "./assistant-demande.mjs";
 import { preparer, tailleTexte, erreurFichier, LIMITES } from "../pieces-jointes.mjs";
@@ -267,10 +267,11 @@ function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
           majBouton();
         },
       });
-      const arrivee = lu.arrivee ? (lu.lendemain ? tr("arrivée {heure} le lendemain", { heure: lu.arrivee }) : tr("arrivée {heure}", { heure: lu.arrivee })) : "";
+      const heureArrivee = [lu.arrivee, lu.arrivee_precision].filter(Boolean).join(" ");
+      const arrivee = lu.arrivee ? (lu.lendemain ? tr("arrivée {heure} le lendemain", { heure: heureArrivee }) : tr("arrivée {heure}", { heure: heureArrivee })) : "";
       const titre =
         l.genre === "trajet"
-          ? h("strong", null, `${lu.de || "?"} → ${lu.vers || "?"}, ${lu.depart || "—"}`, arrivee ? ` (${arrivee}${lu.duree ? `, ${lu.duree}` : ""})` : "")
+          ? h("strong", null, `${lu.de || "?"} → ${lu.vers || "?"}, ${[lu.depart || "—", lu.depart_precision].filter(Boolean).join(" ")}`, arrivee ? ` (${arrivee}${lu.duree ? `, ${lu.duree}` : ""})` : "")
           : !l.cible && l.statut !== "illisible"
             ? h("input", { class: "brochure-libelle", value: l.libelle, "aria-label": tr("Libellé de la nouvelle prestation"), oninput: (e) => (l.libelle = e.target.value) })
             : h("strong", null, l.cible ? l.cible.libelle : lu.libelle);
@@ -328,7 +329,9 @@ function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
         signaux.includes("net_a_saisir") && l.statut !== "illisible" ? h("p", { class: "brochure-note" }, lu.net_cache ? tr("Net caché sur la brochure : la ligne s'enregistre sans net, à saisir ensuite.") : tr("Pas de net lisible sur cette ligne : elle s'enregistre sans net.")) : null,
         l.statut === "illisible" ? h("p", { class: "brochure-illisible" }, lu.illisible || tr("Ligne illisible."), " ", tr("Complétez-la ci-dessous pour l'enregistrer.")) : null,
       ];
-      const imprime = lu.imprime || lu.prix_texte ? h("p", { class: "brochure-imprime" }, tr("Imprimé : « {texte} »", { texte: lu.imprime || lu.prix_texte })) : null;
+      // Sans le droit « prix nets », seulement le texte reconstruit des champs utiles (masquerNets l'a déjà mis dans lu.imprime).
+      const texteLu = droitNets ? lu.imprime || lu.prix_texte : texteSurLigne(lu);
+      const imprime = texteLu ? h("p", { class: "brochure-imprime" }, tr("Imprimé : « {texte} »", { texte: texteLu })) : null;
       const lus =
         l.genre === "prestation"
           ? [[N_("Horaires"), lu.horaires], [N_("Durée"), lu.duree], [N_("Capacité"), lu.capacite], [N_("Bateau"), lu.bateau], [N_("Programme"), lu.programme], [N_("Inclus"), lu.inclus], [N_("Frais de parc"), lu.parc], [N_("Conditions"), [lu.conditions, lu.prix_enfant !== null ? phraseAgeEnfant(lu.age_enfant, langue) : ""].filter(Boolean).join("\n")]]

@@ -169,6 +169,10 @@ test("demande de correction : une seule, la réponse renvoyée telle quelle (ré
   const c = demandeCorrection(p, premiere, "tronque");
   assert.equal(c.messages.length, p.messages.length + 2);
   assert.deepEqual(c.messages.at(-2), { role: "assistant", content: premiere.content });
+  // Point de cache sur le premier message de la personne (fichiers et consigne), le reste inchangé.
+  assert.deepEqual(c.messages[0].content.at(-1).cache_control, { type: "ephemeral" });
+  assert.deepEqual(c.messages[0].content.slice(0, -1), p.messages[0].content.slice(0, -1));
+  assert.ok(!p.messages[0].content.some((b) => b.cache_control), "le premier appel n'est pas touché");
   assert.match(c.messages.at(-1).content[0].text, /ne se referme pas[\s\S]*Rends seulement l'objet JSON complet et valide/);
   assert.equal(c.model, p.model);
   const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
@@ -176,5 +180,5 @@ test("demande de correction : une seule, la réponse renvoyée telle quelle (ré
   assert.equal((index.match(/demandeCorrection\(/g) || []).length, 1);
   assert.match(index, /if \(!lu\.ok && lu\.statut === "json_invalide" && usage === "brochure" && arret && !arret\.signal\.aborted\) \{/);
   assert.match(index, /demandeCorrection\([^)]*\)[^;]*\{ signal: arret\.signal \}\)/);
-  assert.match(index, /lire = lireBrochure;/);
+  assert.match(index, /lire = \(m\) => lireBrochure\(m, demande\.passe === "relecture" \? SCHEMA_RELECTURE : SCHEMA_BROCHURE\);/);
 });
