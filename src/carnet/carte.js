@@ -69,7 +69,7 @@ function construireCarte(carte, geo, options = {}) {
     if (r.photo && r.appel) {
       const [cx, cy] = pc(...r.appel);
       return `<a class="cg-dot" href="${lien}" data-k="${r.cle}" data-go="${r.vers}" data-x="${dx}" data-y="${dy}" style="left:${dx}%;top:${dy}%" tabindex="-1" aria-hidden="true"></a>`
-        + `<a class="cg-call" href="${lien}" data-k="${r.cle}" data-go="${r.vers}" style="left:${cx}%;top:${cy}%"><span class="cg-med"><img src="${esc(r.photo)}" alt="" sizes="104px" loading="eager" decoding="async" style="object-position:${esc(r.position || "50% 50%")}"></span><span class="cg-cl">${esc(r.nom)}<small>${esc(sous(r))}</small></span></a>`;
+        + `<a class="cg-call" href="${lien}" data-k="${r.cle}" data-go="${r.vers}" style="--x:${cx}%;top:${cy}%;--nn:${[...r.nom].length};--ns:${[...sous(r)].length}"><span class="cg-med"><img src="${esc(r.photo)}" alt="" sizes="104px" loading="eager" decoding="async" style="object-position:${esc(r.position || "50% 50%")}"></span><span class="cg-cl">${esc(r.nom)}<small>${esc(sous(r))}</small></span></a>`;
     }
     const [tx, ty] = TRANS[r.ancre || "e"];
     return `<a class="cg-dot cg-dot--txt" href="${lien}" data-k="${r.cle}" data-go="${r.vers}" data-x="${dx}" data-y="${dy}" style="left:${dx}%;top:${dy}%"><span class="sr-only">${esc(r.nom)}</span></a>`

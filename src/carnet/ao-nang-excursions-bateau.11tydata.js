@@ -172,7 +172,7 @@ const ouverture = {
   photoFin: { src: "/images/carnet-ao-nang-fruits.jpg", alt: "Plateau de fruits découpés tenu à la main au-dessus du sable, au bord d’une eau peu profonde", position: "50% 50%" },
   carte: {
     geo: "carnet-aonang",
-    nord: [54, 40],
+    nord: [66, 82],
     cadre: { lon0: 98.54, lon1: 99.04, lat0: 7.68, lat1: 8.1 },
     libelle: "Carte schématique de la côte de Krabi autour d’Ao Nang et de Railay, avec les îles Hong, la zone des 4 Islands et les îles Phi Phi",
     reperes: [
