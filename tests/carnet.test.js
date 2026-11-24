@@ -169,7 +169,7 @@ test("carnet : le guide Koh Samui affiche les prix des offres en THB", () => {
   for (const n of prix) assert.ok(doc.includes(`<span class="cg-price">${n}&nbsp;THB</span>`), n);
   assert.ok(doc.includes('<span class="cg-price">700&nbsp;THB</span>'));
   assert.equal((doc.match(/<span class="cg-price">50&nbsp;THB<\/span>/g) || []).length, 2, "50 THB : Koh Madsum et Koh Rap");
-  assert.doesNotMatch(doc, /490/, "plus de repère en CHF");
+  assert.doesNotMatch(doc.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/ (?:style|d|srcset|href|src)="[^"]*"/g, ""), /490/, "plus de repère en CHF (hors dessin de la carte et attributs)");
   // Droits d'entrée : à payer sur place, en plus, jamais « inclus » (Ang Thong, petit groupe compris)
   assert.match(doc, /À payer sur place, hors total/);
   assert.equal((doc.match(/Entrée du parc, en plus du prix[\s\u202f]: 300&nbsp;THB par adulte, 150&nbsp;THB par enfant \(de 3 à 14 ans et de moins de 1,40 m\), gratuit avant 3 ans\. À payer sur place, en espèces, au parc/g) || []).length, 4, "règle officielle du parc sur les 4 offres Ang Thong");
