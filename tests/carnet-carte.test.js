@@ -147,3 +147,19 @@ test("carnet : OpenStreetMap est cité sous chaque carte, les données de la car
   for (const p of pages) assert.match(p.html, /© contributeurs OpenStreetMap/, p.file);
   for (const f of ["osm-islands", "carnet-samui", "carnet-aonang"]) assert.ok(fs.existsSync(path.join(root, "src/_includes/geo", f + ".json")), f);
 });
+
+test("carnet : chaque photo écrite dans les données des guides (galeries, sorties, repères, fin de page) existe dans src/images", () => {
+  const collect = (v, out = []) => {
+    if (Array.isArray(v)) v.forEach((x) => collect(x, out));
+    else if (v && typeof v === "object") { for (const [k, x] of Object.entries(v)) { if ((k === "src" || k === "photo") && typeof x === "string") out.push(x); else if (typeof x === "object") collect(x, out); } }
+    return out;
+  };
+  let n = 0;
+  for (const f of ["koh-lanta-excursions-activites", "koh-samui-excursions-bateau", "ao-nang-excursions-bateau"]) {
+    const d = require("../src/carnet/" + f + ".11tydata.js");
+    for (const src of [...collect(d.ouverture), ...collect(d.guide)]) { n++; assert.ok(fs.existsSync(path.join(root, "src", src)), f + " : " + src + " n'existe pas"); }
+    const njk = read("src/carnet/" + f + ".njk");
+    for (const m of njk.matchAll(/heroImage:\s*"([^"]+)"/g)) assert.ok(fs.existsSync(path.join(root, "src", m[1])), m[1]);
+  }
+  assert.ok(n > 25, "photos contrôlées : " + n);
+});

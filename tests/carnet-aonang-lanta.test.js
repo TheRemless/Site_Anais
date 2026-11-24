@@ -423,7 +423,7 @@ test("message Gestion : le transfert depuis l'hôtel n'est jamais un extra, une 
 function blocGroupe(doc, id) {
   const i = doc.indexOf(`id="offre-${id}"`);
   const debut = Math.max(doc.lastIndexOf('<article class="cg-sortie"', i), doc.lastIndexOf('<details class="cg-act"', i));
-  const fins = ['<article class="cg-sortie"', '<details class="cg-act"', '<section class="cg-chap', '<section class="cg-close"'].map((m) => doc.indexOf(m, i)).filter((n) => n > 0);
+  const fins = ['<article class="cg-sortie"', '<details class="cg-act"', '<section class="cg-chap', '<section class="cg-close'].map((m) => doc.indexOf(m, i)).filter((n) => n > 0);
   return doc.slice(debut, Math.min(...fins));
 }
 

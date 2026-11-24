@@ -213,7 +213,7 @@ Entrée du parc national, en plus du prix{% for v in o.variantes %}{% if loop.fi
 {%- set mise = cfg.mise or "modes" -%}
 <section class="cg-chap cg-chap--{{ mise }}" id="{{ s.id }}" aria-labelledby="{{ s.id }}-title"{% if carteGuide and s.id in ouverture.atlas %} data-grp data-grp-k="{{ reperesGuide[s.id] }}" data-t="{{ s.titre }}"{% endif %}>
   <header class="cg-chap-h">
-    <h2 id="{{ s.id }}-title">{{ s.titre }}{% if cfg.script %}<span class="cg-sc">{{ cfg.script }}</span>{% endif %}</h2>
+    <h2 id="{{ s.id }}-title">{{ s.titre }}{% if cfg.script %} <span class="cg-sc">{{ cfg.script }}</span>{% endif %}</h2>
     {%- if s.intro %}<p class="cg-chap-intro">{{ s.intro }}</p>{% endif %}
     {%- if s.liens %}<p class="cg-exc-liens">{% for l in s.liens %}{{ lien(l) }}{% endfor %}</p>{% endif %}
     {%- if premiere and guide.paragraphes and guide.paragraphes.length > 1 or s.notePrix %}
@@ -317,7 +317,7 @@ Entrée du parc national, en plus du prix{% for v in o.variantes %}{% if loop.fi
   <div class="cg-head">
     <p class="cg-kicker">Carnet de voyage</p>
     {%- if h1Script %}
-    <h1>{{ h1Lead }}<span class="cg-sc">{{ h1Script }}</span></h1>
+    <h1>{{ h1Lead }} <span class="cg-sc">{{ h1Script }}</span></h1>
     {%- else %}
     <h1>{{ h1Lead or title }}</h1>
     {%- endif %}

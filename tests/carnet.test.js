@@ -215,7 +215,7 @@ test("carnet : aucun numéro de téléphone en dur dans les gabarits, le script 
   }
   assert.match(read("src/_includes/carnet-guide.njk"), /wa\.me\/\{\{ business\.telephone \| replace\('\+', ''\) \}\}/);
   const doc = read(samui.built);
-  const fin = doc.slice(doc.indexOf('class="cg-close"'));
+  const fin = doc.slice(doc.indexOf('id="fin"'));
   assert.ok(fin.includes(`href="https://wa.me/${digits}?text=`), "le bouton de fin de page pointe sur le numéro de business.js");
 });
 

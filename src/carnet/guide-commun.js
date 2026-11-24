@@ -31,7 +31,7 @@ function desGroupe(g, offres) {
   const liste = (g.offres || []).map((id) => offres[id]).filter(Boolean);
   const min = liste.map(prixMinimum).filter((n) => n !== null && n !== undefined);
   if (min.length) return { v: Math.min(...min), texte: "dès " + thb(Math.min(...min)) };
-  const loc = liste.flatMap((o) => (o.faits || []).map((f) => (f.match(/^À partir de (\d+) THB par 24 heures/) || [])[1]).filter(Boolean)).map(Number);
+  const loc = liste.flatMap((o) => (o.faits || []).map((f) => (f.match(/^À partir de ([\d’' \u00a0]+) THB par 24 heures/) || [])[1]).filter(Boolean)).map((t) => Number(t.replace(/\D/g, "")));
   if (loc.length) return { v: Math.min(...loc), texte: "dès " + thb(Math.min(...loc)) + " par 24\u00a0h" };
   return { v: null, texte: "Sur demande" };
 }

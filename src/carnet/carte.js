@@ -41,11 +41,12 @@ function construireCarte(carte, geo, options = {}) {
 
   // Rive d'une île à une latitude donnée : côté « w » ou « e » (sert à poser un repère exactement sur la côte)
   const rive = (r) => {
-    const anneau = anneauxDe(geo, [r.ile])[0];
     const xs = [];
-    for (let i = 0; i < anneau.length - 1; i++) {
-      const [a, b] = [anneau[i], anneau[i + 1]];
-      if ((a[1] - r.lat) * (b[1] - r.lat) <= 0 && a[1] !== b[1]) xs.push(a[0] + ((r.lat - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+    for (const anneau of anneauxDe(geo, [r.ile])) {
+      for (let i = 0; i < anneau.length - 1; i++) {
+        const [a, b] = [anneau[i], anneau[i + 1]];
+        if ((a[1] - r.lat) * (b[1] - r.lat) <= 0 && a[1] !== b[1]) xs.push(a[0] + ((r.lat - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+      }
     }
     if (!xs.length) throw new Error("carte : la rive de « " + r.ile + " » ne coupe pas la latitude " + r.lat);
     return [r.cote === "w" ? Math.min(...xs) : Math.max(...xs), r.lat];

@@ -46,6 +46,15 @@
   window.addEventListener("hashchange", fromHash);
   fromHash();
 
+  // Feuille de réservation : le formulaire défile dans .cg-form-body (le moteur remet seulement le défilement du <dialog> à zéro). À chaque ouverture ou fermeture, on le remet en haut.
+  var sheet = doc.getElementById("cg-sheet");
+  var body = sheet && $(".cg-form-body", sheet);
+  if (sheet && body) {
+    var top = function () { body.scrollTop = 0; };
+    sheet.addEventListener("close", top);
+    if (window.MutationObserver) new MutationObserver(function () { if (sheet.open) top(); }).observe(sheet, { attributes: true, attributeFilter: ["open"] });
+  }
+
   // Repère mobile : fabriqué ici, il n'a de sens qu'avec JavaScript.
   var svg = $(".cg-sv");
   var mapEl = $(".cg-mapcol");
