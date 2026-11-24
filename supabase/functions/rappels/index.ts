@@ -21,7 +21,7 @@ import webpush from "npm:web-push@3.6.7";
 import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { STATUTS_SUIVIS, DEPOT, changement, lireSuivi, notification } from "../ameliorations/calc.js";
 import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
-import { messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1 } from "./partenaire.js";
+import { messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1, fonctionAbsente } from "./partenaire.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
@@ -576,11 +576,7 @@ async function suivreAmeliorations() {
 // réduite aux colonnes d'une notification. Un compte désactivé ou dont l'accès est retiré n'a plus de course : rien ne part.
 // Avant la migration 123 (fonctions absentes), rien n'est fait, sans erreur toutes les 5 minutes.
 type Db = ReturnType<typeof createClient>;
-// Seule l'absence d'un objet de la migration 123 (ou de partenaires_acces) compte comme « migration absente ». Toute autre erreur, même
-// « column … does not exist » à l'intérieur d'une fonction présente (un retour 119 rejoué, par exemple), remonte : la panne se voit.
-const OBJETS_123 = /partenaire_notif_courses|partenaire_notifs_changements|partenaires_notifs_envois|partenaires_acces/;
-const fonctionAbsente = (e: { code?: string; message?: string } | null) =>
-  !!e && ["PGRST202", "PGRST205", "42883", "42P01"].includes(e.code || "") && OBJETS_123.test(e.message || "");
+// fonctionAbsente (partenaire.js, testée) : seule l'absence d'un objet de la migration 123 vaut « migration absente », toute autre erreur remonte.
 
 // Les comptes partenaires qui ont un téléphone abonné (`user_id` : un essai ciblé), avec leurs abonnements et leur profil.
 async function comptesPartenaires(db: Db, demande: { user_id?: string }) {

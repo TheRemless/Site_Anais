@@ -365,5 +365,46 @@ ok(r3.ok && JSON.stringify(r3.rows) === JSON.stringify(r.rows.sort((a, b) => a.i
 await db.exec(lire(MIG));
 ok(!!(await un("select 1 x from pg_proc where proname = 'partenaire_notifs_changements'")), "et la migration se rejoue après le retour");
 
+// ---- Migration 125 : frais de parc (même règle que les membres), sorties d'une course sans date -------------------------------------------
+// Le bloc précédent a rejoué la 123 (retour puis migration) : on remet la 125 par-dessus, comme en production.
+await db.exec(lire("migration-125-notifications-partenaire-mineurs.sql"));
+await db.query("delete from partenaires_notifs_courses where user_id = $1", [u.brown]);
+await db.query("delete from partenaires_notifs_etat where user_id = $1", [u.brown]);
+await passage();
+for (const [cle, libelle] of [["kohRok", "Koh Rok park fee"], ["entree", "Frais d'entrée du parc"], ["entrance", "Park entrance fee"]]) {
+  R[cle] = await course(ent.taxi, null, 4);
+  await db.query("update reservations set libelle = $2 where id = $1", [R[cle], libelle]);
+}
+R.versParc2 = await course(ent.taxi, null, 4);
+await db.query("update reservations set libelle = 'Hotel Test → Mu Ko Lanta National Park' where id = $1", [R.versParc2]);
+await passage();
+await vieillir();
+n = await passage();
+ok(n.length === 1 && n[0].reservation_id === R.versParc2 && !(await suivies()).some((id) => [R.kohRok, R.entree, R.entrance].includes(id)), "« Koh Rok park fee », « Frais d'entrée du parc », « Park entrance fee » écartés ; la course vers le parc notifiée");
+const sansDatePuis = async (quoi, faire, genre) => {
+  const id = await notifiee();
+  await db.query("update reservations set date_service = null where id = $1", [id]);
+  await passage();
+  await vieillir();
+  const a = await passage();
+  await faire(id);
+  await passage();
+  await vieillir();
+  const b = await passage();
+  await vieillir();
+  const c = await passage();
+  ok(a.length === 1 && a[0].genre === "sans_date" && b.length === 1 && b[0].genre === genre && b[0].reservation_id === id && c.length === 0, `sans date puis ${quoi} : « ${genre} », une seule fois`);
+};
+await sansDatePuis("confiée à une autre fiche", (id) => db.query("update reservations set partenaire_id = $2 where id = $1", [id, P.autreTaxi]), "retiree");
+await sansDatePuis("annulée", (id) => db.query("update reservations set statut = 'annule' where id = $1", [id]), "annulee");
+await sansDatePuis("supprimée", (id) => db.query("delete from reservations where id = $1", [id]), "retiree");
+await sansDatePuis("dossier annulé", (id) => db.query("update dossiers set annule = true where id = (select dossier_id from reservations where id = $1)", [id]), "annulee");
+// Retour en arrière de la 125, puis elle se rejoue.
+await db.exec(lire("retour-125-notifications-partenaire-mineurs.sql"));
+ok(/\^\\s\*\(frais de parc/.test((await un("select prosrc from pg_proc where proname = 'partenaire_notif_courses'")).prosrc), "retour 125 : la règle de la 123 revient");
+await db.exec(lire("migration-125-notifications-partenaire-mineurs.sql"));
+await db.exec(lire("migration-125-notifications-partenaire-mineurs.sql"));
+ok(/park \(entrance \)\?fees\?/.test((await un("select prosrc from pg_proc where proname = 'partenaire_notif_courses'")).prosrc) && (await commeRole("service_role", "select * from partenaire_notifs_changements()")).ok, "la 125 se rejoue, la clé de service appelle toujours les fonctions");
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

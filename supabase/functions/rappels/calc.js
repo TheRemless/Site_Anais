@@ -105,7 +105,9 @@ export function entitesLisibles({ profil, membres, roles, entites }) {
 }
 
 // Frais de parc : une somme à payer sur l'île, pas un service qui part (même règle que dans l'outil, operations-calc.mjs).
-const estFraisDeParc = (r) => !r.partenaire_id && /frais de parc|park fee|national park/i.test(r.libelle || "");
+// Même motif que FRAIS_PARC de l'outil (operations-calc.mjs) et de la migration 125 : un libellé qui contient un frais, jamais « national park » seul.
+export const FRAIS_PARC = /frais (de|du) parc|frais d['’]entr[ée]e|park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)/i;
+const estFraisDeParc = (r) => !r.partenaire_id && FRAIS_PARC.test(r.libelle || "");
 
 // Dernier jour d'un service : le retour d'une location (details.retour_date), sinon le jour du service (même règle que dans l'outil, operations-calc.mjs).
 const dateFinService = (r) => {

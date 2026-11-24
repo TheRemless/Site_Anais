@@ -4,8 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { TH_NOTIF, ICONE, dateTh, personnesTh, destinationTh, trajetTh, changements, messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1, VEILLE_MAX } from "../supabase/functions/rappels/partenaire.js";
-import { entitesLisibles, destinatairesH1, rappelVeille, servicesH1, messageH1, instantLocal } from "../supabase/functions/rappels/calc.js";
+import { TH_NOTIF, ICONE, dateTh, personnesTh, destinationTh, trajetTh, changements, messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1, VEILLE_MAX, fonctionAbsente } from "../supabase/functions/rappels/partenaire.js";
+import { entitesLisibles, destinatairesH1, rappelVeille, servicesH1, messageH1, instantLocal, FRAIS_PARC as FRAIS_PARC_FONCTION } from "../supabase/functions/rappels/calc.js";
+import { FRAIS_PARC, estFraisDeParc } from "../src/gestion/js/operations-calc.mjs";
 import * as ecran from "../src/gestion/js/courses-partenaire-calc.mjs";
 
 const SOURCE = fs.readFileSync(new URL("../supabase/functions/rappels/partenaire.js", import.meta.url), "utf8");
@@ -95,15 +96,32 @@ test("1. course qui ne lui est plus confiée : un texte à part, date, heure et 
 
 test("1. date effacée : un texte à part, avec la date qu'il avait vue", () => {
   const m = messageChangement({ reservation_id: "r1", genre: "sans_date", apercu: course(), apercu_avant: course() });
-  assert.equal(m.titre, `งานนี้ยังไม่กำหนดวัน · ${ecran.dateTh("2026-11-25")} 09:30`);
+  assert.equal(m.titre, `งานนี้ยังไม่กำหนดวันใหม่ · เดิม ${ecran.dateTh("2026-11-25")} 09:30`);
   assert.equal(m.corps, "Hotel Test A → Airport Test · ผู้ใหญ่ 2 · เด็ก 1");
   sansSecret(m);
 });
 
 test("fonction rappels : seule l'absence d'un objet de la migration 123 passe pour « migration absente », toute autre erreur remonte", () => {
-  assert.match(INDEX, /const OBJETS_123 = \/partenaire_notif_courses\|partenaire_notifs_changements\|partenaires_notifs_envois\|partenaires_acces\/;/);
-  assert.match(INDEX, /\["PGRST202", "PGRST205", "42883", "42P01"\]\.includes\(e\.code \|\| ""\) && OBJETS_123\.test\(e\.message \|\| ""\)/);
-  assert.doesNotMatch(INDEX, /does not exist\|could not find/);
+  // Comportement : les erreurs telles que PostgREST et Postgres les rendent.
+  const absente = [
+    { code: "PGRST202", message: "Could not find the function public.partenaire_notif_courses(p_user) in the schema cache" },
+    { code: "PGRST202", message: "Could not find the function public.partenaire_notifs_changements without parameters in the schema cache" },
+    { code: "PGRST205", message: "Could not find the table 'public.partenaires_notifs_envois' in the schema cache" },
+    { code: "42883", message: "function partenaire_notif_courses(uuid) does not exist" },
+    { code: "42P01", message: 'relation "partenaires_acces" does not exist' },
+  ];
+  for (const e of absente) assert.equal(fonctionAbsente(e), true, e.message);
+  const panne = [
+    { code: "42703", message: "column n.commission_corrigee_le does not exist" },
+    { code: "42P01", message: 'relation "reservations_nets" does not exist' },
+    { code: "42883", message: "function nombre_json(jsonb) does not exist" },
+    { code: "PGRST202", message: "Could not find the function public.autre_chose in the schema cache" },
+    { code: "57014", message: "canceling statement due to statement timeout" },
+    { code: "", message: "fetch failed" },
+  ];
+  for (const e of panne) assert.equal(fonctionAbsente(e), false, e.message);
+  assert.equal(fonctionAbsente(null), false);
+  assert.match(INDEX, /import \{[^}]*fonctionAbsente[^}]*\} from "\.\/partenaire\.js"/, "la fonction utilise la version testée");
   // La panne des changements n'arrête pas le rappel d'une heure avant : elle est notée, et le passage continue.
   const partie = INDEX.slice(INDEX.indexOf("async function partenairesH1("));
   assert.match(partie, /\} catch \(err\) \{\n\s+erreur = `changements : /);
@@ -231,4 +249,26 @@ test("écran thaï : la vue se lit sans erreur de syntaxe (aucun nom déclaré d
   for (const f of ["../src/gestion/js/views/courses-partenaire.mjs", "../src/gestion/sw.js", "../supabase/functions/rappels/partenaire.js"]) {
     execFileSync(process.execPath, ["--check", new URL(f, import.meta.url).pathname], { stdio: "pipe" });
   }
+});
+
+test("frais de parc : une seule règle (outil, fonction rappels, base), un libellé qui contient un frais, jamais un parc seul", () => {
+  assert.equal(FRAIS_PARC.source, FRAIS_PARC_FONCTION.source);
+  assert.equal(FRAIS_PARC.flags, FRAIS_PARC_FONCTION.flags);
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-125-notifications-partenaire-mineurs.sql", import.meta.url), "utf8");
+  const motif = /coalesce\(r\.libelle, ''\) ~\* '((?:[^']|'')+)'/.exec(sql);
+  assert.ok(motif, "motif de la migration 125 trouvé");
+  assert.equal(motif[1].replace(/''/g, "'"), FRAIS_PARC.source, "même motif en base");
+  const sans = (libelle) => ({ libelle, partenaire_id: null });
+  for (const l of ["Koh Rok and Koh Ha, park fees", "Koh Rok park fee", "Koh Rok et Koh Ha, frais de parc", "Frais d'entrée du parc", "Frais d’entrée du parc national", "Park entrance fee", "National park fees: 4 Islands", "Entrance fee Koh Phi Phi", "Droits d'entrée Maya Bay", "Droit du parc national"]) {
+    assert.equal(estFraisDeParc(sans(l)), true, l);
+  }
+  for (const l of ["Private taxi: Hotel Test → Mu Ko Lanta National Park", "Ko Lanta National Park", "National park tour", "Fill-Feel @ Long Beach Resort → Nang Thong Bay Resort", "4 Islands", "Mangrove tour + fishing park"]) {
+    assert.equal(estFraisDeParc(sans(l)), false, l);
+  }
+  assert.equal(estFraisDeParc({ libelle: "Koh Rok park fee", partenaire_id: "p1" }), false, "un service d'un partenaire n'est jamais des frais");
+  // Les membres : une vraie course vers un parc a son rappel une heure avant (calc.js), des frais n'en ont pas.
+  const debut = instantLocal("Asia/Bangkok", 2026, 11, 25, 9, 30);
+  const r = (id, libelle) => ({ id, entite_id: "T", dossier_id: "d", statut: "confirme", heure_pickup: "09:30", date_service: "2026-11-25", libelle, partenaire_id: null, personnes: {} });
+  const ids = servicesH1([r("course", "Private taxi: Hotel Test → Mu Ko Lanta National Park"), r("frais", "Koh Rok park fee")], debut - 58 * 60000).map((x) => x.reservation.id);
+  assert.deepEqual(ids, ["course"]);
 });
