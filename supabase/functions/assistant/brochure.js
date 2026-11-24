@@ -168,8 +168,9 @@ export function extractionPourRelecture(b) {
     devise: b.devise,
     colonnes: b.colonnes,
     tarifs: b.tarifs.map((t, index) => ({ index, ...garder(t, CHAMPS_TARIF) })),
-    // L'heure repart avec sa précision imprimée (« 18:30 (Malaysia time) »), comme Claude l'a lue.
-    trajets: b.trajets.map((t, index) => ({ index, ...garder(t, CHAMPS_TRAJET), depart: [t.depart, t.depart_precision].filter(Boolean).join(" "), arrivee: [t.arrivee, t.arrivee_precision].filter(Boolean).join(" ") })),
+    // L'heure repart avec sa précision imprimée (« 18:30 (Malaysia time) »), comme Claude l'a lue. Une durée calculée des heures ne repart pas
+    // (elle n'est pas imprimée) : la ligne relue la recalcule et garde le drapeau « calculée ».
+    trajets: b.trajets.map((t, index) => ({ index, ...garder(t, CHAMPS_TRAJET), depart: [t.depart, t.depart_precision].filter(Boolean).join(" "), arrivee: [t.arrivee, t.arrivee_precision].filter(Boolean).join(" "), ...(t.duree_calculee ? { duree: "" } : {}) })),
   };
 }
 
@@ -499,15 +500,17 @@ function controlerPrix(x, avert, nom) {
 // Ce que la relecture a fait d'une ligne : "" (rien), « corrige », « signale » ou « ajoute » (ligne oubliée à la première lecture).
 const RELECTURES = ["", "corrige", "signale", "ajoute"];
 // Une raison montrée à la personne : une phrase utile, jamais une remarque sur un champ interne (essai réel du 24.11.2026 : « net_texte
-// recopié avec sa virgule », « prix et net enfant absents mis à 0 », « Durée calculée retirée car elle n'est pas imprimée »). Une raison qui
-// nomme un champ (mot_avec_soulignés), parle de JSON, de schéma, de valeur à 0 ou de durée calculée est retirée.
+// recopié avec sa virgule », « prix et net enfant absents mis à 0 », « Durée calculée retirée car elle n'est pas imprimée »).
 export const raisonLisible = (t) => {
   const r = texte(t, 300);
-  return !r || /[a-z]+_[a-z_]+/i.test(r) || /\b(null|json|sch[ée]ma|gabarit|champ|index)\b/i.test(r) || /(^|\s)à (0|z[ée]ro)(\s|[.,;]|$)|= ?0\b/i.test(r) || /dur[ée]e calcul/i.test(r) || /virgule/i.test(r) ? "" : r;
+  // Seulement les tournures techniques : un nom de champ (mot_avec_soulignés), « mis à 0 », « JSON », « null », une durée calculée retirée.
+  // « Prix enfant à 0 sur la brochure », « la virgule sépare les milliers », « le champ de prix est taché » restent (revue de la PR 354).
+  return !r || /[a-z]+_[a-z_]+/i.test(r) || /\bmis(e)?s? à (0|z[ée]ro)\b/i.test(r) || /\b(json|null)\b/i.test(r) || /dur[ée]e calcul[ée]+ (retir|supprim|vid|enlev)/i.test(r) ? "" : r;
 };
 const suiviRelecture = (x) => {
   const relecture = RELECTURES.includes(x.relecture) ? x.relecture : "";
-  return { relecture, relecture_raison: relecture ? raisonLisible(x.relecture_raison) : "" };
+  const champs = relecture === "corrige" && Array.isArray(x.relecture_champs) ? x.relecture_champs.filter((k) => typeof k === "string").slice(0, 40) : [];
+  return { relecture, relecture_raison: relecture ? raisonLisible(x.relecture_raison) : "", relecture_champs: champs };
 };
 
 // Une durée en minutes écrite comme au catalogue : « 22 h », « 1 h 30 », « 45 min ».
@@ -598,7 +601,7 @@ export function validerBrochure(v) {
       confiance: x.lisible === false && lisible ? "basse" : confianceDe(x.confiance),
       raison: raisonLisible(x.raison),
       lisible,
-      illisible: lisible ? "" : prix.prix_retire ? "Prix rendu absent des chiffres relevés : à saisir." : texte(x.illisible, 200) || (x.lisible === false ? texte(x.raison, 200) : "") || "Prix de vente illisible.",
+      illisible: lisible ? "" : prix.prix_retire ? "Prix rendu absent des chiffres relevés : à saisir." : raisonLisible(x.illisible).slice(0, 200) || (x.lisible === false ? raisonLisible(x.raison).slice(0, 200) : "") || "Prix de vente illisible.",
       ...suiviRelecture(x),
     });
   }
@@ -662,7 +665,7 @@ export function validerBrochure(v) {
       confiance: x.lisible === false && lisible ? "basse" : confianceDe(x.confiance),
       raison: raisonLisible(x.raison),
       lisible,
-      illisible: lisible ? "" : texte(x.illisible, 200) || (x.lisible === false && !prix.prix_retire ? texte(x.raison, 200) : "") || manque,
+      illisible: lisible ? "" : raisonLisible(x.illisible).slice(0, 200) || (x.lisible === false && !prix.prix_retire ? raisonLisible(x.raison).slice(0, 200) : "") || manque,
       ...suiviRelecture(x),
     };
     if (dateValide(texte(x.periode_debut, 10)) && dateValide(texte(x.periode_fin, 10)) && x.periode_fin >= x.periode_debut) Object.assign(ligne, { periode_debut: x.periode_debut, periode_fin: x.periode_fin });
@@ -691,16 +694,30 @@ export function validerBrochure(v) {
   };
 }
 
-// Ce que la personne voit d'une ligne : prix, nets, lieux, heures (avec précision), lendemain, nom d'un tarif. Comparé après le même
-// contrôle que validerBrochure (0 et null sont « absent », une heure « 06:00 (next day) » vaut 06:00 le lendemain).
-function visible(x) {
-  const v = validerBrochure({ tarifs: "libelle" in x && !("de" in x || "vers" in x) ? [x] : [], trajets: "de" in x || "vers" in x || "depart" in x ? [x] : [], colonnes: [] });
+// Ce qui compte dans une ligne (revue de la PR 354) : tous les champs écrits en base ou affichés, après le même contrôle que validerBrochure
+// (0 et null « absent », « 06:00 (next day) » vaut 06:00 le lendemain). Seuls les champs de forme sont ignorés : les chiffres recopiés
+// (prix_texte, net_texte), la ligne imprimée, la raison, la confiance, ce qui se déduit (illisible, net_a_saisir, net_superieur, net_source) et
+// une durée calculée des heures. Rend { champ: valeur }.
+const CHAMPS_DE_FORME = new Set(["prix_texte", "net_texte", "imprime", "raison", "confiance", "relecture", "relecture_raison", "relecture_champs", "illisible", "net_a_saisir", "net_superieur", "net_source", "duree_calculee"]);
+function valeursQuiComptent(x) {
+  const trajet = "de" in x || "vers" in x || "depart" in x || "de_imprime" in x;
+  const v = validerBrochure({ tarifs: trajet ? [] : [x], trajets: trajet ? [x] : [], colonnes: [] });
   const l = v.ok ? v.brochure.trajets[0] || v.brochure.tarifs[0] : null;
-  if (!l) return JSON.stringify(x);
-  const champs = ["prix_adulte", "prix_enfant", "net_adulte", "net_enfant", "net_cache", "sur_demande", "libelle", "de", "vers", "de_imprime", "vers_imprime", "depart", "depart_precision", "arrivee", "arrivee_precision", "lendemain", "lisible"];
-  return JSON.stringify(champs.map((k) => (typeof l[k] === "string" ? l[k].toLowerCase() : l[k] ?? null)));
+  if (!l) return { brut: JSON.stringify(x) };
+  const out = {};
+  for (const [k, val] of Object.entries(l)) {
+    if (CHAMPS_DE_FORME.has(k)) continue;
+    out[k] = k === "duree" && l.duree_calculee ? "" : typeof val === "string" ? val.toLowerCase() : val ?? null;
+  }
+  return out;
 }
-export const changeVisible = (avant, apres) => visible(avant || {}) !== visible(apres || {});
+// Les champs qui changent entre deux versions d'une ligne (vide : rien qui compte n'a changé).
+export function champsChanges(avant, apres) {
+  const a = valeursQuiComptent(avant || {});
+  const b = valeursQuiComptent(apres || {});
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
+}
+export const changeVisible = (avant, apres) => champsChanges(avant, apres).length > 0;
 
 // La relecture fusionnée à la première lecture (déjà contrôlée), avant un nouveau contrôle complet par validerBrochure. Une correction remplace
 // la ligne de son index ; une ligne oubliée s'ajoute à la fin ; un index inconnu est ignoré. Rend l'objet brut et le compte de ce qui a changé.
@@ -713,17 +730,19 @@ export function fusionnerRelecture(brochure, rel) {
     for (const c of Array.isArray(corrections) ? corrections : []) {
       if (!c || !Number.isInteger(c.index) || !liste[c.index] || !c.ligne || typeof c.ligne !== "object") continue;
       const statut = c.statut === "signale" ? "signale" : "corrige";
-      // Une « correction » qui ne change aucune valeur visible (prix, net, heures, lieux, lendemain) n'en est pas une : la ligne reste telle quelle,
-      // sans « Corrigé à la relecture » (essai réel du 24.11.2026 : les 27 lignes marquées corrigées pour une virgule ou une durée).
-      if (statut === "corrige" && !changeVisible(liste[c.index], c.ligne)) continue;
-      liste[c.index] = { ...c.ligne, ...(statut === "signale" ? { confiance: "basse" } : {}), relecture: statut, relecture_raison: raisonLisible(c.raison) };
+      // Une « correction » qui ne change aucun champ qui compte n'en est pas une : la ligne reste telle quelle, sans « Corrigé à la relecture »
+      // (essai réel du 24.11.2026 : les 27 lignes marquées corrigées pour une virgule ou une durée). Les champs changés sont gardés
+      // (relecture_champs) : sans le droit « prix nets », une correction du seul net ne s'affiche pas (masquerNets).
+      const changes = champsChanges(liste[c.index], c.ligne);
+      if (statut === "corrige" && !changes.length) continue;
+      liste[c.index] = { ...c.ligne, ...(statut === "signale" ? { confiance: "basse" } : {}), relecture: statut, relecture_raison: raisonLisible(c.raison), relecture_champs: changes };
       compte[statut === "signale" ? "signales" : "corriges"]++;
     }
   };
   const ajouter = (liste, oublies, max) => {
     for (const x of oublies) {
       if (!x || typeof x !== "object" || liste.length >= max) continue;
-      liste.push({ ...x, relecture: "ajoute", relecture_raison: texte(x.raison, 300) || "Ligne oubliée à la première lecture." });
+      liste.push({ ...x, relecture: "ajoute", relecture_raison: raisonLisible(x.raison) || "Ligne oubliée à la première lecture." });
       compte.ajoutes++;
     }
   };
@@ -784,6 +803,8 @@ export function texteSurLigne(l) {
 export function masquerNets(brochure) {
   const b = brochure || {};
   const colonnes = Array.isArray(b.colonnes) ? b.colonnes : [];
-  const ligne = (l) => ({ ...l, imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
+  // Une correction de la relecture qui ne porte que sur le net ne s'annonce pas (« Corrigé à la relecture ») à qui ne voit pas les nets.
+  const netSeul = (l) => l.relecture === "corrige" && Array.isArray(l.relecture_champs) && l.relecture_champs.length > 0 && l.relecture_champs.every((k) => ["net_adulte", "net_enfant", "net_cache"].includes(k));
+  const ligne = (l) => ({ ...l, ...(netSeul(l) ? { relecture: "", relecture_raison: "", relecture_champs: [] } : {}), imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: netSeul(l) ? "" : sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
   return { ...b, colonnes: colonnes.filter((c) => c && c.contenu !== "net" && c.contenu !== "net_enfant" && !MOTS_NET.test(c.entete || "")), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: sansChiffre(b.remarques) };
 }

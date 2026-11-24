@@ -40,6 +40,7 @@ const trajet = (x) => ({
   illisible: "",
   relecture: "",
   relecture_raison: "",
+  relecture_champs: [],
   net_a_saisir: false,
   ...x,
 });

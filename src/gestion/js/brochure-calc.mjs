@@ -73,7 +73,7 @@ export function casseLieu(nom) {
   return String(nom || "")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/\p{Lu}{2,}/gu, (m) => (SIGLES.has(m) || (m.length <= 4 && !/[AEIOUY]/.test(m)) ? m : m[0] + m.slice(1).toLowerCase()));
+    .replace(/[\p{L}'’.]+/gu, casseMot);
 }
 // Le nom usuel d'un lieu imprimé. D'abord le catalogue, puis la table des abréviations (un nom ambigu y reste « à vérifier »), puis le nom proposé par la lecture (signalé « à vérifier »
 // s'il ne vient ni de l'un ni de l'autre), sinon le texte imprimé tel quel (« à vérifier » s'il a l'air abrégé).
@@ -534,8 +534,19 @@ const SIGLES = new Set(["VIP", "ATV", "BKK", "KL", "TAT", "SUP", "THB", "KBV", "
 export function casseNormale(nom) {
   const t = String(nom || "").replace(/\s+/g, " ").trim();
   if (!t || /\p{Ll}/u.test(t)) return t;
-  // Un sigle reste en capitales : connu (SIGLES), ou de 2 à 4 lettres sans voyelle (« PP », « BKK », « TRG ») : « PP CRUISER » → « PP Cruiser ».
-  return t.replace(/\p{Lu}+/gu, (m) => (m === "LTD" ? "Ltd" : SIGLES.has(m) || (m.length >= 2 && m.length <= 4 && !/[AEIOUY]/.test(m)) ? m : m[0] + m.slice(1).toLowerCase()));
+  return t.replace(/[\p{L}'’.]+/gu, casseMot);
+}
+// Un mot tout en capitales mis en casse de titre (revues du 24.11.2026). Un sigle reste en capitales : connu (SIGLES), ou de 2 à 4 lettres sans
+// voyelle (« PP », « BKK », « TRG »). Les abréviations courantes suivent leur usage : « ST » → « St », « MT. » → « Mt. », « LTD. » → « Ltd. ».
+// Rien en capitale après une apostrophe (« MCDONALD'S » → « McDonald's ») ; « Mc » et « Mac » + D ou K gardent leur capitale intérieure.
+// Un mot qui a déjà des minuscules ne change pas.
+const ABREGES_CASSE = { LTD: "Ltd", ST: "St", MT: "Mt", MR: "Mr", MRS: "Mrs", DR: "Dr", CO: "Co" };
+export function casseMot(mot) {
+  const lettres = mot.replace(/[^\p{L}]/gu, "");
+  if (lettres.length < 2 || /\p{Ll}/u.test(mot) || !/\p{Lu}/u.test(mot)) return mot;
+  if (ABREGES_CASSE[lettres]) return mot.replace(lettres, ABREGES_CASSE[lettres]);
+  if (SIGLES.has(lettres) || (lettres.length <= 4 && !/[AEIOUY]/.test(lettres))) return mot;
+  return (mot[0] + mot.slice(1).toLowerCase()).replace(/^Mc(\p{Ll})/u, (_, c) => `Mc${c.toUpperCase()}`).replace(/^Mac([dk])(?=\p{Ll}{3,})/u, (_, c) => `Mac${c.toUpperCase()}`);
 }
 
 // Groupe et catégorie d'un nouveau partenaire, d'après ce que la brochure vend : des bus et des minivans font un transporteur (« transport »,
@@ -600,6 +611,8 @@ export function texteSurLigne(l) {
 export function masquerNets(brochure) {
   const b = brochure || {};
   const colonnes = Array.isArray(b.colonnes) ? b.colonnes : [];
-  const ligne = (l) => ({ ...l, imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
+  // Une correction de la relecture qui ne porte que sur le net ne s'annonce pas (« Corrigé à la relecture ») à qui ne voit pas les nets.
+  const netSeul = (l) => l.relecture === "corrige" && Array.isArray(l.relecture_champs) && l.relecture_champs.length > 0 && l.relecture_champs.every((k) => ["net_adulte", "net_enfant", "net_cache"].includes(k));
+  const ligne = (l) => ({ ...l, ...(netSeul(l) ? { relecture: "", relecture_raison: "", relecture_champs: [] } : {}), imprime: texteSurLigne(l), prix_texte: montantsVente(l), raison: sansChiffre(l.raison), relecture_raison: netSeul(l) ? "" : sansChiffre(l.relecture_raison), illisible: sansChiffre(l.illisible) || (l.lisible === false ? "Ligne à compléter." : ""), net_texte: "", net_adulte: null, net_enfant: null, net_source: "", net_cache: false, net_superieur: false, net_a_saisir: false });
   return { ...b, colonnes: colonnes.filter((c) => c && c.contenu !== "net" && c.contenu !== "net_enfant" && !MOTS_NET.test(c.entete || "")), tarifs: (b.tarifs || []).map(ligne), trajets: (b.trajets || []).map(ligne), remarques: sansChiffre(b.remarques) };
 }
