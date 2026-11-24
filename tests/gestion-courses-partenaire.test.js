@@ -107,7 +107,9 @@ test("point 7 : l'écouteur de retour sur l'application se retire en quittant l'
   assert.equal(ecouteurs.size, 0);
   const vue = fs.readFileSync(new URL("../src/gestion/js/views/courses-partenaire.mjs", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../src/gestion/js/app.mjs", import.meta.url), "utf8");
-  assert.match(vue, /racine\.arreter = suivreRetour\(/);
+  // L'arrêt retire l'écouteur de retour (et ceux du menu « ตั้งค่า », 24.11.2026).
+  assert.match(vue, /const arreterRetour = suivreRetour\(/);
+  assert.match(vue, /racine\.arreter = \(\) => \(fermerMenu\(\), arreterRetour\(\)\)/);
   assert.doesNotMatch(vue, /document\.addEventListener\("visibilitychange"/);
   assert.ok((app.match(/quitterPartenaire\(\)/g) || []).length >= 4, "app.mjs retire l'écouteur en quittant l'écran");
 });

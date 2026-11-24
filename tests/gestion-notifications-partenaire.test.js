@@ -272,3 +272,18 @@ test("frais de parc : une seule règle (outil, fonction rappels, base), un libel
   const ids = servicesH1([r("course", "Private taxi: Hotel Test → Mu Ko Lanta National Park"), r("frais", "Koh Rok park fee")], debut - 58 * 60000).map((x) => x.reservation.id);
   assert.deepEqual(ids, ["course"]);
 });
+
+test("écran thaï : le bloc des notifications ne reste en haut que tant qu'il y a quelque chose à faire, sinon il est dans le menu « ตั้งค่า »", () => {
+  assert.equal(ecran.blocNotifEnHaut("inactif"), true);
+  assert.equal(ecran.blocNotifEnHaut("installer"), true);
+  for (const s of ["actif", "refuse", "indisponible"]) assert.equal(ecran.blocNotifEnHaut(s), false, s);
+  assert.equal(ecran.TH.reglages, "ตั้งค่า");
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/courses-partenaire.mjs", import.meta.url), "utf8");
+  assert.match(vue, /"aria-haspopup": "true", "aria-expanded": "false", "aria-controls": "cp-menu"/);
+  assert.match(vue, /if \(e\.key === "Escape"\) fermerMenu\(true\)/);
+  assert.match(vue, /racine\.arreter = \(\) => \(fermerMenu\(\), arreterRetour\(\)\)/, "les écouteurs du menu partent avec l'écran");
+  assert.doesNotMatch(vue, /h\("button", \{ class: "secondaire petit", type: "button", onclick: deconnecter \}/, "la déconnexion n'est plus dans la barre, elle est dans le menu");
+  const css = fs.readFileSync(new URL("../src/gestion/css/app.css", import.meta.url), "utf8");
+  const regle = css.split("\n").find((l) => l.startsWith(".cp-menu-bouton {"));
+  assert.ok(Number((/min-height: (\d+)px/.exec(regle) || [])[1]) >= 44, "bouton du menu d'au moins 44 px");
+});

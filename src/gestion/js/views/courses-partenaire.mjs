@@ -3,10 +3,10 @@
 // Rien d'autre : ni menu, ni entreprise, ni réglages. Les données viennent des fonctions de la base (store : partenaireCourses,
 // partenaireSaisirCommission), jamais des tables. Logique et textes : courses-partenaire-calc.mjs.
 import { etat } from "../etat.mjs";
-import { h, vider } from "../ui.mjs";
+import { h, vider, icone } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { situation, activer, desactiver, essai } from "../rappels.mjs";
-import { TH, blocNotifTh, parJour, totalDu, montantTh, lignesCourse, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
+import { TH, blocNotifTh, blocNotifEnHaut, parJour, totalDu, montantTh, lignesCourse, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
 
 const telLien = (t) => `tel:${String(t || "").replace(/[^\d+]/g, "")}`;
 
@@ -79,7 +79,19 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
   const enDemo = () => etat.store.mode !== "supabase";
   let sitDemo = "inactif";
   const relire = async () => (enDemo() ? sitDemo : situation(etat.store));
+  // Où se montre le bloc (24.11.2026, Jérémy : « notifications activées » en haut tout le temps, c'est trop) : en haut de l'écran seulement tant
+  // qu'il reste quelque chose à faire (pas encore activées, ou iPhone sans l'app sur l'écran d'accueil) ; sinon dans le menu « ตั้งค่า » de la barre.
+  let sitCourante = "inactif";
+  let menuOuvert = false;
+  const enHaut = h("div", { class: "cp-notif-place" });
+  const dansMenu = h("div", { class: "cp-menu-notif" });
+  const placerNotif = () => {
+    if (menuOuvert) dansMenu.append(notif);
+    else if (blocNotifEnHaut(sitCourante)) enHaut.append(notif);
+    else notif.remove();
+  };
   const dessinerNotif = (sit, { message = "", erreur = false, occupe = false, confirmer = false } = {}) => {
+    sitCourante = sit;
     const b = blocNotifTh(sit);
     const agir = async (couper) => {
       dessinerNotif(sit, { occupe: true });
@@ -127,6 +139,7 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
         message ? h("p", { class: erreur ? "cp-msg erreur" : "cp-msg", role: erreur ? "alert" : "status" }, message) : null,
       ].filter(Boolean)
     );
+    placerNotif();
     if (confirmer) notif.querySelector(".cp-notif-choix .principal")?.focus();
   };
   const lireNotif = async () => {
@@ -153,30 +166,61 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
     if (passees.length) liste.append(h("div", { class: "cp-passees" }, h("h2", { class: "cp-titre-bloc" }, TH.passees), passees.map(jour)));
   };
 
+  // Le mini menu « ตั้งค่า » (réglages) : les notifications de ce téléphone et la déconnexion. Fermé par un second appui, Échap ou un appui
+  // ailleurs ; le focus revient au bouton.
+  const boutonMenu = h("button", { class: "cp-menu-bouton", type: "button", "aria-haspopup": "true", "aria-expanded": "false", "aria-controls": "cp-menu" }, icone("reglages", 20), h("span", null, TH.reglages));
+  const menu = h(
+    "div",
+    { class: "cp-menu", id: "cp-menu", hidden: true },
+    dansMenu,
+    deconnecter ? h("button", { class: "secondaire cp-bouton cp-menu-sortir", type: "button", onclick: deconnecter }, TH.deconnexion) : null
+  );
+  const surAilleurs = (e) => {
+    if (!menu.contains(e.target) && !boutonMenu.contains(e.target)) fermerMenu();
+  };
+  const surTouche = (e) => {
+    if (e.key === "Escape") fermerMenu(true);
+  };
+  function fermerMenu(rendreFocus = false) {
+    if (!menuOuvert) return;
+    menuOuvert = false;
+    menu.hidden = true;
+    boutonMenu.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", surAilleurs, true);
+    document.removeEventListener("keydown", surTouche);
+    placerNotif();
+    if (rendreFocus) boutonMenu.focus();
+  }
+  const ouvrirMenu = () => {
+    menuOuvert = true;
+    menu.hidden = false;
+    boutonMenu.setAttribute("aria-expanded", "true");
+    document.addEventListener("pointerdown", surAilleurs, true);
+    document.addEventListener("keydown", surTouche);
+    placerNotif();
+  };
+  boutonMenu.addEventListener("click", () => (menuOuvert ? fermerMenu() : ouvrirMenu()));
+
   const racine = h(
     "div",
     { class: "coque-partenaire", lang: "th", "data-titre": TH.titre },
-    h(
-      "header",
-      { class: "cp-barre" },
-      h("div", { class: "cp-qui" }, h("strong", null, acces.contact || acces.partenaire), h("span", null, acces.entreprise)),
-      deconnecter ? h("button", { class: "secondaire petit", type: "button", onclick: deconnecter }, TH.deconnexion) : null
-    ),
+    h("header", { class: "cp-barre" }, h("div", { class: "cp-qui" }, h("strong", null, acces.contact || acces.partenaire), h("span", null, acces.entreprise)), boutonMenu, menu),
     h(
       "main",
       { id: "principal", class: "cp-contenu", tabindex: "-1" },
       demo,
       h("h1", { class: "cp-h1" }, TH.titre),
-      notif,
+      enHaut,
       h("div", { class: "cp-total" }, h("span", { class: "cp-total-libelle" }, TH.total), totalValeur, h("span", { class: "cp-total-aide" }, TH.total_aide)),
       liste
     )
   );
   // Revenir sur l'application (téléphone déverrouillé, onglet repris) relit ses courses, sauf pendant une saisie. L'écouteur est retiré
   // quand on quitte l'écran (racine.arreter, appelé par app.mjs) : il ne s'accumule pas d'un compte ou d'un affichage à l'autre.
-  racine.arreter = suivreRetour(document, () => racine.isConnected && charger(), {
+  const arreterRetour = suivreRetour(document, () => racine.isConnected && charger(), {
     saisieEnCours: () => !!document.activeElement && document.activeElement.tagName === "INPUT" && racine.contains(document.activeElement),
   });
+  racine.arreter = () => (fermerMenu(), arreterRetour());
   charger();
   lireNotif();
   return racine;

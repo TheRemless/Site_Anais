@@ -2699,6 +2699,16 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .cp-notif-installer, .cp-notif-refuse { font-weight: 600; }
 .cp-notif-bouton { align-self: stretch; min-height: 52px; }
 .cp-notif .cp-msg { min-height: 0; }
+/* Mini menu « ตั้งค่า » de la barre (24.11.2026) : un bouton discret à côté du nom, un panneau sous la barre. */
+.cp-qui { flex: 1; }
+.cp-menu-bouton { display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 12px; background: transparent; border: 1px solid var(--bord-fort); border-radius: 999px; color: var(--texte); font: inherit; font-size: 16px; cursor: pointer; touch-action: manipulation; }
+.cp-menu-bouton[aria-expanded="true"] { background: var(--teal-100); border-color: var(--teal-600); color: var(--teal-700); }
+.cp-menu-bouton:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+.cp-menu { position: absolute; top: calc(100% + 6px); right: 16px; z-index: 25; width: min(340px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--bord-fort); border-radius: 10px; box-shadow: var(--ombre-forte); }
+.cp-menu[hidden] { display: none; }
+.cp-menu .cp-notif { margin: 0; padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--bord); border-radius: 0; }
+.cp-menu-notif:last-child .cp-notif { padding-bottom: 0; border-bottom: 0; }
+.cp-menu-sortir { width: 100%; min-height: 48px; }
 /* Couper : un lien discret, zone tactile de 44 px quand même ; la confirmation garde deux vrais boutons. */
 .cp-notif-lien { align-self: flex-start; min-height: 44px; padding: 10px 0; background: none; border: 0; color: var(--texte-2); font-size: 15px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
 .cp-notif-lien:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
