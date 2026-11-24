@@ -79,7 +79,7 @@ function construireCarte(carte, geo, options = {}) {
   const pointsHtml = points.map((p) => {
     const [x, y] = pc(...p.at);
     return `<a class="cg-dot" href="#${p.vers}" data-k="${p.cle}" data-go="${p.vers}" data-x="${x}" data-y="${y}" style="left:${x}%;top:${y}%" aria-label="${esc(p.aria || p.nom)}"></a>`
-      + `<span class="cg-geo cg-geo--pt" aria-hidden="true" style="left:${x}%;top:${y}%;transform:translate(-100%,-50%);margin-left:-16px">${esc(p.nom)}</span>`;
+      + `<span class="cg-geo cg-geo--pt" aria-hidden="true" style="left:${x}%;top:${y}%;${p.ancre ? `transform:translate(calc(${TRANS[p.ancre][0]} + ${p.dx || 0}px),calc(${TRANS[p.ancre][1]} + ${p.dy || 0}px))` : "transform:translate(-100%,-50%);margin-left:-16px"}">${esc(p.nom)}</span>`;
   }).join("");
 
   const noms = (carte.noms || []).map((n) => {

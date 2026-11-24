@@ -411,7 +411,7 @@ const ouverture = {
     iles: ["lanta-yai", "lanta-noi", "ngai", "muk", "kradan", "ma", "chueak-nai", "chueak-nok", "rok-yai", "phiphi-don", "phiphi-le", "bamboo", "haa", "talabeng", "bubu"],
     libelle: "Carte schématique des îles au sud de Koh Lanta : Koh Lanta, Koh Chuek, Koh Mook, Koh Ngai, Koh Ma, Koh Kradan, Koh Rok, Koh Haa et Koh Phi Phi",
     reperes: [
-      { cle: "p4i", vers: "ll-4-islands", nom: "Les 4 Islands", cible: [99.2175, 7.391], appel: [99.142, 7.345], photo: P + "4-islands.jpg", position: "53% 47%" },
+      { cle: "p4i", vers: "ll-4-islands", nom: "Les 4 Islands", cible: [99.2175, 7.391], appel: [99.142, 7.372], photo: P + "4-islands.jpg", position: "53% 47%" },
       { cle: "prok", vers: "ll-koh-rok", nom: "Koh Rok et Koh Haa", cible: [99.072, 7.2235], appel: [98.965, 7.222], photo: P + "koh-rok.jpg", position: "53% 59%" },
       { cle: "pphi", vers: "ll-phi-phi", nom: "Koh Phi Phi", cible: [98.774, 7.752], appel: [98.89, 7.775], photo: P + "phi-phi.jpg", position: "51% 50%" },
       { cle: "pmang", vers: "ll-mangroves", nom: "La mangrove", cible: { rive: { ile: "lanta-yai", cote: "e", lat: 7.53 } }, appel: [99.245, 7.592], photo: P + "mangroves-ciel.jpg", position: "48% 55%" },
@@ -421,7 +421,7 @@ const ouverture = {
     noms: [
       { t: "Koh Lanta", at: { rive: { ile: "lanta-yai", cote: "w", lat: 7.47 } }, ancre: "e", dx: -10, dy: 12, classe: "big" },
       { t: "Koh Lanta Noi", at: [99.088, 7.692], ancre: "n", dy: -4, classe: "min" },
-      { t: "Koh Ngai", at: [99.195, 7.417], ancre: "e", dx: -8, dy: 2 },
+      { t: "Koh Ngai", at: [99.2175, 7.391], ancre: "e", dx: -30, dy: -40, classe: "min" },
       { t: "Koh Ma", at: [99.2235, 7.4175], ancre: "n", dx: 3, dy: -7, classe: "min" },
       { t: "Koh Chuek", at: [99.234, 7.404], ancre: "w", dx: 9, dy: -3, classe: "min" },
       { t: "Koh Mook", at: [99.298, 7.352], ancre: "s", dx: -6, dy: 4 },

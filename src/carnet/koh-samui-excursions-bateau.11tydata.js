@@ -343,16 +343,16 @@ const ouverture = {
   photoFin: { src: P + "hero.jpg", alt: "Îles boisées de l’archipel d’Ang Thong vues d’un point de vue, sur une mer turquoise", position: "62% 50%" },
   carte: {
     geo: "carnet-samui",
-    cadre: { lon0: 99.58, lon1: 100.14, lat0: 9.27, lat1: 9.86 },
+    cadre: { lon0: 99.58, lon1: 100.21, lat0: 9.23, lat1: 9.86 },
     echelle: "haut-gauche",
     libelle: "Carte schématique : Koh Samui, Koh Phangan, le parc national d’Ang Thong à l’ouest, et Koh Madsum, Koh Tan et Koh Rap au sud de Koh Samui",
     reperes: [
       { cle: "ang", vers: "ang-thong", nom: "Ang Thong", cible: [99.672, 9.625], appel: [99.81, 9.61], photo: P + "ang-thong-lagune.jpg", position: "50% 55%" },
-      { cle: "pig", vers: "pig-island", nom: "Pig Island", cible: [99.9769, 9.3729], appel: [100.055, 9.366], photo: P + "pig-island-cochons.jpg", position: "40% 60%" }
+      { cle: "pig", vers: "pig-island", nom: "Pig Island", cible: [99.9769, 9.3729], appel: [100.08, 9.41], photo: P + "pig-island-cochons.jpg", position: "40% 60%" }
     ],
     points: [
       { cle: "pig", vers: "pig-island", nom: "Koh Tan", aria: "Koh Tan : Pig Island & Koh Tan", cible: [99.9443, 9.3755] },
-      { cle: "pig", vers: "pig-island", nom: "Koh Rap", aria: "Koh Rap : Pig Island & Koh Tan", cible: [99.9574, 9.3079] }
+      { cle: "pig", vers: "pig-island", nom: "Koh Rap", aria: "Koh Rap : Pig Island & Koh Tan", cible: [99.9574, 9.3079], ancre: "s", dy: 12 }
     ],
     noms: [
       { t: "Koh Samui", at: [99.93, 9.47], ancre: "e", dx: -16, classe: "big" },
