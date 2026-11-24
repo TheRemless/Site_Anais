@@ -666,7 +666,8 @@ test("durée : calculée des heures quand elle n'est pas imprimée, et dite « c
 // ---- Revue de la PR 354 --------------------------------------------------------------------------------------------------------------
 
 test("relecture : une vraie correction de n'importe quel champ écrit ou affiché est gardée (trajets et tarifs)", () => {
-  const premiere = demo().brochure;
+  // Une durée imprimée différente du calcul (5 h 15 pour 08:00 → 13:00) : sa correction compte.
+  const premiere = lu({ ...brochureDemoTransport(), trajets: brochureDemoTransport().trajets.map((t, i) => (i === 1 ? { ...t, duree: "5 h 15", duree_calculee: false } : t)) }).brochure;
   const trajet = premiere.trajets[1];
   for (const [champ, valeur] of [["mode", "VIP Bus"], ["periode", "1 Nov 2026 - 30 Apr 2027"], ["duree", "5 h 30"], ["note", "change in Satun"]]) {
     const f = B.fusionnerRelecture(premiere, { trajets: [{ index: 1, statut: "corrige", raison: `${champ} relu.`, ligne: { ...trajet, [champ]: valeur } }], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
@@ -719,10 +720,29 @@ test("lignes illisibles : leur motif passe par le même filtre ; sans le droit d
 });
 
 test("casse : « MCDONALD'S » → « McDonald's », « ST » → « St », « MT. » → « Mt. », sigles connus gardés", () => {
-  for (const [a, b] of [["MCDONALD'S", "McDonald's"], ["ST", "St"], ["MT. KINABALU", "Mt. Kinabalu"], ["ST JOHN PIER", "St John Pier"], ["MACDONALD HOUSE", "MacDonald House"], ["MACAU", "Macau"], ["VIP PIER", "VIP Pier"], ["KHAOSAN (BKK)", "Khaosan (BKK)"]]) {
+  for (const [a, b] of [["MCDONALD'S", "McDonald's"], ["ST", "St"], ["MT. KINABALU", "Mt. Kinabalu"], ["ST JOHN PIER", "St John Pier"], ["MACDONALD HOUSE", "MacDonald House"], ["MACAU", "Macau"], ["MACKEREL BAY", "Mackerel Bay"], ["MCKINLEY", "McKinley"], ["VIP PIER", "VIP Pier"], ["KHAOSAN (BKK)", "Khaosan (BKK)"]]) {
     assert.equal(C.casseLieu(a), b, a);
     assert.equal(C.casseNormale(a), b, a);
   }
   assert.equal(C.casseNormale("KOH DEMO TRANSPORT CO., LTD."), "Koh Demo Transport Co., Ltd.");
   assert.equal(C.casseLieu("Krabi A/P"), "Krabi A/P");
+});
+
+test("cas réel : une durée non marquée calculée (« 22 h » pour 08:00 → 06:00 le lendemain), vidée ou recopiée à la relecture, n'est pas une correction", () => {
+  // La première lecture rend « 22 h » sans drapeau, comme le modèle l'a fait sur la brochure de Lanta Transport.
+  const brut = brochureDemoTransport();
+  const premiere = lu({ ...brut, trajets: brut.trajets.map((t) => { const { duree_calculee, ...reste } = t; return reste; }) }).brochure;
+  assert.ok(premiere.trajets.every((t) => !t.duree || t.duree_calculee), "une durée égale au calcul est « calculée »");
+  for (const duree of ["", "22 h"]) {
+    const rel = premiere.trajets.map((t, index) => ({ index, statut: "corrige", raison: "", ligne: { ...t, duree: index === 0 ? duree : t.duree === "" ? "" : "" } }));
+    const f = B.fusionnerRelecture(premiere, { trajets: rel, tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" });
+    assert.equal(f.compte.corriges, 0, `durée « ${duree} »`);
+    const r = lu(f.brut).brochure;
+    assert.ok(r.trajets.every((t) => t.relecture === ""), `aucune ligne « Corrigé » (durée « ${duree} »)`);
+    assert.deepEqual([r.trajets[0].duree, r.trajets[0].duree_calculee], ["22 h", true]);
+  }
+  // Recopiée telle quelle : le drapeau reste vrai.
+  assert.equal(lu({ tarifs: [], trajets: [{ ...premiere.trajets[0], duree: "22 h", duree_calculee: false }] }).brochure.trajets[0].duree_calculee, true);
+  assert.deepEqual(B.champsChanges(premiere.trajets[0], { ...premiere.trajets[0], duree: "" }), []);
+  assert.deepEqual(B.champsChanges(premiere.trajets[0], { ...premiere.trajets[0], duree: "22 h" }), []);
 });

@@ -538,15 +538,18 @@ export function casseNormale(nom) {
 }
 // Un mot tout en capitales mis en casse de titre (revues du 24.11.2026). Un sigle reste en capitales : connu (SIGLES), ou de 2 à 4 lettres sans
 // voyelle (« PP », « BKK », « TRG »). Les abréviations courantes suivent leur usage : « ST » → « St », « MT. » → « Mt. », « LTD. » → « Ltd. ».
-// Rien en capitale après une apostrophe (« MCDONALD'S » → « McDonald's ») ; « Mc » et « Mac » + D ou K gardent leur capitale intérieure.
+// Rien en capitale après une apostrophe (« MCDONALD'S » → « McDonald's ») ; « Mc » garde sa capitale intérieure, « Mac » seulement pour des noms connus.
 // Un mot qui a déjà des minuscules ne change pas.
 const ABREGES_CASSE = { LTD: "Ltd", ST: "St", MT: "Mt", MR: "Mr", MRS: "Mrs", DR: "Dr", CO: "Co" };
+// « Mac » garde sa capitale intérieure seulement pour des noms connus (« MACKEREL BAY » reste « Mackerel Bay ») ; « Mc » toujours.
+const MAC_CONNUS = { MACDONALD: "MacDonald", MACKENZIE: "MacKenzie", MACLEOD: "MacLeod", MACARTHUR: "MacArthur", MACGREGOR: "MacGregor" };
 export function casseMot(mot) {
   const lettres = mot.replace(/[^\p{L}]/gu, "");
   if (lettres.length < 2 || /\p{Ll}/u.test(mot) || !/\p{Lu}/u.test(mot)) return mot;
   if (ABREGES_CASSE[lettres]) return mot.replace(lettres, ABREGES_CASSE[lettres]);
   if (SIGLES.has(lettres) || (lettres.length <= 4 && !/[AEIOUY]/.test(lettres))) return mot;
-  return (mot[0] + mot.slice(1).toLowerCase()).replace(/^Mc(\p{Ll})/u, (_, c) => `Mc${c.toUpperCase()}`).replace(/^Mac([dk])(?=\p{Ll}{3,})/u, (_, c) => `Mac${c.toUpperCase()}`);
+  if (MAC_CONNUS[lettres]) return mot.replace(lettres, MAC_CONNUS[lettres]);
+  return (mot[0] + mot.slice(1).toLowerCase()).replace(/^Mc(\p{Ll})/u, (_, c) => `Mc${c.toUpperCase()}`);
 }
 
 // Groupe et catégorie d'un nouveau partenaire, d'après ce que la brochure vend : des bus et des minivans font un transporteur (« transport »,

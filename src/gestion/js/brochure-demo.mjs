@@ -58,6 +58,8 @@ const ligne = (vers, versImprime, depart, arrivee, duree, prix, net, extra = {})
     net_adulte: net,
     net_source: net ? "manuscrit" : "",
     net_a_saisir: !net,
+    // Les durées de la brochure fictive sont celles que donnent les heures : « calculées » pour l'outil.
+    duree_calculee: true,
     ...extra,
   });
 

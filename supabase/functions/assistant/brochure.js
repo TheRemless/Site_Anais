@@ -654,7 +654,9 @@ export function validerBrochure(v) {
       lendemain,
       // Une durée non imprimée est calculée des heures (« 22 h ») et le dit (duree_calculee) ; une durée imprimée reste telle quelle.
       duree: texte(x.duree, 40) || (precision ? "" : dureeCalculee(depart, arrivee, lendemain)),
-      duree_calculee: !precision && !!dureeCalculee(depart, arrivee, lendemain) && (!texte(x.duree, 40) || (x.duree_calculee === true && texte(x.duree, 40) === dureeCalculee(depart, arrivee, lendemain))),
+      // « calculée » aussi quand la durée rendue est celle que donnent les heures : le modèle la calcule souvent lui-même sans le dire (essai
+      // réel de Lanta Transport) ; elle ne se distingue pas d'une durée imprimée qui dit la même chose.
+      duree_calculee: !precision && !!dureeCalculee(depart, arrivee, lendemain) && (!texte(x.duree, 40) || texte(x.duree, 40) === dureeCalculee(depart, arrivee, lendemain)),
       periode: texte(x.periode, 80),
       periode_debut: "",
       periode_fin: "",
@@ -712,10 +714,12 @@ function valeursQuiComptent(x) {
   return out;
 }
 // Les champs qui changent entre deux versions d'une ligne (vide : rien qui compte n'a changé).
+// La durée ne compte pas quand l'une des deux versions est vide ou égale à la durée calculée des heures (revue de la PR 354) : une relecture qui
+// vide ou recopie une durée calculée n'a rien corrigé.
 export function champsChanges(avant, apres) {
   const a = valeursQuiComptent(avant || {});
   const b = valeursQuiComptent(apres || {});
-  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => !(k === "duree" && (!a.duree || !b.duree)) && JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
 }
 export const changeVisible = (avant, apres) => champsChanges(avant, apres).length > 0;
 
