@@ -105,9 +105,18 @@ export function entitesLisibles({ profil, membres, roles, entites }) {
 }
 
 // Frais de parc : une somme à payer sur l'île, pas un service qui part (même règle que dans l'outil, operations-calc.mjs).
-// Même motif que FRAIS_PARC de l'outil (operations-calc.mjs) et de la migration 125 : un libellé qui contient un frais, jamais « national park » seul.
-export const FRAIS_PARC = /frais (de|du) parc|frais d['’]entr[ée]e|park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)/i;
-const estFraisDeParc = (r) => !r.partenaire_id && FRAIS_PARC.test(r.libelle || "");
+// Le libellé EST un frais (revues du 24.11.2026) : il COMMENCE par le mot-clé, dans sa partie principale (avant une parenthèse ou une flèche).
+// Un frais nommé autrement (« Koh Rok park fee ») se reconnaît par la famille de sa prestation : `famille_prestation`, posée par index.ts
+// (prestations de la base). Même motif et même découpe dans src/gestion/js/operations-calc.mjs et la migration 128 : un test compare les trois.
+export const MOTIF_FRAIS_PARC = "frais (de|du) parc|frais d['’]entr[ée]e|(national )?park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)";
+const FRAIS_DEBUT = new RegExp(`^\\s*(${MOTIF_FRAIS_PARC})`, "i");
+export const partiePrincipale = (libelle) => String(libelle || "").split(/\(|→|->/)[0].trim();
+export const libelleEstFrais = (libelle) => FRAIS_DEBUT.test(partiePrincipale(libelle));
+// Ancien nom gardé pour les imports : le motif seul (il ne suffit plus, voir libelleEstFrais).
+export const FRAIS_PARC = new RegExp(MOTIF_FRAIS_PARC, "i");
+export const estFraisDeParc = (r) => r.famille_prestation === "frais" || (!r.partenaire_id && libelleEstFrais(r.libelle));
+// Les réservations lues avec la famille de leur prestation (`familles` : Map id de prestation → famille).
+export const avecFamilles = (reservations, familles) => (reservations || []).map((r) => (r.prestation_id && familles.has(r.prestation_id) ? { ...r, famille_prestation: familles.get(r.prestation_id) } : r));
 
 // Dernier jour d'un service : le retour d'une location (details.retour_date), sinon le jour du service (même règle que dans l'outil, operations-calc.mjs).
 const dateFinService = (r) => {

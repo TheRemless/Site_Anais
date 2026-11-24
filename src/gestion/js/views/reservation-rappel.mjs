@@ -108,7 +108,7 @@ export async function vueReservation(id) {
 
 // Accueil « Aujourd'hui » : les services des deux prochaines heures et où en est leur rappel.
 export function sectionProchainsServices() {
-  const liste = prochainsServices(etat.db.reservations, Date.now(), { heures: 2, ecartes: dossiersAnnules(), fuseau: (organisation() || {}).fuseau });
+  const liste = prochainsServices(etat.db.reservations, Date.now(), { heures: 2, ecartes: dossiersAnnules(), prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, fuseau: (organisation() || {}).fuseau });
   if (!liste.length) return null;
   const pastille = (fait, libelle) => h("span", { class: `tag rappel-etat ${fait ? "fait" : "a-faire"}` }, fait ? tr("{qui} : fait", { qui: libelle }) : tr("{qui} : à faire", { qui: libelle }));
   return h(

@@ -259,7 +259,7 @@ function cartePickup(r, { langue, mode, nomsPartenaires, ecrit, demain }) {
 function blocPickups(jours, demain) {
   const ajd = dateDans(fuseau());
   const maintenant = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: fuseau() });
-  const liste = pickupsDuPoint(etat.db.reservations, jours, { ecartes: dossiersAnnules(), ajd, minuteMaintenant: Number(maintenant.slice(0, 2)) * 60 + Number(maintenant.slice(3, 5)) });
+  const liste = pickupsDuPoint(etat.db.reservations, jours, { ecartes: dossiersAnnules(), prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, ajd, minuteMaintenant: Number(maintenant.slice(0, 2)) * 60 + Number(maintenant.slice(3, 5)) });
   const langue = langueClient(reglages());
   const mode = modeTaxi() ? "taxi" : modeExcursions() ? "excursions" : "voyages";
   const options = { langue, mode, nomsPartenaires: noms(), ecrit: whatsappEcrit(), demain };

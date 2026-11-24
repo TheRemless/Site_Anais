@@ -80,7 +80,7 @@ export async function tableauDeBord() {
   const taches = aFaire(rs, ajd, reglages());
   // Taxi n'a pas de contrat de partenaire (ses champs contrat sont masqués) : un contrat recopié de Secret y ferait un rappel impossible à effacer (audit n° 58).
   const contrats = peut("partenaires.lire") && moduleActif("partenaires") && !modeTaxi() ? contratsAEcheance(etat.db.partenaires, ajd) : [];
-  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation });
+  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation, prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null });
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   // Hier : une demande d'avis par client, même avec plusieurs services. « Demander l'avis » ouvre le message prêt et, une fois parti, note la date sur ses services.
   const clientIdDe = (r) => (etat.db.dossiers.find((x) => x.id === r.dossier_id) || {}).client_id || null;

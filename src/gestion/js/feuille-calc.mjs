@@ -1,5 +1,5 @@
 // Feuille du jour : les lignes d'une date, ce qui manque encore et le texte à copier. Testé avec node --test.
-import { dateTexte, personnesTexte, feuilleDuJour, hotelEtChambre, estFraisDeParc, dateFinService } from "./operations-calc.mjs";
+import { dateTexte, personnesTexte, feuilleDuJour, hotelEtChambre, fraisAvec, dateFinService } from "./operations-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { estRetourDepart } from "./trajet-calc.mjs";
 import { personnesDuDossier, sansPersonne } from "./dossier-gestes-calc.mjs";
@@ -44,7 +44,7 @@ export function feuilleJour(reservations, date, contexte, ecartees = new Set()) 
     return g;
   };
   for (const r of reservations || []) {
-    if (!r.date_service || r.statut === "annule" || ecartees.has(r.dossier_id) || estFraisDeParc(r)) continue;
+    if (!r.date_service || r.statut === "annule" || ecartees.has(r.dossier_id) || fraisAvec(contexte.prestation || null)(r)) continue;
     const fin = dateFinService(r);
     if (!(fin > r.date_service) || !(date > r.date_service) || date > fin) continue;
     const retour = date === fin;
