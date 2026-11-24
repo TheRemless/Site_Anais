@@ -93,6 +93,27 @@ test("1. course qui ne lui est plus confiée : un texte à part, date, heure et 
   sansSecret(m);
 });
 
+test("1. date effacée : un texte à part, avec la date qu'il avait vue", () => {
+  const m = messageChangement({ reservation_id: "r1", genre: "sans_date", apercu: course(), apercu_avant: course() });
+  assert.equal(m.titre, `งานนี้ยังไม่กำหนดวัน · ${ecran.dateTh("2026-11-25")} 09:30`);
+  assert.equal(m.corps, "Hotel Test A → Airport Test · ผู้ใหญ่ 2 · เด็ก 1");
+  sansSecret(m);
+});
+
+test("fonction rappels : seule l'absence d'un objet de la migration 123 passe pour « migration absente », toute autre erreur remonte", () => {
+  assert.match(INDEX, /const OBJETS_123 = \/partenaire_notif_courses\|partenaire_notifs_changements\|partenaires_notifs_envois\|partenaires_acces\/;/);
+  assert.match(INDEX, /\["PGRST202", "PGRST205", "42883", "42P01"\]\.includes\(e\.code \|\| ""\) && OBJETS_123\.test\(e\.message \|\| ""\)/);
+  assert.doesNotMatch(INDEX, /does not exist\|could not find/);
+  // La panne des changements n'arrête pas le rappel d'une heure avant : elle est notée, et le passage continue.
+  const partie = INDEX.slice(INDEX.indexOf("async function partenairesH1("));
+  assert.match(partie, /\} catch \(err\) \{\n\s+erreur = `changements : /);
+  assert.ok(partie.indexOf("erreur = `changements") < partie.indexOf("coursesH1(courses"));
+  assert.match(partie, /return fin\(\);\n\}/);
+  // Les téléphones des changements sont relus après le marquage de la base, pas avant.
+  assert.ok(partie.indexOf('rpc("partenaire_notifs_changements")') < partie.indexOf("const abosApres"));
+  assert.match(partie, /envoyerAuPartenaire\(db, abosApres\.data \|\| \[\], n\.user_id, messageChangement\(n\)/);
+});
+
 test("service worker : les notifications du partenaire sonnent de nouveau (renotify) et portent l'icône de Taxi, une adresse de l'outil seulement", () => {
   const sw = fs.readFileSync(new URL("../src/gestion/sw.js", import.meta.url), "utf8");
   assert.match(sw, /startsWith\("p-"\)/);
@@ -122,10 +143,12 @@ test("2. résumé de la veille : nombre de courses de demain, puis chaque heure 
 test("3. une heure avant : même fenêtre que les membres, une clé par course et par heure, sans nom de client", () => {
   const fuseau = "Asia/Bangkok";
   const debut = instantLocal(fuseau, 2026, 11, 25, 9, 30);
-  const liste = [course(), course({ id: "r2", heure: "15:00" }), course({ id: "r3", heure: "TBC" }), course({ id: "r4", libelle: "Frais de parc test", heure: "09:40" })];
+  const liste = [course(), course({ id: "r2", heure: "15:00" }), course({ id: "r3", heure: "TBC" }), course({ id: "r4", libelle: "Private taxi: Hotel Test → Mu Ko Lanta National Park", heure: "09:40" })];
   for (const [minutes, attendu] of [[60, ["r1"]], [55, ["r1"]], [40, ["r1"]], [61, []], [39, []]]) {
-    assert.deepEqual(coursesH1(liste, debut - minutes * 60000, { fuseau }).map((x) => x.course.id), attendu, `${minutes} min avant`);
+    assert.deepEqual(coursesH1(liste, debut - minutes * 60000, { fuseau }).map((x) => x.course.id).filter((id) => id !== "r4"), attendu, `${minutes} min avant`);
   }
+  // Une vraie course vers un parc garde son rappel : les frais de parc sont écartés par la base, pas par le filtre large des membres.
+  assert.ok(coursesH1(liste, instantLocal(fuseau, 2026, 11, 25, 9, 40) - 58 * 60000, { fuseau }).some((x) => x.course.id === "r4"));
   const [x] = coursesH1(liste, debut - 58 * 60000, { fuseau });
   const m = messageH1Partenaire(x);
   assert.equal(m.titre, `${TH_NOTIF.h1_heure} · 09:30`);

@@ -576,7 +576,11 @@ async function suivreAmeliorations() {
 // réduite aux colonnes d'une notification. Un compte désactivé ou dont l'accès est retiré n'a plus de course : rien ne part.
 // Avant la migration 123 (fonctions absentes), rien n'est fait, sans erreur toutes les 5 minutes.
 type Db = ReturnType<typeof createClient>;
-const fonctionAbsente = (e: { code?: string; message?: string } | null) => !!e && (["PGRST202", "42883", "42P01", "PGRST205"].includes(e.code || "") || /does not exist|could not find/i.test(e.message || ""));
+// Seule l'absence d'un objet de la migration 123 (ou de partenaires_acces) compte comme « migration absente ». Toute autre erreur, même
+// « column … does not exist » à l'intérieur d'une fonction présente (un retour 119 rejoué, par exemple), remonte : la panne se voit.
+const OBJETS_123 = /partenaire_notif_courses|partenaire_notifs_changements|partenaires_notifs_envois|partenaires_acces/;
+const fonctionAbsente = (e: { code?: string; message?: string } | null) =>
+  !!e && ["PGRST202", "PGRST205", "42883", "42P01"].includes(e.code || "") && OBJETS_123.test(e.message || "");
 
 // Les comptes partenaires qui ont un téléphone abonné (`user_id` : un essai ciblé), avec leurs abonnements et leur profil.
 async function comptesPartenaires(db: Db, demande: { user_id?: string }) {
@@ -641,18 +645,30 @@ async function partenairesH1(db: Db, maintenant: number, demande: { user_id?: st
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
   // 1. La base compare ses courses aux empreintes (verrou par compte) et rend ce qui est prêt. Pas pendant un essai ciblé : le passage marque
   // les courses de tous les comptes partenaires.
+  // Une panne de cette étape est notée (`erreur`, statut 500) sans priver le rappel d'une heure avant qui suit.
+  let erreur = "";
   if (!demande.user_id) {
-    const { data, error } = await db.rpc("partenaire_notifs_changements");
-    if (error) {
-      if (fonctionAbsente(error)) return { ...compte, note: "migration 123 absente" };
-      throw new Error(error.message);
-    }
-    for (const n of (data || []) as Array<{ user_id: string; reservation_id: string; genre: string; apercu: Record<string, unknown>; apercu_avant: Record<string, unknown> | null }>) {
-      compte.changements++;
-      await envoyerAuPartenaire(db, comptes.abos, n.user_id, messageChangement(n), { TTL: 12 * 3600, urgency: "high" }, compte);
+    try {
+      const { data, error } = await db.rpc("partenaire_notifs_changements");
+      if (error) {
+        if (fonctionAbsente(error)) return { ...compte, note: "migration 123 absente" };
+        throw new Error(error.message);
+      }
+      const prets = (data || []) as Array<{ user_id: string; reservation_id: string; genre: string; apercu: Record<string, unknown>; apercu_avant: Record<string, unknown> | null }>;
+      // Les téléphones relus APRÈS le marquage : un appareil abonné pendant le passage reçoit aussi la notification (elle n'est pas renvoyée).
+      const abosApres = prets.length ? await db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth").in("user_id", [...new Set(prets.map((n) => n.user_id))]) : { data: [], error: null };
+      if (abosApres.error) throw new Error(abosApres.error.message);
+      for (const n of prets) {
+        compte.changements++;
+        await envoyerAuPartenaire(db, abosApres.data || [], n.user_id, messageChangement(n), { TTL: 12 * 3600, urgency: "high" }, compte);
+      }
+    } catch (err) {
+      erreur = `changements : ${String((err && err.message) || err)}`.slice(0, 300);
+      console.error("notifications du partenaire,", erreur);
     }
   }
-  if (!comptes.ids.length) return compte;
+  const fin = () => (erreur ? { ...compte, erreur } : compte);
+  if (!comptes.ids.length) return fin();
   // 3. Une heure avant : réglages de l'entreprise (rappel allumé) et fuseau de son organisation.
   const [reglages, entites, organisations] = await Promise.all([db.from("reglages").select("entite_id, valeur"), db.from("entites").select("id, organisation_id"), db.from("organisations").select("id, fuseau")]);
   for (const r of [reglages, entites, organisations]) if (r.error) throw new Error(r.error.message);
@@ -677,7 +693,7 @@ async function partenairesH1(db: Db, maintenant: number, demande: { user_id?: st
       await envoyerAuPartenaire(db, comptes.abos, userId, messageH1Partenaire(x), { TTL: 3600, urgency: "high" }, compte);
     }
   }
-  return compte;
+  return fin();
 }
 
 // 2. Passage de la veille d'une organisation (`retenues` : ses entreprises dont la veille part maintenant) : ses courses de `demain`.
