@@ -42,7 +42,7 @@ GET https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/bandeau-site
 |---|---|
 | `brands` | `["secret"]`, `["taxi"]` ou `["secret","taxi"]`. `taxi` = les pages VIP Taxi Lanta (`/taxi/…`), `secret` = toutes les autres |
 | `type` | `info`, `sea`, `season`, `new`, `urgent` (voir les styles) |
-| `text` | anglais, 600 caractères au plus (140 jusqu'à la migration 125 du 24.11.2026), déjà prêt : l'afficher tel quel (texte, jamais HTML). Peut contenir des retours à la ligne (`\n`, deux de suite au plus), à garder à l'écran. Au-delà de 140 caractères ou avec un retour à la ligne, le site le replie (voir « Texte long ») |
+| `text` | anglais, 600 caractères au plus (140 jusqu'à la migration 126 du 24.11.2026), déjà prêt : l'afficher tel quel (texte, jamais HTML). Peut contenir des retours à la ligne (`\n`, deux de suite au plus), à garder à l'écran. Au-delà de 140 caractères ou avec un retour à la ligne, le site le replie (voir « Texte long ») |
 | `link` | `null`, `{ "kind": "page", "href": "/chemin/", "label": "…" }` (toujours un chemin du site) ou `{ "kind": "whatsapp", "label": "Ask on WhatsApp", "text": "…" }` (le site construit le lien `wa.me` avec son propre numéro et ce texte ; pour un texte long, `text` ne reprend que sa première ligne, coupée à 140 caractères avec « … ») |
 | `target` | `{ "kind": "all" }`, `{ "kind": "sections", "sections": [...] }` ou `{ "kind": "products", "products": [slug...] }` |
 | `sections` | `islands` (fiches `tours/`, gabarit `boat`), `activities` (fiches `activities/`), `transfers` (`/transfers/`, `/tours/speedboat/`), `rental` (`/tours/rental/`), `taxi` (fiches `taxi/`, hub `/taxi/`) |
@@ -133,7 +133,7 @@ Couleurs relevées dans `src/css/tokens.css` (Secret) et `src/css/vip-taxi.css` 
 
 Lisible à 375 px : le texte passe à la ligne, le lien suit le texte, la croix reste à droite dans une zone de 44 px. L'aperçu de Gestion montre ce rendu dans les deux marques.
 
-## Texte long (migration 125, 24.11.2026)
+## Texte long (migration 126, 24.11.2026)
 
 Un texte de 140 caractères au plus, sans retour à la ligne, garde exactement le rendu ci-dessus. Au-delà, ou avec un retour à la ligne :
 
@@ -171,7 +171,7 @@ Transfers run as usual…</p>
 
 Une première ligne courte suivie d'un retour à la ligne sert de titre replié (« Christmas week », puis le détail) : pas de champ titre à part.
 
-Mise en ligne : la base (migration 125) d'abord, puis le site qui sait replier, puis Gestion. Tant que le site n'est pas à jour, il coupe tout texte à 140 caractères.
+Mise en ligne : la base (migration 126) d'abord, puis le site qui sait replier, puis Gestion. Tant que le site n'est pas à jour, il coupe tout texte à 140 caractères.
 
 ## Script attendu
 

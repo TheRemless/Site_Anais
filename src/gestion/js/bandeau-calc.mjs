@@ -5,7 +5,7 @@
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { N_ } from "./i18n.mjs";
 
-// 600 caractères au plus (migration 125, 24.11.2026 ; avant : 140). Au-delà de TEXTE_REPLIE caractères, ou avec un retour à la ligne,
+// 600 caractères au plus (migration 126, 24.11.2026 ; avant : 140). Au-delà de TEXTE_REPLIE caractères, ou avec un retour à la ligne,
 // le site replie le texte sur deux lignes avec un bouton « More » ; jusque-là il l'affiche comme avant, d'un bloc.
 export const TEXTE_MAX = 600;
 export const TEXTE_REPLIE = 140;

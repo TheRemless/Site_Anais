@@ -1,4 +1,4 @@
--- Gestion : migration 125 (24.11.2026), bandeau du site jusqu'à 600 caractères (Jérémy : 140 ne suffisent pas).
+-- Gestion : migration 126 (24.11.2026), bandeau du site jusqu'à 600 caractères (Jérémy : 140 ne suffisent pas).
 -- À exécuter une seule fois, APRÈS la migration 30 (table bandeaux_site), et AVANT de publier la version de Gestion qui écrit des
 -- textes de plus de 140 caractères. Le site secrettravelandtour.com doit déjà savoir replier un texte long (« More », PR du site) :
 -- ordre de mise en ligne : cette migration, puis le site, puis Gestion. Idempotente. Ne modifie aucune donnée existante.

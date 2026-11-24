@@ -1,4 +1,4 @@
-// Vérifie les migrations 30, 40, 41 et 125 (demandes et bandeau du site, numéro WhatsApp, bandeau de 600 caractères) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
+// Vérifie les migrations 30, 40, 41 et 126 (demandes et bandeau du site, numéro WhatsApp, bandeau de 600 caractères) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-site.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-site.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -135,10 +135,10 @@ ok((await comme("ztp", bandeau("ztp"))).ok === false, "ni chez Zwald : seules Se
 ok((await comme("root", bandeau("ztp"))).ok === false, "même l'administratrice générale ne publie pas depuis Zwald");
 ok((await comme("stagiaire", bandeau("secret"))).ok === false, "un rôle limité à ses dossiers ne publie pas sur le site");
 ok((await comme("mook", bandeau("taxi"))).ok === false, "l'écran « Nouveau voucher » seul ne publie pas sur le site");
-// Migration 125 (24.11.2026) : 600 caractères au plus, retours à la ligne permis, valeurs jusqu'à 2500 caractères.
-ok(migrations.includes("migration-125-bandeau-long.sql"), "la migration 125 est appliquée");
-await db.exec(fs.readFileSync(W + "migration-125-bandeau-long.sql", "utf8"));
-ok(true, "la migration 125 se rejoue sans erreur");
+// Migration 126 (24.11.2026) : 600 caractères au plus, retours à la ligne permis, valeurs jusqu'à 2500 caractères.
+ok(migrations.includes("migration-126-bandeau-long.sql"), "la migration 126 est appliquée");
+await db.exec(fs.readFileSync(W + "migration-126-bandeau-long.sql", "utf8"));
+ok(true, "la migration 126 se rejoue sans erreur");
 const contraintes = (await db.query("select conname from pg_constraint where conrelid = 'bandeaux_site'::regclass and conname in ('bandeaux_site_texte_check', 'bandeaux_site_valeurs_check') order by 1")).rows.map((r) => r.conname);
 ok(contraintes.join() === "bandeaux_site_texte_check,bandeaux_site_valeurs_check", "les deux contraintes gardent leur nom, sans doublon");
 const b600 = await comme("anais", bandeau("secret", { texte: "x".repeat(600) }));

@@ -244,7 +244,7 @@ test("texte du bandeau : modèle rempli, dates proches lisibles, champs manquant
 test("vérification du bandeau : texte trop long, cible vide, lien hors du site, dates à l'envers", () => {
   const base = { modele: "sea-today", valeurs: {}, marques: ["secret"], cible: "tout", sections: [], produits: [], lien: "aucun", debut: "2026-11-16T01:00:00Z", fin: null };
   assert.deepEqual(verifierBandeau(base, AJD), []);
-  assert.deepEqual(verifierBandeau({ ...base, modele: "libre", valeurs: { texte: "x".repeat(600) } }, AJD), [], "600 caractères passent (migration 125)");
+  assert.deepEqual(verifierBandeau({ ...base, modele: "libre", valeurs: { texte: "x".repeat(600) } }, AJD), [], "600 caractères passent (migration 126)");
   assert.deepEqual(verifierBandeau({ ...base, modele: "libre", valeurs: { texte: "x".repeat(601) } }, AJD)[0], { code: "trop_long", longueur: 601 });
   assert.equal(verifierBandeau({ ...base, marques: [] }, AJD)[0].code, "marque");
   assert.equal(verifierBandeau({ ...base, cible: "produits" }, AJD)[0].code, "produits");
@@ -360,7 +360,7 @@ test("demande du site : limite par organisation, puis marque de l'organisation (
   assert.doesNotMatch(src, /entite\.data/);
 });
 
-// ---- Bandeau long (migration 125, 24.11.2026) : 600 caractères, retours à la ligne, replié par le site au-delà de 140 ----
+// ---- Bandeau long (migration 126, 24.11.2026) : 600 caractères, retours à la ligne, replié par le site au-delà de 140 ----
 test("bandeau long : limite 600, seuil de repli 140, retours à la ligne gardés dans le texte libre", () => {
   assert.equal(TEXTE_MAX, 600);
   assert.equal(TEXTE_REPLIE, 140);
@@ -376,7 +376,7 @@ test("bandeau long : limite 600, seuil de repli 140, retours à la ligne gardés
   const base = { modele: "libre", marques: ["secret"], cible: "tout", sections: [], produits: [], lien: "aucun", debut: "2026-11-16T01:00:00Z", fin: null };
   const ligne = ligneBandeau({ ...base, valeurs: { texte: "Christmas week\n" + "y".repeat(500) } }, AJD);
   assert.equal(ligne.texte.length, 515);
-  assert.ok(JSON.stringify(ligne.valeurs).length <= 2500, "valeurs sous la contrainte de la migration 125");
+  assert.ok(JSON.stringify(ligne.valeurs).length <= 2500, "valeurs sous la contrainte de la migration 126");
 });
 
 test("bandeau long : le message WhatsApp prérempli reste court (première ligne, 140 caractères au plus)", () => {
@@ -393,8 +393,8 @@ test("bandeau long : le message WhatsApp prérempli reste court (première ligne
   assert.equal(b.link.text, `Hi, I have a question about this: ${r}`);
 });
 
-test("bandeau long : migration 125 (texte 600, valeurs 2500), écran avec compteur, repli et aperçu téléphone et ordinateur", () => {
-  const sql = fs.readFileSync(new URL("../docs/gestion/migration-125-bandeau-long.sql", import.meta.url), "utf8");
+test("bandeau long : migration 126 (texte 600, valeurs 2500), écran avec compteur, repli et aperçu téléphone et ordinateur", () => {
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-126-bandeau-long.sql", import.meta.url), "utf8");
   assert.match(sql, /add constraint bandeaux_site_texte_check check \(length\(texte\) between 1 and 600\);/);
   assert.match(sql, /add constraint bandeaux_site_valeurs_check check \(jsonb_typeof\(valeurs\) = 'object' and length\(valeurs::text\) <= 2500\);/);
   assert.match(sql, /drop constraint if exists bandeaux_site_texte_check;/);
