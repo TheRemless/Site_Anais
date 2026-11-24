@@ -5,6 +5,11 @@
 @font-face { font-family: "Montserrat"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("../assets/fonts/montserrat-normal-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "Montserrat"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("../assets/fonts/montserrat-normal-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Raleway"; font-style: italic; font-weight: 400; font-display: swap; src: url("../assets/fonts/raleway-italic-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+/* Polices du site public, pour l'aperçu fidèle du bandeau (chargées seulement quand l'aperçu s'affiche). */
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("../assets/fonts/manrope-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: swap; src: url("../assets/fonts/manrope-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 500; font-display: swap; src: url("../assets/fonts/bai-jamjuree-500-normal-latin.woff2") format("woff2"); }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("../assets/fonts/bai-jamjuree-600-normal-latin.woff2") format("woff2"); }
 
 :root {
   --fond: #f5f8f8;
@@ -1838,7 +1843,26 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .bsite-apercus { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
 .bsite-apercu { margin: 0; }
 .bsite-apercu figcaption { font-size: 0.8rem; font-weight: 600; color: var(--texte-2); margin-bottom: 4px; }
-.bsite-ecran { max-width: 375px; border: 1px solid var(--bord-fort); border-radius: 10px; overflow: hidden; background: #fff; }
+.bsite-ecran { box-sizing: content-box; width: 375px; border: 1px solid var(--bord-fort); border-radius: 10px; overflow: hidden; background: #fff; }
+/* Ordinateur : la page est mise en page à 1280 px puis réduite (zoom) à la largeur disponible ; les lignes tombent comme sur le site. */
+.bsite-zoom { width: 100%; min-width: 0; overflow: hidden; }
+.bsite-bureau { border-radius: 10px; }
+.bsite-liste-tel { max-width: 377px; }
+.bsite-ecran.bureau { width: 1280px; max-width: none; border-width: 2px; border-radius: 20px; }
+.bsite-entete { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.bsite-nav { display: flex; gap: 18px; }
+.bsite-nav i { display: block; width: 64px; height: 8px; border-radius: 4px; background: currentColor; opacity: 0.35; }
+.bsite-apercus.complet { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.bsite-apercus.complet .bsite-apercu { min-width: 0; }
+.bsite-formats { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+/* Téléphone : replié et ouvert côte à côte quand la fenêtre le permet (mis en page à 375 px, réduit au besoin). Ordinateur : l'un sous l'autre, en pleine largeur. */
+.bsite-paire { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.bsite-paire > div { min-width: 0; }
+.bsite-paire.tel { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.bsite-format { margin: 0 0 4px; font-size: 0.8rem; color: var(--texte-2); }
+.bsite-paire.tient .bsite-ouvert { display: none; }
+.bsite-compteur { margin: 6px 0 0; font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bsite-repli { margin-top: 2px; }
 .bsite-entete { padding: 12px 16px; font-weight: 700; font-size: 0.9rem; }
 .bsite-page { display: grid; gap: 8px; padding: 14px 16px 16px; }
 .bsite-page span { height: 9px; border-radius: 4px; background: #e9e3d8; }
@@ -1852,11 +1876,19 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 
 /* ---- Bandeau du site : rendu (mêmes classes et couleurs que sur le site, docs/gestion/bandeau-site.md) --------------- */
 .site-notice { --n-bg: #F6EFE4; --n-ink: #14262B; --n-icon: currentColor; --n-rule: #E3DACB; background: var(--n-bg); color: var(--n-ink); border-bottom: 1px solid var(--n-rule); font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif; }
-.site-notice__inner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 10px 16px; }
+.site-notice__inner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 10px; max-width: 1240px; margin: 0 auto; padding: 10px 20px; }
 .site-notice__icon { color: var(--n-icon); margin-top: 1px; }
 .site-notice__text { margin: 0; font-size: 15px; line-height: 1.45; font-weight: 600; }
 .site-notice__link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
-.site-notice__close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin: -6px -8px -6px 0; font-size: 20px; line-height: 1; opacity: 0.8; }
+.site-notice__close { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -12px -12px -12px 0; font-size: 22px; line-height: 1; }
+/* Texte long (migration 125) : replié sur deux lignes, « More » ouvre le reste. Mêmes règles que le site (src/js/notice.js). */
+.site-notice--long .site-notice__body { min-width: 0; max-width: 80ch; }
+.site-notice--long .site-notice__text { white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.site-notice--long.is-open .site-notice__text { display: block; -webkit-line-clamp: none; line-clamp: none; }
+.site-notice__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; margin-top: 4px; }
+.site-notice__more, .site-notice__actions .site-notice__link { position: relative; display: inline-block; padding: 0; background: none; border: 0; color: inherit; font: inherit; font-size: 15px; font-weight: 700; line-height: 1.45; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 0; }
+.site-notice__more[hidden] { display: none; }
+.site-notice__more:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 /* Secret Travel & Tour : sable, mer profonde, encre. L'ambre de l'alerte mer est le seul ajout à la palette du site. */
 .marque-secret.site-notice--sea { --n-bg: #F7D58B; --n-ink: #14262B; --n-rule: #E6BC5C; }
 .marque-secret.site-notice--season { --n-bg: #B5CBC6; --n-ink: #0B3B3C; --n-rule: #9FB8B2; }
@@ -1864,6 +1896,7 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .marque-secret.site-notice--urgent { --n-bg: #14262B; --n-ink: #FFFFFF; --n-icon: #F7D58B; --n-rule: #14262B; }
 /* VIP Taxi Lanta, « Laque et or » : papier ivoire, laque noire, l'or en aplat. */
 .marque-taxi.site-notice { font-family: "Bai Jamjuree", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.marque-taxi .site-notice__text { font-weight: 500; }
 .marque-taxi.site-notice--info { --n-bg: #EFE8DA; --n-ink: #1B130D; --n-rule: #DDD3C0; }
 .marque-taxi.site-notice--sea { --n-bg: #D9AA4E; --n-ink: #1B130D; --n-rule: #B98B31; }
 .marque-taxi.site-notice--season { --n-bg: #7C5A1C; --n-ink: #F3ECDC; --n-rule: #7C5A1C; }

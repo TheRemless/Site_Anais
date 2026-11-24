@@ -1,4 +1,4 @@
-// Vérifie les migrations 30, 40 et 41 (demandes et bandeau du site, numéro WhatsApp) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
+// Vérifie les migrations 30, 40, 41 et 125 (demandes et bandeau du site, numéro WhatsApp, bandeau de 600 caractères) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-site.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-site.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -24,7 +24,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
-const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d|1\d\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 for (const f of migrations) await db.exec(fs.readFileSync(W + f, "utf8"));
 ok(migrations.includes("migration-30-site.sql") && migrations.includes("migration-40-bandeau-reglages.sql") && migrations.includes("migration-41-demande-whatsapp.sql"), "les migrations 30, 40 et 41 sont appliquées, dans l'ordre");
 await db.exec(fs.readFileSync(W + "migration-41-demande-whatsapp.sql", "utf8"));
@@ -135,7 +135,21 @@ ok((await comme("ztp", bandeau("ztp"))).ok === false, "ni chez Zwald : seules Se
 ok((await comme("root", bandeau("ztp"))).ok === false, "même l'administratrice générale ne publie pas depuis Zwald");
 ok((await comme("stagiaire", bandeau("secret"))).ok === false, "un rôle limité à ses dossiers ne publie pas sur le site");
 ok((await comme("mook", bandeau("taxi"))).ok === false, "l'écran « Nouveau voucher » seul ne publie pas sur le site");
-ok((await comme("anais", bandeau("secret", { texte: "x".repeat(141) }))).ok === false, "un texte de plus de 140 caractères est refusé");
+// Migration 125 (24.11.2026) : 600 caractères au plus, retours à la ligne permis, valeurs jusqu'à 2500 caractères.
+ok(migrations.includes("migration-125-bandeau-long.sql"), "la migration 125 est appliquée");
+await db.exec(fs.readFileSync(W + "migration-125-bandeau-long.sql", "utf8"));
+ok(true, "la migration 125 se rejoue sans erreur");
+const contraintes = (await db.query("select conname from pg_constraint where conrelid = 'bandeaux_site'::regclass and conname in ('bandeaux_site_texte_check', 'bandeaux_site_valeurs_check') order by 1")).rows.map((r) => r.conname);
+ok(contraintes.join() === "bandeaux_site_texte_check,bandeaux_site_valeurs_check", "les deux contraintes gardent leur nom, sans doublon");
+const b600 = await comme("anais", bandeau("secret", { texte: "x".repeat(600) }));
+ok(b600.ok, "un texte de 600 caractères passe");
+ok((await comme("anais", bandeau("secret", { texte: "x".repeat(601) }))).ok === false, "un texte de plus de 600 caractères est refusé");
+ok(await db.query(`insert into bandeaux_site (entite_id, marques, type, modele, texte) values ('${ent.secret}', '{secret}', 'info', 'libre', '')`).then(() => false, () => true), "un texte vide est refusé");
+const bLignes = await comme("anais", `insert into bandeaux_site (entite_id, marques, type, modele, texte, valeurs) values ('${ent.secret}', '{secret}', 'info', 'libre', E'Christmas week\\nTransfers run as usual.', jsonb_build_object('texte', repeat('"', 600) || E'\\n')) returning id`);
+ok(bLignes.ok, "un texte avec retour à la ligne passe, et 600 guillemets dans valeurs (1200 caractères en JSON) aussi");
+ok((await un(`select texte from bandeaux_site where id = '${bLignes.rows[0].id}'`)).texte === "Christmas week\nTransfers run as usual.", "le retour à la ligne est gardé tel quel");
+ok((await comme("anais", `insert into bandeaux_site (entite_id, marques, type, modele, texte, valeurs) values ('${ent.secret}', '{secret}', 'info', 'libre', 'y', jsonb_build_object('texte', repeat('z', 2600)))`)).ok === false, "valeurs de plus de 2500 caractères refusées");
+await db.query(`delete from bandeaux_site where id in ('${b600.rows[0].id}', '${bLignes.rows[0].id}')`);
 ok((await comme("anais", bandeau("secret", { marques: "secret,ztp" }))).ok === false, "une marque inconnue est refusée");
 ok((await comme("anais", bandeau("secret", { lien: "page", page: "https://ailleurs.example/" }))).ok === false, "un lien vers un autre site est refusé (chemin du site seulement)");
 ok((await comme("anais", bandeau("secret", { cible: "produits" }))).ok === false, "« produits choisis » sans produit est refusé");

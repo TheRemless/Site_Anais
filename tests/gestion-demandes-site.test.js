@@ -3,9 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { origineAdmise, lireOrigines, ORIGINES_DEFAUT, lireDemande, dateValide, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, LIMITE_APPAREIL, LIMITE_TOTALE, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
-import { reponsePublique, bandeauPublic, choisirBandeau, enLigne } from "../supabase/functions/bandeau-site/calc.js";
+import { reponsePublique, bandeauPublic, choisirBandeau, enLigne, resumeWhatsApp } from "../supabase/functions/bandeau-site/calc.js";
 import { texteDemande, changements, reponseConfirmation, reponseRefus, imposerTotal, chiffresDemandes, trierDemandes, dateAnglaise, montantAnglais, cheminPage, titreOption, nomProduit } from "../src/gestion/js/demandes-site-calc.mjs";
-import { MODELES, texteBandeau, verifierBandeau, finProposee, etiquetteCarte, ligneBandeau, etatBandeau, libelleLien, pagesLien, TEXTE_MAX } from "../src/gestion/js/bandeau-calc.mjs";
+import { MODELES, texteBandeau, verifierBandeau, finProposee, etiquetteCarte, ligneBandeau, etatBandeau, libelleLien, pagesLien, TEXTE_MAX, TEXTE_REPLIE, estLong, nettoyerTexteLibre } from "../src/gestion/js/bandeau-calc.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
 import { lireMessage } from "../src/gestion/js/demande-calc.mjs";
 
@@ -218,14 +218,15 @@ test("produits du site : identifiants uniques, marques et sections connues, adre
   assert.ok(PRODUITS_SITE.some((p) => p.marque === "taxi") && PRODUITS_SITE.some((p) => p.id === "4-islands"));
 });
 
-test("modèles : chaque texte tient en 140 caractères avec la sortie au nom le plus long et des dates lointaines", () => {
+test("modèles : chaque texte tient en 140 caractères (rendu d'un bloc sur le site, jamais replié) avec la sortie au nom le plus long et des dates lointaines", () => {
   const long = [...PRODUITS_SITE].sort((a, b) => b.nom.length - a.nom.length)[0];
   const opt = [...PRODUITS_SITE].flatMap((p) => p.options.map((o) => ({ p, o }))).sort((a, b) => b.o.titre.length - a.o.titre.length)[0];
   for (const m of MODELES.filter((x) => x.id !== "libre")) {
     const valeurs = { trip: m.champs.includes("option") ? opt.p.id : long.id, option: opt.o.id, date: "2026-12-30", date2: "2026-12-31", de: "08:00", a: "20:00" };
     const { texte, manque } = texteBandeau(m.id, valeurs, AJD);
     assert.deepEqual(manque, [], m.id);
-    assert.ok(texte.length <= TEXTE_MAX, `${m.id} : ${texte.length} caractères`);
+    assert.ok(texte.length <= TEXTE_REPLIE, `${m.id} : ${texte.length} caractères`);
+    assert.equal(estLong(texte), false, m.id);
     assert.ok(!/\{\w+\}/.test(texte), `${m.id} : variable restée`);
   }
 });
@@ -243,7 +244,8 @@ test("texte du bandeau : modèle rempli, dates proches lisibles, champs manquant
 test("vérification du bandeau : texte trop long, cible vide, lien hors du site, dates à l'envers", () => {
   const base = { modele: "sea-today", valeurs: {}, marques: ["secret"], cible: "tout", sections: [], produits: [], lien: "aucun", debut: "2026-11-16T01:00:00Z", fin: null };
   assert.deepEqual(verifierBandeau(base, AJD), []);
-  assert.equal(verifierBandeau({ ...base, modele: "libre", valeurs: { texte: "x".repeat(141) } }, AJD)[0].code, "trop_long");
+  assert.deepEqual(verifierBandeau({ ...base, modele: "libre", valeurs: { texte: "x".repeat(600) } }, AJD), [], "600 caractères passent (migration 125)");
+  assert.deepEqual(verifierBandeau({ ...base, modele: "libre", valeurs: { texte: "x".repeat(601) } }, AJD)[0], { code: "trop_long", longueur: 601 });
   assert.equal(verifierBandeau({ ...base, marques: [] }, AJD)[0].code, "marque");
   assert.equal(verifierBandeau({ ...base, cible: "produits" }, AJD)[0].code, "produits");
   assert.equal(verifierBandeau({ ...base, lien: "page", lien_page: "https://evil.example/" }, AJD)[0].code, "lien");
@@ -356,4 +358,63 @@ test("demande du site : limite par organisation, puis marque de l'organisation (
   assert.match(src, /\.in\("entite_id", ids\)\.gte\("created_at", depuis\(LIMITE_TOTALE\.minutes\)\)/);
   assert.match(src, /choisirEntite\(\{ marque: ligne\.marque, entites: entites\.data/);
   assert.doesNotMatch(src, /entite\.data/);
+});
+
+// ---- Bandeau long (migration 125, 24.11.2026) : 600 caractères, retours à la ligne, replié par le site au-delà de 140 ----
+test("bandeau long : limite 600, seuil de repli 140, retours à la ligne gardés dans le texte libre", () => {
+  assert.equal(TEXTE_MAX, 600);
+  assert.equal(TEXTE_REPLIE, 140);
+  assert.equal(estLong("x".repeat(140)), false);
+  assert.equal(estLong("x".repeat(141)), true);
+  assert.equal(estLong("Christmas week\nTransfers run as usual."), true, "un retour à la ligne : replié comme un texte long");
+  assert.equal(nettoyerTexteLibre("  Christmas   week \r\n\r\n\r\n\t Transfers\trun.  "), "Christmas week\n\nTransfers run.", "une ligne vide au plus, espaces en trop retirés");
+  assert.equal(texteBandeau("libre", { texte: "rough sea\nAll boats stay in today." }, AJD).texte, "Rough sea\nAll boats stay in today.");
+  // Un texte libre de 140 caractères sur une ligne : inchangé, comme avant.
+  const court = "Koh Rok trips run again from 1 December. Boats leave Saladan pier at 08:30 and come back around 16:30, so plan a light brunch before you go.";
+  assert.equal(court.length, 140);
+  assert.equal(texteBandeau("libre", { texte: court }, AJD).texte, court);
+  const base = { modele: "libre", marques: ["secret"], cible: "tout", sections: [], produits: [], lien: "aucun", debut: "2026-11-16T01:00:00Z", fin: null };
+  const ligne = ligneBandeau({ ...base, valeurs: { texte: "Christmas week\n" + "y".repeat(500) } }, AJD);
+  assert.equal(ligne.texte.length, 515);
+  assert.ok(JSON.stringify(ligne.valeurs).length <= 2500, "valeurs sous la contrainte de la migration 125");
+});
+
+test("bandeau long : le message WhatsApp prérempli reste court (première ligne, 140 caractères au plus)", () => {
+  assert.equal(resumeWhatsApp("Sunset dinner raft does not run until 1 December."), "Sunset dinner raft does not run until 1 December.", "texte court : tel quel, comme avant");
+  assert.equal(resumeWhatsApp("x".repeat(140)), "x".repeat(140));
+  assert.equal(resumeWhatsApp("Christmas week\nTransfers run as usual."), "Christmas week…");
+  assert.equal(resumeWhatsApp("Rough sea:\nAll boats stay in."), "Rough sea…");
+  const long = "Christmas and New Year on Koh Lanta are our busiest weeks. From 20 December to 5 January, island trips fill up three or four days ahead, so book as soon as your dates are set.";
+  const r = resumeWhatsApp(long);
+  assert.ok(r.length <= 140, r.length);
+  assert.ok(r.endsWith("ahead…"), r);
+  const b = bandeauPublic({ id: "x", marques: ["secret"], type: "info", texte: long, valeurs: {}, lien: "whatsapp", cible: "tout", debut: "2026-11-16T00:00:00Z" });
+  assert.equal(b.text, long, "le site reçoit le texte entier");
+  assert.equal(b.link.text, `Hi, I have a question about this: ${r}`);
+});
+
+test("bandeau long : migration 125 (texte 600, valeurs 2500), écran avec compteur, repli et aperçu téléphone et ordinateur", () => {
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-125-bandeau-long.sql", import.meta.url), "utf8");
+  assert.match(sql, /add constraint bandeaux_site_texte_check check \(length\(texte\) between 1 and 600\);/);
+  assert.match(sql, /add constraint bandeaux_site_valeurs_check check \(jsonb_typeof\(valeurs\) = 'object' and length\(valeurs::text\) <= 2500\);/);
+  assert.match(sql, /drop constraint if exists bandeaux_site_texte_check;/);
+  assert.match(sql, /^begin;$/m);
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/bandeau-site.mjs", import.meta.url), "utf8");
+  assert.match(vue, /trop_long: N_\("Le texte fait \{n\} caractères : \{max\} au plus\."\)/);
+  assert.match(vue, /tr\("\{n\} caractères sur \{max\}", \{ n: t\.length, max: TEXTE_MAX \}\)/);
+  assert.match(vue, /"aria-describedby": "bsite-compteur"/);
+  assert.match(vue, /maxlength: String\(TEXTE_MAX\)/);
+  assert.match(vue, /apercu\(\{ \.\.\.b, texte: t \}, \{ complet: true \}\)/);
+  assert.match(vue, /"data-largeur": "377"/);
+  assert.match(vue, /"data-largeur": "1284"/);
+  assert.match(vue, /"aria-expanded": String\(ouvert\)/);
+  assert.doesNotMatch(vue, /140 au plus/);
+  const en = fs.readFileSync(new URL("../src/gestion/js/i18n-en.mjs", import.meta.url), "utf8");
+  assert.match(en, /"Le texte fait \{n\} caractères : \{max\} au plus\.": "The text has \{n\} characters: \{max\} at most\."/);
+  const css = fs.readFileSync(new URL("../src/gestion/css/app.css", import.meta.url), "utf8");
+  assert.match(css, /\.site-notice--long \.site-notice__text \{ white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;/);
+  for (const f of ["manrope-latin-600-normal.woff2", "manrope-latin-700-normal.woff2", "bai-jamjuree-500-normal-latin.woff2", "bai-jamjuree-600-normal-latin.woff2"]) {
+    assert.ok(fs.existsSync(new URL(`../src/gestion/assets/fonts/${f}`, import.meta.url)), f);
+    assert.match(css, new RegExp(f.replace(/\./g, "\\.")));
+  }
 });

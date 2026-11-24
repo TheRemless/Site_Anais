@@ -8,6 +8,17 @@ const ORDRE_TYPE = { urgent: 0, sea: 1, season: 2, new: 3, info: 4 };
 // En ligne : allumé, commencé, pas encore fini.
 export const enLigne = (b, maintenant) => b.actif !== false && Date.parse(b.debut) <= maintenant && (!b.fin || Date.parse(b.fin) > maintenant);
 
+// Message WhatsApp prérempli : le texte tel quel jusqu'à 140 caractères sur une ligne (comme avant) ; un texte long donne sa première
+// ligne, coupée à 140 caractères sur un mot avec « … », pour que le visiteur n'envoie pas 600 caractères qu'il n'a pas écrits.
+export function resumeWhatsApp(texte) {
+  const t = String(texte || "");
+  if (t.length <= 140 && !/\n/.test(t)) return t;
+  const ligne = t.split("\n")[0].trim();
+  if (ligne.length <= 140) return ligne === t ? ligne : `${ligne.replace(/[.:;,]$/, "")}…`;
+  const coupe = ligne.slice(0, 139);
+  return `${coupe.slice(0, Math.max(coupe.lastIndexOf(" "), 80)).replace(/[\s.:;,]+$/, "")}…`;
+}
+
 // Ce que le site reçoit d'un bandeau : jamais l'entreprise, l'auteur ni les valeurs internes.
 export function bandeauPublic(b) {
   const v = b.valeurs || {};
@@ -15,7 +26,7 @@ export function bandeauPublic(b) {
     b.lien === "page" && b.lien_page
       ? { kind: "page", href: b.lien_page, label: v.lien_libelle || "See the page" }
       : b.lien === "whatsapp"
-        ? { kind: "whatsapp", label: "Ask on WhatsApp", text: `Hi, I have a question about this: ${b.texte}` }
+        ? { kind: "whatsapp", label: "Ask on WhatsApp", text: `Hi, I have a question about this: ${resumeWhatsApp(b.texte)}` }
         : null;
   const cible = b.cible === "sections" ? { kind: "sections", sections: b.sections || [] } : b.cible === "produits" ? { kind: "products", products: b.produits || [] } : { kind: "all" };
   return {
