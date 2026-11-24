@@ -109,6 +109,9 @@ test("fonction rappels : seule l'absence d'un objet de la migration 123 passe po
   assert.match(partie, /\} catch \(err\) \{\n\s+erreur = `changements : /);
   assert.ok(partie.indexOf("erreur = `changements") < partie.indexOf("coursesH1(courses"));
   assert.match(partie, /return fin\(\);\n\}/);
+  // Les téléphones des changements sont relus après le marquage de la base, pas avant.
+  assert.ok(partie.indexOf('rpc("partenaire_notifs_changements")') < partie.indexOf("const abosApres"));
+  assert.match(partie, /envoyerAuPartenaire\(db, abosApres\.data \|\| \[\], n\.user_id, messageChangement\(n\)/);
 });
 
 test("service worker : les notifications du partenaire sonnent de nouveau (renotify) et portent l'icône de Taxi, une adresse de l'outil seulement", () => {

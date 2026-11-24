@@ -654,9 +654,13 @@ async function partenairesH1(db: Db, maintenant: number, demande: { user_id?: st
         if (fonctionAbsente(error)) return { ...compte, note: "migration 123 absente" };
         throw new Error(error.message);
       }
-      for (const n of (data || []) as Array<{ user_id: string; reservation_id: string; genre: string; apercu: Record<string, unknown>; apercu_avant: Record<string, unknown> | null }>) {
+      const prets = (data || []) as Array<{ user_id: string; reservation_id: string; genre: string; apercu: Record<string, unknown>; apercu_avant: Record<string, unknown> | null }>;
+      // Les téléphones relus APRÈS le marquage : un appareil abonné pendant le passage reçoit aussi la notification (elle n'est pas renvoyée).
+      const abosApres = prets.length ? await db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth").in("user_id", [...new Set(prets.map((n) => n.user_id))]) : { data: [], error: null };
+      if (abosApres.error) throw new Error(abosApres.error.message);
+      for (const n of prets) {
         compte.changements++;
-        await envoyerAuPartenaire(db, comptes.abos, n.user_id, messageChangement(n), { TTL: 12 * 3600, urgency: "high" }, compte);
+        await envoyerAuPartenaire(db, abosApres.data || [], n.user_id, messageChangement(n), { TTL: 12 * 3600, urgency: "high" }, compte);
       }
     } catch (err) {
       erreur = `changements : ${String((err && err.message) || err)}`.slice(0, 300);

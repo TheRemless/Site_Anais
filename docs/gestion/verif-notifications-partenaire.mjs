@@ -239,6 +239,26 @@ await db.query("delete from reservations where id = $1", [R.supprimee]);
 ok(await sortie(R.supprimee, {}), "course supprimée (fiche retirée) : notifiée avec ce qu'il avait vu");
 await vieillir();
 ok((await passage()).length === 0, "et une seule fois");
+// Annulée puis, avant la notification, rétablie et confiée à une autre fiche : le genre envoyé est celui de l'état final.
+R.annuleeAilleurs = await notifiee();
+await db.query("update reservations set statut = 'annule' where id = $1", [R.annuleeAilleurs]);
+await passage();
+await db.query("update reservations set statut = 'confirme', partenaire_id = $2 where id = $1", [R.annuleeAilleurs, P.autreTaxi]);
+await passage();
+await vieillir();
+n = await passage();
+ok(n.length === 1 && n[0].genre === "retiree" && n[0].reservation_id === R.annuleeAilleurs, "annulée puis confiée ailleurs dans le délai : « ne vous est plus confiée », pas « annulée »");
+// Annulée et annoncée, puis confiée ailleurs : il sait déjà qu'il ne la fait pas, rien de plus.
+R.annonceeAilleurs = await notifiee();
+await db.query("update reservations set statut = 'annule' where id = $1", [R.annonceeAilleurs]);
+await passage();
+await vieillir();
+n = await passage();
+ok(n.length === 1 && n[0].genre === "annulee", "annulée : annoncée");
+await db.query("update reservations set statut = 'confirme', partenaire_id = $2 where id = $1", [R.annonceeAilleurs, P.autreTaxi]);
+await passage();
+await vieillir();
+ok((await passage()).length === 0, "puis confiée ailleurs : rien de plus");
 // Sorties par la date : silencieuses.
 R.loin = await notifiee();
 await db.query("update reservations set date_service = $2 where id = $1", [R.loin, await jour(70)]);

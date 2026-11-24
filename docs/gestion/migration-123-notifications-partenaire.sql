@@ -261,7 +261,7 @@ begin
     --   * encore sur son écran mais plus notifiable (devenue des frais de parc) : oubliées sans notification, jamais « retire ».
     update partenaires_notifs_courses x set empreinte_vue = 'annule', vue_le = now()
     from reservations r join dossiers d on d.id = r.dossier_id
-    where x.user_id = v_user and x.reservation_id = r.id and x.empreinte_vue not in ('annule', 'sans_date')
+    where x.user_id = v_user and x.reservation_id = r.id and x.empreinte_vue <> 'annule'
       and r.entite_id = v_acces.entite_id and (r.partenaire_id is null or r.partenaire_id = v_acces.partenaire_id)
       and (r.statut = 'annule' or d.annule) and r.date_service >= v_acces.jour
       and not exists (select 1 from partenaire_notif_courses(v_user) c where c.id = x.reservation_id);
@@ -275,9 +275,15 @@ begin
     where x.user_id = v_user
       and not exists (select 1 from partenaire_notif_courses(v_user) c where c.id = x.reservation_id)
       and exists (select 1 from partenaire_courses_de(v_user) c where c.id = x.reservation_id and c.date_service >= v_acces.jour);
+    -- L'état est recalculé à chaque passage : une course passée à « annule » puis confiée à une autre fiche devient « retire » (le genre envoyé
+    -- est celui de l'état final, relecture du 24.11.2026).
     update partenaires_notifs_courses x set empreinte_vue = 'retire', vue_le = now()
-    where x.user_id = v_user and x.empreinte_vue not in ('annule', 'retire', 'sans_date')
+    where x.user_id = v_user and x.empreinte_vue not in ('retire', 'sans_date')
       and not exists (select 1 from partenaire_notif_courses(v_user) c where c.id = x.reservation_id)
+      and not exists (
+        select 1 from reservations r join dossiers d on d.id = r.dossier_id
+        where r.id = x.reservation_id and r.entite_id = v_acces.entite_id and (r.partenaire_id is null or r.partenaire_id = v_acces.partenaire_id)
+          and (r.statut = 'annule' or d.annule) and r.date_service >= v_acces.jour)
       and (exists (select 1 from reservations r where r.id = x.reservation_id and r.date_service between v_acces.jour and v_acces.jour + 60)
         or (not exists (select 1 from reservations r where r.id = x.reservation_id) and (x.apercu->>'date_service')::date >= v_acces.jour));
     -- Hors de sa liste et hors de sa fenêtre de dates : oubliée.
