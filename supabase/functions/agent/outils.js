@@ -374,7 +374,7 @@ export const OUTILS = [
   {
     name: "proposer_import_brochure",
     description:
-      "Propose d'importer dans le catalogue la brochure, la grille de prix ou la fiche d'un partenaire jointe à la conversation : un nouveau partenaire avec ses contacts imprimés, de nouvelles prestations ou de nouveaux trajets, des prix changés. Carte à valider : au clic, l'outil relit les fichiers, recopie les prix imprimés, marque « illisible » ce qui ne se lit pas et compare au catalogue ; la personne coche ce qu'elle garde. Seulement quand la personne demande d'ajouter ou de mettre à jour un partenaire ou ses tarifs.",
+      "Propose d'importer dans le catalogue la brochure, la grille de prix ou la fiche d'un partenaire jointe à la conversation : un nouveau partenaire avec ses contacts imprimés, de nouvelles prestations ou de nouveaux trajets, des prix changés. Carte à valider : au clic, l'outil lit puis relit les fichiers, recopie les prix et les nets qui y figurent, normalise les lieux, marque le lendemain, signale ce qui reste douteux et compare au catalogue ; la personne coche ce qu'elle garde. Seulement quand la personne demande d'ajouter ou de mettre à jour un partenaire ou ses tarifs.",
     input_schema: obj({
       titre: S("Titre court de la carte (« Brochure Lazy Day »)."),
       fichiers: { type: "array", items: S("Référence F-… d'une pièce jointe de la conversation."), description: "Les pièces jointes de la brochure, dans l'ordre des pages." },
@@ -708,7 +708,7 @@ export async function chercherCatalogue(e, ctx) {
       const na = n ? nombre(n.net_adulte) : null;
       const marge = pa !== null && na !== null ? arrondi2(pa - na) : null;
       const commission = fiche ? commissionPrevue(fiche.regle, { vente: pa, net: na, adultes: 1 }) : null;
-      lignes.push({ ref: refDe("T", t.id), ...marqueEntreprise(ctx, t.entite_id), trajet: `${texte(t.de, 80)} → ${texte(t.vers, 80)}`, mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 10), arrivee: texte(t.arrivee, 10), duree: texte(t.duree, 30), prix_adulte: pa, prix_enfant: nombre(t.prix_enfant), periode: texte(t.periode, 60), ...champsInternes(ctx, fiche, { net_adulte: na, net_enfant: n ? nombre(n.net_enfant) : null, marge_adulte: marge, commission_adulte: commission, gain_adulte: fiche ? gainDe(fiche.sur_place, marge, commission) : null }, t.entite_id) });
+      lignes.push({ ref: refDe("T", t.id), ...marqueEntreprise(ctx, t.entite_id), trajet: `${texte(t.de, 80)} → ${texte(t.vers, 80)}`, mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 10), ...(/\(next day\)/i.test(t.arrivee || "") ? { arrivee: texte(t.arrivee, 5), arrivee_lendemain: true } : { arrivee: texte(t.arrivee, 10) }), duree: texte(t.duree, 30), prix_adulte: pa, prix_enfant: nombre(t.prix_enfant), periode: texte(t.periode, 60), ...champsInternes(ctx, fiche, { net_adulte: na, net_enfant: n ? nombre(n.net_enfant) : null, marge_adulte: marge, commission_adulte: commission, gain_adulte: fiche ? gainDe(fiche.sur_place, marge, commission) : null }, t.entite_id) });
     }
   }
   // Recommandés d'abord, puis par libellé : le même catalogue donne toujours le même résultat.
@@ -781,7 +781,8 @@ export async function horairesTrajet(e, ctx) {
     return champsInternes(ctx, fiche, { net_adulte: na, net_enfant: ne, net_groupe: net, marge_groupe: m === null ? null : arrondi2(m), commission_groupe: commission, gain_groupe: fiche ? gainDe(fiche.sur_place, m === null ? null : arrondi2(m), commission) : null }, t.entite_id);
   };
   const departs = ok
-    .map((t) => ({ ref: refDe("T", t.id), ...marqueEntreprise(ctx, t.entite_id), de: texte(t.de, 80), vers: texte(t.vers, 80), mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 5), arrivee: texte(t.arrivee, 5), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), bebe: texte(t.bebe, 40), ...(gagnantes.has(cleCie(t)) ? { recommande: true } : {}), ...groupe(t) }))
+    // Une arrivée du lendemain (« 06:00 (next day) », import de brochure du 24.11.2026) : l'heure seule, et arrivee_lendemain pour le dire.
+    .map((t) => ({ ref: refDe("T", t.id), ...marqueEntreprise(ctx, t.entite_id), de: texte(t.de, 80), vers: texte(t.vers, 80), mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 5), arrivee: texte(t.arrivee, 5), ...(/\(next day\)/i.test(t.arrivee || "") ? { arrivee_lendemain: true } : {}), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), bebe: texte(t.bebe, 40), ...(gagnantes.has(cleCie(t)) ? { recommande: true } : {}), ...groupe(t) }))
     .sort((a, b) => (b.recommande ? 1 : 0) - (a.recommande ? 1 : 0) || a.depart.localeCompare(b.depart));
   return { resultat: { trouve: true, date, departs: departs.slice(0, 20) }, prix: departs.flatMap((d) => [d.prix_adulte, d.prix_enfant]).filter((x) => x !== null), heures: departs.flatMap((d) => [d.depart, d.arrivee]).filter(Boolean) };
 }
@@ -2004,7 +2005,7 @@ export async function proposer(nom, e, ctx, memo) {
 
 // ---- Import d'une brochure jointe (20.11.2026) ---------------------------------------------------------------------------------------
 // La carte garde les fichiers choisis et le partenaire reconnu ; au clic, l'écran d'import de brochure (usage « brochure » de l'assistant)
-// relit les fichiers avec ses contrôles (prix recopiés du texte imprimé, « illisible » sinon, net seulement s'il est imprimé) et les compare au
+// relit les fichiers avec ses contrôles (prix et nets recopiés du document, imprimés ou manuscrits, jamais déduits ; seconde passe de relecture) et les compare au
 // catalogue. Ce qui repart chez Claude : la carte est affichée et le partenaire est connu ou non, jamais un nom de la base.
 export const DROITS_IMPORT = ["partenaires.ecrire", "partenaires.prix"];
 const cleNom = (s) =>

@@ -5,6 +5,7 @@ import { filtrerTrajets, lieux, meilleursNets, resumeParCompagnie, periodeSpecif
 import { vide, cartes } from "./commun.mjs";
 import { prix, margeNoeud, voitNets } from "./partenaires.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
+import { lireArrivee, arriveeTexte } from "../brochure-calc.mjs";
 
 export function vueTrajets() {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
@@ -156,7 +157,15 @@ function formulaireTrajet(t, apres, options = {}) {
   const modes = h("datalist", { id: "f-modes" }, [...new Set(etat.db.trajets.map((x) => x.mode).filter(Boolean))].map((x) => h("option", { value: x })));
   const mode = h("input", { id: "f-mode", value: t.mode || "", list: "f-modes", placeholder: tr("Speedboat, ferry, minivan…") });
   const depart = h("input", { id: "f-dep", type: "time", value: t.depart || "" });
-  const arrivee = h("input", { id: "f-arr", type: "time", value: t.arrivee || "" });
+  // Une arrivée du lendemain s'écrit « 06:00 (next day) » (import de brochure, 24.11.2026) : l'heure va dans le champ, le lendemain dans sa case.
+  // Une arrivée écrite autrement (texte libre d'un ancien trajet) reste telle quelle tant que l'heure n'est pas changée.
+  const arr = lireArrivee(t.arrivee);
+  const arrivee = h("input", { id: "f-arr", type: "time", value: arr.heure });
+  const lendemain = h("input", { id: "f-arr-lendemain", type: "checkbox", checked: arr.lendemain });
+  // Le texte libre n'est gardé que tant que la personne n'a touché ni l'heure ni la case.
+  let arriveeTouchee = false;
+  for (const c of [arrivee, lendemain]) c.addEventListener("input", () => (arriveeTouchee = true));
+  const arriveeSaisie = () => (arrivee.value ? arriveeTexte(arrivee.value, lendemain.checked) : arriveeTouchee ? "" : arr.autre);
   const duree = h("input", { id: "f-duree", value: t.duree || "", placeholder: "1 h 30" });
   const nombre = (id, v) => h("input", { id, type: "number", min: "0", step: "1", value: v ?? "", inputmode: "numeric" });
   const ad = nombre("f-ad", t.prix_adulte);
@@ -172,7 +181,7 @@ function formulaireTrajet(t, apres, options = {}) {
   const actif = h("input", { id: "f-actif", type: "checkbox", checked: t.actif !== false });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const ecrit = peut("partenaires.ecrire");
-  const valeursSaisies = (fen) => ({ partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: depart.value, arrivee: arrivee.value, duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : PERIODE_TOUTE[1]), fenetres: fen, actif: actif.checked });
+  const valeursSaisies = (fen) => ({ partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: depart.value, arrivee: arriveeSaisie(), duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : PERIODE_TOUTE[1]), fenetres: fen, actif: actif.checked });
   const messageFenetre = (lu) => ({ incomplete: tr("Fenêtre n° {n} : indiquez la date de début et la date de fin, ou retirez la ligne.", { n: lu.ligne + 1 }), ordre: tr("Fenêtre n° {n} : la date de fin est avant la date de début.", { n: lu.ligne + 1 }), date: tr("Fenêtre n° {n} : date illisible.", { n: lu.ligne + 1 }) })[lu.erreur];
   // Enregistre le trajet ; rend le trajet enregistré, ou null (erreur dite à la personne).
   const enregistrer = async () => {
@@ -202,7 +211,7 @@ function formulaireTrajet(t, apres, options = {}) {
     },
     champ(tr("Compagnie"), cie),
     h("div", { class: "grille-form" }, champ(tr("Départ"), [de, lieuxListe]), champ(tr("Arrivée"), vers), champ(tr("Type"), [mode, modes])),
-    h("div", { class: "grille-form compacte" }, champ(tr("Heure de départ"), depart), champ(tr("Heure d'arrivée"), arrivee), champ(tr("Durée"), duree)),
+    h("div", { class: "grille-form compacte" }, champ(tr("Heure de départ"), depart), champ(tr("Heure d'arrivée"), [arrivee, h("label", { class: "case", for: lendemain.id }, lendemain, tr("Le lendemain"))]), champ(tr("Durée"), duree)),
     h("div", { class: "grille-form compacte" }, champ(tr("Prix adulte"), ad, prixFige ? tr("Réservé à qui a le droit « Modifier les prix de vente ».") : null), champ(tr("Prix enfant"), ch), nets ? champ(tr("Net adulte"), adn) : null, nets ? champ(tr("Net enfant"), chn) : null),
     h("div", { class: "grille-form" }, champ(tr("Bébé"), bebe), champ(tr("Période, en clair"), periode, tr("Vide : « toute la période du contrat » quand il n'y a pas de fenêtre."))),
     h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Fenêtres de circulation")), fenetres.noeud, h("p", { class: "aide" }, tr("Du … au …, une ligne par période. Aucune fenêtre : le trajet circule toute l'année."))),

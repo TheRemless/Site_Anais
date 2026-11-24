@@ -247,7 +247,7 @@ test("contacts imprimés : demandés dans le schéma et le prompt, gardés seule
   assert.ok(SCHEMA_BROCHURE.required.includes("contacts"));
   assert.match(promptBrochure({ fichiers: [{ media_type: "image/jpeg", data: JPEG }], aujourdhui: "2026-11-20" }).system[0].text, /« contacts » : seulement les coordonnées du partenaire imprimées/);
   assert.deepEqual(validerContacts({ telephones: ["+66 81 000 0000", "+66 81 000 0000", "appelez-nous", "12 34"], emails: ["contact@exemple.test", "pas un mail"], web: "www.exemple.test/tours", line: "@exemple", adresse: "Saladan, Koh Lanta", personne: "Khun A" }), {
-    telephones: ["+66 81 000 0000"],
+    telephones: [{ numero: "+66 81 000 0000", libelle: "", whatsapp: false, line: false }],
     emails: ["contact@exemple.test"],
     web: "www.exemple.test/tours",
     line: "@exemple",
@@ -276,7 +276,8 @@ const LAZY_DAY = {
 test("brochure Lazy Day jointe à la conversation, nouveau partenaire : contacts gardés, prix contrôlés, tout est nouveau, rien sans partenaire créé", () => {
   const v = validerBrochure(LAZY_DAY);
   assert.equal(v.ok, true);
-  assert.deepEqual(v.brochure.contacts.telephones, ["+66 00 000 0000"]);
+  // Une simple chaîne (première version du schéma) devient un numéro sans libellé, ni WhatsApp ni LINE.
+  assert.deepEqual(v.brochure.contacts.telephones, [{ numero: "+66 00 000 0000", libelle: "", whatsapp: false, line: false }]);
   assert.deepEqual(v.avertissements, ["prix_non_imprime:Private longtail"]);
   const comp = comparerBrochure(v.brochure, { partenaireId: null, prestations: [{ id: "x", partenaire_id: RATTANA, libelle: "Phi Phi Bamboo Island + Sunset", prix_vente: 1000, unite: "pp", famille: "excursion", actif: true }], trajets: [] });
   assert.deepEqual(compter([...comp.tarifs, ...comp.trajets]), { nouveau: 2, prix_change: 0, inchange: 0, illisible: 1 });
@@ -290,8 +291,9 @@ test("brochure Lazy Day jointe à la conversation, nouveau partenaire : contacts
 
 test("démonstration : la brochure d'un nouveau partenaire se simule sans catalogue", () => {
   const r = simulerBrochure({ partenaireId: null, prestations: [], trajets: [], nouveau: true });
-  assert.equal(r.brochure.partenaire_lu, "Partenaire de démonstration");
-  assert.deepEqual(r.brochure.contacts.telephones, []);
+  // La brochure fictive d'un transporteur (brochure-demo.mjs) : aucun vrai nom, numéro ni tarif.
+  assert.equal(r.brochure.partenaire_lu, "KOH DEMO TRANSPORT CO., LTD.");
+  assert.ok(r.brochure.contacts.telephones.every((t) => /000/.test(t.numero)));
 });
 
 // ---- Base -----------------------------------------------------------------------------------------------------------------------

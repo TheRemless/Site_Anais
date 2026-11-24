@@ -38,7 +38,7 @@ import {
   validerSituer,
   verifierFaitsItineraire,
 } from "./itineraire.js";
-import { controlerAccesBrochure, parametresBrochure, promptBrochure, validerBrochure, verifierFichiers } from "./brochure.js";
+import { controlerAccesBrochure, delaiPasse, fusionnerRelecture, parametresBrochure, promptBrochure, promptRelecture, validerBrochure, verifierExtraction, verifierFichiers } from "./brochure.js";
 import { debutMois, estCreditEpuise, plafondRetenu, reprise } from "./budget.js";
 
 const USAGES_CONNUS = ["lire", "itineraire", "situer", "repondre_itineraire", "brochure"];
@@ -120,9 +120,10 @@ Deno.serve(async (req) => {
   if (!cle) return json({ erreur: "non_configure" }, 503);
   // Situer plusieurs hôtels enchaîne des recherches web : sans nouvel essai (une recherche refaite se paie deux fois). Deux passages au plus
   // (reprise après « pause_turn ») de 65 secondes chacun restent sous la limite de 150 secondes d'une fonction Supabase : le journal s'écrit toujours.
-  // Une brochure (images, PDF, Claude Opus 5.5) se lit en un seul passage de 110 secondes au plus, sans nouvel essai : la lecture du corps
-  // (jusqu'à 13 Mo), les lectures de la base et le journal tiennent dans le reste des 150 secondes.
-  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? 110_000 : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
+  // Une brochure (images, PDF, Claude Opus 5.5) se lit en deux appels de l'outil (« lecture », puis « relecture »), chacun en un seul passage de
+  // 135 secondes au plus (ASSISTANT_BROCHURE_DELAI_MS sur une offre payante), sans nouvel essai : la lecture du corps (jusqu'à 13 Mo), les lectures de la base et le journal tiennent dans le reste
+  // des 150 secondes. La réponse arrive en flux (marge de sortie de 64 000 jetons).
+  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? delaiPasse(Deno.env.get("ASSISTANT_BROCHURE_DELAI_MS")) : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
 
   const aujourdhui = dateBangkok();
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
@@ -186,8 +187,21 @@ Deno.serve(async (req) => {
       const pa = await sb.from("partenaires").select("id").eq("entite_id", entiteId).eq("id", demande.partenaire_id).maybeSingle();
       if (pa.error || !pa.data) return json({ erreur: "partenaire_invalide" }, 400);
     }
-    parametres = parametresBrochure(promptBrochure({ fichiers: f.fichiers, aujourdhui, lieu: ra.lieu }));
-    valider = (v) => validerBrochure(v);
+    // Seconde passe (24.11.2026) : la première lecture revient du navigateur, contrôlée comme une réponse de Claude, et Claude relit les mêmes
+    // fichiers avec elle. Le journal note un second appel « brochure ».
+    if (demande.passe === "relecture") {
+      const premiere = verifierExtraction(demande.extraction);
+      if (!premiere.ok) return json({ erreur: "extraction_invalide" }, 400);
+      parametres = parametresBrochure(promptRelecture({ fichiers: f.fichiers, aujourdhui, lieu: ra.lieu, brochure: premiere.brochure }), { passe: "relecture" });
+      valider = (v) => {
+        const fusion = fusionnerRelecture(premiere.brochure, v);
+        const r = validerBrochure(fusion.brut);
+        return r.ok ? { ...r, relecture: fusion.compte } : r;
+      };
+    } else {
+      parametres = parametresBrochure(promptBrochure({ fichiers: f.fichiers, aujourdhui, lieu: ra.lieu }));
+      valider = (v) => validerBrochure(v);
+    }
   } else {
     // repondre_itineraire : les faits calculés dans l'outil, aux clés fermées (aucun net, aucune compagnie).
     const f = verifierFaitsItineraire(demande.faits);
@@ -203,7 +217,11 @@ Deno.serve(async (req) => {
   let reponse: Record<string, unknown>;
   let code = 200;
   try {
-    reponseClaude = await anthropic.beta.messages.create(parametres as Anthropic.Beta.MessageCreateParamsNonStreaming);
+    // Brochure : en flux, la réponse complète attendue à la fin (finalMessage), comme l'agent.
+    reponseClaude =
+      usage === "brochure"
+        ? await anthropic.beta.messages.stream(parametres as unknown as Parameters<typeof anthropic.beta.messages.stream>[0]).finalMessage()
+        : await anthropic.beta.messages.create(parametres as Anthropic.Beta.MessageCreateParamsNonStreaming);
     let lu = lire(reponseClaude);
     // Recherche web arrêtée en route par le serveur (« pause_turn ») : on renvoie la réponse telle quelle, une fois, pour qu'elle reprenne.
     if (!lu.ok && lu.statut === "pause") {
@@ -242,6 +260,11 @@ Deno.serve(async (req) => {
       statut = "cle_refusee";
       reponse = { erreur: "non_configure" };
       code = 503;
+    } else if (err instanceof Anthropic.APIConnectionTimeoutError) {
+      // Une brochure trop longue pour une passe : l'écran propose de l'envoyer en deux fois.
+      statut = "delai";
+      reponse = { erreur: usage === "brochure" ? "trop_long" : "indisponible" };
+      code = 504;
     } else if (err instanceof Anthropic.APIError) {
       statut = "erreur_api";
       reponse = { erreur: "indisponible" };

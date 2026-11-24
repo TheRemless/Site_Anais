@@ -1236,7 +1236,7 @@ export function creer() {
       // Démonstration : les fichiers ne sont pas lus. Une demande d'ajout de partenaire montre la carte d'import, le reste une phrase.
       if (blocs.length) {
         const brochure = /brochure|partenaire|partner|tarif|prix|ajout|catalogue/i.test(texte);
-        const phrase = brochure ? "En démonstration, je ne lis pas les fichiers : voici la carte d'import, avec des lignes tirées du catalogue." : "En démonstration, je ne lis pas les pièces jointes. Avec l'assistant en service, je lis la photo ou le PDF comme un message (heure du vol, hôtel, dates).";
+        const phrase = brochure ? "En démonstration, je ne lis pas les fichiers : la carte d'import ouvre la brochure fictive d'un transporteur." : "En démonstration, je ne lis pas les pièces jointes. Avec l'assistant en service, je lis la photo ou le PDF comme un message (heure du vol, hôtel, dates).";
         surEvenement({ t: "texte", delta: phrase });
         message("assistant", [{ type: "text", text: phrase }]);
         if (brochure) {
@@ -1430,6 +1430,12 @@ export function creer() {
         if (fichiers.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
         const nouveau = depuisAgent && corps.nouveau_partenaire === true && !corps.partenaire_id;
         if (!nouveau && !data.partenaires.some((p) => p.id === corps.partenaire_id && p.entite_id === e)) return { erreur: "partenaire_invalide" };
+        // Seconde passe (relecture) : la brochure fictive retrouve sa ligne coupée, une autre revient telle quelle.
+        if (corps.passe === "relecture") {
+          if (!corps.extraction || !Array.isArray(corps.extraction.trajets)) return { erreur: "extraction_invalide" };
+          const { relectureDemo } = await import("./brochure-demo.mjs");
+          return { ok: true, usage: "brochure", modele: "demo", ...relectureDemo(corps.extraction), avertissements: [] };
+        }
         return b.simulerBrochure({ partenaireId: nouveau ? null : corps.partenaire_id, prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nouveau });
       }
       const requis = ["partenaires.lire", "dossiers.ecrire"];
@@ -1503,6 +1509,35 @@ export function creer() {
       out.profils = utilisateur.super_admin ? data.profils.filter((p) => p.organisation_id === monOrg()) : data.profils.filter((p) => p.user_id === uidCourant);
       out.membres = utilisateur.super_admin ? data.membres.filter((m) => ids.has(m.entite_id)) : data.membres.filter((m) => m.user_id === uidCourant);
       return structuredClone(out);
+    },
+    // Une ligne d'import de brochure en une fois (migration 124, brochure_ecrire_ligne) : mêmes droits que la base, tout ou rien.
+    async brochureEcrire(op) {
+      const e = op.entite_id;
+      const perms = permissionsDans(contexte(), e);
+      if (!perms.includes("partenaires.ecrire") || !perms.includes("partenaires.prix")) throw new Error(tr("Importer une brochure demande les droits « Modifier les partenaires » et « Modifier les prix de vente »."));
+      if (op.nets && !perms.includes("partenaires.nets")) throw new Error(tr("Un net ne s'écrit qu'avec le droit « Prix nets ». La ligne n'a pas été écrite."));
+      const copie = JSON.stringify(data);
+      try {
+        let ligne;
+        if (op.action === "creer") ligne = await this.inserer(op.table, { entite_id: e, ...op.valeurs });
+        else {
+          if (!data[op.table].some((r) => r.id === op.id && r.entite_id === e)) throw new Error(tr("Cette ligne du catalogue n'existe plus : rechargez la fiche."));
+          ligne = await this.modifier(op.table, op.id, op.valeurs || {});
+        }
+        const enfant = op.enfant ? await this.modifier("prestations", op.enfant.id, op.enfant.valeurs) : null;
+        let nets = null;
+        if (op.nets) {
+          const cleParent = op.table === "prestations" ? "prestation_id" : "trajet_id";
+          const table = op.table === "prestations" ? "prestations_nets" : "trajets_nets";
+          const existante = data[table].find((n) => n[cleParent] === ligne.id);
+          nets = existante ? await this.modifier(table, existante.id, op.nets.valeurs) : await this.inserer(table, { entite_id: e, [cleParent]: ligne.id, ...op.nets.valeurs });
+        }
+        return { ligne, enfant, nets };
+      } catch (err) {
+        data = JSON.parse(copie);
+        sauve();
+        throw err;
+      }
     },
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };

@@ -1692,6 +1692,8 @@ p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
 .lignes-saisie { display: grid; gap: 8px; margin-bottom: 8px; }
 .ligne-saisie { display: grid; gap: 8px; align-items: center; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto; }
 .ligne-saisie.fenetre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+/* Un numéro : numéro, libellé, WhatsApp, LINE (24.11.2026), retirer. */
+.ligne-saisie.tel-ligne { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto auto; }
 .ligne-saisie.zone { grid-template-columns: minmax(0, 1.4fr) repeat(var(--colonnes, 1), minmax(64px, 0.7fr)) auto; }
 .ligne-saisie .case { min-height: 44px; white-space: nowrap; }
 .ligne-saisie input { min-width: 0; }
@@ -1706,6 +1708,7 @@ p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
   .ligne-saisie.fenetre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
   .ligne-saisie.fenetre > :first-child { grid-column: auto; }
   .ligne-saisie.zone { grid-template-columns: repeat(var(--colonnes, 1), minmax(0, 1fr)) auto; }
+  .ligne-saisie.tel-ligne { grid-template-columns: minmax(0, 1fr) auto auto auto; }
 }
 
 /* Lot D (17.11.2026) : équipe, réglages, messages. */
@@ -2162,6 +2165,23 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .brochure-absents { margin-top: 16px; color: var(--texte-2); }
 .brochure-absents summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 .brochure-actions { margin-top: 16px; }
+/* Import fiable (24.11.2026) : signaux de la ligne, lieux modifiables avec l'imprimé, ligne à compléter, relecture. Cibles de 44 px. */
+.brochure-signaux { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+.brochure-signal { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid #d9b45a; background: #fff4d6; color: #6b4a00; font-size: 0.8rem; font-weight: 600; line-height: 1.6; }
+.brochure-signal.net_a_saisir, .brochure-signal.info { border-color: var(--bord-fort); background: var(--surface-2); color: var(--texte-2); }
+.brochure-signal.relecture { border-color: var(--teal); background: var(--teal-100); color: var(--teal-700); }
+.brochure-signal.confiance_basse, .brochure-signal.relecture_signale, .brochure-signal.net_superieur { border-color: #d9a3a3; background: var(--danger-fond); color: var(--danger); }
+.brochure-net { color: var(--texte-2); }
+.brochure-ligne { min-width: 0; }
+.brochure-lieux { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13em, 100%), 1fr)); gap: 0 12px; max-width: 34em; }
+.brochure-lieux input, .brochure-completer input:not([type="checkbox"]) { width: 100%; min-height: 44px; font-size: 16px; }
+.brochure-completer { margin-top: 8px; }
+.brochure-completer summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--teal-700); font-weight: 600; }
+.brochure-completer-corps { display: grid; gap: 8px; max-width: 34em; }
+.brochure-completer-corps .grille-form { grid-template-columns: repeat(auto-fit, minmax(min(9em, 100%), 1fr)); }
+.brochure-completer-corps .case { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.brochure-completer-corps button { min-height: 44px; justify-self: start; }
+.brochure-relecture { margin: 0 0 4px; color: var(--teal-700); }
 @media (max-width: 600px) { .brochure-corps { padding-left: 0; } }
 
 /* Suivi de l'assistant (#/assistant, 20.11.2026) : mêmes tuiles, graphique et tableaux que les statistiques. */

@@ -185,7 +185,7 @@ export function faitsReponse({ itineraire = {}, propositions = [], devise = "THB
       const cle = [nombre(t.prix_adulte), nombre(t.prix_enfant), t.mode || "", t.duree || ""].join("|");
       const mode = sansCompagnie(t.mode);
       const g = groupes.get(cle) || { date: leg.date, de: lieu(leg.de), vers: lieu(leg.vers), au_catalogue: true, mode: en ? libelleClient(mode) : mode, duree: t.duree || "", horaires: [], prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), a_payer_sur_place: false };
-      if (t.depart && !g.horaires.some((h) => h.depart === heure(t.depart))) g.horaires.push({ depart: heure(t.depart), arrivee: heure(t.arrivee) });
+      if (t.depart && !g.horaires.some((h) => h.depart === heure(t.depart))) g.horaires.push({ depart: heure(t.depart), arrivee: heure(t.arrivee), ...(/\(next day\)/i.test(t.arrivee || "") ? { lendemain: true } : {}) });
       groupes.set(cle, g);
     }
     trajets.push(...groupes.values());
@@ -307,7 +307,7 @@ export function simulerReponse(faits) {
     const tete = `${en ? "📍" : "📍"} ${dateCourte(t.date, en)}, ${t.de} → ${t.vers}`;
     if (!t.au_catalogue) return [tete, en ? "We don't offer this route, but I can look into it for you." : "Nous ne proposons pas ce trajet, mais je peux me renseigner."].join("\n");
     const prix = [t.prix_adulte !== null ? `${fmt(t.prix_adulte, faits.devise)} ${en ? "per adult" : "par adulte"}` : "", t.prix_enfant !== null ? `${fmt(t.prix_enfant, faits.devise)} ${en ? "per child" : "par enfant"}` : ""].filter(Boolean).join(", ");
-    const horaires = t.horaires.map((h) => `→ ${h.depart}${h.arrivee ? ` - ${h.arrivee}` : ""}`);
+    const horaires = t.horaires.map((h) => `→ ${h.depart}${h.arrivee ? ` - ${h.arrivee}${h.lendemain ? (en ? " (next day)" : " (le lendemain)") : ""}` : ""}`);
     return [tete, ...horaires, prix].filter(Boolean).join("\n");
   });
   const prenom = faits.prenom ? ` ${faits.prenom}` : "";
