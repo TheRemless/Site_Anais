@@ -7,22 +7,21 @@
     - privatePage: true (src/carnet/carnet.json) : base.njk ne charge ni consent.js, ni l'amorce gtag, ni currency.js (il appelle un CDN tiers), ni le bouton WhatsApp flottant ; header.njk retire les sélecteurs de devise
       et de langue ; footer.njk n'affiche pas le lien « Cookies ». Tous les prix sont en THB. L'adresse secrète ne part vers aucun service tiers.
     - Aucun lien depuis une page publique, pas de langAlt ni de hreflang (français seul), pas de JSON-LD (privatePage coupe aussi le fil d'Ariane de schema-breadcrumb.njk), pas de og:image.
-    - Un nouveau guide : un fichier src/carnet/<sujet>.njk avec le front matter ci-dessous, puis son HTML avec les composants .cg-* de pages.css.
+    - Un nouveau guide : un fichier src/carnet/<sujet>.njk avec le front matter ci-dessous, puis son HTML avec le gabarit carnet-guide.njk et les composants .cg-* de css/carnet.css.
 
-    Front matter lu par ce gabarit :
-      title        titre de l'onglet et du fil d'Ariane (obligatoire)
+    Front matter lu par ce gabarit et par carnet-guide.njk :
+      title        titre de l'onglet (obligatoire)
       description  méta description (obligatoire)
       h1Lead       début du h1 en serif (sinon title entier)
-      h1Script     fin du h1 en manuscrit, signature du site (facultatif)
-      kicker       sous-titre sous le h1
-      toc          sommaire discret : [{ label, href }], numéroté 1, 2, 3 dans l'ordre
-      heroImage    photo de tête (/images/...), heroAlt son alt, heroPosition son object-position (défaut « 50% 40% »)
+      h1Script     nom du lieu, sur sa propre ligne, en Dancing Script vert (facultatif)
+      toc          catégories sous le titre : [{ label, href }]
+      heroImage, heroAlt, heroPosition   photo pleine hauteur à la place de la carte quand le guide n'a pas d'`ouverture.carte` (repli)
+      kicker       sous-titre d'avant la refonte : plus affiché (les catégories le disent), gardé dans le front matter
       waText       message prérempli du bouton WhatsApp de fin de page
       endTitle, endLabel  titre et bouton de fin de page (par défaut « Une question sur ce guide ? » et « Écrire à Anaïs sur WhatsApp »)
       carnetConfig (données du guide, voir src/carnet/<guide>.11tydata.js) : si présent, la feuille de réservation (carnet-booking.njk) et js/carnet-booking.js sont ajoutés.
-                   Le corps du guide vient alors de carnet-guide.njk ({% raw %}{% include "carnet-guide.njk" %}{% endraw %} dans la page).
-    Composants .cg-* (voir pages.css, bloc « Carnet, pages de guide ») : .cg-intro, .cg-resume avec .cg-compare, .cg-exc (une excursion ou un thème : .cg-exc-head, .cg-photos, .cg-exc-body),
-    .cg-sub, .cg-opt avec .cg-rows, .cg-row, .cg-price, .cg-tips, .cg-link (lien sortant). -#}
+    Ouverture, voir carnet-guide.njk : carte dessinée (ouverture.carte, fabriquée par src/carnet/carte.js), légende « Toutes les sorties », sorties en chapitres.
+    Styles : css/carnet.css (préfixe .cg-), chargé seulement par ces pages. Navigation (carte, légende, repère mobile) : js/carnet-nav.js. -#}
 {% extends "base.njk" %}
 
 {% block head %}
@@ -31,46 +30,13 @@
 <link rel="canonical" href="https://zwaldtravelplanner.com{{ page.url }}">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="referrer" content="no-referrer">
+<link rel="preload" as="font" type="font/woff2" href="/css/fonts/dancing-script-400-700-normal-latin.woff2" crossorigin>
+<link rel="stylesheet" href="/css/carnet.css?v={{ build.v }}">
 {% endblock %}
 
 {% block content %}
 <article class="cg-page">
-<header class="article-hero cg-hero">
-  <div class="container">
-    <nav class="crumbs" aria-label="Fil d'Ariane">
-      <span>Carnet de voyage</span>
-      <span aria-hidden="true">›</span>
-      <span aria-current="page">{{ title }}</span>
-    </nav>
-    {%- if h1Script %}
-    <h1 class="sig-title sig-title-h1">{{ h1Lead }} <span class="sig-script">{{ h1Script }}</span></h1>
-    {%- else %}
-    <h1>{{ h1Lead or title }}</h1>
-    {%- endif %}
-    {%- if kicker %}
-    <p class="standfirst">{{ kicker }}</p>
-    {%- endif %}
-    {%- if toc %}
-    <nav class="cg-toc" aria-label="Sommaire">
-      {%- for item in toc %}
-      <a href="{{ item.href }}"><span class="sig-num" aria-hidden="true">{{ loop.index }}</span><span>{{ item.label }}</span></a>
-      {%- endfor %}
-    </nav>
-    {%- endif %}
-  </div>
-  {%- if heroImage %}
-  <div class="container"><div class="article-cover"><img fetchpriority="high" sizes="100vw" src="{{ heroImage }}" alt="{{ heroAlt | escape }}" style="object-position: {{ heroPosition or '50% 40%' }}"></div></div>
-  {%- endif %}
-</header>
-
 {{ content | safe }}
-
-<section class="cg-end" aria-labelledby="cg-end-title">
-  <div class="container">
-    <h2 id="cg-end-title">{{ endTitle or "Une question sur ce guide ?" }}</h2>
-    <a class="btn btn-teal" href="https://wa.me/{{ business.telephone | replace('+', '') }}{% if waText %}?text={{ waText | urlencode }}{% endif %}" target="_blank" rel="noopener"><span>{{ endLabel or "Écrire à Anaïs sur WhatsApp" }}</span></a>
-  </div>
-</section>
 </article>
 {%- if carnetConfig %}
 {% include "carnet-booking.njk" %}
@@ -79,5 +45,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/js/carnet-nav.js?v={{ build.v }}" defer></script>
 {%- if carnetConfig %}<script src="/js/carnet-booking.js?v={{ build.v }}" defer></script>{% endif %}
 {% endblock %}

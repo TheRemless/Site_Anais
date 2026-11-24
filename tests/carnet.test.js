@@ -192,7 +192,7 @@ test("carnet : aucun script ni bandeau Google, aucun bouton WhatsApp flottant ; 
   assert.doesNotMatch(privee, /wa-fab/, "pas de bouton WhatsApp flottant");
   assert.doesNotMatch(privee, />Cookies</, "pas de lien « Cookies » mort dans le pied de page");
   const scripts = [...privee.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1].replace(/\?.*/, ""));
-  assert.deepEqual(scripts.sort(), ["/js/carnet-booking.js", "/js/site.js"], "seuls les scripts du site et de la feuille : ni consent.js ni currency.js (CDN tiers)");
+  assert.deepEqual(scripts.sort(), ["/js/carnet-booking.js", "/js/carnet-nav.js", "/js/site.js"], "seuls les scripts du site, de la navigation du guide et de la feuille : ni consent.js ni currency.js (CDN tiers)");
   for (const f of ["src/js/carnet-booking.js"]) assert.doesNotMatch(read(f), /gtag|dataLayer|ZW_analytics|consent/i, f + " ne dépend ni de Google ni du consentement");
   for (const url of ["index.html", "services/index.html", "temples-coutumes-thailande/index.html", "en/index.html"]) {
     const doc = read(path.join("_site", url));
@@ -213,9 +213,9 @@ test("carnet : aucun numéro de téléphone en dur dans les gabarits, le script 
     assert.doesNotMatch(source, /\b\d{9,}\b/, f + " : numéro en dur");
     assert.ok(!source.includes(digits), f + " : le numéro de business.js est écrit en dur");
   }
-  assert.match(read("src/_includes/carnet-layout.njk"), /wa\.me\/\{\{ business\.telephone \| replace\('\+', ''\) \}\}/);
+  assert.match(read("src/_includes/carnet-guide.njk"), /wa\.me\/\{\{ business\.telephone \| replace\('\+', ''\) \}\}/);
   const doc = read(samui.built);
-  const fin = doc.slice(doc.indexOf('class="cg-end"'));
+  const fin = doc.slice(doc.indexOf('class="cg-close"'));
   assert.ok(fin.includes(`href="https://wa.me/${digits}?text=`), "le bouton de fin de page pointe sur le numéro de business.js");
 });
 
