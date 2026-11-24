@@ -133,7 +133,12 @@ function apercu(b, { complet = false } = {}) {
   );
   // Mesuré une fois dans la page, puis à chaque changement de largeur de la fenêtre.
   requestAnimationFrame(() => ajusterApercus(zone));
-  if (typeof ResizeObserver === "function") new ResizeObserver(() => ajusterApercus(zone)).observe(zone);
+  // L'aperçu de la saisie est recréé à chaque frappe : l'ancien observateur est coupé (zone.fin) avant d'être remplacé.
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => (zone.isConnected ? ajusterApercus(zone) : ro.disconnect()));
+    ro.observe(zone);
+    zone.fin = () => ro.disconnect();
+  }
   // Les polices du site arrivent après le premier affichage : les lignes changent, « More » est recalculé.
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => ajusterApercus(zone), () => {});
   return zone;
@@ -185,6 +190,7 @@ function ouvrirSaisie(existant = null) {
     compteur.textContent = tr("{n} caractères sur {max}", { n: t.length, max: TEXTE_MAX });
     compteur.classList.toggle("trop", t.length > TEXTE_MAX);
     repli.textContent = estLong(t) ? tr("Plus de 140 caractères ou plusieurs lignes : le site montre les deux premières lignes, puis « More » ouvre le reste.") : tr("Le site l'affiche en entier.");
+    zoneApercu.firstElementChild?.fin?.();
     zoneApercu.replaceChildren(apercu({ ...b, texte: t }, { complet: true }));
   }
 
