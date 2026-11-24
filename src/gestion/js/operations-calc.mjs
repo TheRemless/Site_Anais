@@ -259,7 +259,11 @@ export const detailsAvecEnvoi = (details, cible, date) => ({ ...(details || {}),
 
 // Frais de parc : une somme à payer sur l'île, pas un service qui part. Ni heure de pickup, ni prestataire : ils ne figurent ni dans l'agenda, ni dans la feuille
 // du jour, ni dans les alertes « pickup à compléter », et leur ligne de facture ne crée pas de réservation.
-export const estFraisDeParc = (r) => !!r && !r.partenaire_id && /frais de parc|park fee|national park/i.test(r.libelle || "");
+// Un libellé qui CONTIENT un frais de parc (« Koh Rok park fee », « Frais d'entrée du parc », « Park entrance fee »). Pas « national park » seul :
+// une course vers un parc (« Hotel → Mu Ko Lanta National Park ») est une vraie course (relecture du 24.11.2026). Même motif dans
+// supabase/functions/rappels/calc.js et la migration 125 (partenaire_notif_courses) : un test compare les trois.
+export const FRAIS_PARC = /frais (de|du) parc|frais d['’]entr[ée]e|park (entrance )?fees?|entrance fees?|droits? (d['’]entr[ée]e|(de|du) parc)/i;
+export const estFraisDeParc = (r) => !!r && !r.partenaire_id && FRAIS_PARC.test(r.libelle || "");
 
 // Dernier jour d'un service : le retour d'une location (`details.retour_date`), sinon le jour du service. Un retour avant la prise est une erreur de saisie
 // et ne compte pas. Les étapes d'après le service (avis, commission, « en retard », rappel de 9h) se calculent sur ce jour-là, pas sur celui de la prise.

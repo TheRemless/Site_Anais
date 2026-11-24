@@ -16,7 +16,8 @@ export const TH_NOTIF = {
   modifiee: "งานมีการเปลี่ยนแปลง", // Course modifiée
   annulee: "ยกเลิกงานแล้ว", // Course annulée
   retiree: "งานนี้ไม่ใช่ของคุณแล้ว", // Cette course ne vous est plus confiée
-  sans_date: "งานนี้ยังไม่กำหนดวัน", // La date de cette course n'est plus fixée (elle sort de l'écran en attendant)
+  sans_date: "งานนี้ยังไม่กำหนดวันใหม่", // La nouvelle date de cette course n'est pas encore fixée (elle sort de l'écran en attendant)
+  sans_date_avant: "เดิม", // Avant : (suivi de la date et de l'heure d'origine)
   change: "เปลี่ยน:", // Changé : (suivi de ce qui a changé, séparé par des virgules)
   c_date: "วันที่", // la date
   c_heure: "เวลารับ", // l'heure de prise en charge
@@ -96,7 +97,7 @@ export function messageChangement(n) {
   // Sortie de sa liste sans annulation (autre fiche, autre entreprise, supprimée) : ce qu'il avait vu, rien sur le pourquoi.
   if (n.genre === "retiree") return avecIcone({ titre: `${TH_NOTIF.retiree} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
   // Date effacée : la course quitte son écran tant qu'elle n'a pas de nouvelle date. On rappelle celle qu'il avait vue.
-  if (n.genre === "sans_date") return avecIcone({ titre: `${TH_NOTIF.sans_date} · ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
+  if (n.genre === "sans_date") return avecIcone({ titre: `${TH_NOTIF.sans_date} · ${TH_NOTIF.sans_date_avant} ${quand(c)}`, corps: base, tag, url: URL_ECRAN });
   if (n.genre === "modifiee") {
     const quoi = changements(n.apercu_avant, c);
     return avecIcone({ titre: `${TH_NOTIF.modifiee} · ${quand(c)}`, corps: [quoi.length ? `${TH_NOTIF.change} ${quoi.join(", ")}` : "", base].filter(Boolean).join("\n"), tag, url: URL_ECRAN });
@@ -119,8 +120,8 @@ export function messageVeillePartenaire(courses = [], demain) {
 // 3. Une heure avant : ses courses dont la prise en charge tombe dans la fenêtre du passage « h1 » (40 à 60 minutes), dans le fuseau de
 // l'organisation. Même lecture de l'heure que les rappels des membres (heureService) ; les frais de parc sont écartés de la même façon.
 export function coursesH1(courses = [], maintenant, { fuseau, fenetre = FENETRE_H1 } = {}) {
-  // Les frais de parc sont déjà écartés par la base (partenaire_notif_courses, règle resserrée) : le filtre large des membres (estFraisDeParc,
-  // « national park » n'importe où dans le libellé) ne doit pas retirer une vraie course vers le parc. Un partenaire fictif le neutralise.
+  // Les frais de parc sont déjà écartés par la base (partenaire_notif_courses : famille « frais » et FRAIS_PARC) : la liste n'est pas refiltrée
+  // ici (un partenaire fictif neutralise estFraisDeParc), la base reste la seule à décider.
   const resas = courses.map((c) => ({ id: c.id, entite_id: c.entite_id, dossier_id: null, statut: "confirme", heure_pickup: c.heure, date_service: c.date_service, libelle: c.libelle, partenaire_id: "partenaire", details: {}, course: c }));
   return servicesH1(resas, maintenant, { fenetre, fuseauDe: () => fuseau }).map((x) => ({ ...x, course: x.reservation.course }));
 }
@@ -138,3 +139,9 @@ export const cleH1 = (c, fuseau) => {
   const d = debutService({ heure_pickup: c.heure, date_service: c.date_service }, fuseau);
   return d === null ? null : `h1:${c.id}:${new Date(d).toISOString()}`;
 };
+
+// Avant la migration 123, la fonction ne fait rien sans erreur. Seule l'absence d'un objet de la 123 (ou de partenaires_acces) compte comme
+// « migration absente » : toute autre erreur, même « column … does not exist » à l'intérieur d'une fonction présente (un retour 119 rejoué),
+// remonte et se voit (statut 500).
+const OBJETS_123 = /partenaire_notif_courses|partenaire_notifs_changements|partenaires_notifs_envois|partenaires_acces/;
+export const fonctionAbsente = (e) => !!e && ["PGRST202", "PGRST205", "42883", "42P01"].includes(e.code || "") && OBJETS_123.test(e.message || "");
