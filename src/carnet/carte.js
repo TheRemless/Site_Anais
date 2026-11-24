@@ -79,7 +79,7 @@ function construireCarte(carte, geo, options = {}) {
   const pointsHtml = points.map((p) => {
     const [x, y] = pc(...p.at);
     return `<a class="cg-dot" href="#${p.vers}" data-k="${p.cle}" data-go="${p.vers}" data-x="${x}" data-y="${y}" style="left:${x}%;top:${y}%" aria-label="${esc(p.aria || p.nom)}"></a>`
-      + `<span class="cg-geo" aria-hidden="true" style="left:${x}%;top:${y}%;transform:translate(-100%,-50%);margin-left:-16px">${esc(p.nom)}</span>`;
+      + `<span class="cg-geo cg-geo--pt" aria-hidden="true" style="left:${x}%;top:${y}%;transform:translate(-100%,-50%);margin-left:-16px">${esc(p.nom)}</span>`;
   }).join("");
 
   const noms = (carte.noms || []).map((n) => {
@@ -91,7 +91,7 @@ function construireCarte(carte, geo, options = {}) {
   // Échelle : 10 km, largeur en pourcentage de la largeur de la carte (1° de latitude = 110,6 km)
   const km10 = (10 / 110.6 / (F.lat1 - F.lat0)) * H / W * 100;
   const defs = `<svg class="cg-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs><g id="cg-land"><path class="cg-halo" d="${d}"/><path class="cg-isle" d="${d}"/></g></defs></svg>`;
-  const html = `<div class="cg-mapwrap" style="--ar:${H};--ratio:${(H / W).toFixed(4)}"><div class="cg-map"><div class="cg-mapbox"><svg class="cg-sv" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(carte.libelle)}"><use href="#cg-land"/>${leaders}</svg>${noms}${pinHtml}${pointsHtml}<span class="cg-north" aria-hidden="true">N</span><span class="cg-scale cg-scale--${esc(carte.echelle || "bas-droite")}" aria-hidden="true"><b style="width:${km10.toFixed(2)}cqw"></b>10 km</span></div><p class="cg-mapfoot"><span>Carte schématique</span><span>Choisissez un repère</span><span class="cg-osm">© contributeurs OpenStreetMap</span></p></div></div>`;
+  const html = `<div class="cg-mapwrap" style="--ar:${H};--ratio:${(H / W).toFixed(4)}"><div class="cg-map"><div class="cg-mapbox"><svg class="cg-sv" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(carte.libelle)}"><use href="#cg-land"/>${leaders}</svg>${noms}${pinHtml}${pointsHtml}<span class="cg-north" aria-hidden="true" style="--nx:${carte.nord ? carte.nord[0] : 94}%;--ny:${carte.nord ? carte.nord[1] : 3}%">N</span><span class="cg-scale cg-scale--${esc(carte.echelle || "bas-droite")}" aria-hidden="true"><b style="width:${km10.toFixed(2)}cqw"></b>10 km</span></div><p class="cg-mapfoot"><span>Carte schématique</span><span>Choisissez un repère</span><span class="cg-osm">© contributeurs OpenStreetMap</span></p></div></div>`;
   return { html, defs, positions, ratio: H / W, W, H };
 }
 

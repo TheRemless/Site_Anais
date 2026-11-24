@@ -49,7 +49,7 @@
 .cg-geo.sur-terre { color: #fff; -webkit-text-stroke: 0; font-weight: 500; letter-spacing: .01em; }
 .cg-geo.min { display: none; }
 @container (min-width: 520px) { .cg-geo.min { display: block; } }
-.cg-geo--pin { font-style: normal; font-weight: 700; color: var(--cg-ink); font-size: clamp(16px, 4cqw, 21px); line-height: 1.05; -webkit-text-stroke: 3.5px var(--cg-sea); }
+.cg-geo--pin, .cg-geo--pt { font-style: normal; font-weight: 700; color: var(--cg-ink); font-size: clamp(15px, 3.7cqw, 21px); line-height: 1.05; -webkit-text-stroke: 3.5px var(--cg-sea); }
 .cg-geo small { display: block; font-family: var(--sans); font-style: normal; font-weight: 700; font-size: clamp(14px, 2.9cqw, 15px); color: #85491D; margin-top: 3px; }
 .cg-dot { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; display: grid; place-items: center; z-index: 3; }
 .cg-dot::before { content: ""; width: 13px; height: 13px; border-radius: 50%; background: var(--cg-sand); border: 2.5px solid #fff; box-shadow: 0 0 0 1px var(--teal-deep); transition: transform .25s; }
@@ -66,7 +66,7 @@
 .cg-scale { position: absolute; right: 5%; bottom: 3.2%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 14px; font-weight: 600; color: var(--teal-deep); pointer-events: none; -webkit-text-stroke: 3px var(--cg-sea); paint-order: stroke fill; }
 .cg-scale--haut-gauche { right: auto; left: 5%; bottom: auto; top: 3.4%; align-items: flex-start; }
 .cg-scale b { display: block; height: 6px; border: 1.5px solid var(--teal-deep); border-top: 0; }
-.cg-north { padding: 4px 6px 2px; background: var(--cg-sea); position: absolute; right: 5%; top: 3%; font-family: var(--serif); font-weight: 700; font-size: 17px; color: var(--teal-deep); display: flex; flex-direction: column; align-items: center; line-height: 1; pointer-events: none; }
+.cg-north { position: absolute; right: auto; left: var(--nx, 94%); top: var(--ny, 3%); font-family: var(--serif); font-weight: 700; font-size: 17px; color: var(--teal-deep); display: flex; flex-direction: column; align-items: center; line-height: 1; pointer-events: none; }
 .cg-north::after { content: ""; width: 1.5px; height: 22px; background: var(--teal-deep); margin-top: 2px; }
 
 /* légende « Toutes les sorties » */
@@ -225,7 +225,7 @@
 .cg-closeph img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
 
 /* ---------- Repère mobile : la carte en réduction et la sortie qu'on lit ---------- */
-.cg-loc { position: fixed; left: 0; right: 0; top: 64px; height: 64px; background: #fff; border-bottom: 1px solid var(--cg-ink); z-index: 90; display: flex; align-items: center; gap: 12px; padding: 0 var(--cg-gut) 0 12px; transform: translateY(-160%); visibility: hidden; transition: transform .3s cubic-bezier(.2, .7, .2, 1), visibility 0s .3s; text-align: left; width: 100%; font: inherit; color: var(--cg-ink); cursor: pointer; }
+.cg-loc { position: fixed; left: 0; right: 0; top: 64px; height: 64px; margin: 0; background: #fff; border: 0; border-bottom: 1px solid var(--cg-ink); border-radius: 0; box-shadow: none; z-index: 90; display: flex; align-items: center; gap: 12px; padding: 0 var(--cg-gut); transform: translateY(-160%); visibility: hidden; transition: transform .3s cubic-bezier(.2, .7, .2, 1), visibility 0s .3s; text-align: left; width: 100%; font: inherit; color: var(--cg-ink); cursor: pointer; }
 .cg-loc.is-on { transform: none; visibility: visible; transition: transform .3s cubic-bezier(.2, .7, .2, 1); }
 .cg-loc .mm { position: relative; width: 50px; height: 56px; flex: none; background: var(--cg-sea); }
 .cg-loc .mm svg { position: absolute; inset: 0; width: 100%; height: 100%; }
