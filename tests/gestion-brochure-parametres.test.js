@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parametresBrochure, promptBrochure, promptRelecture, SCHEMA_BROCHURE, SCHEMA_RELECTURE, validerBrochure } from "../supabase/functions/assistant/brochure.js";
+import { parametresBrochure, promptBrochure, promptRelecture, SCHEMA_BROCHURE, SCHEMA_RELECTURE, validerBrochure, gabaritJson, extraireJson, lireBrochure, demandeCorrection, fusionnerRelecture } from "../supabase/functions/assistant/brochure.js";
 import { BETA_REPLI, ligneJournal, detailErreurApi } from "../supabase/functions/assistant/calc.js";
 import { brochureDemoTransport } from "../src/gestion/js/brochure-demo.mjs";
 
@@ -65,7 +65,7 @@ test("les deux passes ensemble restent sous les limites par requête (chaque pas
   }
 });
 
-test("paramètres : Opus 5.5, pas de thinking ni d'échantillonnage, effort accepté, sortie en flux sous 128 000, repli bêta avec « default »", () => {
+test("paramètres : Opus 5.5, pas de thinking ni d'échantillonnage, effort accepté, aucun format ni outil, gabarit JSON dans la consigne, flux sous 128 000, repli bêta", () => {
   const f = [{ media_type: "image/jpeg", data: "/9j/AAAA" }];
   const brochure = validerBrochure(brochureDemoTransport()).brochure;
   for (const [passe, p] of [["lecture", parametresBrochure(promptBrochure({ fichiers: f, aujourdhui: "2026-11-24" }))], ["relecture", parametresBrochure(promptRelecture({ fichiers: f, aujourdhui: "2026-11-24", brochure }), { passe: "relecture" })]]) {
@@ -74,14 +74,19 @@ test("paramètres : Opus 5.5, pas de thinking ni d'échantillonnage, effort acce
     assert.ok(!("thinking" in p), passe);
     for (const interdit of ["temperature", "top_p", "top_k", "tool_choice", "tools", "output_format"]) assert.ok(!(interdit in p), `${passe} : ${interdit}`);
     assert.ok(["low", "medium", "high", "xhigh", "max"].includes(p.output_config.effort), passe);
-    assert.equal(p.output_config.format.type, "json_schema");
+    // Plus de sortie structurée pour la brochure : « The compiled grammar is too large » (essai réel du 24.11.2026, après la PR 349).
+    assert.deepEqual(Object.keys(p.output_config), ["effort"], passe);
+    assert.ok(!("output_format" in p) && !("tools" in p), passe);
+    // Le gabarit JSON est dans la consigne de la passe, tiré du schéma de la passe.
+    const texte = p.messages[0].content.at(-1).text;
+    assert.ok(texte.includes(gabaritJson(passe === "lecture" ? SCHEMA_BROCHURE : SCHEMA_RELECTURE)), passe);
+    assert.match(texte, /un seul objet JSON, sans texte avant ni après/);
     assert.ok(p.max_tokens > 0 && p.max_tokens <= 128000, passe);
     assert.deepEqual(p.betas, [BETA_REPLI]);
     assert.equal(BETA_REPLI, "server-side-fallback-2026-07-01", "la forme « default » demande la bêta du 01.07.2026");
     assert.equal(p.fallbacks, "default");
     // Pas de préremplissage (refusé avec les sorties structurées) : le dernier message est celui de la personne.
     assert.equal(p.messages.at(-1).role, "user");
-    // Pas de citations (incompatibles avec output_config.format).
     assert.ok(!JSON.stringify(p.messages).includes('"citations"'));
   }
   // L'appel part en flux (64 000 jetons ne passent pas en un seul bloc).
@@ -124,4 +129,52 @@ test("délai d'une passe : un AbortSignal arrête le flux, l'écran reçoit « t
   // Le journal est écrit après le try/catch/finally, quel que soit le chemin.
   const fin = index.slice(index.indexOf("finally {"));
   assert.match(fin, /assistant_journal"\)\.insert\(ligneJournal/);
+});
+
+// ---- JSON libre (plus de sortie structurée) -------------------------------------------------------------------------------------------
+
+const demo = () => validerBrochure(brochureDemoTransport()).brochure;
+const reponse = (texte, stop = "end_turn") => ({ stop_reason: stop, content: [{ type: "thinking", thinking: "" }, { type: "text", text: texte }], usage: { input_tokens: 1, output_tokens: 1 } });
+
+test("extraction : le JSON seul, entouré de texte, dans un bloc ```json, avec une accolade dans une chaîne ; tronqué ou illisible refusé", () => {
+  const objet = JSON.stringify(brochureDemoTransport());
+  for (const t of [objet, `Voici la lecture :\n${objet}\nBonne journée.`, "```json\n" + objet + "\n```", "Résultat :\n```\n" + objet + "\n```\nFin."]) {
+    const r = extraireJson(t);
+    assert.equal(r.ok, true, t.slice(0, 30));
+    assert.deepEqual(r.valeur, JSON.parse(objet));
+  }
+  assert.deepEqual(extraireJson('{"remarques": "case } fermée { ouverte", "x": "\\"guillemet\\""}').valeur, { remarques: "case } fermée { ouverte", x: '"guillemet"' });
+  assert.deepEqual(extraireJson(objet.slice(0, objet.length - 40)), { ok: false, raison: "tronque" });
+  assert.deepEqual(extraireJson("```json\n" + objet.slice(0, 500)), { ok: false, raison: "tronque" });
+  assert.deepEqual(extraireJson('{"a": 1,, "b": 2}'), { ok: false, raison: "invalide" });
+  assert.deepEqual(extraireJson("Je ne peux pas lire ces images."), { ok: false, raison: "vide" });
+  assert.deepEqual(extraireJson(""), { ok: false, raison: "vide" });
+});
+
+test("lecture de la réponse : JSON extrait puis contrôlé par validerBrochure ; illisible → json_invalide ; coupée ou refusée comme avant", () => {
+  const ok = lireBrochure(reponse("Lecture faite.\n```json\n" + JSON.stringify(brochureDemoTransport()) + "\n```"));
+  assert.equal(ok.ok, true);
+  assert.equal(validerBrochure(ok.valeur).ok, true);
+  assert.deepEqual(lireBrochure(reponse('{"tarifs": [], "trajets": [')), { ok: false, statut: "json_invalide", raison: "tronque" });
+  assert.deepEqual(lireBrochure(reponse('{"tarifs": [], "trajets": [', "max_tokens")), { ok: false, statut: "coupe" });
+  assert.equal(lireBrochure({ stop_reason: "refusal", stop_details: { category: "cyber" }, content: [] }).statut, "refus");
+  // La relecture aussi : son JSON extrait passe par fusionnerRelecture puis validerBrochure.
+  const rel = lireBrochure(reponse(JSON.stringify({ trajets: [], tarifs: [], fiche_corrigee: false, fiche: {}, remarques: "" })));
+  assert.equal(validerBrochure(fusionnerRelecture(demo(), rel.valeur).brut).ok, true);
+});
+
+test("demande de correction : une seule, la réponse renvoyée telle quelle (réflexion comprise), puis la consigne ; dans le même délai", () => {
+  const p = parametresBrochure(promptBrochure({ fichiers: [{ media_type: "image/jpeg", data: "/9j/AAAA" }], aujourdhui: "2026-11-24" }));
+  const premiere = reponse('{"tarifs": [], "trajets": [');
+  const c = demandeCorrection(p, premiere, "tronque");
+  assert.equal(c.messages.length, p.messages.length + 2);
+  assert.deepEqual(c.messages.at(-2), { role: "assistant", content: premiere.content });
+  assert.match(c.messages.at(-1).content[0].text, /ne se referme pas[\s\S]*Rends seulement l'objet JSON complet et valide/);
+  assert.equal(c.model, p.model);
+  const index = readFileSync(new URL("../supabase/functions/assistant/index.ts", import.meta.url), "utf8");
+  // Une seule fois (un « if », pas une boucle), seulement si le délai n'est pas atteint, sur le même AbortSignal.
+  assert.equal((index.match(/demandeCorrection\(/g) || []).length, 1);
+  assert.match(index, /if \(!lu\.ok && lu\.statut === "json_invalide" && usage === "brochure" && arret && !arret\.signal\.aborted\) \{/);
+  assert.match(index, /demandeCorrection\([^)]*\)[^;]*\{ signal: arret\.signal \}\)/);
+  assert.match(index, /lire = lireBrochure;/);
 });

@@ -30,6 +30,7 @@ const ERREURS = {
   coupe: N_("La brochure est trop longue pour une seule lecture : envoyez-la en deux fois."),
   trop_long: N_("La lecture a pris trop de temps : envoyez la brochure en deux fois (quelques pages chaque fois)."),
   extraction_invalide: N_("La première lecture n'a pas pu être relue : relancez la lecture."),
+  json_invalide: N_("L'assistant a rendu une réponse illisible, même après une demande de correction : relancez la lecture."),
   migration_124_manquante: N_("L'enregistrement attend la migration 124 de la base : demandez à l'administratrice de l'appliquer."),
 };
 const erreurTexte = (code) => (ERREURS[code] ? tr(ERREURS[code]) : erreurFichier(code) || messageErreur(code));

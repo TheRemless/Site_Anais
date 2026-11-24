@@ -150,7 +150,7 @@ const dateDuJour = (aujourdhui, lieu) => {
 export function promptBrochure({ fichiers, aujourdhui, lieu = "" }) {
   return {
     system: [{ type: "text", text: consignesBrochure(lieu) }],
-    messages: [{ role: "user", content: [...blocsFichiers(fichiers), { type: "text", text: `${dateDuJour(aujourdhui, lieu)} Lis la brochure jointe (${fichiers.length} ${fichiers.length > 1 ? "fichiers" : "fichier"}) en suivant la liste de contrôle, ligne par ligne.` }] }],
+    messages: [{ role: "user", content: [...blocsFichiers(fichiers), { type: "text", text: `${dateDuJour(aujourdhui, lieu)} Lis la brochure jointe (${fichiers.length} ${fichiers.length > 1 ? "fichiers" : "fichier"}) en suivant la liste de contrôle, ligne par ligne.\n\n${consigneJson(SCHEMA_BROCHURE)}` }] }],
   };
 }
 
@@ -191,6 +191,8 @@ export function promptRelecture({ fichiers, aujourdhui, lieu = "", brochure }) {
 - les lignes oubliées, en double, ou coupées par le bord d'une photo ;
 - le nom du partenaire, son nom thaï, son lieu de départ, ses numéros et leurs libellés, WhatsApp et LINE.
 Rends seulement ce qui change, dans « trajets » et « tarifs ». Pour chaque ligne fausse ou douteuse : son « index », « statut » corrige (tu as relu et corrigé, la ligne complète corrigée dans « ligne ») ou signale (la ligne reste douteuse : recopie-la dans « ligne », « confiance » basse), et « raison » en une phrase. Une ligne que la première lecture n'a pas relevée : « index » -1, « statut » ajoute, la ligne complète dans « ligne ». Une ligne juste ne figure pas dans la réponse. « fiche_corrigee » vrai seulement si le nom, les contacts ou le lieu de départ étaient faux ; « fiche » rend alors la fiche complète corrigée. N'invente rien : une valeur que tu ne lis pas reste vide.
+
+${consigneJson(SCHEMA_RELECTURE)}
 
 Extraction :
 ${extraction}`,
@@ -296,7 +298,7 @@ export const SCHEMA_RELECTURE = objet({
   remarques: S,
 });
 
-// Les paramètres de l'appel, pour une passe : modèle, effort de la passe, sortie JSON imposée, repli d'Anthropic si le modèle refuse.
+// Les paramètres de l'appel, pour une passe : modèle, effort de la passe, repli d'Anthropic si le modèle refuse.
 // Réflexion : Opus 5.5 réfléchit toujours en mode adaptatif ; le paramètre « thinking » n'est pas envoyé (l'omettre vaut « adaptive »), comme
 // dans la version qui passait avant la PR 346, pour ne rien ajouter à la requête. 64 000 jetons de sortie : permis en flux (128 000 au plus).
 export function parametresBrochure(prompt, { passe = "lecture", modele = MODELE_BROCHURE } = {}) {
@@ -305,9 +307,89 @@ export function parametresBrochure(prompt, { passe = "lecture", modele = MODELE_
     model: modele,
     max_tokens: relecture ? USAGE_BROCHURE.maxTokensRelecture : USAGE_BROCHURE.maxTokens,
     ...(AVEC_REPLI.has(modele) ? { betas: [BETA_REPLI], fallbacks: "default" } : {}),
-    output_config: { effort: relecture ? USAGE_BROCHURE.effortRelecture : USAGE_BROCHURE.effort, format: { type: "json_schema", schema: relecture ? SCHEMA_RELECTURE : SCHEMA_BROCHURE } },
+    // Pas de sortie structurée (output_config.format) : le JSON est demandé dans la consigne, extrait et contrôlé ici. Voir consigneJson.
+    output_config: { effort: relecture ? USAGE_BROCHURE.effortRelecture : USAGE_BROCHURE.effort },
     system: prompt.system,
     messages: prompt.messages,
+  };
+}
+
+// ---- Réponse en JSON libre (24.11.2026) ------------------------------------------------------------------------------------------------
+// Essai réel après la PR 349 : « API 400 invalid_request_error : The compiled grammar is too large, which would cause performance issues ».
+// Même sans type union, les schémas de la brochure (une trentaine de champs par ligne, des listes d'objets) donnent une grammaire trop grosse
+// pour les sorties structurées. La brochure ne s'appuie donc plus sur elles : le JSON est demandé dans la consigne, sous la forme d'un gabarit
+// tiré des mêmes schémas (SCHEMA_BROCHURE, SCHEMA_RELECTURE), puis extrait de la réponse (extraireJson) et contrôlé comme avant
+// (validerBrochure, fusionnerRelecture). Un JSON illisible : une seule demande de correction, dans le délai de la passe (index.ts).
+
+// Le gabarit d'une réponse : chaque champ avec la forme de sa valeur. Une liste montre un élément ; « a|b » : une de ces valeurs.
+export function gabaritJson(schema) {
+  const v = (x) => {
+    if (x.type === "object") return Object.fromEntries(Object.entries(x.properties || {}).map(([k, y]) => [k, v(y)]));
+    if (x.type === "array") return [v(x.items)];
+    if (x.enum) return x.enum.filter(Boolean).join("|");
+    if (x.type === "number" || x.type === "integer") return 0;
+    if (x.type === "boolean") return false;
+    return "texte";
+  };
+  return JSON.stringify(v(schema));
+}
+export const consigneJson = (schema) => `Forme de la réponse : un seul objet JSON, sans texte avant ni après et sans bloc de code. Tous les champs du gabarit ci-dessous sont présents, dans cet ordre. Une liste du gabarit montre un élément : rends autant d'éléments qu'il le faut, ou une liste vide. « a|b » : une seule de ces valeurs (ou "" quand le gabarit le permet). 0 : un nombre, 0 s'il est absent du document. false : vrai ou faux. "texte" : une chaîne, vide si absent. Gabarit :
+${gabaritJson(schema)}`;
+
+// Le JSON d'une réponse : l'objet seul, même entouré de texte ou d'un bloc \`\`\`json. Rend { ok, valeur } ou { ok: false, raison }
+// (« vide », « tronque » : l'objet ne se referme pas, « invalide » : il ne se lit pas).
+export function extraireJson(texteReponse) {
+  let t = String(texteReponse || "");
+  const bloc = /```(?:json)?\s*([\s\S]*?)(```|$)/i.exec(t);
+  if (bloc && bloc[1].includes("{")) t = bloc[1];
+  const debut = t.indexOf("{");
+  if (debut < 0) return { ok: false, raison: "vide" };
+  // L'accolade qui ferme le premier objet, en sautant le contenu des chaînes.
+  let profondeur = 0;
+  let chaine = false;
+  let echappe = false;
+  let fin = -1;
+  for (let i = debut; i < t.length; i++) {
+    const c = t[i];
+    if (chaine) {
+      if (echappe) echappe = false;
+      else if (c === "\\") echappe = true;
+      else if (c === '"') chaine = false;
+      continue;
+    }
+    if (c === '"') chaine = true;
+    else if (c === "{") profondeur++;
+    else if (c === "}" && --profondeur === 0) {
+      fin = i;
+      break;
+    }
+  }
+  if (fin < 0) return { ok: false, raison: "tronque" };
+  try {
+    const valeur = JSON.parse(t.slice(debut, fin + 1));
+    return valeur && typeof valeur === "object" && !Array.isArray(valeur) ? { ok: true, valeur } : { ok: false, raison: "invalide" };
+  } catch {
+    return { ok: false, raison: "invalide" };
+  }
+}
+
+// La réponse de Claude pour la brochure : même lecture que lireReponse (refus, réponse coupée), puis le JSON extrait du texte.
+// « json_invalide » : le texte est complet mais le JSON ne se lit pas ; index.ts redemande une fois.
+export function lireBrochure(message) {
+  if (!message || typeof message !== "object") return { ok: false, statut: "erreur" };
+  if (message.stop_reason === "refusal") return { ok: false, statut: "refus", categorie: (message.stop_details && message.stop_details.category) || null };
+  if (message.stop_reason === "max_tokens") return { ok: false, statut: "coupe" };
+  const texteReponse = (message.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  const j = extraireJson(texteReponse);
+  return j.ok ? { ok: true, valeur: j.valeur } : { ok: false, statut: "json_invalide", raison: j.raison };
+}
+
+// La seule demande de correction : la réponse telle quelle (blocs de réflexion compris, sans retouche), puis la consigne de correction.
+export function demandeCorrection(parametres, message, raison) {
+  const pourquoi = raison === "tronque" ? "l'objet JSON ne se referme pas" : raison === "vide" ? "elle ne contient aucun objet JSON" : "son JSON ne se lit pas (virgule, guillemet ou accolade en trop ou en moins)";
+  return {
+    ...parametres,
+    messages: [...parametres.messages, { role: "assistant", content: message.content }, { role: "user", content: [{ type: "text", text: `Ta réponse n'a pas pu être lue : ${pourquoi}. Rends seulement l'objet JSON complet et valide, de la forme demandée, sans texte autour. Ne relis pas les images : reprends ta lecture telle quelle.` }] }],
   };
 }
 

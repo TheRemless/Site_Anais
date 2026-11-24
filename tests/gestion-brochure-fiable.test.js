@@ -75,11 +75,11 @@ test("lecture : Opus 5.5 (réflexion adaptative par défaut), effort medium, 64 
   assert.ok(!("thinking" in p1), "Opus 5.5 : omettre thinking vaut adaptive");
   assert.equal(p1.output_config.effort, "medium");
   assert.equal(p1.max_tokens, 64000);
-  assert.equal(p1.output_config.format.schema, B.SCHEMA_BROCHURE);
+  assert.ok(!("format" in p1.output_config), "plus de sortie structurée");
   const p2 = B.parametresBrochure(B.promptRelecture({ fichiers: f, aujourdhui: AJD, brochure: demo().brochure }), { passe: "relecture" });
   assert.equal(p2.output_config.effort, "high");
   assert.equal(p2.max_tokens, 32000);
-  assert.equal(p2.output_config.format.schema, B.SCHEMA_RELECTURE);
+  assert.ok(!("format" in p2.output_config), "plus de sortie structurée");
   assert.equal(p2.system[0].text, p1.system[0].text, "la même consigne pour les deux passes");
   assert.deepEqual(p2.messages[0].content.map((b) => b.type), ["image", "text"]);
   assert.match(p2.messages[0].content[1].text, /"index":0/);

@@ -39,7 +39,7 @@ import {
   validerSituer,
   verifierFaitsItineraire,
 } from "./itineraire.js";
-import { controlerAccesBrochure, delaiPasse, fusionnerRelecture, masquerNets, parametresBrochure, promptBrochure, promptRelecture, validerBrochure, verifierExtraction, verifierFichiers } from "./brochure.js";
+import { controlerAccesBrochure, delaiPasse, demandeCorrection, fusionnerRelecture, lireBrochure, masquerNets, parametresBrochure, promptBrochure, promptRelecture, validerBrochure, verifierExtraction, verifierFichiers } from "./brochure.js";
 import { debutMois, estCreditEpuise, plafondRetenu, reprise } from "./budget.js";
 
 const USAGES_CONNUS = ["lire", "itineraire", "situer", "repondre_itineraire", "brochure"];
@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
   // Chaque usage prépare son appel (paramètres de l'API) et la façon de lire et contrôler la réponse.
   let parametres: Record<string, unknown>;
-  let lire: (m: Anthropic.Beta.BetaMessage) => { ok: boolean; statut?: string; categorie?: string | null; valeur?: unknown; sources?: unknown[] } = lireReponse;
+  let lire: (m: Anthropic.Beta.BetaMessage) => { ok: boolean; statut?: string; categorie?: string | null; valeur?: unknown; sources?: unknown[]; raison?: string } = lireReponse;
   let valider: (v: unknown, lu?: { sources?: unknown[] }) => Record<string, unknown>;
 
   if (usage === "lire") {
@@ -194,6 +194,8 @@ Deno.serve(async (req) => {
     // Seconde passe (24.11.2026) : la première lecture revient du navigateur, contrôlée comme une réponse de Claude, et Claude relit les mêmes
     // fichiers avec elle. Le journal note un second appel « brochure ».
     // Sans le droit « prix nets », aucun net ne repart vers le navigateur (ni chiffre, ni colonne, ni raison qui en parle).
+    // JSON demandé dans la consigne (plus de sortie structurée : grammaire trop grosse), extrait et contrôlé ici.
+    lire = lireBrochure;
     const voitNets = (perms.data || []).includes("partenaires.nets");
     const sansNets = (r: Record<string, unknown>) => (r && r.ok && !voitNets ? { ...r, brochure: masquerNets(r.brochure) } : r);
     if (demande.passe === "relecture") {
@@ -226,6 +228,8 @@ Deno.serve(async (req) => {
   const arret = usage === "brochure" ? new AbortController() : null;
   const minuterie = arret ? setTimeout(() => arret.abort(), delaiBrochure) : null;
   let flux: ReturnType<typeof anthropic.beta.messages.stream> | null = null;
+  // Les jetons de la première réponse quand la demande de correction est arrêtée en route : ils comptent aussi dans le journal.
+  let usageAvant: Record<string, unknown> | null = null;
   try {
     // Brochure : en flux, la réponse complète attendue à la fin (finalMessage), comme l'agent, arrêtée au bout du délai d'une passe.
     if (usage === "brochure" && arret) {
@@ -233,6 +237,16 @@ Deno.serve(async (req) => {
       reponseClaude = await flux.finalMessage();
     } else reponseClaude = await anthropic.beta.messages.create(parametres as Anthropic.Beta.MessageCreateParamsNonStreaming);
     let lu = lire(reponseClaude);
+    // Brochure : un JSON illisible (texte complet mais mal formé), une seule demande de correction, sur le même délai (même AbortSignal).
+    if (!lu.ok && lu.statut === "json_invalide" && usage === "brochure" && arret && !arret.signal.aborted) {
+      const premier = reponseClaude;
+      usageAvant = premier.usage as unknown as Record<string, unknown>;
+      flux = anthropic.beta.messages.stream(demandeCorrection(parametres as { messages: unknown[] }, premier, lu.raison) as unknown as Parameters<typeof anthropic.beta.messages.stream>[0], { signal: arret.signal });
+      reponseClaude = await flux.finalMessage();
+      reponseClaude = { ...reponseClaude, usage: additionner(premier.usage, reponseClaude.usage) } as Anthropic.Beta.BetaMessage;
+      usageAvant = null;
+      lu = lire(reponseClaude);
+    }
     // Recherche web arrêtée en route par le serveur (« pause_turn ») : on renvoie la réponse telle quelle, une fois, pour qu'elle reprenne.
     if (!lu.ok && lu.statut === "pause") {
       const p = parametres as { messages: unknown[] };
@@ -260,7 +274,8 @@ Deno.serve(async (req) => {
     // Un flux arrêté en route : ce qu'il a déjà consommé compte dans le journal (jetons et coût), si le SDK l'a gardé.
     if (flux && !reponseClaude) {
       try {
-        reponseClaude = (flux as unknown as { currentMessage?: Anthropic.Beta.BetaMessage }).currentMessage || null;
+        const partiel = (flux as unknown as { currentMessage?: Anthropic.Beta.BetaMessage }).currentMessage || null;
+        reponseClaude = partiel && usageAvant ? ({ ...partiel, usage: additionner(usageAvant, partiel.usage) } as Anthropic.Beta.BetaMessage) : partiel;
       } catch {
         reponseClaude = null;
       }
