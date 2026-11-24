@@ -42,8 +42,8 @@ GET https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/bandeau-site
 |---|---|
 | `brands` | `["secret"]`, `["taxi"]` ou `["secret","taxi"]`. `taxi` = les pages VIP Taxi Lanta (`/taxi/…`), `secret` = toutes les autres |
 | `type` | `info`, `sea`, `season`, `new`, `urgent` (voir les styles) |
-| `text` | anglais, 140 caractères au plus, déjà prêt : l'afficher tel quel (texte, jamais HTML) |
-| `link` | `null`, `{ "kind": "page", "href": "/chemin/", "label": "…" }` (toujours un chemin du site) ou `{ "kind": "whatsapp", "label": "Ask on WhatsApp", "text": "…" }` (le site construit le lien `wa.me` avec son propre numéro et ce texte) |
+| `text` | anglais, 600 caractères au plus (140 jusqu'à la migration 126 du 24.11.2026), déjà prêt : l'afficher tel quel (texte, jamais HTML). Peut contenir des retours à la ligne (`\n`, deux de suite au plus), à garder à l'écran. Au-delà de 140 caractères ou avec un retour à la ligne, le site le replie (voir « Texte long ») |
+| `link` | `null`, `{ "kind": "page", "href": "/chemin/", "label": "…" }` (toujours un chemin du site) ou `{ "kind": "whatsapp", "label": "Ask on WhatsApp", "text": "…" }` (le site construit le lien `wa.me` avec son propre numéro et ce texte ; pour un texte long, `text` ne reprend que sa première ligne, coupée à 140 caractères avec « … ») |
 | `target` | `{ "kind": "all" }`, `{ "kind": "sections", "sections": [...] }` ou `{ "kind": "products", "products": [slug...] }` |
 | `sections` | `islands` (fiches `tours/`, gabarit `boat`), `activities` (fiches `activities/`), `transfers` (`/transfers/`, `/tours/speedboat/`), `rental` (`/tours/rental/`), `taxi` (fiches `taxi/`, hub `/taxi/`) |
 | `closable` | le visiteur peut le fermer (croix) ; fermé = plus affiché pour ce visiteur |
@@ -133,6 +133,49 @@ Couleurs relevées dans `src/css/tokens.css` (Secret) et `src/css/vip-taxi.css` 
 
 Lisible à 375 px : le texte passe à la ligne, le lien suit le texte, la croix reste à droite dans une zone de 44 px. L'aperçu de Gestion montre ce rendu dans les deux marques.
 
+## Texte long (migration 126, 24.11.2026)
+
+Un texte de 140 caractères au plus, sans retour à la ligne, garde exactement le rendu ci-dessus. Au-delà, ou avec un retour à la ligne :
+
+- les longueurs se comptent en **caractères visibles, en points de code** (un emoji = 1, comme `length()` de Postgres) : Gestion, la base et le site comptent de la même façon ;
+- le texte est replié sur **deux lignes**, à toutes les largeurs, coupé après un mot entier avec « … » collé au mot (jamais au milieu d'un nombre) ; sur mobile le bandeau ne dépasse jamais deux lignes de texte et une ligne de boutons (90 px environ, contre 130 px pour un texte de 140 caractères en un bloc) ;
+- dessous, une ligne avec le bouton **More** (puis **Less**) et le lien, qui reste ainsi visible replié ; le bouton n'apparaît que si le texte dépasse vraiment deux lignes (mesuré à l'affichage, à chaque changement de largeur et quand la police arrive) ;
+- `aria-expanded` et `aria-controls` sur le bouton, Entrée et Espace l'ouvrent, Échap referme et rend le focus au bouton, zone de toucher de 44 px ;
+- ouvert, le bandeau montre tout le texte (au plus la hauteur de l'écran moins l'en-tête, le texte défile alors dans le bandeau) ; jamais de texte qui défile tout seul, aucune animation ;
+- retours à la ligne gardés (`white-space: pre-line`), mots très longs coupés (`overflow-wrap: anywhere`) : aucun défilement horizontal.
+
+```html
+<aside class="site-notice site-notice--info site-notice--long" role="region" aria-label="Notice" data-notice-id="9b1c…" lang="en">
+  <div class="site-notice__inner">
+    <svg class="site-notice__icon" …></svg>
+    <div class="site-notice__body">
+      <p class="site-notice__text" id="site-notice-text-9b1c…">Christmas week
+Transfers run as usual…</p>
+      <div class="site-notice__actions">
+        <button class="site-notice__more" type="button" aria-expanded="false" aria-controls="site-notice-text-9b1c…">More</button>
+        <a class="site-notice__link" href="/tours/">See all trips</a>
+      </div>
+    </div>
+    <button class="site-notice__close" type="button" aria-label="Close this notice">…</button>
+  </div>
+</aside>
+```
+
+```css
+.site-notice--long .site-notice__body { min-width: 0; max-width: 80ch; }
+.site-notice--long .site-notice__text { white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.site-notice--long.is-open .site-notice__text { display: block; -webkit-line-clamp: none; line-clamp: none; overflow-y: auto; max-height: calc(100dvh - var(--hd, 0px) - 120px); }
+.site-notice__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; margin-top: 4px; }
+/* Bouton et lien de la hauteur d'une ligne, zone de toucher de 44 px par ::before. */
+.site-notice__more::before, .site-notice__actions .site-notice__link::before { content: ""; position: absolute; top: 50%; left: 50%; width: max(100% + 16px, 44px); height: 44px; transform: translate(-50%, -50%); }
+```
+
+**Hauteur réservée.** Le bandeau du haut reste en position fixe sous l'en-tête, mais sa hauteur est mise dans `--notice-h` (ResizeObserver : affichage, dépli, repli, fermeture) et s'ajoute au `padding-top` du corps, à `scroll-padding-top` et aux `scroll-margin-top` et `top` collants : il ne recouvre plus le titre de la page (défaut corrigé aussi pour les textes courts). La hauteur repliée est gardée par contexte de page (`stt-notice-h:<marque>:<section>:<produit>`, avec la largeur) et posée par un petit script dans le `<head>` avant l'affichage : aucun saut dès la deuxième page vue. À la toute première page d'une visite, la hauteur n'est connue qu'à l'arrivée de la réponse.
+
+Une première ligne courte suivie d'un retour à la ligne sert de titre replié (« Christmas week », puis le détail) : pas de champ titre à part.
+
+Mise en ligne : la base (migration 126) d'abord, puis le site qui sait replier, puis Gestion. Tant que le site n'est pas à jour, il coupe tout texte à 140 caractères.
+
 ## Script attendu
 
 ```js
@@ -206,6 +249,6 @@ Textes exacts (`src/gestion/js/bandeau-calc.mjs`, `MODELES`). Ils ne disent que 
 | urgent | Bad weather: all boat trips are cancelled today. | fin du jour |
 | urgent | Bad weather: all boat trips on {date} are cancelled. | fin de {date} |
 | urgent | Transfers may run late today. | fin du jour |
-| tous | texte libre en anglais (140 caractères) | aucune |
+| tous | texte libre en anglais (600 caractères, retours à la ligne permis) | aucune |
 
 Dates : « today », « tomorrow », « Tuesday 18 November » dans la semaine, « 18 November » au-delà, l'année ajoutée si elle change.

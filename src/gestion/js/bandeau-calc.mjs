@@ -5,7 +5,22 @@
 import { PRODUITS_SITE } from "./site-produits.mjs";
 import { N_ } from "./i18n.mjs";
 
-export const TEXTE_MAX = 140;
+// 600 caractères au plus (migration 126, 24.11.2026 ; avant : 140). Au-delà de TEXTE_REPLIE caractères, ou avec un retour à la ligne,
+// le site replie le texte sur deux lignes avec un bouton « More » ; jusque-là il l'affiche comme avant, d'un bloc.
+export const TEXTE_MAX = 600;
+export const TEXTE_REPLIE = 140;
+// Longueur en caractères visibles, comptés en points de code : un emoji ou une lettre accentuée compte 1, comme length() de Postgres
+// (contrainte de la migration 126) et comme le site (notice.js). Un drapeau (deux points de code) compte 2, des deux côtés.
+export const longueurTexte = (texte) => Array.from(String(texte || "")).length;
+export const estLong = (texte) => longueurTexte(texte) > TEXTE_REPLIE || /\n/.test(texte || "");
+// Texte libre : retours à la ligne gardés (une ligne vide au plus), espaces en trop retirés sur chaque ligne.
+export const nettoyerTexteLibre = (t) =>
+  String(t || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 export const TYPES_BANDEAU = {
   info: { libelle: N_("Information"), aide: N_("Neutre, fond sable") },
@@ -73,7 +88,7 @@ export function texteBandeau(idModele, valeurs = {}, aujourdhui = "") {
     date2: dateBandeau(valeurs.date2, aujourdhui),
     de: valeurs.de || "",
     a: valeurs.a || "",
-    texte: String(valeurs.texte || "").replace(/\s+/g, " ").trim(),
+    texte: nettoyerTexteLibre(valeurs.texte),
   };
   let texte = m.texte.replace(/\{(\w+)\}/g, (_, k) => remplace[k] || `{${k}}`);
   // « on today » se dit « today » ; « today » et « tomorrow » au début d'une phrase prennent une majuscule, une sortie au nom en minuscule aussi.
@@ -87,7 +102,7 @@ export function verifierBandeau(b, aujourdhui) {
   const erreurs = [];
   const { texte, manque } = texteBandeau(b.modele, b.valeurs, aujourdhui);
   if (manque.length) erreurs.push({ code: "champ_vide", champs: manque });
-  if (texte.length > TEXTE_MAX) erreurs.push({ code: "trop_long", longueur: texte.length });
+  if (longueurTexte(texte) > TEXTE_MAX) erreurs.push({ code: "trop_long", longueur: longueurTexte(texte) });
   if (!b.marques || !b.marques.length) erreurs.push({ code: "marque" });
   if (b.cible === "produits" && !(b.produits || []).length) erreurs.push({ code: "produits" });
   if (b.cible === "sections" && !(b.sections || []).length) erreurs.push({ code: "sections" });

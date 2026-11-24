@@ -8,7 +8,7 @@ import { aujourdhui } from "../calc.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
 import { vide } from "./commun.mjs";
 import {
-  TEXTE_MAX, TYPES_BANDEAU, SECTIONS_SITE, nomSection, MODELES, modele, modelesDuType, texteBandeau, verifierBandeau, finProposee, ligneBandeau, etatBandeau,
+  TEXTE_MAX, estLong, longueurTexte, TYPES_BANDEAU, SECTIONS_SITE, nomSection, MODELES, modele, modelesDuType, texteBandeau, verifierBandeau, finProposee, ligneBandeau, etatBandeau,
   ETATS_BANDEAU, pagesLien, libelleLien, produitSite, produitsDeMarques, ordreAffichage,
 } from "../bandeau-calc.mjs";
 
@@ -26,7 +26,7 @@ const PRIORITES = { 1: N_("Haute"), 2: N_("Normale"), 3: N_("Basse") };
 const CHAMPS_LIBELLES = { trip: N_("Sortie"), option: N_("Option"), date: N_("Date"), date2: N_("Nouvelle date"), de: N_("De"), a: N_("À"), texte: N_("Texte en anglais") };
 const ERREURS = {
   champ_vide: N_("Remplissez : {champs}."),
-  trop_long: N_("Le texte fait {n} caractères : 140 au plus."),
+  trop_long: N_("Le texte fait {n} caractères : {max} au plus."),
   marque: N_("Choisissez au moins une marque."),
   produits: N_("Choisissez au moins une sortie."),
   sections: N_("Choisissez au moins une section."),
@@ -55,22 +55,115 @@ function svgIcone(type) {
   }
   return s;
 }
-export function noeudBandeau(b, marque) {
+// Texte long (plus de 140 caractères, ou un retour à la ligne) : replié sur deux lignes avec « More », puis « Less », le lien sous le
+// texte ; même structure et mêmes règles que le site (src/js/notice.js du dépôt Secrettravelandtour). Jusqu'à 140 : le rendu d'avant.
+export function noeudBandeau(b, marque, { ouvert = false } = {}) {
+  const texte = b.texte || "…";
+  const long = estLong(texte);
   const lien = b.lien === "page" && b.lien_page ? h("a", { class: "site-notice__link", href: "#", tabindex: "-1", onclick: (e) => e.preventDefault() }, libelleLien(b.lien_page, marques)) : b.lien === "whatsapp" ? h("a", { class: "site-notice__link", href: "#", tabindex: "-1", onclick: (e) => e.preventDefault() }, "Ask on WhatsApp") : null;
-  return h(
-    "div",
-    { class: `site-notice site-notice--${b.type} marque-${marque}`, lang: "en" },
-    h("div", { class: "site-notice__inner" }, svgIcone(b.type), h("p", { class: "site-notice__text" }, b.texte || "…", lien ? " " : null, lien), b.fermable !== false ? h("span", { class: "site-notice__close", "aria-hidden": "true" }, "×") : null)
-  );
+  const croix = b.fermable !== false ? h("span", { class: "site-notice__close", "aria-hidden": "true" }, "×") : null;
+  if (!long) return h("div", { class: `site-notice site-notice--${b.type} marque-${marque}`, lang: "en" }, h("div", { class: "site-notice__inner" }, svgIcone(b.type), h("p", { class: "site-notice__text" }, texte, lien ? " " : null, lien), croix));
+  const boite = h("div", { class: `site-notice site-notice--${b.type} site-notice--long marque-${marque}${ouvert ? " is-open" : ""}`, lang: "en" });
+  const plus = h("button", { class: "site-notice__more", type: "button", "aria-expanded": String(ouvert), onclick: () => basculer(boite) }, ouvert ? "Less" : "More");
+  boite.append(h("div", { class: "site-notice__inner" }, svgIcone(b.type), h("div", { class: "site-notice__body" }, h("p", { class: "site-notice__text" }, texte), h("div", { class: "site-notice__actions" }, plus, lien)), croix));
+  return boite;
 }
-// Aperçu dans les marques choisies, chacune dans un cadre de téléphone (375 px) sous un faux en-tête de la marque.
-function apercu(b) {
-  const marques = b.marques && b.marques.length ? b.marques : Object.keys(marques).slice(0, 1);
-  return h(
+function basculer(boite) {
+  const ouvert = !boite.classList.contains("is-open");
+  boite.classList.toggle("is-open", ouvert);
+  const p = boite.querySelector(".site-notice__text");
+  if (ouvert && TEXTES.has(p)) p.textContent = TEXTES.get(p);
+  else if (!ouvert) couper(p);
+  const plus = boite.querySelector(".site-notice__more");
+  plus.setAttribute("aria-expanded", String(ouvert));
+  plus.textContent = ouvert ? "Less" : "More";
+}
+// Après l'affichage : « More » seulement si le texte dépasse vraiment deux lignes (comme le site). Une paire replié/ouvert dont le texte
+// tient en deux lignes ne garde que le replié, annoncé « en entier ».
+// Replié : le plus long début coupé après un mot entier qui tient en deux lignes avec « … » (même règle que cut() du site).
+const TEXTES = new WeakMap();
+function couper(p) {
+  const entier = TEXTES.get(p) ?? p.textContent;
+  TEXTES.set(p, entier);
+  p.textContent = entier;
+  if (p.scrollHeight <= p.clientHeight + 1) return false;
+  const parts = entier.split(/(\s+)/);
+  const debut = (k) => `${parts.slice(0, 2 * k - 1).join("").replace(/[\s.,;:!?\u2014\u2013-]+$/, "")}…`;
+  let lo = 0, hi = Math.ceil(parts.length / 2) - 1, meilleur = "";
+  while (lo < hi) {
+    const mil = (lo + hi + 1) >> 1;
+    p.textContent = debut(mil);
+    if (p.scrollHeight <= p.clientHeight + 1) ((lo = mil), (meilleur = p.textContent));
+    else hi = mil - 1;
+  }
+  p.textContent = meilleur || entier;
+  return true;
+}
+function ajusterApercus(zone) {
+  // Écran plus large que la place : mis en page à sa vraie largeur (375 ou 1280 px, bordure comprise), puis réduit d'un bloc.
+  for (const el of zone.querySelectorAll(".bsite-zoom")) {
+    const z = el.clientWidth / Number(el.dataset.largeur);
+    el.firstElementChild.style.zoom = z > 0 && z < 1 ? String(z) : "";
+  }
+  for (const boite of zone.querySelectorAll(".site-notice--long:not(.is-open)")) {
+    const p = boite.querySelector(".site-notice__text");
+    const deborde = couper(p);
+    boite.querySelector(".site-notice__more").hidden = !deborde;
+    const paire = boite.closest(".bsite-paire");
+    if (!paire) continue;
+    paire.classList.toggle("tient", !deborde);
+    const titre = paire.querySelector(".bsite-format");
+    titre.textContent = deborde ? titre.dataset.replie : titre.dataset.entier;
+  }
+}
+// Un écran de téléphone (375 px) ou d'ordinateur (1280 px, réduit pour tenir dans la fenêtre), sous un faux en-tête de la marque.
+const ecran = (b, m, { ouvert = false, bureau = false } = {}) =>
+  h("div", { class: `bsite-ecran${bureau ? " bureau" : ""}` }, h("div", { class: "bsite-entete" }, h("span", null, nomMarque(m)), bureau ? h("span", { class: "bsite-nav", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i")) : null), noeudBandeau(b, m, { ouvert }), h("div", { class: "bsite-page", "aria-hidden": "true" }, h("span"), h("span"), h("span")));
+const telZoom = (e) => h("div", { class: "bsite-zoom", "data-largeur": "377" }, e);
+const bureauZoom = (e) => h("div", { class: "bsite-zoom bsite-bureau", "data-largeur": "1284" }, e);
+// Un format (téléphone ou ordinateur) replié puis ouvert ; l'ouvert disparaît si le texte tient en deux lignes.
+const paire = (replie, entier, ouvert, rendu, format) =>
+  h(
     "div",
-    { class: "bsite-apercus" },
-    marques.map((m) => h("figure", { class: `bsite-apercu marque-${m}` }, h("figcaption", null, nomMarque(m)), h("div", { class: "bsite-ecran" }, h("div", { class: "bsite-entete" }, h("span", null, nomMarque(m))), noeudBandeau(b, m), h("div", { class: "bsite-page", "aria-hidden": "true" }, h("span"), h("span"), h("span")))))
+    { class: `bsite-paire ${format}` },
+    h("div", null, h("p", { class: "bsite-format", "data-replie": replie, "data-entier": entier }, replie), rendu(false)),
+    h("div", { class: "bsite-ouvert" }, h("p", { class: "bsite-format" }, ouvert), rendu(true))
   );
+// Aperçu dans les marques choisies. Liste : un téléphone, replié. Saisie (`complet`) : téléphone et ordinateur, replié et ouvert.
+function apercu(b, { complet = false } = {}) {
+  const choix = b.marques && b.marques.length ? b.marques : Object.keys(marques).slice(0, 1);
+  const zone = h(
+    "div",
+    { class: `bsite-apercus${complet ? " complet" : ""}` },
+    choix.map((m) =>
+      h(
+        "figure",
+        { class: `bsite-apercu marque-${m}` },
+        h("figcaption", null, nomMarque(m)),
+        !complet || !estLong(b.texte || "")
+          ? complet
+            ? h("div", { class: "bsite-formats" }, h("div", null, h("p", { class: "bsite-format" }, tr("Téléphone")), telZoom(ecran(b, m))), h("div", null, h("p", { class: "bsite-format" }, tr("Ordinateur")), bureauZoom(ecran(b, m, { bureau: true }))))
+            : h("div", { class: "bsite-liste-tel" }, telZoom(ecran(b, m)))
+          : h(
+              "div",
+              { class: "bsite-formats" },
+              paire(tr("Téléphone, replié"), tr("Téléphone, en entier"), tr("Téléphone, ouvert par « More »"), (ouvert) => telZoom(ecran(b, m, { ouvert })), "tel"),
+              paire(tr("Ordinateur, replié"), tr("Ordinateur, en entier"), tr("Ordinateur, ouvert par « More »"), (ouvert) => bureauZoom(ecran(b, m, { bureau: true, ouvert })), "bureau")
+            )
+      )
+    )
+  );
+  // Mesuré une fois dans la page, puis à chaque changement de largeur de la fenêtre.
+  requestAnimationFrame(() => ajusterApercus(zone));
+  // L'aperçu de la saisie est recréé à chaque frappe : l'ancien observateur est coupé (zone.fin) avant d'être remplacé.
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => (zone.isConnected ? ajusterApercus(zone) : ro.disconnect()));
+    ro.observe(zone);
+    zone.fin = () => ro.disconnect();
+  }
+  // Les polices du site arrivent après le premier affichage : les lignes changent, « More » est recalculé.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => ajusterApercus(zone), () => {});
+  return zone;
 }
 
 // ---- Dates -----------------------------------------------------------------------------------------------------------
@@ -94,8 +187,10 @@ function ouvrirSaisie(existant = null) {
     ? { ...structuredClone(existant), valeurs: { ...(existant.valeurs || {}) } }
     : { type: "sea", modele: "sea-today", valeurs: {}, marques: [marqueEntreprise], cible: "tout", sections: [], produits: [], lien: "aucun", lien_page: null, debut: new Date().toISOString(), fin: finProposee("sea-today", {}, ajd), fermable: true, priorite: 2, actif: true };
   let finManuelle = !!existant;
-  const zoneApercu = h("div", { "aria-live": "polite" });
-  const compteur = h("p", { class: "aide bsite-compteur" });
+  const zoneApercu = h("div");
+  // Seul le compteur est annoncé au lecteur d'écran ; l'aperçu, recréé à chaque frappe, ne l'est pas.
+  const compteur = h("p", { class: "bsite-compteur", id: "bsite-compteur", "aria-live": "polite" });
+  const repli = h("p", { class: "aide bsite-repli" });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const blocModeles = h("div", { class: "bsite-modeles", role: "radiogroup", "aria-label": tr("Modèle") });
   const blocChamps = h("div", { class: "bsite-champs" });
@@ -115,9 +210,15 @@ function ouvrirSaisie(existant = null) {
     }
     fin.disabled = sansFin.checked;
     const t = texte();
-    compteur.textContent = tr("{n} caractères sur {max}", { n: t.length, max: TEXTE_MAX });
-    compteur.classList.toggle("trop", t.length > TEXTE_MAX);
-    zoneApercu.replaceChildren(apercu({ ...b, texte: t }));
+    // Pas de limite de saisie sur le champ : on peut coller un texte trop long, le compteur passe en rouge et l'enregistrement est refusé (trop_long).
+    const n = longueurTexte(t);
+    compteur.textContent = n > TEXTE_MAX ? tr("{n} caractères sur {max} : raccourcissez de {r}.", { n, max: TEXTE_MAX, r: n - TEXTE_MAX }) : tr("{n} caractères sur {max}", { n, max: TEXTE_MAX });
+    compteur.classList.toggle("trop", n > TEXTE_MAX);
+    repli.textContent = estLong(t)
+      ? tr("Plus de 140 caractères ou plusieurs lignes : le site montre les deux premières lignes, puis « More » ouvre le reste. Replié, un téléphone n'en montre qu'environ 60 caractères : mettez l'essentiel dans une première ligne courte, puis un retour à la ligne.")
+      : tr("Le site l'affiche en entier.");
+    zoneApercu.firstElementChild?.fin?.();
+    zoneApercu.replaceChildren(apercu({ ...b, texte: t }, { complet: true }));
   }
 
   // Modèles du type choisi : le texte anglais, tel qu'il paraîtra (avec les blancs à remplir).
@@ -157,7 +258,7 @@ function ouvrirSaisie(existant = null) {
       }
       if (k === "date" || k === "date2") return champ(tr(CHAMPS_LIBELLES[k]), h("input", { type: "date", value: valeur(k), min: ajd, onchange: (e) => poser(k, e.target.value) }));
       if (k === "de" || k === "a") return champ(tr(CHAMPS_LIBELLES[k]), h("input", { type: "time", value: valeur(k), onchange: (e) => poser(k, e.target.value) }));
-      return champ(tr(CHAMPS_LIBELLES[k]), h("textarea", { rows: 2, maxlength: String(TEXTE_MAX), lang: "en", oninput: (e) => ((b.valeurs.texte = e.target.value), maj()) }, valeur(k)), tr("Écrit tel quel sur le site."));
+      return champ(tr(CHAMPS_LIBELLES[k]), h("textarea", { rows: 6, lang: "en", "aria-describedby": "bsite-compteur", oninput: (e) => ((b.valeurs.texte = e.target.value), maj()) }, valeur(k)), tr("Écrit tel quel sur le site. Retour à la ligne permis : une première ligne courte sert de titre quand le texte est replié."));
     });
     blocChamps.replaceChildren(...controles);
   }
@@ -216,7 +317,7 @@ function ouvrirSaisie(existant = null) {
     const erreurs = verifierBandeau(b, ajd);
     if (erreurs.length) {
       const e = erreurs[0];
-      erreur.textContent = tr(ERREURS[e.code], { champs: (e.champs || []).map((c) => tr(CHAMPS_LIBELLES[c] || c).toLowerCase()).join(", "), n: e.longueur });
+      erreur.textContent = tr(ERREURS[e.code], { champs: (e.champs || []).map((c) => tr(CHAMPS_LIBELLES[c] || c).toLowerCase()).join(", "), n: e.longueur, max: TEXTE_MAX });
       return;
     }
     erreur.textContent = "";
@@ -238,7 +339,7 @@ function ouvrirSaisie(existant = null) {
     "div",
     { class: "modal-corps bsite-saisie" },
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Type d'information")), choixType.noeud, aideType),
-    h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Texte (anglais, prêt à l'emploi)")), blocModeles, blocChamps, compteur),
+    h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Texte (anglais, prêt à l'emploi)")), blocModeles, blocChamps, compteur, repli),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Où")), h("div", { class: "bsite-cases" }, Object.keys(marques).map(caseMarque)), choixCible.noeud, blocCible),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Lien")), choixLien.noeud, blocLien),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Quand")), h("div", { class: "grille-form compacte" }, champ(tr("Début"), debut), champ(tr("Fin"), fin)), h("label", { class: "case" }, sansFin, tr("Sans fin (à éteindre à la main)")), h("p", { class: "aide" }, tr("La fin est proposée d'après le modèle : le bandeau disparaît seul du site."))),
