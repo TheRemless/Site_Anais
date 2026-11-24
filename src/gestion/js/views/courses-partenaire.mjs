@@ -5,7 +5,8 @@
 import { etat } from "../etat.mjs";
 import { h, vider } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
-import { TH, parJour, totalDu, montantTh, lignesCourse, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
+import { situation, activer, desactiver, essai } from "../rappels.mjs";
+import { TH, blocNotifTh, parJour, totalDu, montantTh, lignesCourse, lireMontant, erreurMontant, verrouillee, resteDu, posee_par_equipe, suivreRetour } from "../courses-partenaire-calc.mjs";
 
 const telLien = (t) => `tel:${String(t || "").replace(/[^\d+]/g, "")}`;
 
@@ -70,6 +71,72 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
     return li;
   };
 
+  // Les notifications de ce téléphone (migration 123) : un bouton pour les activer, l'état « activées », ou ce qui les empêche (iPhone sans l'app
+  // sur l'écran d'accueil). Même abonnement que les rappels des membres (rappels.mjs, abonner_rappels) ; les envois en thaï sont faits par la
+  // fonction « rappels ». Couper est discret (lien, zone tactile de 44 px) et demande une confirmation en thaï.
+  // Démonstration : rien ne s'abonne, l'état est seulement joué à l'écran (pour voir les deux états et la confirmation).
+  const notif = h("section", { class: "cp-notif", "aria-live": "polite" });
+  const enDemo = () => etat.store.mode !== "supabase";
+  let sitDemo = "inactif";
+  const relire = async () => (enDemo() ? sitDemo : situation(etat.store));
+  const dessinerNotif = (sit, { message = "", erreur = false, occupe = false, confirmer = false } = {}) => {
+    const b = blocNotifTh(sit);
+    const agir = async (couper) => {
+      dessinerNotif(sit, { occupe: true });
+      try {
+        if (enDemo()) sitDemo = couper ? "inactif" : "actif";
+        else if (couper) await desactiver(etat.store);
+        else {
+          await activer(etat.store);
+          await essai({ titre: TH.notif_actives, corps: TH.notif_essai }).catch(() => {});
+        }
+        dessinerNotif(await relire(), { message: enDemo() ? TH.notif_demo : "" });
+      } catch {
+        let s2 = sit;
+        try {
+          s2 = await relire();
+        } catch {
+          /* on garde l'état affiché */
+        }
+        dessinerNotif(s2, { message: s2 === "refuse" ? "" : TH.notif_erreur, erreur: s2 !== "refuse" });
+      }
+    };
+    const actif = b.etat === "actif";
+    const boutons = !b.bouton
+      ? null
+      : !actif
+        ? h("button", { class: "principal cp-bouton cp-notif-bouton", type: "button", disabled: occupe, onclick: () => agir(false) }, occupe ? TH.notif_en_cours : b.bouton)
+        : confirmer
+          ? h(
+              "div",
+              { class: "cp-notif-confirmer", role: "group", "aria-label": TH.notif_confirmer },
+              h("p", { class: "cp-notif-question" }, TH.notif_confirmer),
+              h(
+                "div",
+                { class: "cp-notif-choix" },
+                h("button", { class: "secondaire cp-bouton", type: "button", onclick: () => agir(true) }, TH.notif_oui_couper),
+                h("button", { class: "principal cp-bouton", type: "button", onclick: () => dessinerNotif(sit) }, TH.notif_garder)
+              )
+            )
+          : h("button", { class: "cp-notif-lien", type: "button", disabled: occupe, onclick: () => dessinerNotif(sit, { confirmer: true }) }, b.bouton);
+    // append() du DOM écrirait « null » : seuls les blocs présents sont ajoutés.
+    vider(notif).append(
+      ...[
+        h("p", { class: `cp-notif-texte cp-notif-${b.etat}` }, actif ? `${b.texte} ✓` : b.texte),
+        boutons,
+        message ? h("p", { class: erreur ? "cp-msg erreur" : "cp-msg", role: erreur ? "alert" : "status" }, message) : null,
+      ].filter(Boolean)
+    );
+    if (confirmer) notif.querySelector(".cp-notif-choix .principal")?.focus();
+  };
+  const lireNotif = async () => {
+    try {
+      dessinerNotif(await relire());
+    } catch {
+      dessinerNotif("indisponible");
+    }
+  };
+
   const jour = (b) =>
     h("section", { class: "cp-jour" }, h("h2", { class: "cp-titre-jour" }, b.titre), b.courses.length ? h("ul", { class: "cp-courses" }, b.courses.map(carte)) : h("p", { class: "cp-vide" }, TH.aucune_jour));
 
@@ -100,6 +167,7 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
       { id: "principal", class: "cp-contenu", tabindex: "-1" },
       demo,
       h("h1", { class: "cp-h1" }, TH.titre),
+      notif,
       h("div", { class: "cp-total" }, h("span", { class: "cp-total-libelle" }, TH.total), totalValeur, h("span", { class: "cp-total-aide" }, TH.total_aide)),
       liste
     )
@@ -110,5 +178,6 @@ export function vueCoursesPartenaire({ acces, demo = null, deconnecter = null })
     saisieEnCours: () => !!document.activeElement && document.activeElement.tagName === "INPUT" && racine.contains(document.activeElement),
   });
   charger();
+  lireNotif();
   return racine;
 }

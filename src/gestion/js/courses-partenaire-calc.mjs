@@ -80,7 +80,32 @@ export const TH = {
   service: "บริการ", // Service (libellé de la course)
   ref: "เลขที่จอง", // Référence de la réservation
   ref_partenaire: "เลขอ้างอิงของคุณ", // Votre référence
+  // Notifications sur ce téléphone (migration 123, 24.11.2026).
+  notif_activer: "เปิดการแจ้งเตือน", // Activer les notifications
+  notif_aide: "แจ้งเตือนเมื่อมีงานใหม่หรืองานเปลี่ยน สรุปงานพรุ่งนี้ตอนเย็น และก่อนรับลูกค้า 1 ชั่วโมง", // Prévenir d'une course nouvelle ou modifiée, résumé des courses de demain le soir, et 1 h avant la prise en charge
+  notif_actives: "เปิดการแจ้งเตือนแล้ว", // Notifications activées
+  notif_couper: "ปิดการแจ้งเตือน", // Couper les notifications
+  notif_confirmer: "ปิดการแจ้งเตือนบนโทรศัพท์เครื่องนี้ใช่ไหม จะไม่รู้เมื่อมีงานใหม่หรืองานเปลี่ยน", // Couper les notifications sur ce téléphone ? Vous ne saurez plus quand une course arrive ou change
+  notif_oui_couper: "ปิด", // Couper
+  notif_garder: "ไม่ปิด", // Ne pas couper
+  notif_en_cours: "กำลังเปิด…", // Activation…
+  notif_erreur: "เปิดไม่ได้ ลองใหม่อีกครั้ง", // Activation impossible, réessayer
+  notif_iphone: "บนไอโฟน ต้องเพิ่มแอปนี้ไปที่หน้าจอโฮมก่อน กดปุ่มแชร์ แล้วเลือก “เพิ่มไปยังหน้าจอโฮม” จากนั้นเปิดแอปจากหน้าจอโฮม", // Sur iPhone, ajouter d'abord l'app à l'écran d'accueil : bouton Partager, « Sur l'écran d'accueil », puis ouvrir l'app depuis l'écran d'accueil
+  notif_refusees: "โทรศัพท์ปิดการแจ้งเตือนของแอปนี้ไว้ เปิดได้ที่การตั้งค่าของโทรศัพท์", // Le téléphone a bloqué les notifications de cette app : les rouvrir dans les réglages du téléphone
+  notif_indisponible: "โทรศัพท์เครื่องนี้รับการแจ้งเตือนไม่ได้", // Ce téléphone ne peut pas recevoir de notifications
+  notif_demo: "ทดลองใช้ ไม่มีการแจ้งเตือนจริง", // Démonstration : aucune vraie notification
+  notif_essai: "จะแจ้งเตือนงานของคุณที่นี่", // (notification d'essai) Vos courses seront annoncées ici
 };
+
+// Ce que montre le bloc des notifications pour une situation du téléphone (rappels.mjs, situation()) : le texte, et s'il y a un bouton
+// pour activer (« inactif »), pour couper (« actif ») ou aucun (iPhone sans l'app sur l'écran d'accueil, refus, téléphone sans notifications).
+export function blocNotifTh(situation) {
+  if (situation === "actif") return { etat: "actif", texte: TH.notif_actives, bouton: TH.notif_couper };
+  if (situation === "installer") return { etat: "installer", texte: TH.notif_iphone, bouton: null };
+  if (situation === "refuse") return { etat: "refuse", texte: TH.notif_refusees, bouton: null };
+  if (situation === "indisponible") return { etat: "indisponible", texte: TH.notif_indisponible, bouton: null };
+  return { etat: "inactif", texte: TH.notif_aide, bouton: TH.notif_activer };
+}
 
 // ---- Détail de la course (migration 116) ------------------------------------------------------------------------------------------------
 // Les champs de `details` que le partenaire lit (revue de sécurité, 22.11.2026) : ceux qu'imprime la Booking confirmation de Taxi ou que saisit

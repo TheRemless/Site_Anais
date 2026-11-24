@@ -61,13 +61,18 @@ self.addEventListener("push", (event) => {
   } catch {
     rappel = { corps: event.data ? event.data.text() : "" };
   }
+  // Notifications du partenaire chauffeur (tags « p- », migration 123) : la même course garde son tag (la dernière remplace la précédente),
+  // renotify la fait sonner de nouveau (une annulation n'arrive pas en silence), et l'icône de VIP Taxi Lanta, une adresse de ce site seulement.
+  const partenaire = typeof rappel.tag === "string" && rappel.tag.startsWith("p-");
+  const icone = partenaire && typeof rappel.icone === "string" && /^\/gestion\/assets\/[\w.-]+\.png$/.test(rappel.icone) ? rappel.icone : "/gestion/assets/zwald-192.png";
   event.waitUntil(
     self.registration.showNotification(rappel.titre || "Gestion", {
       body: rappel.corps || "",
       tag: rappel.tag || "gestion",
-      icon: "/gestion/assets/zwald-192.png",
+      icon: icone,
       badge: "/gestion/assets/zwald-192.png",
       data: { url: rappel.url || "/gestion/" },
+      ...(partenaire ? { renotify: true } : {}),
     })
   );
 });
