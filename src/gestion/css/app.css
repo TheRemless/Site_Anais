@@ -2672,6 +2672,13 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .cp-plus .cp-ligne dt { font-size: 15px; }
 .cp-v-paiement { font-weight: 700; color: var(--teal-700); }
 .cp-v-vehicule, .cp-v-bagages { font-weight: 600; }
+/* Notifications du téléphone (migration 123) : un bloc sous le titre, bouton d'au moins 44 px (52 px comme les autres). */
+.cp-notif { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; margin-bottom: 16px; border: 1px solid var(--bord-fort); border-radius: 10px; background: var(--surface); }
+.cp-notif-texte { margin: 0; font-size: 16px; line-height: 1.5; }
+.cp-notif-actif { font-weight: 700; color: var(--teal-700); }
+.cp-notif-installer, .cp-notif-refuse { font-weight: 600; }
+.cp-notif-bouton { align-self: stretch; min-height: 52px; }
+.cp-notif .cp-msg { min-height: 0; }
 
 /* Sièges par type (22.11.2026) : child seats, baby seats, « Aucun siège » sur une ligne, repliés sur mobile. */
 .sieges-types { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; }

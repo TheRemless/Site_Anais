@@ -13,11 +13,15 @@
 //   niveau ; { "type": "budget", "credit_epuise": true } quand Anthropic refuse faute de crédit (une fois par jour).
 // Elle lit les réservations avec la clé de service, calcule le texte de chaque personne selon les entreprises qu'elle voit et dans sa langue,
 // puis envoie une notification Web Push à chacun de ses appareils abonnés. Les résumés de la veille et du lendemain ne contiennent aucun nom de client.
+// Le partenaire chauffeur (partenaires_acces, migration 123) reçoit les siennes en thaï, à part et après celles des membres (partenaire.js) :
+// au passage « h1 », ses courses nouvelles, modifiées ou annulées et le rappel d'une heure avant ; au passage de la veille de l'entreprise Taxi,
+// ses courses de demain. Une panne de ce passage ne touche jamais les envois des membres.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { STATUTS_SUIVIS, DEPOT, changement, lireSuivi, notification } from "../ameliorations/calc.js";
 import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
+import { messageChangement, messageVeillePartenaire, coursesH1, h1Actif, messageH1Partenaire, cleVeille, cleH1 } from "./partenaire.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
@@ -130,11 +134,21 @@ Deno.serve(async (req) => {
           erreur = [erreur, `départs : ${String((err && err.message) || err)}`].filter(Boolean).join(" ; ").slice(0, 300);
         }
       }
+      // Le partenaire chauffeur : ses courses de demain, en thaï, à l'heure de la veille de son entreprise (comptes à part, hors du suivi des membres).
+      let partenaires = null;
+      if (t === "veille" && retenues.length) {
+        try {
+          partenaires = await partenairesVeille(db, retenues, cible, demande);
+        } catch (err) {
+          partenaires = { erreur: String((err && err.message) || err).slice(0, 300) };
+          console.error("rappel de la veille du partenaire :", partenaires.erreur);
+        }
+      }
       if (!demande.user_id) {
         const { error } = await db.from("rappels_suivi").insert({ type: t, cible, ...res, erreur, duree_ms: Date.now() - debut, organisation_id: org });
         if (error) console.error("suivi des rappels non écrit :", error.message);
       }
-      resultats.push({ organisation: org, fuseau, heure, type: t, cible, ...res, ...(erreur ? { erreur } : {}) });
+      resultats.push({ organisation: org, fuseau, heure, type: t, cible, ...res, ...(erreur ? { erreur } : {}), ...(partenaires ? { partenaires } : {}) });
     }
   }
   return json({ resultats }, resultats.some((r) => r.erreur) ? 500 : 200);
@@ -245,8 +259,16 @@ async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
     for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += res[k];
     if (erreur) erreurs.push(erreur);
   }
+  // Le partenaire chauffeur, après les membres et à part : ses courses changées et le rappel d'une heure avant.
+  let partenaires: Record<string, unknown>;
+  try {
+    partenaires = await partenairesH1(db, maintenant, demande);
+  } catch (err) {
+    partenaires = { erreur: String((err && err.message) || err).slice(0, 300) };
+    console.error("notifications du partenaire :", partenaires.erreur);
+  }
   const erreur = erreurs.join(" ; ").slice(0, 300);
-  return json({ type: "h1", ...total, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
+  return json({ type: "h1", ...total, ...(erreur ? { erreur } : {}), partenaires }, erreur ? 500 : 200);
 }
 
 async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number, organisation: string | null, fuseau: string) {
@@ -549,4 +571,120 @@ async function suivreAmeliorations() {
     }
   }
   return json({ suivies: (lignes.data || []).length, changees, envoyes });
+}
+
+// ---- Partenaire chauffeur (migration 123) : notifications en thaï ------------------------------------------------------------------------
+// Jamais de lecture des réservations ici : ses courses viennent de partenaire_notif_courses(user), la règle de son écran (partenaire_courses_de),
+// réduite aux colonnes d'une notification. Un compte désactivé ou dont l'accès est retiré n'a plus de course : rien ne part.
+// Avant la migration 123 (fonctions absentes), rien n'est fait, sans erreur toutes les 5 minutes.
+type Db = ReturnType<typeof createClient>;
+const fonctionAbsente = (e: { code?: string; message?: string } | null) => !!e && (["PGRST202", "42883", "42P01", "PGRST205"].includes(e.code || "") || /does not exist|could not find/i.test(e.message || ""));
+
+// Les comptes partenaires qui ont un téléphone abonné (`user_id` : un essai ciblé), avec leurs abonnements et leur profil.
+async function comptesPartenaires(db: Db, demande: { user_id?: string }) {
+  let q = db.from("partenaires_acces").select("user_id");
+  if (demande.user_id) q = q.eq("user_id", demande.user_id);
+  const acces = await q;
+  if (acces.error) return fonctionAbsente(acces.error) ? null : Promise.reject(new Error(acces.error.message));
+  const ids = [...new Set((acces.data || []).map((a) => a.user_id))];
+  if (!ids.length) return { ids: [], abos: [], profils: [] };
+  const [abos, profils] = await Promise.all([db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth").in("user_id", ids), db.from("profils").select("user_id, rappel_h1").in("user_id", ids)]);
+  for (const r of [abos, profils]) if (r.error) throw new Error(r.error.message);
+  const abonnes = new Set((abos.data || []).map((a) => a.user_id));
+  return { ids: ids.filter((id) => abonnes.has(id)), abos: abos.data || [], profils: profils.data || [] };
+}
+
+// Ses courses à notifier (aujourd'hui et la suite), ou null si la migration manque.
+async function coursesDuPartenaire(db: Db, userId: string) {
+  const { data, error } = await db.rpc("partenaire_notif_courses", { p_user: userId });
+  if (error) return fonctionAbsente(error) ? null : Promise.reject(new Error(error.message));
+  return (data || []) as Array<Record<string, unknown> & { id: string; date_service: string; entite_id: string; heure: string }>;
+}
+
+// Une clé posée = déjà envoyé : rend true si elle vient d'être posée (à envoyer). Un essai ciblé ne pose rien.
+async function marquer(db: Db, userId: string, cle: string, essai: boolean) {
+  if (essai) return true;
+  const { data, error } = await db.from("partenaires_notifs_envois").upsert({ user_id: userId, cle }, { onConflict: "user_id,cle", ignoreDuplicates: true }).select("cle");
+  if (error) throw new Error(error.message);
+  return !!(data && data.length);
+}
+
+async function envoyerAuPartenaire(db: Db, abos: Array<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string }>, userId: string, message: unknown, options: Record<string, unknown>, compte: { envoyes: number; retires: number; echecs: number }) {
+  const charge = JSON.stringify(message);
+  for (const abo of abos.filter((a) => a.user_id === userId)) {
+    try {
+      await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, charge, options);
+      compte.envoyes++;
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await db.from("abonnements_push").delete().eq("id", abo.id);
+        compte.retires++;
+      } else compte.echecs++;
+    }
+  }
+}
+
+// Passage « h1 » (toutes les 5 minutes) : 1. ses courses nouvelles, modifiées ou annulées ; 3. le rappel d'une heure avant.
+async function partenairesH1(db: Db, maintenant: number, demande: { user_id?: string }) {
+  const compte = { comptes: 0, changements: 0, h1: 0, envoyes: 0, retires: 0, echecs: 0 };
+  const comptes = await comptesPartenaires(db, demande);
+  if (!comptes) return { ...compte, note: "migration 123 absente" };
+  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
+  // 1. La base compare ses courses aux empreintes (verrou par compte) et rend ce qui est prêt. Pas pendant un essai ciblé : le passage marque
+  // les courses de tous les comptes partenaires.
+  if (!demande.user_id) {
+    const { data, error } = await db.rpc("partenaire_notifs_changements");
+    if (error) {
+      if (fonctionAbsente(error)) return { ...compte, note: "migration 123 absente" };
+      throw new Error(error.message);
+    }
+    for (const n of (data || []) as Array<{ user_id: string; reservation_id: string; genre: string; apercu: Record<string, unknown>; apercu_avant: Record<string, unknown> | null }>) {
+      compte.changements++;
+      await envoyerAuPartenaire(db, comptes.abos, n.user_id, messageChangement(n), { TTL: 12 * 3600, urgency: "high" }, compte);
+    }
+  }
+  if (!comptes.ids.length) return compte;
+  // 3. Une heure avant : réglages de l'entreprise (rappel allumé) et fuseau de son organisation.
+  const [reglages, entites, organisations] = await Promise.all([db.from("reglages").select("entite_id, valeur"), db.from("entites").select("id, organisation_id"), db.from("organisations").select("id, fuseau")]);
+  for (const r of [reglages, entites, organisations]) if (r.error) throw new Error(r.error.message);
+  const valeurDe = new Map((reglages.data || []).map((r) => [r.entite_id, r.valeur]));
+  const fuseauDe = (entiteId: string) => {
+    const ent = (entites.data || []).find((e) => e.id === entiteId);
+    const org = ent ? (organisations.data || []).find((o) => o.id === ent.organisation_id) : null;
+    return fuseauValide(org ? org.fuseau : null);
+  };
+  for (const userId of comptes.ids) {
+    compte.comptes++;
+    const courses = await coursesDuPartenaire(db, userId);
+    if (!courses || !courses.length) continue;
+    const entiteId = courses[0].entite_id;
+    if (!h1Actif(valeurDe.get(entiteId), comptes.profils.find((p) => p.user_id === userId))) continue;
+    const fuseau = fuseauDe(entiteId);
+    for (const x of coursesH1(courses, maintenant, { fuseau })) {
+      const cle = cleH1(x.course, fuseau);
+      if (!cle || !(await marquer(db, userId, cle, !!demande.user_id))) continue;
+      compte.h1++;
+      // TTL court : un rappel « dans 1 h » qui arrive deux heures plus tard n'a plus de sens.
+      await envoyerAuPartenaire(db, comptes.abos, userId, messageH1Partenaire(x), { TTL: 3600, urgency: "high" }, compte);
+    }
+  }
+  return compte;
+}
+
+// 2. Passage de la veille d'une organisation (`retenues` : ses entreprises dont la veille part maintenant) : ses courses de `demain`.
+async function partenairesVeille(db: Db, retenues: string[], demain: string, demande: { user_id?: string }) {
+  const compte = { comptes: 0, resumes: 0, envoyes: 0, retires: 0, echecs: 0 };
+  const comptes = await comptesPartenaires(db, demande);
+  if (!comptes || !comptes.ids.length) return compte;
+  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
+  for (const userId of comptes.ids) {
+    const courses = await coursesDuPartenaire(db, userId);
+    if (!courses || !courses.length || !retenues.includes(courses[0].entite_id)) continue;
+    compte.comptes++;
+    const message = messageVeillePartenaire(courses, demain);
+    if (!message || !(await marquer(db, userId, cleVeille(demain), !!demande.user_id))) continue;
+    compte.resumes++;
+    await envoyerAuPartenaire(db, comptes.abos, userId, message, { TTL: 6 * 3600 }, compte);
+  }
+  return compte;
 }

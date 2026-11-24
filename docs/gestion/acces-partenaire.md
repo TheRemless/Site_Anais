@@ -14,7 +14,7 @@ Il ne peut que saisir ou corriger SA commission sur une course de sa liste, tant
 
 Le compte n'est membre d'aucune entreprise. La base lui ferme toutes les tables et ne lui répond que par trois fonctions (`partenaire_mon_acces`, `partenaire_courses`, `partenaire_saisir_commission`). Contrôlé sur Postgres par `verif-acces-partenaire.mjs`.
 
-La commission saisie devient la « commission prévue » de la course, marquée « saisie par le partenaire » (`commission_partenaire`, `commission_partenaire_le`). Nani le voit dans la fiche de la course et dans « Commissions à demander ». Si elle la change, la commission redevient la sienne et passe en lecture seule pour lui. Le journal des nets note chaque saisie avec le compte. Aucune notification n'est envoyée.
+La commission saisie devient la « commission prévue » de la course, marquée « saisie par le partenaire » (`commission_partenaire`, `commission_partenaire_le`). Nani le voit dans la fiche de la course et dans « Commissions à demander ». Si elle la change, la commission redevient la sienne et passe en lecture seule pour lui. Le journal des nets note chaque saisie avec le compte. Cette saisie ne déclenche aucune notification.
 
 ## Détail de chaque course (migration 116)
 
@@ -65,12 +65,53 @@ La base refuse l'accès si le compte est déjà membre d'une entreprise, adminis
 
 3. Sur le téléphone de Mr. Brown : ouvrir gestion.zwaldtravelplanner.com, se connecter avec l'e-mail et le mot de passe, puis **Partager > Sur l'écran d'accueil** (iPhone) ou **Ajouter à l'écran d'accueil** (Android). L'écran s'ouvre directement en thaï.
 
+## Notifications sur son téléphone (migration 123)
+
+Trois notifications en thaï, sur les seules courses de son écran (même règle en base : `partenaire_courses_de`, appelée par `partenaire_courses()` et par la fonction d'envoi) :
+
+| Quand | Ce qu'elle dit | Ce qu'elle ne dit jamais |
+|---|---|---|
+| Une course de sa liste est créée, ou sa date, son heure, son lieu de prise en charge, sa destination, ses personnes changent, ou elle est annulée | Date, heure, trajet, personnes ; ce qui a changé ; le nom du client seulement pour une nouvelle course | Prix, commission, net, note, référence |
+| Le soir, à l'heure de la veille de l'entreprise Taxi (Réglages, rappels, 18 h par défaut) | Nombre de courses de demain, puis l'heure et le trajet de chacune. Rien s'il n'en a aucune | Nom de client |
+| Une heure avant chaque prise en charge (passage « h1 », toutes les 5 minutes) | Heure, trajet, personnes | Nom de client |
+
+Une rafale de changements sur une course ne donne qu'une notification : elle part quand la course n'a plus bougé depuis 10 minutes (empreinte dans `partenaires_notifs_courses`). Une course créée puis annulée dans ces 10 minutes ne donne rien. Le premier passage après l'activation enregistre ses courses sans rien envoyer. Une course qui sort de sa liste sans être annulée (confiée à une autre fiche, passée) est oubliée sans notification. Une course réservée à plus de 60 jours arrive comme « nouvelle » le jour où elle entre dans sa liste.
+
+### Mise en route (Jérémy)
+
+1. Sauvegarde de la base, puis Supabase, **SQL Editor** : `docs/gestion/migration-123-notifications-partenaire.sql` (après les 115, 116 et 119). Retour : `retour-123-notifications-partenaire.sql`.
+2. Déployer la fonction **rappels** (elle porte `partenaire.js`) : `supabase functions deploy rappels`. Aucun nouveau cron : elle passe déjà toutes les heures (veille) et toutes les 5 minutes (h1).
+3. Fusionner la PR (écran thaï avec le bouton).
+4. Sur le téléphone de Mr. Brown, l'app ouverte depuis l'écran d'accueil (obligatoire sur iPhone, l'écran le dit en thaï) : **เปิดการแจ้งเตือน**, puis autoriser. Une notification d'essai s'affiche et le bloc passe à **เปิดการแจ้งเตือนแล้ว ✓**.
+5. Contrôle, dans le SQL Editor :
+
+```sql
+-- Le téléphone de Mr. Brown est abonné, et ses courses sont suivies (après le passage suivant, 5 minutes au plus).
+select (select count(*) from abonnements_push p where p.user_id = a.user_id) as telephones,
+       (select count(*) from partenaires_notifs_courses x where x.user_id = a.user_id) as courses_suivies
+from partenaires_acces a;
+```
+
+La réponse de la fonction (journal Supabase, passage « h1 ») porte un bloc `partenaires` : changements, rappels une heure avant, envois, échecs. Les lignes de `rappels_suivi` restent celles des membres.
+
+### Couper les notifications
+
+- Lui-même : **ปิดการแจ้งเตือน** sur son écran (retire l'abonnement de ce téléphone), ou les réglages du téléphone.
+- Le rappel d'une heure avant seulement : `update profils set rappel_h1 = false where user_id = (select user_id from partenaires_acces);` (ou couper « Rappel 1 h avant » de l'entreprise Taxi, qui le coupe aussi pour l'équipe).
+- Le résumé du soir suit l'heure de la veille de l'entreprise Taxi : la couper la coupe aussi pour l'équipe.
+- Tout, tout de suite : désactiver le compte ou le partenaire (voir ci-dessous). Au passage suivant, ses empreintes sont effacées et plus rien ne part. Supprimer sa ligne `partenaires_acces` efface tout (cascade).
+- Tous ses téléphones : `delete from abonnements_push where user_id = (select user_id from partenaires_acces);`
+
+Rejouer les migrations 116 ou 119, ou leur retour en arrière, rend à `partenaire_courses()` sa forme d'avant : l'écran reste juste, mais la règle n'est plus commune. Relancer alors la 123.
+
 ## Couper l'accès
 
 - Tout de suite : Gestion, Administration, Utilisateurs, désactiver le compte. Ou désactiver le partenaire.
 - Pour de bon : `delete from partenaires_acces where user_id = (select user_id from profils where email = 'EMAIL_DE_MR_BROWN');`
 
 ## Textes thaïs à faire relire
+
+Notifications : `supabase/functions/rappels/partenaire.js` (objet `TH_NOTIF`), bouton de l'écran : `TH.notif_*` dans `courses-partenaire-calc.mjs`. Le français est en commentaire à côté de chaque texte.
 
 Tous dans `src/gestion/js/courses-partenaire-calc.mjs` (objet `TH`, le français en commentaire). À faire relire par Nani ou Mook, surtout :
 

@@ -46,10 +46,13 @@ export async function desactiver(store) {
 }
 
 // Notification d'essai affichée par le téléphone lui-même : elle prouve que l'affichage fonctionne, pas que le serveur écrit.
-export async function essai() {
+// `textes` : { titre, corps } pour l'écran thaï du partenaire chauffeur (il ne lit pas le français).
+export async function essai(textes = null) {
   const reg = await enregistrement();
   if (!reg) return;
-  await reg.showNotification(tr("Rappels activés"), { body: tr("Vous recevrez ici les services de demain et les clients à recontacter."), icon: "/gestion/assets/zwald-192.png", tag: "essai" });
+  const titre = textes ? textes.titre : tr("Rappels activés");
+  const corps = textes ? textes.corps : tr("Vous recevrez ici les services de demain et les clients à recontacter.");
+  await reg.showNotification(titre, { body: corps, icon: "/gestion/assets/zwald-192.png", tag: "essai" });
 }
 
 // Retire l'appareil à la déconnexion : un téléphone déconnecté ne doit plus recevoir les chiffres du compte.
