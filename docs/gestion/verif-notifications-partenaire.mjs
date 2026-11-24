@@ -269,6 +269,42 @@ ok((await passage()).length === 0 && !(await suivies()).includes(R.parc) && !(aw
 r = await essaie(u.brown, "select id from partenaire_courses() where id = $1", [R.parc]);
 ok(r.ok && r.rows.length === 1, "… alors qu'ils restent sur son écran (rien ne change pour l'écran)");
 
+// ---- Relecture de code du 24.11.2026 : filtre des frais de parc resserré, date effacée ---------------------------------------------
+// Une vraie course vers un parc, sans partenaire comme la plupart des courses de Taxi : notifiée.
+R.versParc = await course(ent.taxi, null, 3);
+await db.query("update reservations set libelle = 'Private taxi: Hotel Test → Mu Ko Lanta National Park' where id = $1", [R.versParc]);
+await passage();
+await vieillir();
+n = await passage();
+ok(n.length === 1 && n[0].genre === "nouvelle" && n[0].reservation_id === R.versParc, "course vers un parc national (libellé qui le nomme) : notifiée");
+// Des frais rangés dans une prestation de la famille « frais » : écartés, quel que soit leur libellé.
+const frais = (await un("insert into prestations (entite_id, famille, groupe, libelle) values ($1, 'frais', 'Test', 'Droits test') returning id", [ent.taxi])).id;
+R.droits = await course(ent.taxi, null, 3);
+await db.query("update reservations set prestation_id = $2, libelle = 'Droits test' where id = $1", [R.droits, frais]);
+await db.query("update reservations set libelle = 'Park fees Koh Test' where id = $1", [R.parc]);
+await passage();
+await vieillir();
+ok((await passage()).length === 0 && !(await suivies()).includes(R.droits), "prestation « frais » ou libellé « Park fees… » : jamais notifiés");
+// Une course notifiée qui devient des frais de parc reste sur son écran : oubliée sans « ne vous est plus confiée ».
+await db.query("update reservations set prestation_id = $2 where id = $1", [R.versParc, frais]);
+await passage();
+await vieillir();
+ok((await passage()).length === 0 && !(await suivies()).includes(R.versParc), "devenue des frais mais encore sur son écran : oubliée, jamais « retirée »");
+// Date effacée : la course sort de son écran, il est prévenu une fois ; une nouvelle date la ramène comme nouvelle course.
+R.sansDate = await notifiee();
+await db.query("update reservations set date_service = null where id = $1", [R.sansDate]);
+await passage();
+await vieillir();
+n = await passage();
+ok(n.length === 1 && n[0].genre === "sans_date" && n[0].reservation_id === R.sansDate && n[0].apercu.date_service === (await jour(6)), "date effacée : notifiée avec la date qu'il avait vue");
+await vieillir();
+ok((await passage()).length === 0 && (await suivies()).includes(R.sansDate), "une seule fois, la course reste suivie");
+await db.query("update reservations set date_service = $2 where id = $1", [R.sansDate, await jour(8)]);
+await passage();
+await vieillir();
+n = await passage();
+ok(n.length === 1 && n[0].genre === "nouvelle" && n[0].apercu.date_service === (await jour(8)), "nouvelle date : de nouveau une course");
+
 // ---- Compte désactivé, partenaire désactivé, accès retiré -------------------------------------------------------------------------
 await db.query("update profils set actif = false where user_id = $1", [u.brown]);
 await db.query("update reservations set heure_pickup = '06:00' where id = $1", [R.avant]);
