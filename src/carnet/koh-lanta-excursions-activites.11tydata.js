@@ -332,12 +332,6 @@ const guide = {
       id: "bateau",
       num: 1,
       titre: "Les tours en bateau",
-      photos: [
-        { src: "/images/carnet-koh-lanta-rochers.jpg", alt: "Deux rochers calcaires qui sortent de la mer, vus depuis un bateau" },
-        { src: "/images/carnet-koh-lanta-plage-koh-rok.jpg", alt: "Plage de sable blanc et eau turquoise, une île boisée au fond" },
-        { src: "/images/carnet-koh-lanta-plage-kradan.jpg", alt: "Plage de sable clair, branche d’arbre mort et visiteurs en gilet orange au bord de l’eau" },
-        { src: "/images/carnet-koh-lanta-mangroves.jpg", alt: "Long tail boat sur un canal de la mangrove" }
-      ],
       notePrix: HAUTE_SAISON,
       optionsTitre: "Les sorties",
       groupes: [
@@ -346,22 +340,15 @@ const guide = {
         { id: "ll-phi-phi", titre: "Koh Phi Phi", repliable: true, texte: "Maya Bay, Pileh Lagoon, Viking Cave et Monkey Beach le matin, puis le déjeuner sur Phi Phi Don, Bamboo Island et du temps libre. En speedboat partagé ou en bateau privé.", offres: MIN("koh-phi-phi", ["join-in-speedboat", "sunset", "private-longtail", "private-speedboat"]) },
         { id: "ll-mangroves", titre: "La mangrove", repliable: true, texte: "Une demi-journée dans la mangrove de la côte est de Koh Lanta, en longtail dans des canaux étroits où vivent des singes et des oiseaux, avec le déjeuner.", offres: MIN("mangroves", ["longtail-half-day", "longtail-old-town-viewpoint", "fishing-park"]) },
         { id: "ll-peche", titre: "Pêche sur un radeau privé", repliable: true, texte: "Une demi-journée de pêche sur un radeau en bois dans le calme d’Ao Lanta, avec un déjeuner de fruits de mer frais sur le radeau.", offres: ["fishing-trip--private-raft"] },
-        { id: "ll-lever", titre: "Radeau au lever du soleil", repliable: true, texte: "Un radeau en bois rien que pour votre groupe, dans la mangrove de Thung Yee Peng avant le lever du soleil, avec le petit déjeuner à bord.", offres: ["sunrise-raft--raft-sunrise"] },
-        { id: "ll-diner", titre: "Radeau et dîner au coucher du soleil", repliable: true, texte: "La mangrove en fin de journée, un dîner de fruits de mer aux chandelles sur votre radeau, puis le plancton qui brille dans l’eau noire.", offres: ["sunset-dinner-raft--raft-sunset-dinner"] },
-        { id: "ll-speedboat", titre: "Speedboat et ferry", repliable: true, texte: "Un trajet en speedboat ou en ferry depuis Koh Lanta vers Phi Phi, Phuket, les autres îles ou Langkawi.", offres: ["speedboat-ferry"] }
+        { id: "ll-lever", solo: true, titre: "Radeau au lever du soleil", repliable: true, texte: "Un radeau en bois rien que pour votre groupe, dans la mangrove de Thung Yee Peng avant le lever du soleil, avec le petit déjeuner à bord.", offres: ["sunrise-raft--raft-sunrise"] },
+        { id: "ll-diner", solo: true, titre: "Radeau et dîner au coucher du soleil", repliable: true, texte: "La mangrove en fin de journée, un dîner de fruits de mer aux chandelles sur votre radeau, puis le plancton qui brille dans l’eau noire.", offres: ["sunset-dinner-raft--raft-sunset-dinner"] },
+        { id: "ll-speedboat", solo: true, titre: "Speedboat et ferry", repliable: true, texte: "Un trajet en speedboat ou en ferry depuis Koh Lanta vers Phi Phi, Phuket, les autres îles ou Langkawi.", offres: ["speedboat-ferry"] }
       ]
     },
     {
       id: "activites",
       num: 2,
       titre: "Les activités",
-      photos: [
-        { src: "/images/carnet-koh-lanta-quad.jpg", alt: "Quads garés sur une piste en terre avec vue sur la campagne" },
-        { src: "/images/carnet-koh-lanta-elephants.jpg", alt: "Deux éléphants dans la végétation, au bord d’un point d’eau" },
-        { src: "/images/carnet-koh-lanta-batik.jpg", alt: "Peinture de batik colorée d’une femme à la coiffe ornée, un artiste y ajoute des détails" },
-        { src: "/images/carnet-koh-lanta-recif.jpg", alt: "Corail et petits poissons sur un récif" },
-        { src: "/images/carnet-koh-lanta-vieille-ville.jpg", alt: "Rue de Lanta Old Town avec ses maisons en bois" }
-      ],
       notePrix: HAUTE_SAISON,
       optionsTitre: "Les activités",
       groupes: [
@@ -373,7 +360,7 @@ const guide = {
         { id: "la-kayak", titre: "Kayak", repliable: true, texte: "Les grottes marines, la mangrove et les îles en kayak, d’une demi-journée à une journée.", offres: MIN("kayak", ["sea-cave-mangrove-half-day", "sea-cave-island-hopping-1-day", "love-kayak-1-day"]).concat(["mangrove-kayaking--mangrove-kayak-half-day"]) },
         { id: "la-plongee", titre: "Plongée", repliable: true, texte: "Une première plongée sans expérience (dès 8 ans), des plongées pour plongeurs certifiés et du snorkeling sur le bateau de plongée, en petits groupes.", offres: MIN("scuba-diving", ["one-day-experience", "fun-dives", "snorkelling-on-dive-boat", "catamaran-special-trips", "courses", "rentals-and-discounts"]) },
         { id: "la-location", titre: "Voitures et scooters", repliable: true, texte: "Des scooters, de grosses motos, des voitures et des pick-up pour explorer l’île.", offres: MIN("rental", ["cars-and-pick-ups", "big-bikes", "scooters-and-small-bikes"]) },
-        { id: "la-tour", titre: "Tour de l’île", repliable: true, offres: ["island-day-tour"] }
+        { id: "la-tour", solo: true, titre: "Tour de l’île", repliable: true, offres: ["island-day-tour"] }
       ]
     },
     {
@@ -393,4 +380,55 @@ const guide = {
   ]
 };
 
-module.exports = construire({ guide, reglages, offres });
+// Ouverture du guide (carte dessinée, légende, photos par sortie). Positions en longitude et latitude ; la carte est fabriquée au build (carte.js).
+// Les clés de `reperes` et de `points` servent seulement à relier la carte, la légende et le repère mobile. `vers` est l'ancre d'un groupe ou d'une section.
+const P = "/images/carnet-koh-lanta-";
+const ouverture = {
+  atlas: ["bateau"],
+  fin: ["choisir"],
+  legende: [{ section: "bateau", titre: "En bateau" }, { section: "activites", titre: "Sur l’île" }],
+  sections: {
+    bateau: { mise: "sorties" },
+    activites: { mise: "lignes", script: "sur l’île" }
+  },
+  photos: {
+    "ll-4-islands": { src: P + "4-islands.jpg", alt: "Falaise calcaire couverte de végétation au-dessus d’une eau verte, des nageurs au loin", haute: true },
+    "ll-koh-rok": { src: P + "koh-rok.jpg", alt: "Rochers et îlots dans une eau turquoise, ciel de nuages", haute: true },
+    "ll-phi-phi": { src: P + "phi-phi.jpg", alt: "Falaise boisée au-dessus d’une eau turquoise, un bateau au loin", position: "50% 60%" },
+    "ll-mangroves": { src: P + "mangroves-ciel.jpg", alt: "Mangrove vue du ciel, un chenal qui serpente entre les palétuviers" },
+    "ll-lever": { src: P + "radeau-aube.jpg", alt: "Rivière calme bordée de mangrove, ciel nuageux", position: "60% 50%" },
+    "ll-diner": { src: P + "radeau-soir.jpg", alt: "Table dressée pour deux sur le pont d’un radeau, montagnes et ciel de coucher de soleil au fond" },
+    "la-atv": { src: P + "quad.jpg", alt: "Quads garés sur une piste en terre avec vue sur la campagne" },
+    "la-elephants": { src: P + "elephants.jpg", alt: "Deux éléphants dans la végétation, au bord d’un point d’eau" },
+    "la-cuisine": { src: P + "cuisine.jpg", alt: "Fleurs sculptées dans des légumes, disposées autour d’un bol" },
+    "la-batik": { src: P + "batik.jpg", alt: "Peinture de batik colorée d’une femme à la coiffe ornée, un artiste y ajoute d’autres détails" },
+    "la-plongee": { src: P + "recif.jpg", alt: "Corail et petits poissons sur un récif" }
+  },
+  photoFin: { src: P + "hero.jpg", alt: "Eau calme entre deux massifs calcaires boisés, ciel nuageux", position: "38% 50%" },
+  carte: {
+    geo: "osm-islands",
+    cadre: { lon0: 98.725, lon1: 99.385, lat0: 7.09, lat1: 7.86 },
+    iles: ["lanta-yai", "lanta-noi", "ngai", "muk", "kradan", "ma", "chueak-nai", "chueak-nok", "rok-yai", "phiphi-don", "phiphi-le", "bamboo", "haa", "talabeng", "bubu"],
+    libelle: "Carte schématique des îles au sud de Koh Lanta : Koh Lanta, Koh Chuek, Koh Mook, Koh Ngai, Koh Ma, Koh Kradan, Koh Rok, Koh Haa et Koh Phi Phi",
+    reperes: [
+      { cle: "p4i", vers: "ll-4-islands", nom: "Les 4 Islands", cible: [99.2175, 7.391], appel: [99.142, 7.372], photo: P + "4-islands.jpg", position: "53% 47%" },
+      { cle: "prok", vers: "ll-koh-rok", nom: "Koh Rok et Koh Haa", cible: [99.072, 7.2235], appel: [98.965, 7.222], photo: P + "koh-rok.jpg", position: "53% 59%" },
+      { cle: "pphi", vers: "ll-phi-phi", nom: "Koh Phi Phi", cible: [98.774, 7.752], appel: [98.89, 7.775], photo: P + "phi-phi.jpg", position: "51% 50%" },
+      { cle: "pmang", vers: "ll-mangroves", nom: "La mangrove", cible: { rive: { ile: "lanta-yai", cote: "e", lat: 7.53 } }, appel: [99.245, 7.592], photo: P + "mangroves-ciel.jpg", position: "48% 55%" },
+      { cle: "plan", vers: "activites", nom: "Sur l’île", cible: { rive: { ile: "lanta-yai", cote: "w", lat: 7.55 } }, appel: [98.885, 7.598], photo: P + "elephants.jpg", position: "53% 50%", sous: { compte: "activités" } }
+    ],
+    points: [{ cle: "prok", vers: "ll-koh-rok", nom: "Koh Haa", aria: "Koh Haa : Koh Rok et Koh Haa", cible: [98.8985, 7.4337] }],
+    noms: [
+      { t: "Koh Lanta", at: { rive: { ile: "lanta-yai", cote: "w", lat: 7.47 } }, ancre: "e", dx: -10, dy: 12, classe: "big" },
+      { t: "Koh Lanta Noi", at: [99.088, 7.692], ancre: "n", dy: -4, classe: "min" },
+      { t: "Koh Ngai", at: [99.2175, 7.391], ancre: "e", dx: -30, dy: -40, classe: "min" },
+      { t: "Koh Ma", at: [99.2235, 7.4175], ancre: "n", dx: 3, dy: -7, classe: "min" },
+      { t: "Koh Chuek", at: [99.234, 7.404], ancre: "w", dx: 9, dy: -3, classe: "min" },
+      { t: "Koh Mook", at: [99.298, 7.352], ancre: "s", dx: -6, dy: 4 },
+      { t: "Koh Kradan", at: [99.2525, 7.298], ancre: "s", dx: 22, dy: 6 },
+      { t: "Koh Rok", at: [99.083, 7.2235], ancre: "w", dx: 20, dy: 3, classe: "min" }
+    ]
+  }
+};
+
+module.exports = construire({ guide, reglages, offres, ouverture });

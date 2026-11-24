@@ -123,8 +123,8 @@ const guide = {
       num: 1,
       titre: "Les tours privés",
       photos: [
-        { src: "/images/carnet-ao-nang-bateau-interieur.jpg", alt: "Intérieur d’un bateau privé, bancs blancs et rideaux" },
-        { src: "/images/carnet-ao-nang-fruits.jpg", alt: "Plateau de fruits découpés tenu à la main au-dessus du sable, au bord d’une eau peu profonde" },
+        { src: "/images/carnet-ao-nang-hero.jpg", alt: "Proue d’un long tail boat face à une falaise calcaire et à une plage, eau verte", position: "50% 60%" },
+        { src: "/images/carnet-ao-nang-bateau-interieur.jpg", alt: "Intérieur d’un bateau privé, bancs blancs et rideaux" }
       ],
       notePrix: "Réservez suffisamment à l’avance : en haute saison, les prix peuvent varier selon les demandes.",
       optionsTitre: "Les options",
@@ -163,4 +163,28 @@ const guide = {
   ]
 };
 
-module.exports = construire({ guide, reglages, offres });
+// Ouverture du guide (carte des destinations, légende, photo de fin). Les destinations n'ont pas de photo propre : leurs repères sont un point et un nom, pas un médaillon.
+// Géométrie OpenStreetMap, src/_includes/geo/carnet-aonang.json. `sous.destination` : « dès X THB » = le plus bas prix d'une formule dont l'identifiant commence par cette clé.
+const ouverture = {
+  atlas: ["tours-prives"],
+  legende: [{ section: "tours-prives", titre: "Les tours privés" }],
+  sections: { "tours-prives": { mise: "modes" } },
+  photoFin: { src: "/images/carnet-ao-nang-fruits.jpg", alt: "Plateau de fruits découpés tenu à la main au-dessus du sable, au bord d’une eau peu profonde", position: "50% 50%" },
+  carte: {
+    geo: "carnet-aonang",
+    nord: [66, 82],
+    cadre: { lon0: 98.54, lon1: 99.04, lat0: 7.68, lat1: 8.1 },
+    libelle: "Carte schématique de la côte de Krabi autour d’Ao Nang et de Railay, avec les îles Hong, la zone des 4 Islands et les îles Phi Phi",
+    reperes: [
+      { cle: "hong", vers: "tours-prives", nom: "Hong Islands", cible: [98.679, 8.078], ancre: "s", dx: 14, dy: 22, sous: { destination: "hong" } },
+      { cle: "4i", vers: "tours-prives", nom: "4 Islands", cible: [98.797, 7.958], ancre: "e", dx: -16, sous: { destination: "4-islands" } },
+      { cle: "phi", vers: "tours-prives", nom: "Phi Phi", cible: [98.775, 7.742], ancre: "e", dx: -40, sous: { destination: "phi-phi" } }
+    ],
+    noms: [
+      { t: "Ao Nang", at: [98.845, 8.06], ancre: "n", classe: "big sur-terre" },
+      { t: "Railay", at: [98.8384, 8.0117], ancre: "e", dx: 4, dy: 22 }
+    ]
+  }
+};
+
+module.exports = construire({ guide, reglages, offres, ouverture });

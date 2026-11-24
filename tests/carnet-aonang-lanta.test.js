@@ -419,6 +419,14 @@ test("message Gestion : le transfert depuis l'hôtel n'est jamais un extra, une 
   assert.doesNotMatch(sans, /Hotel transfer/);
 });
 
+// Koh Lanta : une mention commune à toutes les offres d'un groupe (droits du parc, saison) est dite une fois, à la fin du groupe. Le bloc d'une offre = son groupe entier.
+function blocGroupe(doc, id) {
+  const i = doc.indexOf(`id="offre-${id}"`);
+  const debut = Math.max(doc.lastIndexOf('<article class="cg-sortie"', i), doc.lastIndexOf('<details class="cg-act"', i));
+  const fins = ['<article class="cg-sortie"', '<details class="cg-act"', '<section class="cg-chap', '<section class="cg-close'].map((m) => doc.indexOf(m, i)).filter((n) => n > 0);
+  return doc.slice(debut, Math.min(...fins));
+}
+
 test("Phi Phi : droits du parc 400 / 200 sans âge ni gratuité affichés, la ligne du message ne présume pas d'âge", () => {
   for (const id of ["koh-phi-phi--join-in-speedboat", "koh-phi-phi--sunset"]) {
     const o = cfgLa.offres[id];
@@ -431,8 +439,8 @@ test("Phi Phi : droits du parc 400 / 200 sans âge ni gratuité affichés, la li
     assert.ok(JSON.parse(f.calls[0].opts.body).message.split("\n").includes("Park fee: about 1,000 THB"));
   }
   const doc = read(PAGE_LA);
-  const carte = doc.slice(doc.indexOf('id="offre-koh-phi-phi--sunset"'), doc.indexOf("</article>", doc.indexOf('id="offre-koh-phi-phi--sunset"')));
-  const droits = carte.match(/<p class="cg-droits">Entrée du parc[^<]*<\/p>/)[0];
+  const carte = blocGroupe(doc, "koh-phi-phi--sunset");
+  const droits = carte.match(/<p class="cg-droits[^"]*">Entrée du parc[^<]*<\/p>/)[0];
   assert.match(droits, /400&nbsp;THB par adulte, 200&nbsp;THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.<\/p>$/);
   assert.doesNotMatch(droits, /\d ans|gratuit/i);
   // Koh Rok et 4 Islands : le site publie l'âge (4 à 11 ans, gratuit avant 4 ans)
@@ -551,8 +559,8 @@ test("titres : chaque groupe replié de Koh Lanta est un h3 et ses offres des h4
     niveaux.forEach((n, i) => { if (i) assert.ok(n <= niveaux[i - 1] + 1, `${f} : saut de h${niveaux[i - 1]} à h${n} (titre n°${i})`); });
   }
   const la = read(PAGE_LA);
-  assert.equal((la.match(/<summary><h3 class="cg-prod-titre"/g) || []).length, 17, "17 groupes repliés");
-  assert.doesNotMatch(la, /<span class="cg-prod-titre"/);
+  assert.equal((la.match(/<h3 class="cg-st"/g) || []).length + (la.match(/<summary>\s*(?:<figure[^>]*>[\s\S]*?<\/figure>\s*)?<h3 class="cg-act-n"/g) || []).length, 17, "17 groupes : 8 sorties et 9 activités, chacun un h3");
+  assert.doesNotMatch(la, /<span class="cg-act-n"/);
 });
 
 test("« dès » d'un groupe replié = le plus petit prix ADULTE (ou par bateau) de ses offres, jamais un tarif enfant", () => {
@@ -565,7 +573,13 @@ test("« dès » d'un groupe replié = le plus petit prix ADULTE (ou par bateau)
   for (const sec of la.guide.sections) for (const g of sec.groupes || []) {
     if (!g.repliable) continue;
     const prix = g.offres.map((id) => prixMinimum(offres[id])).filter((x) => x !== null);
-    if (!prix.length) { assert.ok(!new RegExp(g.titre + " dès").test(html), `${g.titre} : aucun « dès » sans prix`); continue; }
+    if (!prix.length) {
+      // pas de prix chiffré : « dès » n'est permis que si le fait est écrit dans l'offre (location : « À partir de 250 THB par 24 heures »)
+      const loc = g.offres.flatMap((id) => (offres[id].faits || []).map((f) => (f.match(/^À partir de (\d+) THB par 24 heures/) || [])[1]).filter(Boolean));
+      if (loc.length) assert.ok(html.includes(`${g.titre} dès ${Math.min(...loc.map(Number))} THB par 24 h`), `${g.titre} : « dès » repris du fait de l'offre`);
+      else assert.ok(!new RegExp(g.titre + " dès").test(html), `${g.titre} : aucun « dès » sans prix`);
+      continue;
+    }
     const mini = Math.min(...prix);
     assert.equal(g.des, mini, `${g.titre} : des = minimum des offres`);
     assert.equal(g.des, attendu[g.titre], `${g.titre} : valeur attendue`);
@@ -591,14 +605,14 @@ test("offres sur demande d'un parc : les droits d'entrée sont dits comme sur le
   assert.deepEqual(regle("koh-phi-phi--private-longtail"), regle("koh-phi-phi--join-in-speedboat"));
   assert.deepEqual(regle("koh-phi-phi--private-speedboat"), regle("koh-phi-phi--sunset"));
   const doc = read(PAGE_LA);
-  const carte = (id) => texteVisible(doc.slice(doc.indexOf(`id="offre-${id}"`), doc.indexOf("</article>", doc.indexOf(`id="offre-${id}"`)))).replace(/\s+/g, " ");
+  const carte = (id) => texteVisible(blocGroupe(doc, id)).replace(/\s+/g, " ");
   for (const id of ["4-islands--private-speedboat", "koh-rok-koh-haa--private-speedboat", "koh-phi-phi--private-longtail", "koh-phi-phi--private-speedboat"]) {
     assert.match(carte(id), /Entrée du parc, en plus du prix : /, id);
     assert.match(carte(id), /Prix sur demande/, id);
   }
   assert.match(carte("4-islands--private-speedboat"), /200 THB par adulte, 100 THB par enfant \(de 4 à 11 ans\), gratuit avant 4 ans/);
   assert.match(carte("koh-phi-phi--private-speedboat"), /400 THB par adulte, 200 THB par enfant\. Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\./);
-  assert.doesNotMatch(carte("koh-phi-phi--private-speedboat"), /\d ans|gratuit/, "aucun âge présumé pour Phi Phi");
+  assert.doesNotMatch(carte("koh-phi-phi--private-speedboat").match(/Entrée du parc, en plus du prix : [^.]*\.[^.]*\./)[0], /\d ans|gratuit/, "aucun âge présumé pour Phi Phi");
   const f = fakeFetch();
   B.submitRequest(cfgLa, "4-islands--private-speedboat", { ...BASE, adults: 2, ages: ["6"] }, { fetch: f, now: NOW, pageUrl: "https://zwaldtravelplanner.com/carnet/x-abc123/", rand: () => 0 });
   const body = JSON.parse(f.calls[0].opts.body);
@@ -620,8 +634,8 @@ test("droits du parc : phrase vendeur unique, plus aucun « à confirmer » sur 
     const t = texteVisible(read(f)).replace(/\s+/g, " ");
     assert.ok(t.includes(SENTENCE), f);
     assert.doesNotMatch(t, /montants? à confirmer|à confirmer au moment de la réservation|tarif étranger/i, f);
-    const droits = [...read(f).matchAll(/<p class="cg-droits">(Entrée du parc[^<]*)<\/p>/g)].map((m) => m[1]);
-    assert.ok(droits.length >= 5, f);
+    const droits = [...read(f).matchAll(/<p class="cg-droits[^"]*">(Entrée du parc[^<]*)<\/p>/g)].map((m) => m[1]);
+    assert.ok(droits.length >= (f === PAGE_LA ? 3 : 5), f + " : " + droits.length + " mentions des droits du parc");
     for (const d of droits) assert.match(d, /Droit d’entrée du parc national, fixé par le parc, à régler sur place en espèces\.$/, f);
   }
   const ao = texteVisible(read(PAGE_AO)).replace(/\s+/g, " ");

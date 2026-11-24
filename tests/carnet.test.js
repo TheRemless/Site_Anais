@@ -169,7 +169,7 @@ test("carnet : le guide Koh Samui affiche les prix des offres en THB", () => {
   for (const n of prix) assert.ok(doc.includes(`<span class="cg-price">${n}&nbsp;THB</span>`), n);
   assert.ok(doc.includes('<span class="cg-price">700&nbsp;THB</span>'));
   assert.equal((doc.match(/<span class="cg-price">50&nbsp;THB<\/span>/g) || []).length, 2, "50 THB : Koh Madsum et Koh Rap");
-  assert.doesNotMatch(doc, /490/, "plus de repère en CHF");
+  assert.doesNotMatch(doc.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/ (?:style|d|srcset|href|src)="[^"]*"/g, ""), /490/, "plus de repère en CHF (hors dessin de la carte et attributs)");
   // Droits d'entrée : à payer sur place, en plus, jamais « inclus » (Ang Thong, petit groupe compris)
   assert.match(doc, /À payer sur place, hors total/);
   assert.equal((doc.match(/Entrée du parc, en plus du prix[\s\u202f]: 300&nbsp;THB par adulte, 150&nbsp;THB par enfant \(de 3 à 14 ans et de moins de 1,40 m\), gratuit avant 3 ans\. À payer sur place, en espèces, au parc/g) || []).length, 4, "règle officielle du parc sur les 4 offres Ang Thong");
@@ -192,7 +192,7 @@ test("carnet : aucun script ni bandeau Google, aucun bouton WhatsApp flottant ; 
   assert.doesNotMatch(privee, /wa-fab/, "pas de bouton WhatsApp flottant");
   assert.doesNotMatch(privee, />Cookies</, "pas de lien « Cookies » mort dans le pied de page");
   const scripts = [...privee.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1].replace(/\?.*/, ""));
-  assert.deepEqual(scripts.sort(), ["/js/carnet-booking.js", "/js/site.js"], "seuls les scripts du site et de la feuille : ni consent.js ni currency.js (CDN tiers)");
+  assert.deepEqual(scripts.sort(), ["/js/carnet-booking.js", "/js/carnet-nav.js", "/js/site.js"], "seuls les scripts du site, de la navigation du guide et de la feuille : ni consent.js ni currency.js (CDN tiers)");
   for (const f of ["src/js/carnet-booking.js"]) assert.doesNotMatch(read(f), /gtag|dataLayer|ZW_analytics|consent/i, f + " ne dépend ni de Google ni du consentement");
   for (const url of ["index.html", "services/index.html", "temples-coutumes-thailande/index.html", "en/index.html"]) {
     const doc = read(path.join("_site", url));
@@ -213,9 +213,9 @@ test("carnet : aucun numéro de téléphone en dur dans les gabarits, le script 
     assert.doesNotMatch(source, /\b\d{9,}\b/, f + " : numéro en dur");
     assert.ok(!source.includes(digits), f + " : le numéro de business.js est écrit en dur");
   }
-  assert.match(read("src/_includes/carnet-layout.njk"), /wa\.me\/\{\{ business\.telephone \| replace\('\+', ''\) \}\}/);
+  assert.match(read("src/_includes/carnet-guide.njk"), /wa\.me\/\{\{ business\.telephone \| replace\('\+', ''\) \}\}/);
   const doc = read(samui.built);
-  const fin = doc.slice(doc.indexOf('class="cg-end"'));
+  const fin = doc.slice(doc.indexOf('id="fin"'));
   assert.ok(fin.includes(`href="https://wa.me/${digits}?text=`), "le bouton de fin de page pointe sur le numéro de business.js");
 });
 

@@ -25,7 +25,19 @@ function prixMinimum(o) {
   return prix.length ? Math.min(...prix) : null;
 }
 
-function construire({ guide: guideBrut, reglages, offres }) {
+// « dès X THB » d'un groupe d'offres, pour la légende et la carte : le plus petit prix adulte de ses offres affichées. Une offre de location dit « À partir de X THB par 24 heures »
+// dans ses faits (pas de prix chiffré) : ce prix-là sert alors, avec « par 24 h ». Rien de chiffré : « Sur demande ».
+function desGroupe(g, offres) {
+  const liste = (g.offres || []).map((id) => offres[id]).filter(Boolean);
+  const min = liste.map(prixMinimum).filter((n) => n !== null && n !== undefined);
+  if (min.length) return { v: Math.min(...min), texte: "dès " + thb(Math.min(...min)) };
+  const loc = liste.flatMap((o) => (o.faits || []).map((f) => (f.match(/^À partir de ([\d’' \u00a0]+) THB par 24 heures/) || [])[1]).filter(Boolean)).map((t) => Number(t.replace(/\D/g, "")));
+  if (loc.length) return { v: Math.min(...loc), texte: "dès " + thb(Math.min(...loc)) + " par 24\u00a0h" };
+  return { v: null, texte: "Sur demande" };
+}
+const thb = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, "’") + "\u00a0THB";
+
+function construire({ guide: guideBrut, reglages, offres, ouverture }) {
   // Chaque groupe replié porte son « dès » calculé sur ses offres affichées.
   const guide = { ...guideBrut, sections: (guideBrut.sections || []).map((sec) => ({ ...sec, groupes: sec.groupes && sec.groupes.map((g) => {
     if (!g.repliable) return g;
@@ -36,6 +48,7 @@ function construire({ guide: guideBrut, reglages, offres }) {
   return {
     guide,
     reglages,
+    ouverture,
     eleventyComputed: {
       carnetConfig: (data) => {
         const publiques = {};
@@ -65,4 +78,4 @@ function construire({ guide: guideBrut, reglages, offres }) {
   };
 }
 
-module.exports = { construire, GARDER, prixMinimum };
+module.exports = { construire, GARDER, prixMinimum, desGroupe, thb };

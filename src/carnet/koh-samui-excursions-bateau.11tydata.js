@@ -298,7 +298,6 @@ const guide = {
       intro: "Excursion plus courte, plus détente et appréciée des familles (surtout des enfants!)",
       photos: [
         { src: P + "pig-island-cochons.jpg", alt: "Cochons sur le sable, à l’ombre d’un arbre" },
-        { src: P + "pig-island-panneau.jpg", alt: "Panneau de la plage de Koh Madsum avec un cochon dessous" },
         { src: P + "koh-tan-cote.jpg", alt: "Côte boisée et eau turquoise vues du bateau" },
         { src: P + "koh-tan-ponton.jpg", alt: "Ponton en bois avec transats au-dessus d’un lagon turquoise" },
         { src: P + "koh-rap-kayaks.jpg", alt: "Banc de sable avec des kayaks alignés, speedboats et îles au fond" },
@@ -335,9 +334,37 @@ const guide = {
   ]
 };
 
+// Ouverture du guide (carte, légende, photo de fin). La carte est fabriquée au build à partir de la géométrie OpenStreetMap (src/_includes/geo/carnet-samui.json).
+// La photo du panneau de Koh Madsum (lettres lisibles) n'est plus affichée.
+const ouverture = {
+  atlas: ["ang-thong", "pig-island"],
+  legende: [{ section: "ang-thong", titre: "Parc national d’Ang Thong" }, { section: "pig-island", titre: "Pig Island & Koh Tan" }],
+  sections: { "ang-thong": { mise: "modes" }, "pig-island": { mise: "modes" } },
+  photoFin: { src: P + "hero.jpg", alt: "Îles boisées de l’archipel d’Ang Thong vues d’un point de vue, sur une mer turquoise", position: "62% 50%" },
+  carte: {
+    geo: "carnet-samui",
+    cadre: { lon0: 99.58, lon1: 100.21, lat0: 9.23, lat1: 9.86 },
+    echelle: "haut-gauche",
+    libelle: "Carte schématique : Koh Samui, Koh Phangan, le parc national d’Ang Thong à l’ouest, et Koh Madsum, Koh Tan et Koh Rap au sud de Koh Samui",
+    reperes: [
+      { cle: "ang", vers: "ang-thong", nom: "Ang Thong", cible: [99.672, 9.625], appel: [99.81, 9.61], photo: P + "ang-thong-lagune.jpg", position: "50% 55%" },
+      { cle: "pig", vers: "pig-island", nom: "Pig Island", cible: [99.9769, 9.3729], appel: [100.08, 9.41], photo: P + "pig-island-cochons.jpg", position: "40% 60%" }
+    ],
+    points: [
+      { cle: "pig", vers: "pig-island", nom: "Koh Tan", aria: "Koh Tan : Pig Island & Koh Tan", cible: [99.9443, 9.3755] },
+      { cle: "pig", vers: "pig-island", nom: "Koh Rap", aria: "Koh Rap : Pig Island & Koh Tan", cible: [99.9574, 9.3079], ancre: "s", dy: 12 }
+    ],
+    noms: [
+      { t: "Koh Samui", at: [99.93, 9.47], ancre: "e", dx: -16, classe: "big" },
+      { t: "Koh Phangan", at: [99.962, 9.735], ancre: "e" }
+    ]
+  }
+};
+
 module.exports = {
   guide,
   reglages,
+  ouverture,
   eleventyComputed: {
     // Ce que le navigateur reçoit : les offres réservables et les réglages, rien d'autre.
     carnetConfig: (data) => {

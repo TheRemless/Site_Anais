@@ -8,6 +8,7 @@
     </header>
 
     <form class="cg-form" data-cg="form" novalidate>
+      <div class="cg-form-body">
       <p class="cg-form-intro">Vous envoyez une demande. Anaïs vous confirme votre réservation après avoir vérifié la disponibilité. Rien n’est payé en ligne : le règlement se fait sur place.</p>
       <p class="cg-err cg-err--general" data-cg="general-error" role="alert" hidden></p>
       <p class="cg-note" data-cg="ang-note" hidden></p>
@@ -97,15 +98,18 @@
       </div>
 
       <div class="cg-estimate" data-cg="estimate" aria-live="polite">
-        <p class="cg-estimate-head"><span data-cg="estimate-label">Estimation</span> <strong class="cg-price" data-cg="estimate-total"></strong></p>
         <ul class="cg-estimate-lines" data-cg="estimate-lines"></ul>
         <div class="cg-estimate-notes" data-cg="estimate-notes"></div>
         <p class="cg-estimate-foot" data-cg="estimate-foot">Estimation, à payer sur place après confirmation.</p>
         <p class="cg-estimate-foot cg-estimate-parc" data-cg="parc-line" hidden></p>
         <p class="cg-estimate-foot" data-cg="droits-note" hidden>Les droits d’entrée se règlent aussi sur place, hors estimation.</p>
       </div>
+      </div>
 
-      <button type="submit" class="btn btn-teal cg-submit"><span>Envoyer ma demande</span></button>
+      <div class="cg-bar">
+        <p class="cg-estimate-head" aria-live="polite"><span data-cg="estimate-label">Estimation</span> <strong class="cg-price" data-cg="estimate-total"></strong></p>
+        <button type="submit" class="btn btn-teal cg-submit"><span>Envoyer ma demande</span></button>
+      </div>
     </form>
 
     <div class="cg-done" data-cg="done" hidden>
