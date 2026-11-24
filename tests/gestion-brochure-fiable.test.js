@@ -68,11 +68,11 @@ const demo = () => lu(brochureDemoTransport());
 
 // ---- Lecture : modèle, effort, schéma, consigne ----------------------------------------------------------------------------------------
 
-test("lecture : Opus 5.5, réflexion adaptative, effort medium, 64 000 jetons ; relecture : effort high, son propre schéma", () => {
+test("lecture : Opus 5.5 (réflexion adaptative par défaut), effort medium, 64 000 jetons ; relecture : effort high, son propre schéma", () => {
   const f = [{ media_type: "image/jpeg", data: "/9j/AAAA" }];
   const p1 = B.parametresBrochure(B.promptBrochure({ fichiers: f, aujourdhui: AJD }));
   assert.equal(p1.model, "claude-opus-5-5");
-  assert.deepEqual(p1.thinking, { type: "adaptive" });
+  assert.ok(!("thinking" in p1), "Opus 5.5 : omettre thinking vaut adaptive");
   assert.equal(p1.output_config.effort, "medium");
   assert.equal(p1.max_tokens, 64000);
   assert.equal(p1.output_config.format.schema, B.SCHEMA_BROCHURE);

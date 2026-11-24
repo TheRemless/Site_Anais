@@ -33,6 +33,12 @@ const ERREURS = {
   migration_124_manquante: N_("L'enregistrement attend la migration 124 de la base : demandez à l'administratrice de l'appliquer."),
 };
 const erreurTexte = (code) => (ERREURS[code] ? tr(ERREURS[code]) : erreurFichier(code) || messageErreur(code));
+// Le détail d'une erreur de l'API d'Anthropic rendu par la fonction (statut, type, message) : lisible à l'écran, pour le dire tel quel.
+export const detailApi = (r) => {
+  const d = r && r.detail_api;
+  if (!d || typeof d !== "object") return "";
+  return ` (${["API", d.statut, d.type].filter(Boolean).join(" ")}${d.message ? ` : ${d.message}` : ""})`;
+};
 
 const AVERTISSEMENTS = {
   prix_non_imprime: N_("« {nom} » : le prix rendu ne figure pas dans les chiffres relevés, il est à saisir."),
@@ -140,7 +146,7 @@ function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
       const r = await etat.store.assistant({ usage: "brochure", entite_id: etat.entiteId, passe: "lecture", ...corps });
       if (!r || r.erreur || !r.brochure) {
         etatLecture.classList.add("erreur");
-        etatLecture.textContent = erreurLecture(r && r.erreur);
+        etatLecture.textContent = erreurLecture(r && r.erreur) + detailApi(r);
         return;
       }
       etatLecture.textContent = tr("Relecture de contrôle (2 sur 2) : l'assistant relit chaque ligne face à l'image.");
@@ -151,7 +157,7 @@ function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
         if (r2 && !r2.erreur && r2.brochure) {
           finale = { ...r2, avertissements: [...new Set([...(r.avertissements || []), ...(r2.avertissements || [])])] };
           relue = r2.relecture || { corriges: 0, signales: 0, ajoutes: 0 };
-        } else relue = { erreur: erreurLecture(r2 && r2.erreur) };
+        } else relue = { erreur: erreurLecture(r2 && r2.erreur) + detailApi(r2) };
       } catch (err) {
         relue = { erreur: erreurLecture(err && err.code) };
       }
