@@ -146,7 +146,8 @@ test("envoi des documents : « Envoyer » ouvre la fenêtre d'envoi sur tous les
   assert.match(editeur, /sansImpression\(\) \? null : \[tr\("Imprimer"\), imprimer, tr\("Imprimer \(Ctrl\+P\)"\)\]/);
   // « Déjà envoyé autrement » n'est plus un bouton de l'en-tête à côté d'« Envoyer » : il passe par le menu.
   assert.match(editeur, /boutonEnvoi\.disabled \? null : \[boutonEnvoi\.textContent, \(\) => boutonEnvoi\.click\(\)/);
-  assert.match(editeur, /statut, btnAnnuler, btnRetablir, boutonMenu, h\("button", \{ class: "principal"/);
+  // Sous 720 px, l'« Envoyer » du haut laisse la place à celui de la barre du bas, sauf en lecture seule où il n'y a pas de barre.
+  assert.match(editeur, /statut, btnAnnuler, btnRetablir, boutonMenu, h\("button", \{ class: lectureSeule \? "principal" : "principal seulement-bureau"/);
 });
 
 test("datesResume : les dates du dossier d'abord, sinon la plage des services datés non annulés (audit mobile n° 2)", async () => {

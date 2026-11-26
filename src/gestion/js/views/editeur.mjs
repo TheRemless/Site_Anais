@@ -813,7 +813,9 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonMenu, h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer")))
+      // Sous 720 px, la barre du bas porte déjà « Envoyer » : un seul bouton principal à l'écran (vu sur iPhone, PR #360).
+      // En lecture seule il n'y a pas de barre du bas, le bouton du haut reste donc visible partout.
+      h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonMenu, h("button", { class: lectureSeule ? "principal" : "principal seulement-bureau", type: "button", onclick: envoyer }, tr("Envoyer")))
     ),
     h("p", { class: "aide-pdf seulement-bureau" }, tr("« Envoyer » prépare le PDF « {nomDoc} {ref} » et ouvre WhatsApp ou l'e-mail du client avec le message. Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P imprimer. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: numeroDocument(doc, dossier) })),
     bandeauConflit,
