@@ -134,7 +134,7 @@ export const EN = {
   "L'image fait plus de 5 Mo. Envoyez depuis votre téléphone.": "The image is over 5 MB. Send it from your phone.",
   "Ce voucher vient de partir dans cette conversation. Rien n'est reparti.": "This voucher was just sent in this chat. Nothing was sent again.",
   "Envoyer dans la conversation WhatsApp": "Send in the WhatsApp chat",
-  "Envoyer dans la conversation": "Send in the chat",
+  "Envoyer depuis Gestion (WhatsApp)": "Send from Gestion (WhatsApp)",
   "Vérification de la fenêtre de 24 h…": "Checking the 24-hour window…",
   "Longueur : {n} sur {max}": "Length: {n} of {max}",
   "Le client a écrit il y a moins de 24 h : l'image peut partir.": "The client wrote less than 24 h ago: the image can be sent.",

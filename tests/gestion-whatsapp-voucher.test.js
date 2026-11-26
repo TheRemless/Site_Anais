@@ -619,7 +619,7 @@ test("écran : numéro masqué en partie, envoi noté dans le dossier, média du
   assert.equal(etatMedia({ type: "image", statut: "voucher", chemin_sortant: "x" }), "voucher_envoye", "jamais la classe « voucher » des pages A4");
   assert.ok(LIBELLES_MEDIA.voucher_envoye);
   const envoi = lire("src/gestion/js/views/voucher-envoi.mjs");
-  assert.match(envoi, /boutonVoucherWhatsApp\(\{ x, conversation, fichier: \(\) => fichier, legende: \(\) => message\.client, noter: \(\) => noter\("client", "gestion"\)(, classe: "principal"(, libelle: tr\("Envoyer dans la conversation"\))?)? \}\)/);
+  assert.match(envoi, /boutonVoucherWhatsApp\(\{ x, conversation, fichier: \(\) => fichier, legende: \(\) => message\.client, noter: \(\) => noter\("client", "gestion"\)(, classe: directOuvert \? "principal" : "secondaire", libelle: tr\("Envoyer depuis Gestion \(WhatsApp\)"\))? \}\)/);
   const carte = lire("src/gestion/js/views/agent-cartes-voucher.mjs");
   assert.match(carte, /conversation: conversationPourVoucher\(x\)/);
   assert.match(carte, /confirmerVoucherWhatsApp\(x, \{ conversation, fichier, legende: messageClientVoucher\(x\), avantNavigation: revenir \}\)/);
@@ -686,4 +686,14 @@ test("migration 73 : bucket privé, 5 Mo, aucune politique, garde-fou sans bucke
   assert.match(retour, /drop function if exists whatsapp_ranger_voucher\(uuid, uuid, text, jsonb\);/);
   assert.match(lire(".github/workflows/ci.yml"), /verif-whatsapp-voucher/);
   assert.equal(S.BUCKET_SORTANT, "whatsapp-sortant");
+});
+
+test("voucher : l'envoi depuis Gestion n'est mis en avant que si le client a écrit le dernier, il y a moins de 24 h (relecture de la PR 362)", async () => {
+  const { envoiDirectOuvert } = await import("../src/gestion/js/whatsapp-voucher-calc.mjs");
+  const maintenant = Date.parse("2026-11-26T12:00:00Z");
+  assert.equal(envoiDirectOuvert({ dernier_sens: "entrant", dernier_message_le: "2026-11-26T08:00:00Z" }, maintenant), true);
+  assert.equal(envoiDirectOuvert({ dernier_sens: "entrant", dernier_message_le: "2026-11-25T11:00:00Z" }, maintenant), false, "plus de 24 h");
+  assert.equal(envoiDirectOuvert({ dernier_sens: "sortant", dernier_message_le: "2026-11-26T11:00:00Z" }, maintenant), false, "nous avons écrit le dernier");
+  assert.equal(envoiDirectOuvert({ dernier_sens: "entrant", dernier_message_le: null }, maintenant), false);
+  assert.equal(envoiDirectOuvert(null, maintenant), false);
 });

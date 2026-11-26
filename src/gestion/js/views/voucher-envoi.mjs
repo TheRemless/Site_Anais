@@ -20,6 +20,7 @@ import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { conversationPourVoucher, boutonVoucherWhatsApp } from "./voucher-whatsapp.mjs";
+import { envoiDirectOuvert } from "../whatsapp-voucher-calc.mjs";
 
 // Ce qui manque à un voucher (controlesVoucher), dit aussi sur les cartes « Voucher » de l'Assistant (agent-cartes-voucher.mjs).
 export const AVERTISSEMENTS = {
@@ -101,10 +102,12 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
   const message = { client: messageClientVoucher(x) };
   // La conversation WhatsApp du client, si elle existe : l'image peut y partir depuis Gestion (voucher-whatsapp.mjs). Sinon, rien de plus.
   const conversation = conversationPourVoucher(x);
+  // Fenêtre de 24 h ouverte : l'envoi direct est le geste principal ; fermée, le partage de l'image le reste (relecture de la PR 362).
+  const directOuvert = envoiDirectOuvert(conversation);
   // Sans conversation WhatsApp du client, boutonVoucherWhatsApp rend null : replaceChildren l'écrivait « null » à côté des boutons (vu le 26.11.2026).
   // La conversation WhatsApp du client est connue : l'envoi direct est le geste principal, le partage et l'image passent en secondaire (audit mobile n° 33).
-  const boutonConversation = () => boutonVoucherWhatsApp({ x, conversation, fichier: () => fichier, legende: () => message.client, noter: () => noter("client", "gestion"), classe: "principal", libelle: tr("Envoyer dans la conversation") }) || "";
-  const principalSiSeul = () => (conversation ? "secondaire" : "principal");
+  const boutonConversation = () => boutonVoucherWhatsApp({ x, conversation, fichier: () => fichier, legende: () => message.client, noter: () => noter("client", "gestion"), classe: directOuvert ? "principal" : "secondaire", libelle: tr("Envoyer depuis Gestion (WhatsApp)") }) || "";
+  const principalSiSeul = () => (directOuvert ? "secondaire" : "principal");
 
   const avertissements = controlesVoucher(r, client, x.type || "");
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));
@@ -230,7 +233,7 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
   const freres = vouchersDuDossier(dossier.id);
   // Pendant la préparation, un texte d'état et pas un bouton grisé (audit mobile n° 33) ; le bouton apparaît une fois les images prêtes.
   const boutonTous = h("button", { class: "secondaire", type: "button", hidden: true });
-  const statutTous = h("p", { class: "aide", role: "status", hidden: freres.length < 2 });
+  const statutTous = h("p", { class: "aide envoi-statut", role: "status", hidden: freres.length < 2 });
   let fichiersTous = null;
   let ferme = false; // fenêtre fermée : on arrête de fabriquer des images dont personne ne se servira
   async function preparerTous() {
@@ -294,9 +297,10 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
       aide.textContent = tr("Un lien WhatsApp ne peut pas joindre d'image : l'image est copiée, puis la conversation s'ouvre et vous la collez avec {raccourci}. Sans numéro, WhatsApp propose de choisir le contact.", { raccourci: raccourci() });
     } else {
       // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
-      actions.replaceChildren(boutonConversation(), ...secours({ principal: !conversation }), boutonTous, statutTous, ...imprimer);
+      actions.replaceChildren(boutonConversation(), ...secours({ principal: !directOuvert }), boutonTous, statutTous, ...imprimer);
       aide.textContent = tr("Appuyez longuement sur l'image pour l'enregistrer dans Photos, puis joignez-la dans WhatsApp.");
-      zone.echec({ titre: tr("Ce navigateur ne peut pas joindre l'image : enregistrez-la, puis joignez-la dans WhatsApp (Safari le fait d'un tap)."), boutons: boutonsRepli() });
+      // L'envoi depuis Gestion reste possible : pas d'alerte « ce navigateur ne peut pas » qui ferait croire le contraire (relecture de la PR 362).
+      if (!directOuvert) zone.echec({ titre: tr("Ce navigateur ne peut pas joindre l'image : enregistrez-la, puis joignez-la dans WhatsApp (Safari le fait d'un tap)."), boutons: boutonsRepli() });
     }
   }
 
@@ -334,7 +338,7 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
       apercu.replaceChildren(h("img", { src: adresseApercu, alt: titreVoucher }));
       afficherActions();
       zone.maj();
-      if (freres.length > 1) preparerTous().catch((err) => zone.echec({ titre: tr("Les autres vouchers n'ont pas pu être préparés."), erreur: err }));
+      if (freres.length > 1) preparerTous().catch((err) => ((statutTous.hidden = true), zone.echec({ titre: tr("Les autres vouchers n'ont pas pu être préparés."), erreur: err })));
     })
     .catch((err) => {
       apercu.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, tr("L'image n'a pas pu être fabriquée : {message}", { message: err.message })));
