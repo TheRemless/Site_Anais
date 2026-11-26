@@ -8,7 +8,7 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier, barreFiltres } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { filtreDeLEntite } from "../filtre-entite-calc.mjs";
+import { filtreDeLEntite, filtreDepuisAdresse, adresseListe } from "../filtre-entite-calc.mjs";
 
 const ONGLETS = [
   ["cours", N_("En cours"), ["brouillon", "devis_envoye", "accepte", "acompte"]],
@@ -59,12 +59,12 @@ const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
 export function listeDossiers() {
   selection.clear();
   filtre = filtreDeLEntite(memoFiltres, etat.entiteId, FILTRE_DEFAUT);
-  // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser).
+  // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser) ; notre propre adresse rend l'onglet et le tri
+  // de l'entreprise qui l'a écrite, sans toucher à la recherche (voir filtre-entite-calc.mjs).
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   // Un onglet d'une autre entreprise (« Soldés » de Secret) n'existe pas forcément ici : on revient au premier.
   if (!ongletsActifs().some(([k]) => k === filtre.onglet)) filtre.onglet = ongletsActifs()[0][0];
-  if (ongletsActifs().some(([k]) => k === params.get("onglet"))) { filtre.onglet = params.get("onglet"); filtre.q = ""; }
-  if (COMPARE[params.get("tri")]) filtre.tri = params.get("tri");
+  Object.assign(filtre, filtreDepuisAdresse(params, etat.entiteId, { onglets: ongletsActifs().map(([k]) => k), tris: Object.keys(COMPARE) }));
   const corps = h("div");
   const groupee = peut("dossiers.ecrire");
   const barre = h("div", { class: "barre-selection", hidden: true });
@@ -104,9 +104,14 @@ export function listeDossiers() {
       .filter((r) => !q || sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays || ""} ${excursions ? `${r.dossier.bandeau || ""} ${etat.db.reservations.filter((x) => x.dossier_id === r.dossier.id).map((x) => x.libelle).join(" ")}` : ""}`).includes(q))
       .sort(COMPARE[filtre.tri]);
     vider(corps);
-    // Pendant une recherche, les puces ne filtrent plus : on les estompe pour ne pas faire croire le contraire (audit mobile, n° 42).
+    // Pendant une recherche, les puces ne filtrent plus : la rangée passe en gris contrasté et se dit inactive (audit mobile, n° 42).
+    // Pas d'opacité, qui faisait tomber le texte sous le contraste lisible (relecture de la PR #357). Elles restent cliquables : l'onglet
+    // choisi servira quand la recherche sera effacée.
     const rangee = filtres && filtres.noeud.querySelector(".puces");
-    if (rangee) rangee.style.opacity = q ? "0.45" : "";
+    if (rangee) {
+      if (q) rangee.setAttribute("aria-disabled", "true");
+      else rangee.removeAttribute("aria-disabled");
+    }
     corps.append(...(q && filtre.onglet !== "tous" ? [h("p", { class: "aide", role: "status" }, tr("La recherche porte sur tous les dossiers, quel que soit l'onglet."))] : []));
     if (!lignes.length) {
       corps.append(
@@ -158,11 +163,11 @@ export function listeDossiers() {
     else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, tr("{n} dossiers affichés.", { n: lignes.length })));
   }
 
-  // L'adresse suit l'onglet et le tri : un rechargement ou un favori retrouve la même liste.
-  const majUrl = () => history.replaceState(null, "", `#/dossiers?onglet=${filtre.onglet}&tri=${filtre.tri}`);
+  // L'adresse suit l'onglet et le tri, marqués de l'entreprise : un rechargement ou un favori retrouve la même liste.
+  const majUrl = () => history.replaceState(null, "", adresseListe(filtre, etat.entiteId));
   // Recherche collante, onglets en puces défilantes, tri dans la feuille « Filtrer » (à plat sur ordinateur).
   const filtres = barreFiltres({
-    recherche: { valeur: filtre.q, placeholder: tr("Client ou référence"), libelle: tr("Rechercher") },
+    recherche: { valeur: filtre.q, placeholder: taxi ? tr("Client, réf. ou trajet") : excursions ? tr("Client, réf. ou service") : tr("Client ou référence"),libelle: tr("Rechercher") },
     puces: { options: ongletsActifs().map(([cle, libelle]) => ({ valeur: cle, libelle: tr(libelle) })), valeur: filtre.onglet, libelle: tr("Dossiers") },
     filtres: [{ cle: "tri", libelle: tr("Trier par"), type: "select", neutre: "recents", valeur: filtre.tri, options: TRIS.map(([k, l]) => ({ valeur: k, libelle: tr(l) })) }],
     onchange: (v) => {
@@ -193,7 +198,9 @@ export function nouveauDossier() {
   const regl = reglages();
   const listePays = [...regl.listes.pays, tr("Autre")];
   const libellePays = tr(regl.dossier.libelle_pays || "Pays");
-  const selClient = selecteurClient({ libelle: tr("Rechercher ou créer un client"), valeur: params.get("client") || "", avecNouveau: peut("clients.ecrire"), surChangement: () => majClient() });
+  // « ou créer » seulement pour qui peut créer un client : sinon le libellé promet une action absente (relecture de la PR #357).
+  const avecNouveau = peut("clients.ecrire");
+  const selClient = selecteurClient({ libelle: avecNouveau ? tr("Rechercher ou créer un client") : tr("Rechercher un client"), valeur: params.get("client") || "", avecNouveau, surChangement: () => majClient() });
   const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, tr(c))));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });

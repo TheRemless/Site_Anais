@@ -91,3 +91,21 @@ export const SAISIES = {
   recherche: { type: "search", inputmode: "search", autocomplete: "off", autocapitalize: "none", autocorrect: "off", spellcheck: "false", enterkeyhint: "search" },
   adresse: { type: "text", autocomplete: "street-address", autocapitalize: "sentences", enterkeyhint: "next" },
 };
+
+// Grille de tuiles à deux colonnes (téléphone) : les « grandes » prennent une ligne entière, les autres vont deux par deux en placement
+// dense. Renvoie l'indice de la petite tuile restée seule sur sa ligne (la dernière petite, quand elles sont en nombre impair), sinon -1.
+export function indexTuileSeule(grandes) {
+  const petites = grandes.map((g, i) => (g ? -1 : i)).filter((i) => i >= 0);
+  return petites.length % 2 ? petites[petites.length - 1] : -1;
+}
+
+// Étiquettes de l'axe d'un graphique en colonnes : une sur deux, puis une sur sept (une par semaine en vue « Jour »), pour qu'elles
+// aient chacune environ 40 px. Au-delà de sept, le pas qui suffit.
+export function sautEtiquettes(largeurCase, place = 40) {
+  if (!(largeurCase > 0)) return 1;
+  const besoin = Math.ceil(place / largeurCase);
+  if (besoin <= 1) return 1;
+  if (besoin <= 2) return 2;
+  if (besoin <= 7) return 7;
+  return besoin;
+}

@@ -6,7 +6,7 @@ import { h, vider, toast, confirmer } from "../ui.mjs";
 import { formatDate } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { vide } from "./commun.mjs";
-import { tuile, graphiqueColonnes, tableauTrie, squelette } from "./analyses-widgets.mjs";
+import { tuile, grilleTuiles, graphiqueColonnes, tableauTrie, squelette } from "./analyses-widgets.mjs";
 import { suiviAssistant, entreprisesSuivies, debutLecture, jourBangkok, etatCredit, resteDuMois, GENRES_APPRIS } from "../assistant-suivi-calc.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 
@@ -73,15 +73,13 @@ function rendre(S, { plusieurs }) {
   const Q = S.qualite;
   const tuileLimite = tuile({ libelle: tr("Limite du jour"), valeur: S.limiteAtteinte ? pluriel(S.limiteAtteinte, N_("{n} personne à la limite"), N_("{n} personnes à la limite")) : tr("Non atteinte"), detail: tr("{n} appels par personne", { n: S.limite }), aide: AIDES.limite });
   if (S.limiteAtteinte) tuileLimite.classList.add("as-alerte");
-  const tuiles = h(
-    "div",
-    { class: "st-tuiles" },
+  const tuiles = grilleTuiles([
     tuile({ libelle: tr("Coût aujourd'hui"), valeur: dollars(S.aujourdhui.cout), detail: pluriel(S.aujourdhui.appels, N_("appel"), N_("appels")), aide: AIDES.jour }),
     tuile({ libelle: tr("Coût du mois"), valeur: dollars(S.duMois.cout), detail: S.projection === null ? pluriel(S.duMois.appels, N_("appel"), N_("appels")) : tr("{appels}, environ {projection} sur le mois", { appels: pluriel(S.duMois.appels, N_("appel"), N_("appels")), projection: dollars(S.projection) }), serie: S.tendance.map((t) => t.cout), aide: AIDES.mois, grande: true }),
     tuile({ libelle: tr("Échecs du mois"), valeur: String(echecs), detail: S.duMois.appels ? tr("{pct} % des appels · {refus} refus de Claude", { pct: Math.round((echecs / S.duMois.appels) * 100), refus: S.duMois.refus }) : tr("aucun appel"), aide: AIDES.echecs }),
     tuileLimite,
     tuile({ libelle: tr("Réponses sans retouche"), valeur: Q.part === null ? "—" : `${Q.part} %`, detail: !Q.disponible ? tr("mesure pas encore en place") : Q.mesurees ? tr("{n} sur {m} réponses copiées", { n: Q.sansRetouche, m: Q.mesurees }) : tr("aucune réponse copiée ce mois-ci"), aide: AIDES.qualite })
-  );
+  ]);
 
   // Tendance : le coût de chaque jour, une seule échelle ; les appels et les échecs se lisent en touchant la colonne.
   const tendance = bloc(
@@ -198,7 +196,7 @@ function blocCredit(C, recharger) {
       h("p", { class: "aide pleine-largeur" }, tr("Le crédit API se recharge dans la console Anthropic : le plafond protège ce crédit, il ne le remplace pas."))
     );
   }
-  return h("section", { class: "st-bloc as-credit" }, h("h2", { class: "st-titre" }, tr("Crédit de l'assistant")), h("div", { class: "st-tuiles" }, t), reglage);
+  return h("section", { class: "st-bloc as-credit" }, h("h2", { class: "st-titre" }, tr("Crédit de l'assistant")), grilleTuiles([t]), reglage);
 }
 
 // ---- Ce que l'agent a appris (migration 54) ------------------------------------------------------------------------------------
