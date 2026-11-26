@@ -583,11 +583,15 @@ input.couleur { width: 72px; padding: 2px; }
 .options-resa-prix { display: flex; align-items: center; gap: 6px; }
 .options-resa-prix small { color: var(--texte-2); white-space: nowrap; }
 .options-resa-prix .options-resa-qte { width: 4.5em; min-height: 44px; }
+/* Dans une fenêtre, les champs prennent toute la largeur : ici le prix et la quantité gardent la leur, sur une ligne. */
+.options-resa-liste .options-resa-prix input { flex: 0 0 auto; width: 96px; }
+.options-resa-liste .options-resa-prix input.options-resa-qte { width: 4.5em; }
 .agent-option-qte-champ { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
 .agent-option-qte { width: 4em; min-height: 44px; }
 .options-resa-ajout { display: flex; flex-wrap: wrap; gap: 8px; }
 .options-resa-ajout select { flex: 1 1 200px; min-height: 44px; }
-@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-liste li button { grid-column: 1 / -1; } }
+/* Téléphone : le nom et « Retirer » sur une ligne, le prix et la quantité sur la suivante (le nom n'est plus écrasé par les champs). */
+@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-nom { grid-column: 1; grid-row: 1; } .options-resa-liste li button { grid-column: 2; grid-row: 1; } .options-resa-liste li .options-resa-prix { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; } }
 /* Clavier ouvert (html.clavier, ui.mjs) : l'en-tête fixe se réduit à la recherche et aux onglets, pour que la liste garde au moins
    quatre rangées visibles au-dessus du clavier d'un iPhone (relecture de la PR 359). */
 html.clavier .modal.plein .cp-haut .grille-form > .champ:not(.cp-recherche),
