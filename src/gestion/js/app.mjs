@@ -18,6 +18,7 @@ import { bandeauSauvegarde } from "./views/bandeau-sauvegarde.mjs";
 import { lecteurWhatsApp, badgeWhatsApp, TABLES_WHATSAPP } from "./whatsapp-calc.mjs";
 import { CLE_RETOUR_ENTITE, entrepriseAAfficher } from "./whatsapp-relie-calc.mjs";
 import { ATTENTE_WHATSAPP_MS, intervalleRepli, signatureWhatsApp, directCoupe } from "./direct-reprise-calc.mjs";
+import { etatBoutonPlus } from "./mobile-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
@@ -282,13 +283,14 @@ function blocCompte(apres) {
   return h("button", { class: "compte", type: "button", title: tr("Mon compte"), "aria-label": tr("Mon compte : {nom}", { nom }), onclick: () => ouvrirMonCompte(apres) }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 // Dans la feuille « Plus » (téléphone), les outils portent leur libellé en clair à côté de l'icône (audit mobile n° 26).
-const outil = (apres, ic, libelle, onclick, classe = "") => h("button", { class: [apres ? "secondaire outil-libelle" : "bouton-icone secondaire", classe].filter(Boolean).join(" "), type: "button", onclick, "aria-label": apres ? null : libelle, title: libelle }, icone(ic), apres ? h("span", null, libelle) : null);
+const outil = (apres, ic, libelle, onclick, classe = "", titre = libelle) => h("button", { class: [apres ? "secondaire outil-libelle" : "bouton-icone secondaire", classe].filter(Boolean).join(" "), type: "button", onclick, "aria-label": apres ? null : libelle, title: titre }, icone(ic), apres ? h("span", null, libelle) : null);
 const outilsCompte = (apres) => [
   // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
   // Seulement pour l'administratrice de l'entreprise ouverte : la fonction n'envoie les rappels qu'à elle (Jérémy, 17.11.2026).
   estAdmin() ? outil(apres, "cloche", tr("Rappels"), async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels())) : null,
   // Les raccourcis clavier n'ont pas de sens sur un écran tactile sans clavier : le bouton n'y apparaît pas.
-  outil(apres, "clavier", tr("Raccourcis clavier"), () => (apres && apres(), ouvrirAide()), "seulement-clavier"),
+  // Sur ordinateur, l'infobulle rappelle la touche qui ouvre l'aide (relecture de la PR 363).
+  outil(apres, "clavier", tr("Raccourcis clavier"), () => (apres && apres(), ouvrirAide()), "seulement-clavier", apres ? tr("Raccourcis clavier") : tr("Raccourcis clavier (?)")),
   etat.store.mode === "supabase" ? outil(apres, "deconnexion", tr("Se déconnecter"), deconnecter) : null,
 ];
 
@@ -341,13 +343,18 @@ function ouvrirPlus() {
 // Bouton « + » flottant sur les écrans de liste : un geste pour créer. La création elle-même vit dans les écrans de saisie.
 // Seulement sur les listes et l'accueil, pas sur une fiche ni un éditeur : adresses exactes.
 // Le « + » s'efface quand on descend dans une liste et revient dès qu'on remonte : il ne cache plus une action ou un montant (audit mobile n° 5).
+// Seul un défilement de la personne compte (doigt, molette, touche dans la dernière seconde) : la position remise au retour sur une liste
+// passait pour une descente et le « + » restait caché (relecture de la PR 363, etatBoutonPlus de mobile-calc.mjs).
 if (typeof window !== "undefined") {
   let yAvant = 0;
+  let dernierGeste = 0;
+  const geste = () => (dernierGeste = Date.now());
+  for (const type of ["touchmove", "wheel", "keydown"]) window.addEventListener(type, geste, { passive: true, capture: true });
   window.addEventListener("scroll", () => {
-    const y = window.scrollY;
-    if (Math.abs(y - yAvant) < 8) return;
-    document.documentElement.classList.toggle("plus-replie", y > yAvant && y > 80);
-    yAvant = y;
+    const racine = document.documentElement;
+    const e = etatBoutonPlus({ y: window.scrollY, yAvant, replie: racine.classList.contains("plus-replie"), geste: Date.now() - dernierGeste < 1000 });
+    yAvant = e.yAvant;
+    racine.classList.toggle("plus-replie", e.replie);
   }, { passive: true });
 }
 // Rangées qui défilent de côté (puces, onglets, graphique) : une classe dit s'il reste à voir à droite ou à gauche, le CSS estompe ce bord
@@ -355,7 +362,11 @@ if (typeof window !== "undefined") {
 const RANGEES = ".puces, .st-puces, .st-nav, .sous-onglets, .st-graphe-defile";
 function indicesDefilement(racine) {
   for (const el of racine.querySelectorAll(RANGEES)) {
-    if (el.dataset.indice) continue;
+    // Déjà suivie : on relit seulement (graphique dessiné, période changée, contenu remplacé).
+    if (el.dataset.indice) {
+      el.dispatchEvent(new Event("scroll"));
+      continue;
+    }
     el.dataset.indice = "1";
     const maj = () => {
       const reste = el.scrollWidth - el.clientWidth - el.scrollLeft;
@@ -369,6 +380,56 @@ function indicesDefilement(racine) {
   }
 }
 if (typeof window !== "undefined") window.addEventListener("resize", () => document.querySelectorAll(RANGEES).forEach((el) => el.dispatchEvent(new Event("scroll"))));
+
+// Après chaque ajout dans la page (écran, feuille ouverte, graphique dessiné, période des Statistiques), une seule passe à l'image suivante :
+// indices de défilement des rangées, actions grisées hors connexion, format des dates vides (relecture de la PR 363). Seuls les ajouts de
+// nœuds comptent : la frappe dans un champ ne déclenche rien.
+function apresChangement() {
+  indicesDefilement(document.body);
+  marquerHorsLigne();
+  for (const champ of document.querySelectorAll('input[type="date"]')) marquerDateVide(champ);
+  const barre = document.querySelector(".barre-action");
+  if (barre && barre.offsetHeight) document.documentElement.style.setProperty("--haut-barre-action", `${barre.offsetHeight}px`);
+}
+if (typeof window !== "undefined" && typeof MutationObserver !== "undefined") {
+  let prevu = false;
+  new MutationObserver((changements) => {
+    if (prevu || !changements.some((c) => c.addedNodes.length)) return;
+    prevu = true;
+    requestAnimationFrame(() => ((prevu = false), apresChangement()));
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
+// Hors connexion, les actions d'écriture sont grisées par le CSS (html.hors-ligne) ; ici, elles sont annoncées comme indisponibles, avec la
+// raison en infobulle. Pas de blocage : le serveur refuse déjà, et son message le dit. Au retour du réseau, tout est remis comme avant.
+const ACTIONS_ECRITURE = ".principal, .bouton-plus, .barre-action button";
+function marquerHorsLigne() {
+  if (document.documentElement.classList.contains("hors-ligne")) {
+    for (const b of document.querySelectorAll(ACTIONS_ECRITURE)) {
+      if (b.dataset.horsLigne || b.id === "principal") continue;
+      b.dataset.horsLigne = b.hasAttribute("title") ? b.getAttribute("title") : "-";
+      b.setAttribute("aria-disabled", "true");
+      b.title = tr("Hors connexion : rien ne s'enregistre pour l'instant.");
+    }
+    return;
+  }
+  for (const b of document.querySelectorAll("[data-hors-ligne]")) {
+    if (b.dataset.horsLigne === "-") b.removeAttribute("title");
+    else b.title = b.dataset.horsLigne;
+    b.removeAttribute("aria-disabled");
+    delete b.dataset.horsLigne;
+  }
+}
+
+// Champ date vide : Safari sur iPhone n'y écrit rien, ni format ni placeholder. La classe « vide » et le format attendu (data-vide) laissent
+// le CSS l'afficher (relecture de la PR 363), remis à jour à chaque saisie.
+function marquerDateVide(champ) {
+  if (!champ.dataset.vide) champ.dataset.vide = tr("jj.mm.aaaa");
+  champ.classList.toggle("vide", !champ.value);
+}
+if (typeof document !== "undefined") {
+  for (const type of ["input", "change"]) document.addEventListener(type, (e) => e.target && e.target.matches && e.target.matches('input[type="date"]') && marquerDateVide(e.target), true);
+}
 const ECRANS_AVEC_PLUS = /^#?\/?$|^#\/(dossiers|clients|reservations)(\?.*)?$/;
 function boutonPlus() {
   if (!peut("dossiers.ecrire")) return null;
@@ -1057,6 +1118,13 @@ function surveillerDonnees() {
     pastille.hidden = etat.store.mode !== "supabase" || (!hors && echecs < 2);
     if (hors) pastille.textContent = tr("Hors connexion : rien ne s'enregistre pour l'instant.");
     else if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
+    // Le bandeau posé sur la barre d'onglets fait remonter le « + » de sa hauteur ; hors connexion, les actions d'écriture se grisent
+    // (relecture de la PR 363).
+    const racine = document.documentElement;
+    racine.classList.toggle("synchro-visible", !pastille.hidden);
+    if (!pastille.hidden) racine.style.setProperty("--haut-synchro", `${pastille.offsetHeight}px`);
+    racine.classList.toggle("hors-ligne", !pastille.hidden && hors);
+    marquerHorsLigne();
   };
   // `force` : actualisation demandée par la personne (tirer pour actualiser), sans attendre les dix secondes ni la visibilité de l'onglet.
   // Elle renvoie ce qui s'est passé pour que l'écran le dise.

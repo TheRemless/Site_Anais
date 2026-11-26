@@ -7,6 +7,7 @@
 //
 // Relancer après avoir complété la liste ECRANS :  node scripts/gestion-images-demarrage.mjs
 // Playwright n'est pas une dépendance du dépôt : le script le cherche dans PLAYWRIGHT_DIR (dossier node_modules), sinon dans le cache npx.
+// sharp non plus n'est pas déclaré à part : il arrive avec @11ty/eleventy-img (dépendance du site). Si elle part, l'ajouter à package.json.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -40,7 +41,9 @@ export const ECRANS = [
   { nom: "iphone-440", appareils: "iPhone 16 Pro Max, 17 Pro Max", l: 440, h: 956, r: 3 },
   { nom: "iphone-air", appareils: "iPhone Air", l: 420, h: 912, r: 3 },
   { nom: "ipad-mini", appareils: "iPad mini (6e et 7e gén.)", l: 744, h: 1133, r: 2 },
+  { nom: "ipad-97", appareils: "iPad 9,7 pouces (5e et 6e gén.), iPad Air 2, iPad Pro 9,7 pouces", l: 768, h: 1024, r: 2 },
   { nom: "ipad-102", appareils: "iPad 10,2 pouces (7e à 9e gén.)", l: 810, h: 1080, r: 2 },
+  { nom: "ipad-105", appareils: "iPad Air 10,5 pouces (3e gén.), iPad Pro 10,5 pouces", l: 834, h: 1112, r: 2 },
   { nom: "ipad-109", appareils: "iPad (10e et 11e gén.), iPad Air 10,9 et 11 pouces", l: 820, h: 1180, r: 2 },
   { nom: "ipad-pro-11", appareils: "iPad Pro 11 pouces (1re à 4e gén.)", l: 834, h: 1194, r: 2 },
   { nom: "ipad-pro-11-m4", appareils: "iPad Pro 11 pouces (M4 et suivants)", l: 834, h: 1210, r: 2 },

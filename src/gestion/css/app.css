@@ -107,7 +107,9 @@ img { max-width: 100%; }
 .compte-texte span { color: var(--texte-2); }
 .menu-outils { display: flex; flex-wrap: wrap; gap: 6px; }
 .outil-libelle { display: inline-flex; align-items: center; gap: 8px; }
-@media (pointer: coarse) { .seulement-clavier { display: none !important; } }
+/* Sans aucun pointeur qui survole (téléphone, iPad au doigt), pas de raccourcis clavier ; un iPad avec clavier et pavé tactile garde le bouton
+   (relecture de la PR 363 : « pointer: coarse » le cachait sur tout iPad). */
+@media (any-hover: none) { .seulement-clavier { display: none !important; } }
 /* Choix de la langue : deux boutons côte à côte, celui de la langue active est teinté. */
 .langues { display: flex; width: 100%; padding: 3px; background: var(--fond); border: 1px solid var(--bord); border-radius: 999px; }
 .langues .langue { flex: 1; min-height: 44px; padding: 0 12px; background: transparent; border: 0; border-radius: 999px; color: var(--texte-2); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background var(--duree) var(--courbe), color var(--duree) var(--courbe); }
@@ -374,8 +376,17 @@ ul.avertissements-voucher { list-style: none; margin: 0 0 14px; padding: 10px 14
 .bandeau-alerte .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .etat-synchro { position: fixed; z-index: 150; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); padding: 10px 14px; border-radius: var(--rayon); background: #fff4d6; border: 1px solid #e8d49a; color: #5a4300; font-size: 0.88rem; font-weight: 500; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
 @media (min-width: 900px) { .etat-synchro { right: auto; left: 24px; bottom: 24px; max-width: 420px; } }
-/* Téléphone : le bandeau hors connexion se colle sous la barre du haut, sur une ligne, au lieu de couvrir les cartes et le « + » (audit mobile n° 21). */
-@media (max-width: 899px) { .etat-synchro, html.a-barre-action .etat-synchro { top: calc(var(--haut-barre) + 6px); bottom: auto; padding: 6px 12px; font-size: 0.82rem; line-height: 1.3; } }
+/* Téléphone : le bandeau hors connexion est une bande posée sur la barre d'onglets (ou sur la barre d'action), sous les feuilles (z-index
+   inférieur à 100) : collé en haut, il couvrait la recherche et « Filtrer », et passait sur le titre d'une feuille haute (audit mobile n° 21,
+   relecture de la PR 363). Le « + » remonte d'autant. */
+@media (max-width: 899px) {
+  .etat-synchro { z-index: 29; left: 0; right: 0; bottom: calc(var(--barre-basse) + var(--clavier, 0px)); padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); border-width: 1px 0 0; border-radius: 0; box-shadow: none; font-size: 0.82rem; line-height: 1.3; }
+  html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + var(--haut-barre-action, 64px) + var(--clavier, 0px)); }
+  html.synchro-visible .bouton-plus { bottom: calc(var(--barre-basse) + 16px + var(--haut-synchro, 32px)); }
+}
+/* Hors connexion, rien ne s'enregistre : les actions d'écriture sont grisées (et marquées aria-disabled avec la raison en infobulle par
+   app.mjs). Elles restent cliquables : le serveur refuse déjà, et le message d'erreur dit pourquoi (relecture de la PR 363). */
+html.hors-ligne .principal, html.hors-ligne .bouton-plus, html.hors-ligne .barre-action button { opacity: 0.45; filter: grayscale(1); }
 
 /* Entreprises, utilisateurs, réglages */
 .entite-choix, .entite-nom { margin: 0 0 14px; padding: 0 8px; }
@@ -451,8 +462,6 @@ input.couleur { width: 72px; padding: 2px; }
 .liste-regles { margin: 0; padding-left: 18px; }
 .liste-regles li { margin-bottom: 4px; }
 .tels { display: flex; flex-direction: column; gap: 4px; }
-/* Lien de dossier dans une ligne de texte (tâches, accueil) : zone de toucher agrandie sans changer la ligne (audit mobile n° 13). */
-@media (pointer: coarse) { .titre-lien { padding-block: 12px; margin-block: -12px; } }
 .tel { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
 .tel .bouton-icone { width: 2rem; height: 2rem; color: var(--texte-2); }
 .guichets { margin-top: 12px; }
@@ -747,8 +756,8 @@ html.clavier { --barre-basse: 0px; }
   .barre-action { position: sticky; left: auto; right: auto; bottom: 0; z-index: 5; margin: 0 -8px; padding: 12px 8px; background: var(--fond); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .barre-action > .principal, .barre-action > .secondaire { flex: 0 0 auto; }
 }
-html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
-@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: 24px; } }
+html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
+@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: 24px; } }
 
 /* Puces de filtre défilantes */
 .puces { display: flex; gap: 8px; margin: 0 -16px; padding: 2px 16px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch; }
@@ -965,8 +974,9 @@ div.enc-case { cursor: default; }
 /* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */
 .bouton-plus { display: none; position: fixed; z-index: 28; right: 16px; bottom: calc(var(--barre-basse) + 16px); width: 56px; height: 56px; min-height: 0; padding: 0; border-radius: 50%; background: var(--teal-600); color: #fff; box-shadow: 0 4px 14px rgba(8, 107, 107, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2); }
 .bouton-plus:active { background: var(--teal-700); transform: scale(0.96); }
-.coque.avec-plus .bouton-plus { display: inline-flex; transition: transform 0.2s ease; }
-html.plus-replie .bouton-plus { transform: translateY(calc(100% + 40px)); }
+.coque.avec-plus .bouton-plus { display: inline-flex; transition: opacity 0.2s ease, visibility 0s linear 0s; }
+/* Effacé pour de bon (relecture de la PR 363) : il glissait sous la barre d'onglets, qui le laissait voir par transparence. */
+html.plus-replie .coque.avec-plus .bouton-plus { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.2s ease, visibility 0s linear 0.2s; }
 @media (prefers-reduced-motion: reduce) { .coque.avec-plus .bouton-plus { transition: none; } }
 .coque.avec-plus .contenu { padding-bottom: calc(var(--barre-basse) + 96px); }
 html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none !important; }
@@ -1324,6 +1334,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .titre-lien:active { background: var(--surface-2); }
 .service-titre { font-weight: 700; margin: 0; }
 .tache-texte .titre-lien { margin: -8px 0 -2px; }
+/* Lien de dossier dans une ligne de texte (tâches, accueil) : zone de toucher agrandie sans changer la ligne (audit mobile n° 13). Placée
+   après les règles du lien, sinon elles l'écrasaient (relecture de la PR 363). */
+@media (pointer: coarse) { .titre-lien, .tache-texte .titre-lien { padding-block: 12px; margin-block: -12px; } }
 .repli { scroll-margin-top: calc(var(--haut-barre) + 8px); }
 
 /* Résumé en tête de fiche : une carte sur téléphone, deux colonnes sur ordinateur */
@@ -2813,3 +2826,18 @@ html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
 /* Les deux remarques d'un service sur une carte de l'Assistant : « Sur le voucher » et « Interne » (22.11.2026). */
 .agent-remarques { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 2px 12px; margin-top: 4px; font-size: 0.85rem; }
 .agent-remarques p { margin: 0; }
+
+/* Paysage sur téléphone, suite du bloc plus haut : la barre du haut y défile avec la page, les en-têtes collés sous elle (fil WhatsApp,
+   Assistant, onglets des Statistiques) remontent donc au bord de l'écran au lieu de garder un vide de la hauteur de la barre. Placé en fin
+   de fichier pour passer après leurs propres règles (relecture de la PR 363). */
+@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px) {
+  .wa-fil-tete, .agent-fil-tete { top: 0; }
+  .st-nav { top: 0; }
+  html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: var(--haut-visible, 0px); }
+}
+
+/* Date vide sur iPhone et iPad : Safari n'affiche ni le format ni le placeholder d'un champ date, qui reste une case blanche. app.mjs pose
+   la classe « vide » et le format attendu (data-vide) ; seulement sur iOS (-webkit-touch-callout), les autres navigateurs l'écrivent déjà. */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"].vide::before { content: attr(data-vide); color: var(--texte-2); opacity: 0.8; }
+}

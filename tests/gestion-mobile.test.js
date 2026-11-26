@@ -201,3 +201,21 @@ test("suivreClavier passe la pleine largeur, mesurée sur les deux côtés de l'
   assert.match(ui, /\[screen\.width, screen\.height\]\.some\(\(cote\) => Math\.abs\(window\.innerWidth - cote\) <= 1\)/);
   assert.match(ui, /pleineLargeur: pleineLargeur\(\)/);
 });
+
+test("etatBoutonPlus : seul un défilement de la personne efface le « + », une position restaurée ne compte pas (relecture de la PR 363)", async () => {
+  const { etatBoutonPlus } = await load();
+  // Retour sur une liste : la page est remise à 1200 px par le programme, le « + » reste visible et 1200 devient le point de départ.
+  let e = etatBoutonPlus({ y: 1200, yAvant: 0, replie: false, geste: false });
+  assert.deepEqual(e, { replie: false, yAvant: 1200 });
+  // La personne descend : il s'efface ; elle remonte : il revient.
+  e = etatBoutonPlus({ y: 1260, yAvant: e.yAvant, replie: e.replie, geste: true });
+  assert.deepEqual(e, { replie: true, yAvant: 1260 });
+  e = etatBoutonPlus({ y: 1200, yAvant: e.yAvant, replie: e.replie, geste: true });
+  assert.deepEqual(e, { replie: false, yAvant: 1200 });
+  // Un tremblement de moins de 8 px ne change rien, ni l'état ni le point de départ.
+  assert.deepEqual(etatBoutonPlus({ y: 1205, yAvant: 1200, replie: true, geste: true }), { replie: true, yAvant: 1200 });
+  // Un défilement programmé ne réaffiche pas un « + » effacé.
+  assert.deepEqual(etatBoutonPlus({ y: 400, yAvant: 1200, replie: true, geste: false }), { replie: true, yAvant: 400 });
+  // En haut de page, toujours visible.
+  assert.deepEqual(etatBoutonPlus({ y: 40, yAvant: 1200, replie: true, geste: false }), { replie: false, yAvant: 40 });
+});

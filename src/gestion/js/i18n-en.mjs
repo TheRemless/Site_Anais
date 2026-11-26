@@ -1750,6 +1750,8 @@ export const EN = {
   "Quantité": "Quantity",
   "Qui réalise le service, si ce n'est pas vous": "Who carries out the service, if it is not you",
   "Raccourcis clavier": "Keyboard shortcuts",
+  "Raccourcis clavier (?)": "Keyboard shortcuts (?)",
+  "jj.mm.aaaa": "dd.mm.yyyy",
   "Réactiver le dossier": "Reactivate the file",
   "Recherche": "Search",
   "Rechercher": "Search",
