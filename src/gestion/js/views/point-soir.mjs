@@ -65,7 +65,7 @@ const MOTS_ANNONCE = {
   lien: N_("WhatsApp ouvert à {heure}"),
   incertain: N_("Peut-être parti à {heure} : vérifiez dans WhatsApp"),
 };
-const tagAnnonce = (a) => h("span", { class: `tag${a.par === "incertain" ? " tag-alerte" : ""}` }, tr(MOTS_ANNONCE[a.par] || MOTS_ANNONCE.lien, { heure: heureCourte(a.le) }));
+const tagAnnonce = (a) => h("span", { class: `tag tag-annonce${a.par === "incertain" ? " tag-alerte" : ""}` }, tr(MOTS_ANNONCE[a.par] || MOTS_ANNONCE.lien, { heure: heureCourte(a.le) }));
 
 // Avant un nouvel envoi quand une trace existe : jamais deux rappels sans le vouloir.
 export async function confirmerNouvelEnvoi(r) {
