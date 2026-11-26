@@ -129,3 +129,14 @@ export function conversationDansEntreprise(conv, entiteId, slugActif = "") {
   if (conv.entite_id === entiteId) return true;
   return conv.entite_id === null && ["secret", "taxi"].includes(slugActif);
 }
+
+// Conversation liée rangée dans une autre entreprise que l'Assistant (contre-relecture de la PR 355) : faut-il refuser les cartes ?
+// Oui, sauf en espace unifié Secret et Taxi quand la conversation est rangée dans l'autre entreprise de la paire ET que le contact est un
+// client : un client qui a seulement changé de rangement ne bloque pas un deuxième dossier. Un apporteur ou un partenaire (type nommé ou
+// fiche partenaire reliée) bloque toujours : sa consigne et ses données restent dans son entreprise.
+export function cartesRefuseesAutreEntreprise(conv, { entitesUnifiees = [] } = {}) {
+  if (!conv) return false;
+  const nomme = ["partenaire", "apporteur"].includes(conv.type_contact) || !!conv.partenaire_id;
+  if (!nomme && conv.entite_id && entitesUnifiees.includes(conv.entite_id)) return false;
+  return true;
+}

@@ -172,3 +172,32 @@ test("etatClavier, contre-relecture de la PR 355 : iPad en Split View ou Stage M
   e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(620), references: e.references, tactile: true, saisie: true, telephone: false });
   assert.equal(e.clavier, 380);
 });
+
+test("etatClavier, 2e contre-relecture de la PR 355 : iPad mini, app installée plein écran, la fenêtre qui rétrécit au clavier compte", async () => {
+  const { etatClavier } = await load();
+  const vv = (height, offsetTop = 0) => ({ height, offsetTop, scale: 1 });
+  // Relevé du simulateur (iPad mini A17 Pro, portrait, nouvelle discussion) : 1101 px de fenêtre au repos, puis 761 px visibles décalés de 340.
+  let e = etatClavier({ largeur: 744, innerHeight: 1101, vv: vv(1101), tactile: true, saisie: false, telephone: false, pleineLargeur: true });
+  e = etatClavier({ largeur: 744, innerHeight: 761, vv: vv(761, 340), references: e.references, tactile: true, saisie: true, telephone: false, pleineLargeur: true });
+  assert.equal(e.clavier, 340, "clavier détecté : la barre d'onglets se cache");
+  assert.equal(e.bas, -340, "la saisie suit le bas visible, collée au clavier");
+  // Avant : la même mesure sans tenir compte de la pleine largeur ne voyait aucun clavier (barre d'onglets au-dessus du clavier).
+  e = etatClavier({ largeur: 744, innerHeight: 1101, vv: vv(1101), tactile: true, saisie: false, telephone: false });
+  e = etatClavier({ largeur: 744, innerHeight: 761, vv: vv(761, 340), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.equal(e.clavier, 0);
+  // Quand la fenêtre ne rétrécit pas (page longue, Réglages), le clavier se mesure comme avant.
+  e = etatClavier({ largeur: 744, innerHeight: 1101, vv: vv(761), tactile: true, saisie: true, telephone: false, pleineLargeur: true });
+  assert.equal(e.clavier, 340);
+  // Une fenêtre plus étroite que l'écran (Stage Manager) reste exclue : la règle de la contre-relecture précédente tient.
+  e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(1000), tactile: true, saisie: true, telephone: false, pleineLargeur: false });
+  e = etatClavier({ largeur: 900, innerHeight: 600, vv: vv(600), references: e.references, tactile: true, saisie: true, telephone: false, pleineLargeur: false });
+  assert.equal(e.clavier, 0);
+});
+
+test("suivreClavier passe la pleine largeur, mesurée sur les deux côtés de l'écran (portrait et paysage)", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const ui = fs.readFileSync(path.join(__dirname, "../src/gestion/js/ui.mjs"), "utf8");
+  assert.match(ui, /\[screen\.width, screen\.height\]\.some\(\(cote\) => Math\.abs\(window\.innerWidth - cote\) <= 1\)/);
+  assert.match(ui, /pleineLargeur: pleineLargeur\(\)/);
+});

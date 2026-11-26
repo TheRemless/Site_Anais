@@ -47,7 +47,7 @@ import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
-import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, conversationDansEntreprise, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, cartesRefuseesAutreEntreprise, conversationDansEntreprise, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
@@ -307,7 +307,8 @@ Deno.serve(async (req) => {
       const dansEntreprise = !!w.data && conversationDansEntreprise(w.data, entiteId, ent.data?.slug || "");
       if (!w.error && dansEntreprise && !peutLiee.error && peutLiee.data === true) waLiee = w.data;
       // Rangée ailleurs depuis : ni consigne apporteur ni numéro ici, et aucune carte de dossier (contre-relecture de la PR 355).
-      if (!w.error && w.data && !dansEntreprise) conversationAutreEntreprise = true;
+      // En espace unifié, un client rangé dans l'autre entreprise de la paire ne bloque rien (cartesRefuseesAutreEntreprise).
+      if (!w.error && w.data && !dansEntreprise) conversationAutreEntreprise = cartesRefuseesAutreEntreprise(w.data, { entitesUnifiees: unifie ? unifie.entites.map((e) => e.id) : [] });
     }
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);

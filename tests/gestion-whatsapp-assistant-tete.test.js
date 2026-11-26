@@ -114,7 +114,7 @@ test("14. la conversation liée n'est relue que dans l'entreprise de l'Assistant
   const liee = index.slice(index.indexOf("const lieeId = c.data.whatsapp_conversation_id;"), index.indexOf("} else {", index.indexOf("const lieeId = c.data.whatsapp_conversation_id;")));
   // Le slug de l'entreprise déjà lu en tête de la fonction, pas une requête de plus par message.
   assert.match(liee, /conversationDansEntreprise\(w\.data, entiteId, ent\.data\?\.slug \|\| ""\)/);
-  assert.match(liee, /if \(!w\.error && w\.data && !dansEntreprise\) conversationAutreEntreprise = true;/);
+  assert.match(liee, /if \(!w\.error && w\.data && !dansEntreprise\) conversationAutreEntreprise = cartesRefuseesAutreEntreprise\(/);
   assert.match(liee, /if \(!w\.error\) waLue = w\.data \|\| null;/, "relue pour retirer un contact personnel (revue 299)");
   assert.match(liee, /dansEntreprise && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data;/);
 });
@@ -201,4 +201,35 @@ test("10. scénario Taxi → Assistant de Secret → « Voir la conversation » 
   assert.doesNotMatch(app, /const entiteDemandee = /);
   const wa = fs.readFileSync(new URL("../src/gestion/js/views/whatsapp.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(wa, /entiteDeRetour/, "plus de bascule dans la vue");
+});
+
+test("contre-relecture 2, point 1 : conversation liée rangée ailleurs : pas de réponse au client préparée non plus", async () => {
+  const { executer, CONSEIL_AUTRE_ENTREPRISE, CARTES_REFUSEES_AUTRE_ENTREPRISE } = await import("../supabase/functions/agent/outils.js");
+  assert.deepEqual(CARTES_REFUSEES_AUTRE_ENTREPRISE, ["proposer_dossier", "proposer_reservation", "proposer_reponse"]);
+  const ctx = { conversationAutreEntreprise: true, charger: async (n) => E.etat.db[n] || [], reglages: E.reglages(), simule: tempsSimule };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer: false, prestataires: [], entreprise: "Test", textes: [] };
+  const r = await executer("proposer_reponse", { titre: "Réponse", texte: "Hello, your pickup is at 9:00.", langue: "en" }, ctx, memo);
+  assert.equal(r.erreur, true, JSON.stringify(r));
+  assert.equal(r.contenu.erreur, "conversation_autre_entreprise");
+  assert.equal(r.contenu.conseil, CONSEIL_AUTRE_ENTREPRISE);
+});
+
+test("contre-relecture 2, point 2 : en espace unifié, seul un apporteur ou un partenaire rangé dans l'autre entreprise bloque les cartes", async () => {
+  const { cartesRefuseesAutreEntreprise } = await import("../supabase/functions/agent/whatsapp.js");
+  const SECRET = "00000000-0000-4000-8000-0000000000e2";
+  const TAXI = "00000000-0000-4000-8000-0000000000e1";
+  const ZTP = "00000000-0000-4000-8000-0000000000e3";
+  const unifie = { entitesUnifiees: [SECRET, TAXI] };
+  // Client rangé chez Secret, Assistant de Taxi en espace unifié : un deuxième dossier reste possible.
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: SECRET, type_contact: "client" }, unifie), false);
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: SECRET, type_contact: null }, unifie), false);
+  // Apporteur, partenaire ou fiche partenaire reliée : refusé même en espace unifié.
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: SECRET, type_contact: "apporteur" }, unifie), true);
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: SECRET, type_contact: "partenaire" }, unifie), true);
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: SECRET, partenaire_id: "00000000-0000-4000-8000-000000000001" }, unifie), true);
+  // Hors espace unifié, ou rangée dans une entreprise hors de la paire : refusé.
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: SECRET, type_contact: "client" }), true);
+  assert.equal(cartesRefuseesAutreEntreprise({ entite_id: ZTP, type_contact: "client" }, unifie), true);
+  const index = fs.readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(index, /conversationAutreEntreprise = cartesRefuseesAutreEntreprise\(w\.data, \{ entitesUnifiees: unifie \? unifie\.entites\.map\(\(e\) => e\.id\) : \[\] \}\)/);
 });
