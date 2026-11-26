@@ -483,12 +483,27 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
     tarifTouche = true;
     remplirTarifs();
+    // La liste « Ajouter l'option » suit le tarif retenu pour ce partenaire (remplirTarifs ne déclenche aucun événement).
+    if (blocOptions) blocOptions.tarif(tarif.value.startsWith("p:") ? tarif.value.slice(2) : null);
     majAideTarif();
     majCommission();
     proposerCommission();
   });
   remplirTarifs();
   majAideTarif();
+  // Tant que les options d'une réservation ouverte hors de son dossier ne sont pas lues, ni le tarif ni le partenaire ne changent : « Vendu
+  // au client » les oublierait.
+  if (blocOptions && !blocOptions.pret()) {
+    tarif.disabled = true;
+    partenaire.disabled = true;
+    aideTarif.textContent = tr("Lecture des options du service…");
+    aideTarif.hidden = false;
+    blocOptions.quandPret(() => {
+      tarif.disabled = false;
+      partenaire.disabled = false;
+      majAideTarif();
+    });
+  }
   // « Vendu au client » d'un service du catalogue : sans le droit « Modifier les prix de vente », il ne se change pas (décision 3, contrôle du
   // 17.11.2026, D3). Un tarif sans prix ou un service hors catalogue se remplit toujours.
   const droitPrix = peut("partenaires.prix");
@@ -545,6 +560,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   partenaire.addEventListener("change", () => zonesPickup.rafraichir());
   // Un autre partenaire : les options de l'ancien partenaire quittent le service (une option est toujours du partenaire de son service).
   if (blocOptions) partenaire.addEventListener("change", () => blocOptions.partenaire(partenaire.value || null));
+  // Une option par personne suit le nombre de personnes (sauf une quantité tapée dans le bloc).
+  if (blocOptions) for (const x of [adultes, enfants]) x.addEventListener("input", () => blocOptions.personnes());
   lieu.addEventListener("change", () => zonesPickup.rafraichir());
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
@@ -682,6 +699,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
         const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
         const tarifChange = tarifTouche && ((tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null));
         const valeurs = { ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
+        // Service sans ligne de facture (ajouté par carte) : ses options vont sur la réservation, leur prix est déjà dans « Vendu au client ».
+        const optionsDetails = blocOptions ? blocOptions.detailsOptions() : null;
+        if (optionsDetails) valeurs.details = { ...valeurs.details, options: optionsDetails };
         // Course hors catalogue passée en « retour au point de départ » (ou revenue à l'aller simple) : son libellé généré suit, sauf s'il a été réécrit ici.
         if (valeurs.libelle === (r.libelle || "").trim()) {
           const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });

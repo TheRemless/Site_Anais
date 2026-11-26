@@ -5,6 +5,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { installerDom } from "./aides-dom.mjs";
+import fs from "node:fs";
 
 const O = await import("../src/gestion/js/operations-calc.mjs");
 const P = await import("../src/gestion/js/partenaires-calc.mjs");
@@ -252,6 +253,104 @@ test("Secret : fenêtre de réservation, prix unitaire de l'option ; autre tarif
   assert.equal(f.querySelector(".options-resa-liste"), null);
   assert.equal(Number(vente.value), 8000);
   f.remove();
+});
+
+test("fenêtre : autre partenaire → la liste « Ajouter l'option » n'offre plus les options de l'ancien (N1)", async () => {
+  const { tour, ext, pa } = await catalogueDe("excursions");
+  dans("excursions");
+  const c = await carteDossier([service(tour, ext, { options: [] })]);
+  const r0 = await ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  const { formulaireReservation } = await import("../src/gestion/js/views/reservations.mjs");
+  const f = formulaireReservation(E.etat.db.reservations.find((x) => x.id === resa.id), () => {});
+  document.body.append(f);
+  for (let i = 0; i < 50 && !f.querySelector("#r-opt-ajout"); i++) await new Promise((x) => setTimeout(x, 10));
+  assert.ok([...f.querySelector("#r-opt-ajout").options].some((o) => o.value === ext.id), "l'option du tarif est proposée");
+  const part = f.querySelector("#r-part");
+  part.value = E.etat.db.partenaires.find((x) => x.id !== pa.id && [...part.options].some((o) => o.value === x.id)).id;
+  part.dispatchEvent(new Event("change"));
+  const liste = f.querySelector("#r-opt-ajout");
+  assert.ok(!liste || ![...liste.options].some((o) => o.value === ext.id), "plus l'option de l'ancien partenaire");
+  f.remove();
+});
+
+test("fenêtre ouverte hors du dossier : tarif et partenaire bloqués tant que les options ne sont pas lues (N2)", async () => {
+  const { tour, ext } = await catalogueDe("excursions");
+  dans("excursions");
+  const c = await carteDossier([service(tour, ext)]);
+  const r0 = await ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  // Les documents du dossier ne sont pas en mémoire (fenêtre ouverte depuis la liste des réservations).
+  const gardes = E.etat.brut.documents.filter((d) => d.dossier_id === r0.dossier.id);
+  E.etat.brut.documents = E.etat.brut.documents.filter((d) => d.dossier_id !== r0.dossier.id);
+  const dbDocs = E.etat.db.documents;
+  E.etat.db.documents = dbDocs.filter((d) => d.dossier_id !== r0.dossier.id);
+  const { blocOptionsReservation } = await import("../src/gestion/js/views/options-reservation.mjs");
+  const vente = document.createElement("input");
+  vente.value = "6700";
+  const b = blocOptionsReservation(E.etat.db.reservations.find((x) => x.id === resa.id), { vente });
+  const avant = b.pret();
+  let pret = false;
+  b.quandPret(() => (pret = true));
+  for (let i = 0; i < 100 && !pret; i++) await new Promise((x) => setTimeout(x, 10));
+  if (!E.etat.brut.documents.some((d) => d.dossier_id === r0.dossier.id)) E.etat.brut.documents.push(...gardes);
+  if (!E.etat.db.documents.some((d) => d.dossier_id === r0.dossier.id)) E.etat.db.documents = dbDocs;
+  assert.equal(avant, false, "pas prêt avant la lecture");
+  assert.equal(pret, true, "prêt après la lecture");
+  assert.equal(b.somme(), 700, "l'option lue compte");
+  assert.match(fs.readFileSync(new URL("../src/gestion/js/views/reservations.mjs", import.meta.url), "utf8"), /if \(blocOptions && !blocOptions\.pret\(\)\) \{\n    tarif\.disabled = true;\n    partenaire\.disabled = true;/);
+});
+
+test("service ajouté par carte (sans ligne de facture) : ses options se voient, se changent, se retirent ; une option par personne suit les personnes (N4, N5)", async () => {
+  dans("excursions");
+  const { tour, pa } = await catalogueDe("excursions");
+  const lunch = await E.inserer("prestations", { partenaire_id: pa.id, famille: "excursion", groupe: "Private Exemple", libelle: "Lunch box Exemple", libelle_en: "Lunch box Exemple", prix_vente: 150, unite: "pp", actif: true, option_de: [tour.id] });
+  const c0 = await carteDossier([service(tour, { id: lunch.id }, { options: [] })]);
+  const r0 = await ouvrirDemande(null, V.preparation(c0), { auto: true, titre: c0.titre, surCree: () => {} });
+  const resa = await E.inserer("reservations", { dossier_id: r0.dossier.id, ligne_id: "", prestation_id: tour.id, partenaire_id: pa.id, libelle: "Private Island Exemple", date_service: "2026-12-24", personnes: { adultes: 2, enfants: 0 }, statut: "confirme", montant_vente: 6300, paye_sur_place: true, details: { options: [{ prestation_id: lunch.id, libelle: "Lunch box Exemple", prix: 300, qte: 2 }] } });
+  const { formulaireReservation } = await import("../src/gestion/js/views/reservations.mjs");
+  const f = formulaireReservation(E.etat.db.reservations.find((x) => x.id === resa.id), () => {});
+  document.body.append(f);
+  const qte = f.querySelector(".options-resa-qte");
+  assert.ok(qte, "l'option du service par carte est dans la fenêtre, avec sa quantité");
+  assert.equal(f.querySelector(".options-resa-liste input").value, "150", "prix unitaire");
+  // Trois personnes : l'option par personne passe à 3 ; « Vendu au client » suit (6 300 + 150).
+  const ad = f.querySelector("#r-ad");
+  ad.value = "3";
+  ad.dispatchEvent(new Event("input"));
+  assert.equal(f.querySelector(".options-resa-qte").value, "3");
+  assert.equal(Number(f.querySelector("#r-vente").value), 6450);
+  // Un seul des trois la prend (N5) : 1 × 150.
+  const q = f.querySelector(".options-resa-qte");
+  q.value = "1";
+  q.dispatchEvent(new Event("input"));
+  assert.equal(Number(f.querySelector("#r-vente").value), 6150);
+  f.remove();
+  // Retirer : plus d'option, « Vendu au client » reprend le service seul ; detailsOptions() vide.
+  const { blocOptionsReservation } = await import("../src/gestion/js/views/options-reservation.mjs");
+  const vente = document.createElement("input");
+  vente.value = "6300";
+  const b = blocOptionsReservation(E.etat.db.reservations.find((x) => x.id === resa.id), { vente });
+  [...b.noeud.querySelectorAll("button")].find((x) => x.textContent === "Retirer").click();
+  assert.equal(Number(vente.value), 6000);
+  assert.deepEqual(b.detailsOptions(), []);
+  assert.equal(b.voulues(), null, "rien pour la facture : le service n'en a pas");
+});
+
+test("Taxi : la fonction agent ne propose pas de carte d'option (C4)", async () => {
+  const { tour, ext } = await catalogueDe("taxi");
+  const c0 = await carteDossier([service(tour, ext, { options: [] })]);
+  const r0 = await ouvrirDemande(null, V.preparation(c0), { auto: true, titre: c0.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  const m = await executer("proposer_modification", { titre: "Option", reservation: refDe("R", resa.id), champ: "option", valeur: refDe("P", ext.id), raison: "" }, { ...ctx(), parRef: async () => E.etat.db.reservations }, memo());
+  assert.equal((m.contenu || m).erreur, "option_taxi");
+});
+
+test("carte « reservation » : une option sans prix bloque « Ajouter au dossier » (N3) ; quantité modifiable sur la carte (N5)", () => {
+  const src = fs.readFileSync(new URL("../src/gestion/js/views/agent.mjs", import.meta.url), "utf8");
+  assert.match(src, /bloque: lieuxCarte\(c\)\.length > 0 \|\| optionSansPrix/);
+  assert.match(src, /optionsCarte_\(s, champQteOption\(c, 0\)\)/);
+  assert.match(src, /optionsCarte_\(s, champQteOption\(c, i\)\)/);
 });
 
 test("Taxi : une carte « modification » d'option est refusée, rien n'est écrit", async () => {

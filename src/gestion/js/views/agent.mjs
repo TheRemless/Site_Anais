@@ -842,7 +842,8 @@ export async function vueAgent(idOuvert = "") {
   const bagagesTexte = (s) => (Number(s.bagages) > 0 ? pluriel(Number(s.bagages), N_("{n} bagage"), N_("{n} bagages")) : "");
   // Les deux remarques d'un service (22.11.2026) : ce que le voucher imprime (vu par le client et le chauffeur) et ce qui reste interne.
   // Les options d'un service sur la carte (26.11.2026) : « + Koh Kradan extension · THB 700 », sous le service, jamais un service à part.
-const optionsCarte_ = (s) => {
+// `qteSaisie(j, o)` : le champ de quantité d'une option par personne (carte proposée), ou null.
+const optionsCarte_ = (s, qteSaisie = () => null) => {
   const opts = Array.isArray(s.options) ? s.options : [];
   if (!opts.length) return null;
   const devise = (reglages() || {}).devise || "THB";
@@ -857,7 +858,7 @@ const optionsCarte_ = (s) => {
   return h(
     "small",
     { class: "agent-options" },
-    ...opts.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""} · `, prixOption(o)]).filter(Boolean),
+    ...opts.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""} · `, prixOption(o), qteSaisie(j, o)]).filter(Boolean),
     h("br"),
     complet ? h("strong", null, tr("Total du service avec ses options : {montant}", { montant: m(Number(s.prix) + opts.reduce((t, o) => t + Number(o.prix), 0)) })) : h("span", { class: "tag attention" }, tr("Total à compléter : un prix manque."))
   );
@@ -909,9 +910,31 @@ const remarquesCarte = (s) => {
   const lieuxSaisis = new Map();
   // La carte avec ses entreprises corrigées d'un tap (espace unifié), sans les lieux saisis : ce qu'elle dit elle-même.
   const donneesBrutes = (c) => (carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
-  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(donneesBrutes(c), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
+  // La quantité d'une option par personne changée sur la carte (relecture de la PR 359, N5) : carte -> « service:option » -> quantité. Le prix
+  // de l'option suit (prix unitaire × quantité). Un seul plongeur sur deux prend la plongée en plus.
+  const qtesSaisies = new Map();
+  const avecQtes = (donnees, edits) => {
+    if (!edits || !donnees) return donnees;
+    const maj = (sv, i) =>
+      sv && Array.isArray(sv.options)
+        ? { ...sv, options: sv.options.map((o, j) => { const q = edits[`${i}:${j}`]; if (!q) return o; const q0 = Math.max(1, Number(o.qte) || 1); return { ...o, qte: q, prix: o.prix === null || o.prix === undefined ? o.prix : Math.round((Number(o.prix) / q0) * q * 100) / 100 }; }) }
+        : sv;
+    return Array.isArray(donnees.services) ? { ...donnees, services: donnees.services.map(maj) } : donnees.service ? { ...donnees, service: maj(donnees.service, 0) } : donnees;
+  };
+  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(avecQtes(donneesBrutes(c), qtesSaisies.get(c.id)), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
   // Une carte « reservation » avec les lieux remplis sur elle.
-  const donneesReservation = (c) => avecLieuxSaisis(c.donnees, "reservation", lieuxSaisis.get(c.id));
+  const donneesReservation = (c) => avecLieuxSaisis(avecQtes(c.donnees, qtesSaisies.get(c.id)), "reservation", lieuxSaisis.get(c.id));
+  // Le champ de quantité d'une option par personne, sur une carte encore proposée.
+  const champQteOption = (c, i) => (j, o) => {
+    if (c.statut !== "proposee" || !["pp", "ad"].includes(o.unite)) return null;
+    const input = h("input", { type: "number", min: "1", step: "1", inputmode: "numeric", class: "agent-option-qte", value: Math.max(1, Number(o.qte) || 1), "aria-label": tr("Quantité de l'option {nom}", { nom: o.libelle || "" }) });
+    input.addEventListener("change", () => {
+      const q = Math.max(1, Math.round(Number(input.value) || 1));
+      qtesSaisies.set(c.id, { ...(qtesSaisies.get(c.id) || {}), [`${i}:${j}`]: q });
+      redessiner(c);
+    });
+    return h("label", { class: "agent-option-qte-champ" }, " ", tr("Quantité"), " ", input);
+  };
   const entrepriseDe = (id) => entitesAccessibles().find((e) => e.id === id) || null;
   const libelleEntreprise = (id) => {
     const e = entrepriseDe(id);
@@ -1005,7 +1028,7 @@ const remarquesCarte = (s) => {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, optionsCarte_(s), remarquesCarte(s)), prixTexte(s))))));
+      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, optionsCarte_(s, champQteOption(c, i)), remarquesCarte(s)), prixTexte(s))))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -1021,9 +1044,11 @@ const remarquesCarte = (s) => {
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
       if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil }));
     } else if (c.genre === "reservation") {
-      const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), optionsCarte_(s), remarquesCarte(s)), prixTexte(s)))));
-      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 };
+      const s = donneesReservation(c).service || {};
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), optionsCarte_(s, champQteOption(c, 0)), remarquesCarte(s)), prixTexte(s)))));
+      // Une option sans prix bloque l'ajout, comme sur la carte « modification » (relecture de la PR 359, N3) : « Vérifier avant » reste là.
+      const optionSansPrix = (s.options || []).some((o) => o.prix === null || o.prix === undefined);
+      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 || optionSansPrix, ...(optionSansPrix ? { motifBloque: tr("Le prix d'une option est à saisir : ouvrez « Vérifier avant ».") } : {}) };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, LIBELLES_MODIF[d.champ] ? h("span", null, tr(LIBELLES_MODIF[d.champ]), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
@@ -1110,7 +1135,7 @@ const remarquesCarte = (s) => {
             { class: "actions gauche" },
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
-            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
+            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, action.motifBloque || tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
             action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque || enValidation.has(c.id), "aria-busy": enValidation.has(c.id) ? "true" : null, onclick: (e) => agir(e.currentTarget, action) }, enValidation.has(c.id) ? tr("Création…") : action.libelle), action) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && decider(c, "ecartee") }, tr("Écarter"))

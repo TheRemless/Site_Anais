@@ -2031,6 +2031,9 @@ export async function proposer(nom, e, ctx, memo) {
     // Une option ajoutée à un service réservé (26.11.2026) : seulement une option de SON tarif, au prix tapé ou à celui du catalogue.
     if (e.champ === "option") {
       if (r.statut === "annule") return { erreur: "deja_annule" };
+      // Taxi : une course suit sa propre facture, sans options (relecture de la PR 359, C4) ; l'écran refuse aussi, rien n'est proposé.
+      const entR = estUnifie(ctx) ? entrepriseDe(ctx, r.entite_id) : null;
+      if (fonctionnementDuService(ctx, entR ? { entreprise: entR.slug } : {}) === "taxi") return { erreur: "option_taxi", conseil: "Une course de Taxi n'a pas d'options : propose plutôt de changer le prix de la course (champ « prix »)." };
       // « P-1a2b3c4d 1 000 » : la référence, puis tout le reste comme montant (un montant écrit avec des espaces reste entier).
       const valeurOpt = String(e.valeur || "").trim();
       const refOption = valeurOpt.split(/\s+/)[0] || "";

@@ -582,6 +582,9 @@ input.couleur { width: 72px; padding: 2px; }
 .options-resa-nom { overflow-wrap: anywhere; }
 .options-resa-prix { display: flex; align-items: center; gap: 6px; }
 .options-resa-prix small { color: var(--texte-2); white-space: nowrap; }
+.options-resa-prix .options-resa-qte { width: 4.5em; min-height: 44px; }
+.agent-option-qte-champ { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.agent-option-qte { width: 4em; min-height: 44px; }
 .options-resa-ajout { display: flex; flex-wrap: wrap; gap: 8px; }
 .options-resa-ajout select { flex: 1 1 200px; min-height: 44px; }
 @media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-liste li button { grid-column: 1 / -1; } }
