@@ -325,6 +325,8 @@ html.modal-ouverte, html.modal-ouverte body { overflow: hidden; }
   .modal .choix-liste { max-height: none; overflow: visible; }
 }
 #toasts { position: fixed; z-index: 200; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
+/* Feuille ouverte : le toast passe en haut, il ne couvre plus le champ de la feuille (saisie des commissions enchaînée, relecture de la PR 361). */
+@media (max-width: 719px) { html.modal-ouverte #toasts { top: calc(env(safe-area-inset-top) + 12px); bottom: auto; } }
 @media (min-width: 900px) { #toasts { bottom: 24px; left: 276px; } }
 .toast { max-width: 460px; padding: 12px 16px; border-radius: var(--rayon); background: #1f2a2a; color: #fff; font-size: 0.92rem; font-weight: 500; pointer-events: auto; }
 .toast.erreur { background: var(--danger); }
