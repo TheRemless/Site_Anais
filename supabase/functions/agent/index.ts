@@ -38,7 +38,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { lireApprentissages } from "./apprentissages.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule, lieuxMapsPourCtx } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule, lieuxMapsPourCtx, telephoneDeConversation } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -47,7 +47,7 @@ import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
-import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, conversationDansEntreprise, entitesFicheClient, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
@@ -268,7 +268,8 @@ Deno.serve(async (req) => {
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
     // La fiche client reliée (26.11.2026), lue avec la session et dans l'entreprise de l'Assistant : son nom est dit à l'agent avec le numéro.
-    const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).maybeSingle()).data : null;
+    // Filtrée côté serveur sur l'entreprise de l'Assistant ou de la conversation (relecture de la PR 355), comme dossierWa.
+    const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).in("entite_id", entitesFicheClient(wc.data, entiteId)).maybeSingle()).data : null;
     message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, client: clientWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
     // Dans une conversation existante, les pièces se contrôlent plus bas avec celles qu'elle garde déjà (nombre et taille).
     controle = conversationId ? null : verifierPieces(demande.fichiers);
@@ -297,8 +298,13 @@ Deno.serve(async (req) => {
       const [w, peutLiee] = await Promise.all([lireWa(lieeId), sb.rpc("whatsapp_peut_ecrire", { p_conversation: lieeId })]);
       if (w.error) console.error("agent : conversation WhatsApp liée", w.error.message);
       if (peutLiee.error) console.error("agent : whatsapp_peut_ecrire (conversation liée)", peutLiee.error.message);
+      // Relue même hors de l'entreprise : un contact passé « jamais » retire l'échange joint de l'historique (revue 299, point 9).
       if (!w.error) waLue = w.data || null;
-      if (!w.error && !peutLiee.error && peutLiee.data === true) waLiee = w.data || null;
+      // Relecture de la PR 355 : elle ne sert à écrire (numéro sur la carte, consigne apporteur) que dans l'entreprise de l'Assistant, ou à
+      // trier chez Secret et Taxi, comme la conversation jointe.
+      const slugLiee = w.data && w.data.entite_id === null ? ((await sb.from("entites").select("slug").eq("id", entiteId).maybeSingle()).data?.slug || "") : "";
+      const dansEntreprise = !!w.data && conversationDansEntreprise(w.data, entiteId, slugLiee);
+      if (!w.error && dansEntreprise && !peutLiee.error && peutLiee.data === true) waLiee = w.data;
     }
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
@@ -1013,7 +1019,8 @@ Deno.serve(async (req) => {
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
   // La conversation WhatsApp liée où la personne écrit (waLiee) et dont le contact n'est pas un apporteur : son numéro complet va sur la carte
   // « dossier » (whatsapp.js, telephoneDeCarte), jamais une forme raccourcie par le modèle (26.11.2026).
-  const telephoneWa = waLiee && !contactApporteur(waLiee) && typeof waLiee.telephone === "string" ? waLiee.telephone : "";
+  // Seulement un contact de client (telephoneDeConversation, relecture de la PR 355) : ni partenaire, ni apporteur, ni contact personnel.
+  const telephoneWa = waLiee && !contactApporteur(waLiee) ? telephoneDeConversation(waLiee) : "";
   const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now(), ...(telephoneWa ? { telephoneWa } : {}) };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 

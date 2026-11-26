@@ -103,8 +103,56 @@ test("clavier ouvert : la barre des Réglages et les en-têtes de discussion sui
   const path = require("node:path");
   const css = fs.readFileSync(path.join(__dirname, "../src/gestion/css/app.css"), "utf8");
   assert.match(css, /html\.clavier \.barre-fixe \{ bottom: calc\(var\(--clavier\) \+ 8px\); \}/);
-  assert.match(css, /html\.clavier \.agent-fil-tete, html\.clavier \.wa-fil-tete \{ top: var\(--haut-visible, 0px\); \}/);
+  // Jamais sous la barre du haut collée (relecture de la PR 355).
+  assert.match(css, /html\.clavier \.agent-fil-tete, html\.clavier \.wa-fil-tete \{ top: max\(var\(--haut-barre\), var\(--haut-visible, 0px\)\); \}/);
   const ui = fs.readFileSync(path.join(__dirname, "../src/gestion/js/ui.mjs"), "utf8");
   assert.match(ui, /--haut-visible/);
   assert.doesNotMatch(ui, /DEBUG-CLAVIER/);
+});
+
+test("etatClavier (relecture de la PR 355) : tactile et champ actif seulement, une référence par largeur, rebond, barre de raccourcis", async () => {
+  const { etatClavier, basVisible, hauteurClavier } = await load();
+  const vv = (height, offsetTop = 0) => ({ height, offsetTop, scale: 1 });
+  // 4. Ordinateur : fenêtre réduite de 300 px (moitié d'écran, outils de développement) à largeur égale : jamais un clavier.
+  let e = etatClavier({ largeur: 1280, innerHeight: 900, vv: vv(900), tactile: false, saisie: true });
+  e = etatClavier({ largeur: 1280, innerHeight: 600, vv: vv(600), references: e.references, tactile: false, saisie: true });
+  assert.deepEqual([e.clavier, e.bas, e.haut], [0, 0, 0]);
+  // iPad en Split View : tactile, mais aucun champ actif : pas de clavier non plus.
+  e = etatClavier({ largeur: 768, innerHeight: 1024, vv: vv(1024), tactile: true, saisie: false });
+  e = etatClavier({ largeur: 768, innerHeight: 700, vv: vv(700), references: e.references, tactile: true, saisie: false });
+  assert.equal(e.clavier, 0);
+  // iPhone, champ actif : le clavier compte.
+  e = etatClavier({ largeur: 402, innerHeight: 812, vv: vv(812), tactile: true, saisie: true });
+  e = etatClavier({ largeur: 402, innerHeight: 812, vv: vv(409), references: e.references, tactile: true, saisie: true });
+  assert.equal(e.clavier, 403);
+  // 5. App installée : rotation clavier ouvert, puis retour en portrait avec la fenêtre réduite : la référence du portrait est gardée.
+  e = etatClavier({ largeur: 874, innerHeight: 402, vv: vv(402), references: e.references, tactile: true, saisie: true });
+  e = etatClavier({ largeur: 874, innerHeight: 210, vv: vv(210), references: e.references, tactile: true, saisie: true });
+  assert.ok(e.clavier > 0, "paysage : clavier");
+  e = etatClavier({ largeur: 402, innerHeight: 409, vv: vv(409), references: e.references, tactile: true, saisie: true });
+  assert.equal(e.clavier, 403, "retour en portrait : la classe clavier reste");
+  assert.equal(e.references.get(402), 812);
+  // 11. Rebond élastique dans Safari : offsetTop au-delà de ce que le clavier prend : la distance reste à 0.
+  assert.equal(basVisible(714, vv(377, 400)), 0);
+  // App installée : la fenêtre a perdu 193 px, la distance peut descendre jusque-là (-95 relevé), pas au-delà.
+  assert.equal(basVisible(619, vv(409, 305), 812), -95);
+  assert.equal(basVisible(619, vv(409, 600), 812), -193);
+  // 13. Barre de raccourcis d'un clavier matériel (55 px), champ actif sur tactile : comptée.
+  e = etatClavier({ largeur: 402, innerHeight: 812, vv: vv(757), tactile: true, saisie: true });
+  assert.equal(e.clavier, 55);
+  // Sans champ actif, ou mesurée hors focus, elle reste sous le grand seuil.
+  assert.equal(hauteurClavier(812, vv(757)), 0);
+  // Barre d'adresse qui se replie : la fenêtre et la partie visible changent ensemble, rien ne compte.
+  assert.equal(etatClavier({ largeur: 402, innerHeight: 760, vv: vv(760), references: new Map([[402, 812]]), tactile: true, saisie: true }).clavier, 0);
+});
+
+test("ouvreClavier : seuls les champs de texte ouvrent le clavier", async () => {
+  const { ouvreClavier } = await load();
+  assert.equal(ouvreClavier({ tagName: "TEXTAREA" }), true);
+  assert.equal(ouvreClavier({ tagName: "INPUT", type: "search" }), true);
+  assert.equal(ouvreClavier({ tagName: "INPUT", type: "checkbox" }), false);
+  assert.equal(ouvreClavier({ tagName: "INPUT", type: "text", readOnly: true }), false);
+  assert.equal(ouvreClavier({ tagName: "DIV", isContentEditable: true }), true);
+  assert.equal(ouvreClavier({ tagName: "BUTTON" }), false);
+  assert.equal(ouvreClavier(null), false);
 });

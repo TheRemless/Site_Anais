@@ -241,7 +241,8 @@ test("revue 297, point 5 : la demande de l'écran est retirée à chaque lecture
   const vue = lire("src/gestion/js/views/agent.mjs");
   assert.match(vue, /const brut = sessionStorage\.getItem\(CLE_DEMANDE_AGENT\);\n\s+sessionStorage\.removeItem\(CLE_DEMANDE_AGENT\);/, "retirée avant toute décision");
   const wa = lire("src/gestion/js/views/whatsapp.mjs");
-  assert.equal((wa.match(/le: Date\.now\(\)/g) || []).length, 2, "les deux demandes de l'écran sont datées");
+  // Les deux demandes de l'écran, plus le retour dans l'entreprise d'origine (relecture de la PR 355).
+  assert.equal((wa.match(/le: Date\.now\(\)/g) || []).length, 3, "les demandes de l'écran sont datées");
   assert.match(lire("src/gestion/js/views/whatsapp-a-faire.mjs"), /entite: e\.id, le: Date\.now\(\)/);
 });
 

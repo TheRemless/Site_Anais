@@ -188,3 +188,22 @@ export function resultatsRechercheWhatsApp(trouves = [], { conversations = [], c
   }
   return out;
 }
+
+// ---- Retour dans l'entreprise d'origine (relecture de la PR 355) ------------------------------------------------------------------------
+// L'Assistant d'une conversation Secret ouvert depuis Taxi fait passer l'application chez Secret. Au retour sur la même conversation, on
+// revient chez Taxi. `brut` : ce que l'écran WhatsApp a rangé ({ conversation, entite, le }) ; rend l'entreprise à rétablir, ou "".
+// Seulement pour la même conversation, dans les deux heures, vers une entreprise encore accessible et différente de l'active.
+export const CLE_RETOUR_ENTITE = "gestion-wa-retour-entite";
+export const RETOUR_ENTITE_MS = 2 * 3600 * 1000;
+export function entiteDeRetour(brut, { conversation = "", active = "", accessibles = [], maintenant = Date.now() } = {}) {
+  let d = null;
+  try {
+    d = typeof brut === "string" ? JSON.parse(brut) : brut;
+  } catch {
+    return "";
+  }
+  if (!d || !estUuid(d.conversation) || !estUuid(d.entite) || d.conversation !== conversation) return "";
+  if (!(Number(d.le) > 0) || maintenant - Number(d.le) > RETOUR_ENTITE_MS || maintenant < Number(d.le)) return "";
+  if (d.entite === active || !accessibles.includes(d.entite)) return "";
+  return d.entite;
+}

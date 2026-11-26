@@ -80,3 +80,75 @@ test("écran WhatsApp : « Assistant » dans l'en-tête collé, 44 px, un seul d
   const en = fs.readFileSync(new URL("../src/gestion/js/i18n-en.mjs", import.meta.url), "utf8");
   for (const k of ["Assistant", "Demander à l'assistant"]) assert.ok(en.includes(`"${k}":`), k);
 });
+
+// ---- Relecture de la PR 355 ----------------------------------------------------------------------------------------------------------
+test("1. seul un contact de client donne son numéro à la carte : ni partenaire, ni fiche partenaire reliée, ni personnel, ni apporteur", async () => {
+  const { telephoneDeConversation } = await import("../supabase/functions/agent/outils.js");
+  const base = { telephone: TEL, reponses: "auto" };
+  assert.equal(telephoneDeConversation(base), TEL);
+  assert.equal(telephoneDeConversation({ ...base, type_contact: "client" }), TEL);
+  for (const type_contact of ["partenaire", "chauffeur", "hotel", "apporteur", "personnel"]) assert.equal(telephoneDeConversation({ ...base, type_contact }), "", type_contact);
+  assert.equal(telephoneDeConversation({ ...base, partenaire_id: "00000000-0000-4000-8000-000000000001" }), "");
+  assert.equal(telephoneDeConversation({ ...base, reponses: "jamais" }), "");
+  assert.equal(telephoneDeConversation(null), "");
+  // La fonction s'en sert pour ctx.telephoneWa (index.ts), en plus de l'exclusion de l'apporteur.
+  const index = fs.readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(index, /const telephoneWa = waLiee && !contactApporteur\(waLiee\) \? telephoneDeConversation\(waLiee\) : "";/);
+});
+
+test("2. la fiche client reliée se lit seulement dans l'entreprise de l'Assistant ou de la conversation (côté serveur)", async () => {
+  const { entitesFicheClient } = await import("../supabase/functions/agent/whatsapp.js");
+  const A = "00000000-0000-4000-8000-00000000000a";
+  const B = "00000000-0000-4000-8000-00000000000b";
+  assert.deepEqual(entitesFicheClient({ entite_id: B }, A), [A, B]);
+  assert.deepEqual(entitesFicheClient({ entite_id: null }, A), [A]);
+  assert.deepEqual(entitesFicheClient({ entite_id: A }, A), [A]);
+  const index = fs.readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(index, /from\("clients"\)\.select\("prenom, nom"\)\.eq\("id", wc\.data\.client_id\)\.in\("entite_id", entitesFicheClient\(wc\.data, entiteId\)\)/);
+});
+
+test("14. la conversation liée n'est relue que dans l'entreprise de l'Assistant (ou à trier chez Secret et Taxi)", async () => {
+  const { conversationDansEntreprise } = await import("../supabase/functions/agent/whatsapp.js");
+  const A = "00000000-0000-4000-8000-00000000000a";
+  const B = "00000000-0000-4000-8000-00000000000b";
+  assert.equal(conversationDansEntreprise({ entite_id: A }, A, "agence"), true);
+  assert.equal(conversationDansEntreprise({ entite_id: B }, A, "secret"), false);
+  assert.equal(conversationDansEntreprise({ entite_id: null }, A, "taxi"), true);
+  assert.equal(conversationDansEntreprise({ entite_id: null }, A, "agence"), false);
+  assert.equal(conversationDansEntreprise(null, A, "secret"), false);
+  const index = fs.readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  const liee = index.slice(index.indexOf("const lieeId = c.data.whatsapp_conversation_id;"), index.indexOf("} else {", index.indexOf("const lieeId = c.data.whatsapp_conversation_id;")));
+  assert.match(liee, /conversationDansEntreprise\(w\.data, entiteId, slugLiee\)/);
+  assert.match(liee, /if \(!w\.error\) waLue = w\.data \|\| null;/, "relue pour retirer un contact personnel (revue 299)");
+  assert.match(liee, /dansEntreprise && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data;/);
+});
+
+test("10. retour dans l'entreprise d'origine : même conversation, deux heures, entreprise accessible, une seule fois", async () => {
+  const { entiteDeRetour } = await import("../src/gestion/js/whatsapp-relie-calc.mjs");
+  const C = "00000000-0000-4000-8000-0000000000c1";
+  const T = "00000000-0000-4000-8000-0000000000e1";
+  const S = "00000000-0000-4000-8000-0000000000e2";
+  const brut = JSON.stringify({ conversation: C, entite: T, le: 1000 });
+  const base = { conversation: C, active: S, accessibles: [T, S], maintenant: 2000 };
+  assert.equal(entiteDeRetour(brut, base), T);
+  assert.equal(entiteDeRetour(brut, { ...base, conversation: "00000000-0000-4000-8000-0000000000c2" }), "");
+  assert.equal(entiteDeRetour(brut, { ...base, maintenant: 1000 + 2 * 3600 * 1000 + 1 }), "");
+  assert.equal(entiteDeRetour(brut, { ...base, active: T }), "");
+  assert.equal(entiteDeRetour(brut, { ...base, accessibles: [S] }), "");
+  assert.equal(entiteDeRetour("pas du json", base), "");
+  const wa = fs.readFileSync(new URL("../src/gestion/js/views/whatsapp.mjs", import.meta.url), "utf8");
+  assert.match(wa, /sessionStorage\.removeItem\(CLE_RETOUR_ENTITE\)/);
+  // 9. Le bouton se rallume à la fin de l'ouverture, plus après un délai fixe.
+  assert.doesNotMatch(wa, /setTimeout\(\(\) => \(bouton\.disabled = false\), 1500\)/);
+  assert.match(wa, /finally \{[\s\S]{0,200}bouton\.disabled = false;/);
+});
+
+test("6, 7, 8. réponse repliable : choix gardé, champ recalculé à chaque largeur, copie manuelle sur un champ déplié", () => {
+  const wa = fs.readFileSync(new URL("../src/gestion/js/views/whatsapp.mjs", import.meta.url), "utf8");
+  assert.match(wa, /plier\(choixReponses\.has\(p\.id\) \? choixReponses\.get\(p\.id\) : brouillons\.has\(p\.id\) \|\| !alerte\.hidden\)/);
+  assert.match(wa, /new ResizeObserver\(/);
+  assert.doesNotMatch(wa, /essais\+\+ < 30/);
+  assert.match(wa, /if \(deplier\) deplier\(\);\s*zone\.focus\(\);/);
+  const en = fs.readFileSync(new URL("../src/gestion/js/i18n-en.mjs", import.meta.url), "utf8") + fs.readFileSync(new URL("../src/gestion/js/i18n-en-defilement.mjs", import.meta.url), "utf8");
+  for (const k of ["Voir la réponse", "Replier", "De retour dans {nom}.", "Assistant ouvert dans {nom}."]) assert.ok(en.includes(`"${k}":`), k);
+});

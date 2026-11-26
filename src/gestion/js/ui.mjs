@@ -2,7 +2,7 @@
 // Petits outils d'interface partagés par les écrans.
 import { tr } from "./i18n.mjs";
 import { confirmation } from "./confirmation.mjs";
-import { hauteurClavier, basVisible, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
+import { etatClavier, ouvreClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -61,22 +61,32 @@ function suivreClavier() {
   // Deux mesures (26.11.2026) : la hauteur du clavier, stable tant qu'il est ouvert, décide de la classe `clavier` (barre d'onglets cachée) ;
   // --clavier, la distance au bas visible, place seulement les barres fixées ou collées en bas. Rien de ce qui change la hauteur de la page
   // ne dépend du décalage d'iOS : sinon la page change de hauteur, iOS redécale, et ainsi de suite (écran qui saute, nouvelle discussion).
-  // La plus grande hauteur de fenêtre vue pour la largeur actuelle (une rotation change la largeur et repart de zéro).
-  let reference = { largeur: 0, hauteur: 0 };
-  const maj = () => {
-    if (window.innerWidth !== reference.largeur) reference = { largeur: window.innerWidth, hauteur: window.innerHeight };
-    else reference.hauteur = Math.max(reference.hauteur, window.innerHeight);
-    const clavier = hauteurClavier(window.innerHeight, vv, reference.hauteur);
-    racine.style.setProperty("--clavier", `${basVisible(window.innerHeight, vv, reference.hauteur)}px`);
+  // Calcul dans mobile-calc.mjs (etatClavier) : écran tactile et champ actif seulement, une hauteur de référence par largeur.
+  const tactile = () => (navigator.maxTouchPoints || 0) > 0 || matchMedia("(any-pointer: coarse)").matches;
+  let references = new Map();
+  let prevu = 0;
+  const appliquer = () => {
+    prevu = 0;
+    const e = etatClavier({ largeur: window.innerWidth, innerHeight: window.innerHeight, vv, references, tactile: tactile(), saisie: ouvreClavier(document.activeElement) });
+    references = e.references;
+    racine.style.setProperty("--clavier", `${e.bas}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
     // Le haut de la partie visible : iOS décale la vue pour montrer le champ, les en-têtes collés s'y accrochent (position seulement).
-    racine.style.setProperty("--haut-visible", `${clavier > 0 ? Math.max(0, Math.round(vv.offsetTop || 0)) : 0}px`);
-    racine.classList.toggle("clavier", clavier > 0);
+    racine.style.setProperty("--haut-visible", `${e.haut}px`);
+    racine.classList.toggle("clavier", e.clavier > 0);
+  };
+  // Une mesure par image au plus (relecture de la PR 355) : le défilement envoie plusieurs événements par image.
+  const maj = () => {
+    if (!prevu) prevu = requestAnimationFrame(appliquer);
   };
   vv.addEventListener("resize", maj);
   vv.addEventListener("scroll", maj);
   window.addEventListener("resize", maj);
-  maj();
+  window.addEventListener("orientationchange", maj);
+  // Le focus décide aussi : un champ quitté éteint la mesure, un champ touché l'allume.
+  document.addEventListener("focusin", maj);
+  document.addEventListener("focusout", () => setTimeout(maj, 0));
+  appliquer();
 }
 suivreClavier();
 

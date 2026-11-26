@@ -2591,7 +2591,8 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
 /* Clavier ouvert : iOS fait descendre la partie visible ; l'en-tête de la discussion (Assistant, WhatsApp) reste collé à son haut au lieu
    de rester hors de l'écran avec la barre du haut (26.11.2026). Un décalage d'en-tête collé ne change pas la hauteur de la page. */
-@media (max-width: 899px) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: var(--haut-visible, 0px); } }
+/* Jamais sous la barre du haut (collée, z-index 30) quand on remonte le fil clavier ouvert : le plus bas des deux (relecture de la PR 355). */
+@media (max-width: 899px) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: max(var(--haut-barre), var(--haut-visible, 0px)); } }
 @media (max-width: 899px) {
   /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
   .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }

@@ -2222,3 +2222,13 @@ export function telephoneDeCarte(saisi, telWa) {
   if (chiffres === chiffresWa || (chiffres.length >= 6 && chiffresWa.endsWith(chiffres))) return complet;
   return s;
 }
+
+// Le numéro d'une conversation WhatsApp qui peut aller sur la carte « dossier » comme celui du client (relecture de la PR 355) : seulement un
+// contact de client, comme whatsapp-calc.mjs (ficheAMettreAJour) : type vide ou « client », aucune fiche partenaire reliée, jamais un contact
+// personnel. Partenaire, chauffeur, hôtel, apporteur ou contact personnel : "" (sinon le voucher partirait chez eux).
+export function telephoneDeConversation(conv) {
+  if (!conv || typeof conv.telephone !== "string" || !conv.telephone.trim()) return "";
+  if (conv.reponses === "jamais" || conv.partenaire_id) return "";
+  if (conv.type_contact && conv.type_contact !== "client") return "";
+  return conv.telephone;
+}

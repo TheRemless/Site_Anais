@@ -121,3 +121,13 @@ export function titreWhatsApp(conv) {
   if (nom) return nom;
   return conv && conv.telephone ? `WhatsApp ${String(conv.telephone).slice(0, 20)}` : "WhatsApp";
 }
+
+// Une conversation WhatsApp lue pour l'Assistant de l'entreprise `entiteId` (relecture de la PR 355) : rangée dans cette entreprise, ou encore
+// à trier quand l'Assistant est celui de Secret ou de Taxi (`slugActif`). Même règle pour la conversation jointe et pour la conversation liée.
+export function conversationDansEntreprise(conv, entiteId, slugActif = "") {
+  if (!conv || !entiteId) return false;
+  if (conv.entite_id === entiteId) return true;
+  return conv.entite_id === null && ["secret", "taxi"].includes(slugActif);
+}
+// Les entreprises où lire la fiche client reliée : celle de l'Assistant et celle de la conversation (déjà contrôlée).
+export const entitesFicheClient = (conv, entiteId) => [...new Set([entiteId, conv && conv.entite_id].filter((x) => typeof x === "string" && x))];
