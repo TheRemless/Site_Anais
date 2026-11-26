@@ -129,5 +129,3 @@ export function conversationDansEntreprise(conv, entiteId, slugActif = "") {
   if (conv.entite_id === entiteId) return true;
   return conv.entite_id === null && ["secret", "taxi"].includes(slugActif);
 }
-// Les entreprises où lire la fiche client reliée : celle de l'Assistant et celle de la conversation (déjà contrôlée).
-export const entitesFicheClient = (conv, entiteId) => [...new Set([entiteId, conv && conv.entite_id].filter((x) => typeof x === "string" && x))];

@@ -29,7 +29,7 @@ import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-
 import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 import { noteTypeDeduit } from "./whatsapp-type.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
-import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS, CLE_RETOUR_ENTITE, entiteDeRetour } from "../whatsapp-relie-calc.mjs";
+import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS, CLE_RETOUR_ENTITE } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
 import { suivreFil, decisionArrivee, ratioMedia, cacheLiens, empreinteMessage } from "../fil-defilement.mjs";
@@ -1286,22 +1286,6 @@ export async function vueWhatsApp() {
   }
   suivreVisibilite();
   const { conversation: idOuvert } = lireAdresse(location.hash);
-  // Retour de l'Assistant d'une autre entreprise sur la même conversation : l'entreprise d'origine revient (relecture de la PR 355). La
-  // mémoire ne sert qu'une fois : toute autre visite de WhatsApp l'efface.
-  try {
-    const brut = sessionStorage.getItem(CLE_RETOUR_ENTITE);
-    if (brut) {
-      sessionStorage.removeItem(CLE_RETOUR_ENTITE);
-      const retour = entiteDeRetour(brut, { conversation: idOuvert, active: etat.entiteId, accessibles: entitesAccessibles().map((e) => e.id) });
-      if (retour) {
-        changerEntite(retour, { naviguer: false });
-        const e = entite(retour);
-        if (e) toast(tr("De retour dans {nom}.", { nom: e.nom }));
-      }
-    }
-  } catch {
-    // stockage refusé
-  }
   // L'écran tel qu'il était avant ce rendu (redessin à la même adresse) : la position de la liste et de la conversation à garder.
   const avant = document.querySelector("#principal > .wa");
   const defilListe = avant ? (avant.querySelector(".wa-liste") || {}).scrollTop || 0 : 0;

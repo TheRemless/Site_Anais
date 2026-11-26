@@ -1922,6 +1922,9 @@ export async function proposer(nom, e, ctx, memo) {
     if (!t) return { erreur: "confirmation_introuvable" };
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { course: { texte: t.slice(0, 4000) } } };
   }
+  // La conversation WhatsApp liée est passée dans une autre entreprise (contre-relecture de la PR 355) : sa consigne (apporteur, numéro du
+  // client) ne vaut plus ici. Aucune carte de dossier ou de réservation : le modèle pourrait reprendre l'apporteur comme client.
+  if (ctx && ctx.conversationAutreEntreprise && ["proposer_dossier", "proposer_reservation"].includes(nom)) return { erreur: "conversation_autre_entreprise", conseil: CONSEIL_AUTRE_ENTREPRISE };
   // Plus de 10 sièges enfant ou bébé : refusé avec un motif, jamais ramené à 10 en silence (relecture de la PR 315).
   if (["proposer_dossier", "proposer_reservation"].includes(nom) && [...(e.services || []), ...(e.service ? [e.service] : [])].some((x) => x && (Number(x.sieges) || 0) + (Number(x.sieges_bebe) || 0) > SIEGES_MAX)) return { erreur: "sieges_trop_nombreux" };
   if (nom === "proposer_dossier") {
@@ -2232,3 +2235,5 @@ export function telephoneDeConversation(conv) {
   if (conv.type_contact && conv.type_contact !== "client") return "";
   return conv.telephone;
 }
+
+export const CONSEIL_AUTRE_ENTREPRISE = "La conversation WhatsApp liée à cette discussion est maintenant rangée dans une autre entreprise. Ne propose aucune carte ici : dis-le à la personne et invite-la à ouvrir l'Assistant depuis la conversation WhatsApp, dans l'entreprise où elle est rangée.";

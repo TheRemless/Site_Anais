@@ -47,7 +47,7 @@ import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
-import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, conversationDansEntreprise, entitesFicheClient, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, conversationDansEntreprise, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
@@ -203,6 +203,8 @@ Deno.serve(async (req) => {
   // La conversation WhatsApp jointe ou liée telle que la personne la lit, même sans droit d'écrire (revue de sécurité de la PR 299) : son
   // réglage (Contact personnel : l'échange joint plus tôt ne repart plus), son type et son nom (contrôle de la réponse au client).
   let waLue: Record<string, any> | null = null;
+  // La conversation WhatsApp liée à la discussion est rangée dans une autre entreprise que celle de l'Assistant (outils.js, proposer).
+  let conversationAutreEntreprise = false;
   // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
   // pas typé, son nom est lu comme un nom de profil).
   // Puis le tri et les faits des étapes (migration 105) : sans eux, le contact n'est jamais un client probable. Chaque repli garde ce que la
@@ -268,8 +270,8 @@ Deno.serve(async (req) => {
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
     // La fiche client reliée (26.11.2026), lue avec la session et dans l'entreprise de l'Assistant : son nom est dit à l'agent avec le numéro.
-    // Filtrée côté serveur sur l'entreprise de l'Assistant ou de la conversation (relecture de la PR 355), comme dossierWa.
-    const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).in("entite_id", entitesFicheClient(wc.data, entiteId)).maybeSingle()).data : null;
+    // Filtrée côté serveur sur l'entreprise de l'Assistant, comme dossierWa (relecture de la PR 355).
+    const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).eq("entite_id", entiteId).maybeSingle()).data : null;
     message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, client: clientWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
     // Dans une conversation existante, les pièces se contrôlent plus bas avec celles qu'elle garde déjà (nombre et taille).
     controle = conversationId ? null : verifierPieces(demande.fichiers);
@@ -302,9 +304,10 @@ Deno.serve(async (req) => {
       if (!w.error) waLue = w.data || null;
       // Relecture de la PR 355 : elle ne sert à écrire (numéro sur la carte, consigne apporteur) que dans l'entreprise de l'Assistant, ou à
       // trier chez Secret et Taxi, comme la conversation jointe.
-      const slugLiee = w.data && w.data.entite_id === null ? ((await sb.from("entites").select("slug").eq("id", entiteId).maybeSingle()).data?.slug || "") : "";
-      const dansEntreprise = !!w.data && conversationDansEntreprise(w.data, entiteId, slugLiee);
+      const dansEntreprise = !!w.data && conversationDansEntreprise(w.data, entiteId, ent.data?.slug || "");
       if (!w.error && dansEntreprise && !peutLiee.error && peutLiee.data === true) waLiee = w.data;
+      // Rangée ailleurs depuis : ni consigne apporteur ni numéro ici, et aucune carte de dossier (contre-relecture de la PR 355).
+      if (!w.error && w.data && !dansEntreprise) conversationAutreEntreprise = true;
     }
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
@@ -1021,7 +1024,7 @@ Deno.serve(async (req) => {
   // « dossier » (whatsapp.js, telephoneDeCarte), jamais une forme raccourcie par le modèle (26.11.2026).
   // Seulement un contact de client (telephoneDeConversation, relecture de la PR 355) : ni partenaire, ni apporteur, ni contact personnel.
   const telephoneWa = waLiee && !contactApporteur(waLiee) ? telephoneDeConversation(waLiee) : "";
-  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now(), ...(telephoneWa ? { telephoneWa } : {}) };
+  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now(), ...(telephoneWa ? { telephoneWa } : {}), ...(conversationAutreEntreprise ? { conversationAutreEntreprise } : {}) };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

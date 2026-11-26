@@ -64,20 +64,16 @@ function suivreClavier() {
   // Calcul dans mobile-calc.mjs (etatClavier) : écran tactile et champ actif seulement, une hauteur de référence par largeur.
   const tactile = () => (navigator.maxTouchPoints || 0) > 0 || matchMedia("(any-pointer: coarse)").matches;
   let references = new Map();
-  let prevu = 0;
-  const appliquer = () => {
-    prevu = 0;
-    const e = etatClavier({ largeur: window.innerWidth, innerHeight: window.innerHeight, vv, references, tactile: tactile(), saisie: ouvreClavier(document.activeElement) });
+  // Appliqué tout de suite à chaque événement (contre-relecture de la PR 355) : attendre l'image suivante décalait les barres d'une image.
+  // Le calcul est léger (quelques lectures du viewport, trois variables), un événement de trop ne coûte rien.
+  const maj = () => {
+    const e = etatClavier({ largeur: window.innerWidth, innerHeight: window.innerHeight, vv, references, tactile: tactile(), saisie: ouvreClavier(document.activeElement), telephone: Math.min(screen.width, screen.height) < 600 });
     references = e.references;
     racine.style.setProperty("--clavier", `${e.bas}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
     // Le haut de la partie visible : iOS décale la vue pour montrer le champ, les en-têtes collés s'y accrochent (position seulement).
     racine.style.setProperty("--haut-visible", `${e.haut}px`);
     racine.classList.toggle("clavier", e.clavier > 0);
-  };
-  // Une mesure par image au plus (relecture de la PR 355) : le défilement envoie plusieurs événements par image.
-  const maj = () => {
-    if (!prevu) prevu = requestAnimationFrame(appliquer);
   };
   vv.addEventListener("resize", maj);
   vv.addEventListener("scroll", maj);
@@ -86,7 +82,7 @@ function suivreClavier() {
   // Le focus décide aussi : un champ quitté éteint la mesure, un champ touché l'allume.
   document.addEventListener("focusin", maj);
   document.addEventListener("focusout", () => setTimeout(maj, 0));
-  appliquer();
+  maj();
 }
 suivreClavier();
 

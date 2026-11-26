@@ -156,3 +156,19 @@ test("ouvreClavier : seuls les champs de texte ouvrent le clavier", async () => 
   assert.equal(ouvreClavier({ tagName: "BUTTON" }), false);
   assert.equal(ouvreClavier(null), false);
 });
+
+test("etatClavier, contre-relecture de la PR 355 : iPad en Split View ou Stage Manager avec un champ actif, jamais un faux clavier", async () => {
+  const { etatClavier } = await load();
+  const vv = (height, offsetTop = 0) => ({ height, offsetTop, scale: 1 });
+  // Split View : la largeur change, la hauteur aussi ; champ actif, aucun clavier.
+  let e = etatClavier({ largeur: 1024, innerHeight: 1366, vv: vv(1366), tactile: true, saisie: true, telephone: false });
+  e = etatClavier({ largeur: 507, innerHeight: 1366, vv: vv(1366), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.equal(e.clavier, 0);
+  // Stage Manager : même largeur, fenêtre réduite de 400 px, champ actif : la fenêtre a rétréci, ce n'est pas un clavier.
+  e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(1000), tactile: true, saisie: true, telephone: false });
+  e = etatClavier({ largeur: 900, innerHeight: 600, vv: vv(600), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.deepEqual([e.clavier, e.bas, e.haut], [0, 0, 0]);
+  // Le vrai clavier de l'iPad (la partie visible rétrécit, pas la fenêtre) compte toujours.
+  e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(620), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.equal(e.clavier, 380);
+});
