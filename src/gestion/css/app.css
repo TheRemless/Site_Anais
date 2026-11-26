@@ -1172,7 +1172,7 @@ a.st-tuile-lien:active { background: var(--surface-2); }
 .st-barre.ref { fill: #7b9090; }
 .st-fond { fill: transparent; }
 .st-fond.actif { fill: var(--teal-100); }
-.st-zone { fill: transparent; cursor: pointer; }
+.st-svg.st-touchable { cursor: pointer; }
 .st-colonne { outline: none; -webkit-tap-highlight-color: transparent; }
 .st-colonne:hover .st-fond:not(.actif) { fill: var(--surface-2); }
 .st-colonne:focus-visible .st-fond { stroke: var(--teal-600); stroke-width: 2; }

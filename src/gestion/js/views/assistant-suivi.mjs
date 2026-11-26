@@ -89,6 +89,7 @@ function rendre(S, { plusieurs }) {
       series: [{ nom: N_("Coût en dollars"), valeurs: S.tendance.map((t) => t.cout), classe: "s1" }],
       titre: tr("Coût par jour sur 30 jours"),
       etiquettes: false,
+      ajuster: true,
       hauteur: 200,
       format: axe,
       lecture: (i) => {

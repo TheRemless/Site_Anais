@@ -99,7 +99,7 @@ function graphe(X, defs, nom) {
   return bloc(
     h("div", { class: "st-entete-graphe" }, titre(nom), puces(X)),
     legende(series),
-    graphiqueColonnes({ cases, series, devise: X.devise, titre: tr(nom), lecture, lien: defs.length === 1 ? (i) => X.href(defs[0].id, `${X.gran}:${cases[i].cle}`) : null }),
+    graphiqueColonnes({ cases, series, devise: X.devise, titre: tr(nom), ajuster: X.gran === "jour", lecture, lien: defs.length === 1 ? (i) => X.href(defs[0].id, `${X.gran}:${cases[i].cle}`) : null }),
     alternative
   );
 }

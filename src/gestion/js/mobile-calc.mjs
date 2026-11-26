@@ -109,3 +109,16 @@ export function sautEtiquettes(largeurCase, place = 40) {
   if (besoin <= 7) return 7;
   return besoin;
 }
+
+// Largeur d'un graphique en colonnes. La vue Jour (ajuster) tient dans la largeur disponible jusqu'à 31 colonnes ; sinon chaque colonne
+// garde son pas (44 px, 56 avec deux séries) et le graphique défile s'il dépasse.
+export function largeurGraphique({ n, disponible, pas, marges = 0, ajuster = false }) {
+  if (ajuster && n <= 31) return disponible;
+  return Math.max(disponible, marges + n * pas);
+}
+
+// Colonne la plus proche d'une abscisse (en unités du graphique) : le toucher choisit toujours une colonne, même fine, même entre deux.
+export function colonnePlusProche(x, { gauche = 0, largeurCase, n }) {
+  if (!n || !(largeurCase > 0) || !Number.isFinite(x)) return -1;
+  return Math.max(0, Math.min(n - 1, Math.floor((x - gauche) / largeurCase)));
+}

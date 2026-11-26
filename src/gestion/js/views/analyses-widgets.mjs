@@ -3,7 +3,7 @@
 import { h, vider, modal } from "../ui.mjs";
 import { formatMontant, formatNombre } from "../calc.mjs";
 import { tr } from "../i18n.mjs";
-import { indexTuileSeule, sautEtiquettes } from "../mobile-calc.mjs";
+import { indexTuileSeule, sautEtiquettes, largeurGraphique, colonnePlusProche } from "../mobile-calc.mjs";
 
 const NS = "http://www.w3.org/2000/svg";
 export const s = (tag, attrs = {}, ...enfants) => {
@@ -107,7 +107,8 @@ function pasRond(x) {
 // cases : [{ cle, libelle }] ; series : [{ nom, valeurs: [], classe: "s1"|"s2"|"ref" }].
 // lecture(i) → nœud affiché sous le graphique pour la colonne choisie ; lien(i) → adresse de la liste derrière la colonne.
 // format(v) : texte de l'axe et des valeurs (par défaut « 12,4 k ») ; le suivi de l'assistant y écrit des dollars à quelques centimes.
-export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien, etiquettes = true, hauteur = 230, format = compact }) {
+// ajuster : vue jour par jour, qui tient dans la largeur jusqu'à 31 colonnes (voir largeurGraphique, mobile-calc.mjs).
+export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien, etiquettes = true, hauteur = 230, format = compact, ajuster = false }) {
   const n = cases.length;
   const enveloppe = h("div", { class: "st-graphe" });
   const defile = h("div", { class: "st-graphe-defile", role: "group", "aria-label": titre });
@@ -125,13 +126,24 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
     lectureEl.append(...[lecture(i), lien && lien(i) ? h("a", { class: "bouton secondaire petit", href: lien(i) }, tr("Voir la liste")) : null].filter(Boolean));
   };
 
+  const choisir = (i) => {
+    if (choisi === i && lien && lien(i)) {
+      location.hash = lien(i);
+      return;
+    }
+    lire(i);
+    dessiner();
+    const g = defile.querySelectorAll(".st-colonne")[i];
+    if (g) g.focus({ preventScroll: true });
+  };
+
   const dessiner = () => {
     const gauche = 6, haut = 24, bas = 30, droite = 8, largeurAxe = 46;
     const pas = Math.max(series.length > 1 ? 56 : 44, 0);
     const disponible = Math.max((enveloppe.clientWidth || 340) - largeurAxe, 240);
-    // Jusqu'à 31 colonnes (un mois jour par jour), toute la période tient dans la largeur : sur téléphone, le défilement ne montrait que
-    // les cinq derniers jours sans dire qu'il y en avait d'autres (audit mobile, n° 18). Au-delà, les colonnes gardent leur largeur et défilent.
-    const W = n <= 31 ? disponible : Math.max(disponible, gauche + droite + n * pas);
+    // Vue Jour jusqu'à 31 colonnes : toute la période tient dans la largeur (audit mobile, n° 18). Semaine et Mois gardent leurs colonnes
+    // de 44 px et plus, avec leurs montants, et défilent au besoin (contre-relecture de la PR #357).
+    const W = largeurGraphique({ n, disponible, pas, marges: gauche + droite, ajuster });
     const H = hauteur;
     const hh = H - haut - bas;
     const valeurs = series.flatMap((x) => x.valeurs);
@@ -169,28 +181,25 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
         const top = v >= 0 ? y(v) : ligneZero;
         const hauteurBarre = Math.abs(y(v) - ligneZero);
         groupe.append(s("path", { d: chemin(bx, top, bw, hauteurBarre, 4), class: `st-barre ${x.classe}` }));
+        // Le montant au-dessus de la barre seulement s'il a la place ; sinon il se lit sous le graphique en touchant la colonne.
         if (etiquettes && v !== 0 && x.classe !== "ref" && bw >= 20) groupe.append(s("text", { x: bx + bw / 2, y: Math.max(11, top - 5), class: "st-valeur", "text-anchor": "middle" }, format(v)));
       });
       // Une étiquette sur deux (ou sur sept) comptée depuis la dernière colonne : le jour le plus récent garde toujours la sienne.
       if ((n - 1 - i) % sautEtiquette === 0) groupe.append(s("text", { x: centre, y: H - 10, class: "st-axe", "text-anchor": "middle" }, c.court || c.libelle));
-      // Zone de toucher : toute la colonne, bien plus large que la barre.
-      groupe.append(s("rect", { x: x0, y: 0, width: largeurCase, height: H, class: "st-zone" }));
-      const choisir = () => {
-        if (choisi === i && lien && lien(i)) {
-          location.hash = lien(i);
-          return;
-        }
-        lire(i);
-        dessiner();
-        const g = svg.parentNode && svg.parentNode.querySelectorAll(".st-colonne")[i];
-        if (g) g.focus({ preventScroll: true });
-      };
-      groupe.addEventListener("click", choisir);
       groupe.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") (e.preventDefault(), choisir());
+        if (e.key === "Enter" || e.key === " ") (e.preventDefault(), choisir(i));
       });
       svg.append(groupe);
     });
+    // Un seul gestionnaire de toucher pour tout le graphique : la colonne la plus proche du doigt, même quand les colonnes de la vue Jour
+    // ne font que 9 à 16 px de large (contre-relecture de la PR #357). Le clavier garde ses colonnes focalisables.
+    svg.addEventListener("click", (e) => {
+      const r = svg.getBoundingClientRect();
+      if (!r.width) return;
+      const i = colonnePlusProche(((e.clientX - r.left) * W) / r.width, { gauche, largeurCase, n });
+      if (i >= 0) choisir(i);
+    });
+    svg.classList.add("st-touchable");
     if (minV < 0) svg.append(s("line", { x1: 0, x2: W - droite, y1: ligneZero, y2: ligneZero, class: "st-zero" }));
     vider(defile).append(svg);
     svg.style.width = `${W}px`;
