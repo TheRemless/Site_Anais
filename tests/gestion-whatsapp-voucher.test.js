@@ -619,7 +619,7 @@ test("écran : numéro masqué en partie, envoi noté dans le dossier, média du
   assert.equal(etatMedia({ type: "image", statut: "voucher", chemin_sortant: "x" }), "voucher_envoye", "jamais la classe « voucher » des pages A4");
   assert.ok(LIBELLES_MEDIA.voucher_envoye);
   const envoi = lire("src/gestion/js/views/voucher-envoi.mjs");
-  assert.match(envoi, /boutonVoucherWhatsApp\(\{ x, conversation, fichier: \(\) => fichier, legende: \(\) => message\.client, noter: \(\) => noter\("client", "gestion"\) \}\)/);
+  assert.match(envoi, /boutonVoucherWhatsApp\(\{ x, conversation, fichier: \(\) => fichier, legende: \(\) => message\.client, noter: \(\) => noter\("client", "gestion"\)(, classe: "principal"(, libelle: tr\("Envoyer dans la conversation"\))?)? \}\)/);
   const carte = lire("src/gestion/js/views/agent-cartes-voucher.mjs");
   assert.match(carte, /conversation: conversationPourVoucher\(x\)/);
   assert.match(carte, /confirmerVoucherWhatsApp\(x, \{ conversation, fichier, legende: messageClientVoucher\(x\), avantNavigation: revenir \}\)/);
