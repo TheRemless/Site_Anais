@@ -7,7 +7,12 @@ test("hauteurClavier : mesure ce que le clavier a pris, ignore le zoom et la bar
   const { hauteurClavier } = await load();
   assert.equal(hauteurClavier(812, { height: 812, offsetTop: 0, scale: 1 }), 0);
   assert.equal(hauteurClavier(812, { height: 520, offsetTop: 0, scale: 1 }), 292);
-  assert.equal(hauteurClavier(812, { height: 480, offsetTop: 40, scale: 1 }), 292, "la page décalée par iOS compte dans le calcul");
+  // Le décalage du viewport visuel (offsetTop) est une position, pas une perte : la hauteur du clavier n'en dépend pas. Sinon, sur une page
+  // courte (nouvelle discussion de l'Assistant), iOS décale la page, la hauteur change, la page change de hauteur, iOS redécale : boucle
+  // relevée sur simulateur le 26.11.2026 (714 / 377, décalage 337 puis 125, --clavier 0 puis 212 px, des centaines de fois par seconde).
+  assert.equal(hauteurClavier(812, { height: 480, offsetTop: 40, scale: 1 }), 332, "le décalage d'iOS ne change pas la hauteur du clavier");
+  assert.equal(hauteurClavier(714, { height: 377, offsetTop: 337, scale: 1 }), 337);
+  assert.equal(hauteurClavier(714, { height: 377, offsetTop: 125, scale: 1 }), 337);
   assert.equal(hauteurClavier(812, { height: 760, offsetTop: 0, scale: 1 }), 0, "barre d'adresse : pas un clavier");
   assert.equal(hauteurClavier(812, { height: 400, offsetTop: 0, scale: 2 }), 0, "pincement : pas un clavier");
   assert.equal(hauteurClavier(812, null), 0);
@@ -73,4 +78,15 @@ test("saisies : le bon clavier iOS pour chaque sens de champ", async () => {
   assert.equal(SAISIES.recherche.enterkeyhint, "search");
   assert.equal(SAISIES.email.autocapitalize, "none");
   for (const [nom, r] of Object.entries(SAISIES)) assert.ok(r.type, `${nom} a un type`);
+});
+
+test("basVisible : distance au bas visible pour placer les barres, 0 sans clavier ou quand iOS a décalé la page", async () => {
+  const { basVisible } = await load();
+  // Relevés du simulateur (iPhone 17, iOS 26.5) : page courte décalée de 337 px, page qui défile encore, sans clavier, zoom.
+  assert.equal(basVisible(714, { height: 377, offsetTop: 337, scale: 1 }), 0);
+  assert.equal(basVisible(714, { height: 377, offsetTop: 125, scale: 1 }), 212);
+  assert.equal(basVisible(714, { height: 377, offsetTop: 0, scale: 1 }), 337);
+  assert.equal(basVisible(714, { height: 714, offsetTop: 0, scale: 1 }), 0);
+  assert.equal(basVisible(714, { height: 300, offsetTop: 0, scale: 2 }), 0);
+  assert.equal(basVisible(714, null), 0);
 });

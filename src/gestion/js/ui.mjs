@@ -2,7 +2,7 @@
 // Petits outils d'interface partagés par les écrans.
 import { tr } from "./i18n.mjs";
 import { confirmation } from "./confirmation.mjs";
-import { hauteurClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
+import { hauteurClavier, basVisible, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -58,9 +58,12 @@ function suivreClavier() {
   const vv = typeof window !== "undefined" ? window.visualViewport : null;
   if (!vv) return;
   const racine = document.documentElement;
+  // Deux mesures (26.11.2026) : la hauteur du clavier, stable tant qu'il est ouvert, décide de la classe `clavier` (barre d'onglets cachée) ;
+  // --clavier, la distance au bas visible, place seulement les barres fixées ou collées en bas. Rien de ce qui change la hauteur de la page
+  // ne dépend du décalage d'iOS : sinon la page change de hauteur, iOS redécale, et ainsi de suite (écran qui saute, nouvelle discussion).
   const maj = () => {
     const clavier = hauteurClavier(window.innerHeight, vv);
-    racine.style.setProperty("--clavier", `${clavier}px`);
+    racine.style.setProperty("--clavier", `${basVisible(window.innerHeight, vv)}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
     racine.classList.toggle("clavier", clavier > 0);
   };

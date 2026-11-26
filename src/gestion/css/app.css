@@ -2567,7 +2567,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
   /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
   .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }
   .agent.avec-fil .agent-fil, .wa.avec-fil .wa-fil { min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 16px); margin-bottom: 0; }
-  html.clavier .contenu:has(.agent.avec-fil), html.clavier .contenu:has(.wa.avec-fil) { padding-bottom: var(--clavier); }
+  /* Clavier ouvert : aucune marge qui suit le clavier (26.11.2026). La hauteur de la page ne dépend plus de --clavier : iOS ne boucle plus. */
 }
 @media (min-width: 900px) {
   /* Les messages gardent au moins la moitié de la colonne (design n° 6) : faits et résumé défilent dans leur propre hauteur. */

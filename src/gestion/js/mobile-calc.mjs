@@ -2,10 +2,21 @@
 
 // Hauteur du clavier visible : ce que le viewport visuel a perdu par rapport à la fenêtre. Un zoom par pincement
 // réduit aussi le viewport visuel : il ne compte pas comme un clavier. Sous 120 px (barre d'adresse qui bouge), rien.
+// Le décalage du viewport visuel (offsetTop) n'entre pas dans le calcul (26.11.2026) : c'est une position, qui bouge quand la page change de
+// hauteur. Le soustraire faisait boucler iOS sur une page courte (nouvelle discussion de l'Assistant) : hauteur 0, puis 212 px, puis 0…
 export function hauteurClavier(innerHeight, vv) {
   if (!vv || (vv.scale || 1) > 1.01) return 0;
-  const perdu = Math.round(innerHeight - vv.height - (vv.offsetTop || 0));
+  const perdu = Math.round(innerHeight - vv.height);
   return perdu > 120 ? perdu : 0;
+}
+
+// Distance entre le bas de la fenêtre (viewport de mise en page) et le bas de ce qui est visible au-dessus du clavier : ce qu'il faut
+// ajouter au `bottom` d'un élément fixé ou collé en bas. iOS décale le viewport visuel (offsetTop) au lieu de défiler quand la page ne peut
+// plus descendre : la distance baisse d'autant, jusqu'à 0. Elle ne sert qu'à placer, jamais à changer la hauteur de la page (sinon iOS
+// redécale et la valeur bouge encore). Sans clavier, 0.
+export function basVisible(innerHeight, vv) {
+  if (!hauteurClavier(innerHeight, vv)) return 0;
+  return Math.max(0, Math.round(innerHeight - vv.height - (vv.offsetTop || 0)));
 }
 
 const sansAccents = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
