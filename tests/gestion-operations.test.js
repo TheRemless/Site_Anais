@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { varsReponse } from "../src/gestion/js/demande-calc.mjs";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, texteParcEn, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
 import { BUNDHAYA, SATUN } from "./fixtures/regles-partenaires-anais.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
@@ -26,7 +26,12 @@ test("vouchers : modèle d'après la prestation, numéro, statut de paiement", (
 test("vouchers : privé ou join, frais de parc, type de transfert, hôtel et chambre", () => {
   assert.equal(estPrive({ groupe: "Privatisation", libelle: "Koh Rok" }, {}), true);
   assert.equal(estPrive({ groupe: "Excursions en groupe", libelle: "4 îles" }, {}), false);
-  assert.deepEqual(fraisDeParc({ details: { parc: "Adulte étranger: 400 ฿ | Enfant: 200 ฿\n(Thaï: 40 ฿ / 20 ฿)" } }), { inclus: false, texte: "Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day" });
+  assert.deepEqual(fraisDeParc({ details: { parc: "Adulte étranger: 400 ฿ | Enfant: 200 ฿\n(Thaï: 40 ฿ / 20 ฿)" } }), { inclus: false, texte: "Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB); cash on the day" });
+  // Ponctuation finale retirée, séparateur net, rien de plus quand le texte dit déjà comment payer.
+  assert.equal(texteParcEn("Park fee 200 ฿ per adult, paid on site."), "Park fee 200 THB per adult, paid on site");
+  assert.equal(texteParcEn("Tung Yee Peng village entrance, 40 ฿ per adult, 20 ฿ per child aged 4 to 11"), "Tung Yee Peng village entrance, 40 THB per adult, 20 THB per child aged 4 to 11; cash on the day");
+  assert.equal(texteParcEn("Entrance 300 ฿ per adult."), "Entrance 300 THB per adult; cash on the day");
+  assert.doesNotMatch(texteParcEn("Entrance 300 ฿ per adult."), /\.[,;]/);
   assert.deepEqual(fraisDeParc({ details: { parc: "Compris dans la prestation" } }), { inclus: true, texte: "" });
   assert.equal(fraisDeParc({ details: { parc: "Park fees included" } }).inclus, true);
   assert.equal(fraisDeParc(null).inclus, null);

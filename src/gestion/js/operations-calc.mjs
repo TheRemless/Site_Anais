@@ -911,7 +911,7 @@ export function fraisDeParc(prestation) {
   return { inclus, texte: inclus ? "" : texteParcEn(texte) };
 }
 
-// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day ».
+// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB); cash on the day ».
 export function texteParcEn(texte) {
   let s = String(texte || "").replace(/\s*\n\s*/g, " ").trim();
   s = s.replace(/^(?:Selon destination|Depending on destination)\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
@@ -926,7 +926,11 @@ export function texteParcEn(texte) {
   s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*(?:À régler en espèces sur place|To be paid in cash on site)/i, "");
   s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").trim();
   s = s.charAt(0).toUpperCase() + s.slice(1);
-  return /cash/i.test(s) ? s : `${s}, cash on the day`;
+  // La mention de paiement suit le texte du frais sans enchaîner deux ponctuations (« paid on site., cash… ») et avec un séparateur net : une
+  // virgule la ferait lire comme un élément de la liste (« 20 THB per child aged 4 to 11, cash on the day »). Un texte qui dit déjà comment
+  // ou quand payer (espèces, sur place, le jour même) ne reçoit rien de plus.
+  s = s.replace(/[\s.,;:]+$/, "");
+  return /cash|on site|on the day|sur place|en espèces/i.test(s) ? s : `${s}; cash on the day`;
 }
 
 // Capacité du bateau quand la base en donne une en personnes (« 1 à 2 personnes »), rien pour « Par personne ».
