@@ -8,6 +8,7 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier, barreFiltres } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { filtreDeLEntite } from "../filtre-entite-calc.mjs";
 
 const ONGLETS = [
   ["cours", N_("En cours"), ["brouillon", "devis_envoye", "accepte", "acompte"]],
@@ -46,7 +47,10 @@ const COMPARE = {
 // Valeurs enregistrées en français dans les réglages (civilités, nom du champ « pays ») : on traduit seulement l'affichage.
 const _AFFICHAGE = [N_("Madame"), N_("Monsieur"), N_("Mademoiselle"), N_("Pays"), N_("Service"), N_("Trajet")];
 
-const filtre = { onglet: "cours", q: "", tri: "recents" };
+// Un filtre par entreprise : la recherche et l'onglet d'Agence ne suivent pas dans Excursions (audit mobile du 26.11.2026).
+const FILTRE_DEFAUT = { onglet: "cours", q: "", tri: "recents" };
+const memoFiltres = new Map();
+let filtre = FILTRE_DEFAUT;
 const PAGE = 50;
 // Dossiers cochés pour une action groupée (changer de responsable).
 const selection = new Set();
@@ -54,6 +58,7 @@ const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
 
 export function listeDossiers() {
   selection.clear();
+  filtre = filtreDeLEntite(memoFiltres, etat.entiteId, FILTRE_DEFAUT);
   // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser).
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   // Un onglet d'une autre entreprise (« Soldés » de Secret) n'existe pas forcément ici : on revient au premier.
@@ -103,7 +108,9 @@ export function listeDossiers() {
     if (!lignes.length) {
       corps.append(
         etat.db.dossiers.length
-          ? vide(tr("Aucun dossier ne correspond"), tr("Essayez un autre onglet ou effacez la recherche."))
+          ? q
+            ? vide(tr("Aucun dossier ne correspond à « {recherche} »", { recherche: filtre.q.trim() }), tr("Vérifiez l'orthographe ou effacez la recherche."))
+            : vide(tr("Aucun dossier ne correspond"), tr("Essayez un autre onglet ou effacez la recherche."))
           : vide(tr("Aucun dossier pour l'instant"), taxi ? tr("Un dossier regroupe le client, la course et sa Booking confirmation.") : excursions ? tr("Un dossier regroupe le client, ses services, la facture et les paiements.") : tr("Un dossier regroupe le client, le voyage, le devis, la facture et les paiements."), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Créer le premier dossier")) : null)
       );
       return;

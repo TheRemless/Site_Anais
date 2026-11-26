@@ -1298,6 +1298,8 @@ export const EN = {
   "Espèces": "Cash",
   "Essayez sans date, avec toutes les compagnies ou dans l'autre sens.": "Try without a date, with all the companies, or the other way round.",
   "Essayez un autre onglet ou effacez la recherche.": "Try another tab or clear the search.",
+  "Aucun dossier ne correspond à « {recherche} »": "No file matches “{recherche}”",
+  "Vérifiez l'orthographe ou effacez la recherche.": "Check the spelling or clear the search.",
   "Essayez une autre famille, un autre partenaire ou effacez la recherche.": "Try another category, another partner or clear the search.",
   "Essayez une autre recherche.": "Try another search.",
   "Étiquette au-dessus du client (vide : aucune)": "Label above the client (empty: none)",
