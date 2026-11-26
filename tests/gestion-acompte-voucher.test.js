@@ -133,7 +133,11 @@ test("alertes du dossier : remboursement à traiter, trop-perçu, remarque contr
   assert.equal(O.remarquePaiementImprimee("Deposit of 1000 paid", p, 6900), "");
   assert.equal(O.remarquePaiementImprimee("Deposit of 1,200 paid", p, 6900), "Deposit of 1,200 paid");
   assert.equal(O.remarquePaiementImprimee("Cash only", p, 6900), "Cash only");
-  for (const t of ["Deposit 1,200 paid on 26.11.2026", "Deposit 1,200 paid 26/11", "Wise 3 % included, 1200 paid", "1200 paid, 50 THB fee", "1200 paid + 40 fees", "1200 + 150 Wise fee", "1200 + 150 bank transfer fee"]) assert.equal(O.remarquePaiementImprimee(t, p, 6900), t, t);
+  // Le montant de l'acompte reste lu quand « fee » suit d'autres mots : il contredit la part enregistrée s'il est faux.
+  assert.deepEqual(O.montantsRemarque("Deposit 1500 THB plus fee"), [1500]);
+  assert.deepEqual(O.montantsRemarque("Deposit 1500 + 150 Wise fee"), [1500]);
+  assert.equal(O.remarquePaiementImprimee("Deposit 1500 THB plus fee", p, 6900), "", "1 500 contredit la part de 1 200");
+  for (const t of ["Deposit 1,200 paid on 26.11.2026", "Deposit 1,200 paid 26/11", "Wise 3 % included, 1200 paid", "1200 paid, 50 THB fee", "1200 paid + 40 fees", "1200 + 150 Wise fee", "1200 + 150 bank transfer fee", "1200 THB plus fee", "Deposit 1200 THB plus Wise fee"]) assert.equal(O.remarquePaiementImprimee(t, p, 6900), t, t);
 });
 
 const REGL = { emetteur: { nom: "Excursions Exemple", adresse: "", telephone: "+66 00" }, apparence: {}, voucher: {}, devise: "THB", fonctionnement: "excursions" };

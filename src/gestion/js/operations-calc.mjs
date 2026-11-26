@@ -778,13 +778,14 @@ export function paiementDuService(r, { resume = null } = {}) {
 export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
 
 // Les montants d'une remarque de paiement saisie à la main : ni les dates (« 26.11 », « 26/11/2026 »), ni les pourcentages (« 3 % »), ni un
-// montant suivi de « fee(s) », avec un ou deux mots entre (« 50 THB fee », « 150 Wise fee », « 40 bank transfer fee ») ne comptent.
+// montant de frais ne comptent : celui qui précède directement « fee(s) », avec au plus une devise et les mots d'un moyen de paiement entre
+// (« 50 THB fee », « 150 Wise fee », « 40 bank transfer fee »). « Deposit 1500 THB plus fee » garde 1 500, l'acompte.
 export function montantsRemarque(texte) {
   const t = String(texte || "")
     .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/g, " ")
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
     .replace(/\d[\d\s',.]*\s?%/g, " ")
-    .replace(/\d[\d\s',.]*?\s*(?:[A-Za-zÀ-ÿ]+\s+){0,2}fees?\b/gi, " ");
+    .replace(/\d[\d\s',.]*?\s*(?:(?:THB|EUR|USD|CHF|GBP|baht|฿)\s*)?(?:(?:wise|bank|transfer|transfert|paypal|card|carte|atm)\s+){0,2}fees?\b/gi, " ");
   return (t.match(/\d[\d\s',.]*\d|\d/g) || []).map((x) => Number(x.trim().replace(/[\s',]/g, ""))).filter((x) => x > 0);
 }
 const remarqueContredit = (remarque, p, montant) => p && p.verse !== null && p.verse !== undefined && montantsRemarque(remarque).some((x) => x !== p.verse && x !== p.reste && x !== Number(montant));
