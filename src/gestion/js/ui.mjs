@@ -67,8 +67,10 @@ function suivreClavier() {
     if (window.innerWidth !== reference.largeur) reference = { largeur: window.innerWidth, hauteur: window.innerHeight };
     else reference.hauteur = Math.max(reference.hauteur, window.innerHeight);
     const clavier = hauteurClavier(window.innerHeight, vv, reference.hauteur);
-    racine.style.setProperty("--clavier", `${basVisible(window.innerHeight, vv)}px`);
+    racine.style.setProperty("--clavier", `${basVisible(window.innerHeight, vv, reference.hauteur)}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
+    // Le haut de la partie visible : iOS décale la vue pour montrer le champ, les en-têtes collés s'y accrochent (position seulement).
+    racine.style.setProperty("--haut-visible", `${clavier > 0 ? Math.max(0, Math.round(vv.offsetTop || 0)) : 0}px`);
     racine.classList.toggle("clavier", clavier > 0);
   };
   vv.addEventListener("resize", maj);

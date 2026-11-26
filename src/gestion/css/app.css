@@ -2565,6 +2565,11 @@ section.wa-faits .wa-faits-tete { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .wa-fait { transition: none; } }
 /* Le clavier de l'iPhone ne cache ni la saisie de l'Assistant ni les boutons de la réponse (design n° 10). */
 html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans-reponse.avec-bouton { bottom: var(--clavier); }
+/* La barre collée des Réglages (« Enregistrer les réglages ») suit aussi le bas visible : sinon elle passait sous le clavier (26.11.2026). */
+html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
+/* Clavier ouvert : iOS fait descendre la partie visible ; l'en-tête de la discussion (Assistant, WhatsApp) reste collé à son haut au lieu
+   de rester hors de l'écran avec la barre du haut (26.11.2026). Un décalage d'en-tête collé ne change pas la hauteur de la page. */
+@media (max-width: 899px) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: var(--haut-visible, 0px); } }
 @media (max-width: 899px) {
   /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
   .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }

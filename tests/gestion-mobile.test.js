@@ -94,4 +94,17 @@ test("basVisible : distance au bas visible pour placer les barres, 0 sans clavie
   assert.equal(basVisible(714, { height: 714, offsetTop: 0, scale: 1 }), 0);
   assert.equal(basVisible(714, { height: 300, offsetTop: 0, scale: 2 }), 0);
   assert.equal(basVisible(714, null), 0);
+  // App installée : fenêtre réduite à 619 et vue décalée de 305 pour 409 visibles (référence 812) : -95, les barres descendent d'autant.
+  assert.equal(basVisible(619, { height: 409, offsetTop: 305, scale: 1 }, 812), -95);
+});
+
+test("clavier ouvert : la barre des Réglages et les en-têtes de discussion suivent la partie visible (app installée, 26.11.2026)", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const css = fs.readFileSync(path.join(__dirname, "../src/gestion/css/app.css"), "utf8");
+  assert.match(css, /html\.clavier \.barre-fixe \{ bottom: calc\(var\(--clavier\) \+ 8px\); \}/);
+  assert.match(css, /html\.clavier \.agent-fil-tete, html\.clavier \.wa-fil-tete \{ top: var\(--haut-visible, 0px\); \}/);
+  const ui = fs.readFileSync(path.join(__dirname, "../src/gestion/js/ui.mjs"), "utf8");
+  assert.match(ui, /--haut-visible/);
+  assert.doesNotMatch(ui, /DEBUG-CLAVIER/);
 });

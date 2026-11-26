@@ -16,9 +16,11 @@ export function hauteurClavier(innerHeight, vv, reference = innerHeight) {
 // ajouter au `bottom` d'un élément fixé ou collé en bas. iOS décale le viewport visuel (offsetTop) au lieu de défiler quand la page ne peut
 // plus descendre : la distance baisse d'autant, jusqu'à 0. Elle ne sert qu'à placer, jamais à changer la hauteur de la page (sinon iOS
 // redécale et la valeur bouge encore). Sans clavier, 0.
-export function basVisible(innerHeight, vv) {
-  if (!hauteurClavier(innerHeight, vv)) return 0;
-  return Math.max(0, Math.round(innerHeight - vv.height - (vv.offsetTop || 0)));
+// Dans l'app installée, iOS peut réduire la fenêtre et décaler la vue en même temps (619 px de fenêtre, 409 visibles décalés de 305) : la
+// distance est alors négative et l'est restée, sinon les barres passaient sous la barre d'outils du clavier (26.11.2026).
+export function basVisible(innerHeight, vv, reference = innerHeight) {
+  if (!hauteurClavier(innerHeight, vv, reference)) return 0;
+  return Math.round(innerHeight - vv.height - (vv.offsetTop || 0));
 }
 
 const sansAccents = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
