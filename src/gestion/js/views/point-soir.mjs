@@ -131,6 +131,8 @@ function remplirGestes(zone, { r, texte, conversation, client, fen, refuse = nul
     const autre = numeroDifferent(conversation.telephone, fiche);
     const caseNumero = autre ? h("input", { type: "checkbox", id: `soir-numero-${r.id}` }) : null;
     const etatEnvoi = h("p", { class: "aide", role: "status", hidden: true });
+    // Bouton grisé : la raison s'affiche dessous (audit mobile n° 15).
+    const raisonCase = caseNumero ? h("p", { class: "aide" }, tr("Cochez la case ci-dessus pour envoyer à ce numéro.")) : null;
     const bouton = h("button", { class: a ? "secondaire petit" : "principal petit", type: "button", disabled: bloque || autre }, icone("whatsapp", 16), tr("Envoyer sur WhatsApp"));
     // Refus du serveur (décision du 22.11.2026, relecture de la PR 317) : le motif en clair, le message devient modifiable ici et l'envoi se
     // rallume dès qu'il change ; le serveur revérifie le nouveau texte. Un net (contenu_interne) : refus sec. Un prix de vente qui est aussi le
@@ -140,6 +142,7 @@ function remplirGestes(zone, { r, texte, conversation, client, fen, refuse = nul
     const texteEnvoye = () => (edition ? edition.value.trim() : texte);
     const majBouton = () => {
       bouton.disabled = bloque || (caseNumero && !caseNumero.checked) || !texteEnvoye() || (refuse !== null && texteEnvoye() === refuse);
+      if (raisonCase) raisonCase.hidden = caseNumero.checked;
       if (confirmation) confirmation.hidden = refuse === null || texteEnvoye() !== refuse;
     };
     if (caseNumero) caseNumero.addEventListener("change", majBouton);
@@ -200,8 +203,9 @@ function remplirGestes(zone, { r, texte, conversation, client, fen, refuse = nul
       : null;
     enfants.push(
       h("p", { class: "point-soir-destinataire" }, tr("À : {nom}", { nom: nomConversation(conversation, client) }), " · ", h("span", null, autre ? conversation.telephone : numeroMasque(conversation.telephone))),
-      caseNumero ? h("label", { class: "point-soir-numero", for: caseNumero.id }, caseNumero, " ", tr("Ce n'est pas le numéro de la fiche ({fiche}) : c'est bien le client", { fiche: fiche || "—" })) : null,
+      caseNumero ? h("label", { class: "point-soir-numero", for: caseNumero.id }, caseNumero, " ", tr("Ce numéro est bien celui du client (la fiche indique {fiche})", { fiche: fiche || "—" })) : null,
       bouton,
+      raisonCase,
       renvoyer,
       etatEnvoi
     );
@@ -227,7 +231,7 @@ function cartePickup(r, { langue, mode, nomsPartenaires, ecrit, demain }) {
   const carte = h(
     "li",
     { class: "service point-soir-pickup" },
-    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("pickup")) : null),
+    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("prise en charge")) : null),
     h(
       "div",
       { class: "service-corps" },
@@ -235,7 +239,8 @@ function cartePickup(r, { langue, mode, nomsPartenaires, ecrit, demain }) {
       r.date_service !== demain ? h("p", { class: "service-detail" }, h("span", { class: "tag tag-alerte" }, tr("Ce matin"))) : null,
       detail ? h("p", { class: "service-detail" }, detail) : null,
       lieu ? h("p", { class: "service-detail" }, lieu) : null,
-      texte ? h("p", { class: "point-soir-message", lang: langue }, texte) : h("p", { class: "point-soir-signal" }, h("span", { class: "tag tag-alerte" }, r.heure_pickup ? tr("À compléter") : tr("Sans heure de pickup")), " ", raison),
+      // Le message se replie sur sa première ligne : une carte ne fait plus un écran et demi (audit mobile n° 15).
+      texte ? h("details", { class: "point-soir-pli" }, h("summary", null, tr("Voir le message")), h("p", { class: "point-soir-message", lang: langue }, texte)) : h("p", { class: "point-soir-signal" }, h("span", { class: "tag tag-alerte" }, r.heure_pickup ? tr("À compléter") : tr("Sans heure de pickup")), " ", raison),
       zone
     )
   );

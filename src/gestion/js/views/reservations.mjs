@@ -182,7 +182,7 @@ async function aligner(r, ecart, apres) {
   }
 }
 
-export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null } = {}) {
+export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null, jourEnTitre = false } = {}) {
   const c = clientDe(r);
   const d = dossierDe(r);
   const n = voitNets() ? netReservation(r) : null;
@@ -204,7 +204,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye, modifie: voucherModifie } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
-    rappel: [tr("Rappel"), () => naviguer(`#/reservation/${r.id}`)],
+    rappel: [tr("Rappels avant le départ"), () => naviguer(`#/reservation/${r.id}`)],
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
@@ -226,7 +226,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     "div",
     { class: "carte-lien statique" },
     h("span", { class: "carte-titre" }, avecDossier ? lienDossier(r.libelle, r.dossier_id) : r.libelle),
-    h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
+    // Groupée sous le titre de son jour, la carte ne répète pas la date (audit mobile n° 19).
+    h("span", { class: "carte-droite" }, jourEnTitre ? null : h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("à {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive()), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
     // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
@@ -904,14 +905,14 @@ export function vueReservations() {
     for (const jour of jours) {
       const du = rs.filter((r) => (r.date_service || "") === jour);
       const titre = jour === "" ? tr("Sans date") : jour === ajd ? tr("Aujourd'hui, {dateTexte}", { dateTexte: dateTexte(jour) }) : jour === ajouter(ajd, 1) ? tr("Demain, {dateTexte}", { dateTexte: dateTexte(jour) }) : dateTexte(jour);
-      corps.append(h("section", { class: "jour" }, h("h2", { class: "jour-titre" }, titre, h("span", { class: "tag" }, du.length)), listeReservations(du, { apres: rafraichir })));
+      corps.append(h("section", { class: "jour" }, h("h2", { class: "jour-titre" }, titre, h("span", { class: "tag" }, du.length)), listeReservations(du, { apres: rafraichir, jourEnTitre: true })));
     }
   }
   dessiner();
   return h(
     "div",
     { "data-titre": tr("Réservations") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")), h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous seulement-bureau" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")), h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
     barre.noeud,
     corps
   );

@@ -37,7 +37,6 @@ export const EN_POINT_SOIR = {
   "WhatsApp a déjà été ouvert pour ce rappel à {heure}. L'envoyer quand même ?": "WhatsApp was already opened for this reminder at {heure}. Send it anyway?",
   "Renvoyer quand même": "Send again anyway",
   "À : {nom}": "To: {nom}",
-  "Ce n'est pas le numéro de la fiche ({fiche}) : c'est bien le client": "Not the number on the record ({fiche}): it is the client",
   "Ce matin": "This morning",
   "Rappel à {nom} dans le point du soir": "Reminder to {nom} in the evening check",
   // Motif en clair d'un refus du serveur (point du soir et « Proposer une excursion », 22.11.2026)

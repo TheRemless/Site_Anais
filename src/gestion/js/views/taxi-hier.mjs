@@ -69,7 +69,7 @@ export function sectionCommissionsHier(rafraichir) {
       h("span", { class: "carte-sous" }, [formatDate(r.date_service), r.libelle, r.montant_vente != null ? formatMontant(r.montant_vente, devise) : ""].filter(Boolean).join(" · ")),
     ];
     // Le formulaire : vide pour une course à saisir, prérempli pour une commission à modifier. « Déjà reçue » demande la date de réception.
-    const formulaire = (edition) => {
+    const formulaire = (edition, annulable = edition) => {
       const montant = h("input", { id: `com-${r.id}`, inputmode: "decimal", autocomplete: "off", placeholder: devise, value: edition ? String(x.montant) : "", "aria-label": tr("Commission en {devise}", { devise }) });
       const recue = h("input", { id: `com-recue-${r.id}`, type: "checkbox", checked: edition && x.recue });
       const date = h("input", { id: `com-le-${r.id}`, type: "date", value: (edition && x.recueLe) || ajd, max: ajd, "aria-label": tr("Reçue le") });
@@ -103,7 +103,7 @@ export function sectionCommissionsHier(rafraichir) {
           h("label", { class: "taxi-commission-champ" }, h("span", null, tr("Commission")), montant),
           h("label", { class: "case" }, recue, tr("Déjà reçue")),
           champDate,
-          edition ? h("button", { class: "secondaire petit", type: "button", onclick: () => rendre(false) }, tr("Annuler")) : null,
+          annulable ? h("button", { class: "secondaire petit", type: "button", onclick: () => rendre(false) }, tr("Annuler")) : null,
           h("button", { class: edition ? "principal petit" : "secondaire petit", type: "submit" }, tr("Enregistrer"))
         )
       );
@@ -115,10 +115,13 @@ export function sectionCommissionsHier(rafraichir) {
         h("span", { class: "tag" }, x.recue ? (x.recueLe ? tr("Commission reçue le {date} : {montant}", { date: formatDate(x.recueLe), montant: formatMontant(x.montant, devise) }) : tr("Commission reçue : {montant}", { montant: formatMontant(x.montant, devise) })) : commissionDuPartenaire(netDe(r)) ? tr("Commission annoncée par {nom} : {montant}", { nom: nomContact(p), montant: formatMontant(x.montant, devise) }) : tr("Commission annoncée : {montant}", { montant: formatMontant(x.montant, devise) })),
         h("button", { class: "secondaire petit", type: "button", onclick: () => rendre(true) }, tr("Modifier"))
       );
-    // `edition` : la commission saisie s'affiche dans son formulaire prérempli.
-    const rendre = (edition) => {
-      li.replaceChildren(h("div", { class: "carte-lien statique" }, ...entete(), x.saisie && !edition ? affichage() : formulaire(x.saisie && edition)));
-      if (edition) li.querySelector("input")?.focus();
+    // Course sans commission saisie : une ligne et un bouton, le formulaire s'ouvre au toucher (audit mobile n° 22 : plus de champ par course dans l'accueil).
+    const invitation = () =>
+      h("span", { class: "carte-pied" }, x.demandeLe ? h("span", { class: "tag" }, tr("Demandée le {date}", { date: formatDate(x.demandeLe) })) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => rendre(false, true) }, tr("Saisir la commission")));
+    // `edition` : la commission saisie s'affiche dans son formulaire prérempli. `saisir` : le formulaire d'une course pas encore saisie.
+    const rendre = (edition, saisir = false) => {
+      li.replaceChildren(h("div", { class: "carte-lien statique" }, ...entete(), x.saisie && !edition ? affichage() : x.saisie ? formulaire(edition) : saisir ? formulaire(false, true) : invitation()));
+      if (edition || saisir) li.querySelector("input")?.focus();
     };
     rendre(false);
     return li;
