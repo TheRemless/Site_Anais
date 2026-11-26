@@ -88,7 +88,9 @@ export function purgerBrouillons() {
 const valeurDe = (c) => (c.type === "checkbox" || c.type === "radio" ? (c.checked ? "1" : "0") : c.value);
 const CHAMPS = "input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]):not([type=search]), textarea, select";
 // `cache` : la fenêtre travaille sans se montrer (une carte de l'agent validée d'un geste passe par la fiche de création sans l'afficher).
-export function modal(titre, contenu, { large = false, feuille = false, protege = true, brouillon = null, ferme: apres = null, cache = false } = {}) {
+// `plein` (26.11.2026) : sur téléphone, une feuille plein écran au-dessus du clavier ; le contenu gère lui-même ce qui défile (une liste
+// longue qui défile seule sous une recherche fixe, comme l'ajout d'un service). Sur ordinateur, une grande fenêtre de hauteur fixe.
+export function modal(titre, contenu, { large = false, feuille = false, plein = false, protege = true, brouillon = null, ferme: apres = null, cache = false } = {}) {
   const precedent = document.activeElement;
   let close = false;
   let touche = false;
@@ -168,7 +170,7 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
   const corps = h("div", { class: "modal-defile" }, contenu);
   const boite = h(
     "div",
-    { class: ["modal", large && "large", feuille && "feuille"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
+    { class: ["modal", large && "large", feuille && "feuille", plein && "plein"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
     poignee,
     h("div", { class: "modal-tete" }, h("h2", null, titre), h("button", { class: "bouton-icone lien", type: "button", onclick: demanderFermeture, "aria-label": tr("Fermer"), title: tr("Fermer") }, icone("fermer", 20))),
     corps

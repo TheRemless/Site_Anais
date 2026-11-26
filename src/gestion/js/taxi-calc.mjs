@@ -116,7 +116,8 @@ export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
 // la place au programme (« PLAN ») et à la durée (« DURATION », seulement si elle est donnée). Jamais « From X to X ».
 // `remarques` : le champ « Remarks » de la course (lot B du 17.11.2026), imprimé en dernier seulement s'il est rempli.
 // `t` : les textes réglables (textesVoucher) ; sans réglages, ceux du modèle d'Anaïs.
-export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", t = textesVoucher(null) }) {
+// `options` (26.11.2026) : les options du service en anglais (optionsVoucher), une ligne « OPTIONS » sous les passagers.
+export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", options = "", t = textesVoucher(null) }) {
   ({ pickup, dropoff } = lieuxAvecVol(pickup, retour ? "" : dropoff, vol));
   const rem = String(remarques || "").trim();
   return [
@@ -128,6 +129,7 @@ export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dr
     // Les personnes (et leurs sièges enfant), puis les bagages sur leur propre ligne, seulement s'il y en a (18.11.2026).
     { cle: t("b_passagers"), valeur: passagersBooking(personnes, "", sieges) },
     ...(bagagesBooking(bagages) ? [{ cle: t("b_bagages"), valeur: bagagesBooking(bagages) }] : []),
+    ...(String(options || "").trim() ? [{ cle: t("b_options"), valeur: String(options).trim() }] : []),
     { cle: t("b_prix"), valeur: prixBooking(montant, devise, t) },
     ...(rem ? [{ cle: t("b_remarques"), valeur: rem }] : []),
   ];

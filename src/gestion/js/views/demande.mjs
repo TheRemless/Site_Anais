@@ -114,8 +114,13 @@ function lignesBrutes(offre, d, langue, devise) {
   const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.vehicules || (offre.enfant ? d.adultes || 1 : quantite(offre.source, d)), devise });
   // Prix de base pour 1 ou 2 personnes, puis une ligne de supplément par personne en plus (aucune ligne à une ou deux personnes).
   const supplement = offre.supplement ? [ligneDepuisPrestation(offre.supplement.source, netPrestation(offre.supplement.source), { langue, date: d.date, qte: offre.supplement.qte, devise })] : [];
-  // Extras du site qui ont un tarif (Add Koh Kradan) : une ligne chacun, une seule fois (un prix par bateau).
-  const extras = (offre.extras || []).map((x) => ligneDepuisPrestation(x.source, netPrestation(x.source), { langue, date: d.date, qte: x.qte, devise }));
+  // Extras du site qui ont un tarif (Add Koh Kradan) et options de la carte de l'Assistant (26.11.2026) : une ligne chacun, rattachée à la
+  // ligne du service (`option_de`) : une seule réservation, un seul voucher. Un prix venu de la carte remplace le prix unitaire du catalogue.
+  const extras = (offre.extras || []).map((x) => {
+    const l = ligneDepuisPrestation(x.source, netPrestation(x.source), { langue, date: d.date, qte: x.qte, devise });
+    const prix = x.unitaire !== null && x.unitaire !== undefined && x.unitaire !== "" && Number.isFinite(Number(x.unitaire)) ? { unite: Math.round(Number(x.unitaire) * 100) / 100 } : {};
+    return { ...l, ...prix, option_de: adulte.id };
+  });
   if (!offre.enfant) return [adulte, ...supplement, ...extras];
   // Une ligne par adulte et une ligne enfant au même nom : elles donnent une seule réservation, comme pour un trajet.
   const en = langue === "en";

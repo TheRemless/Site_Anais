@@ -5,6 +5,21 @@ import { EN_CORRECTION } from "./i18n-en-correction.mjs";
 import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
 
 export const EN = {
+  // Options d'un service (26.11.2026, INV-2026-055)
+  "Options": "Options",
+  "{n} option": "{n} option",
+  "{n} options": "{n} options",
+  "Prix de l'option {nom}": "Price of the option {nom}",
+  "Option {nom}": "Option {nom}",
+  "Option à ajouter": "Option to add",
+  "Option": "Option",
+  "Cette option est déjà sur le service.": "This option is already on the service.",
+  "Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part.": "A service on the card is an option of another one: add it under that service rather than as a separate service.",
+  "Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise.": "A proposed option is not an option of this service in the catalogue: it is not kept.",
+  "les options": "the options",
+  "Ajouter l'option": "Add the option",
+  "Le prix de chaque option est son total. « Vendu au client » compte le service et ses options ; une seule réservation, un seul voucher.": "Each option's price is its total. “Sold to the client” counts the service and its options; one booking, one voucher.",
+  "Indiquez le prix de l'option « {nom} », 0 si elle est offerte.": "Enter the price of the option “{nom}”, 0 if it is free.",
   // « Pas bien » sur une réponse de l'Assistant (migration 74)
   "Pas bien": "Not good",
   "Ce qui ne va pas, en quelques mots": "What is wrong, in a few words",

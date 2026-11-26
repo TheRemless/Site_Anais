@@ -6,7 +6,7 @@ import { contenuCourse, ligneCourse } from "../taxi-calc.mjs";
 import { uid, CONTENU_DEFAUT } from "../defauts.mjs";
 import { h, modal, confirmer, toast } from "../ui.mjs";
 import { formatMontant, formatDate, totaux, montantSurPlace } from "../calc.mjs";
-import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
+import { langueClient, contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
 import { prestationEnfant, prixEnfantDe } from "../demande-calc.mjs";
 import { contenuAvecEnfants, lignesIdsAvec } from "../dossier-gestes-calc.mjs";
 import { tr, langueActive } from "../i18n.mjs";
@@ -22,14 +22,15 @@ export function texteEcart(c, devise) {
 }
 
 // Ce qui suit sur la facture, en mots : « le libellé, le partenaire et le prix ».
-const NOMS_SERVICE = { libelle: () => tr("le libellé"), partenaire_id: () => tr("le partenaire"), prestation_id: () => tr("le tarif"), montant_vente: () => tr("le prix") };
+const NOMS_SERVICE = { libelle: () => tr("le libellé"), partenaire_id: () => tr("le partenaire"), prestation_id: () => tr("le tarif"), montant_vente: () => tr("le prix"), options: () => tr("les options") };
 const listeService = (cles) => {
   const noms = [...new Set(cles.map((k) => (k === "trajet_id" ? "prestation_id" : k)))].filter((k) => NOMS_SERVICE[k]).map((k) => NOMS_SERVICE[k]());
   return noms.length > 1 ? tr("{debut} et {fin}", { debut: noms.slice(0, -1).join(", "), fin: noms[noms.length - 1] }) : noms[0] || "";
 };
 // Les options de contenuAvecService tirées de la base en mémoire.
 // Le tarif enfant (prix enfant de la prestation, ou prestation enfant séparée) donne le net des lignes enfant (contrôle du 17.11.2026, D4).
-const optionsService = (personnes) => ({ prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, netDe: (p) => { const n = netPrestation(p); return n ? n.net : undefined; }, tarifEnfantDe: (pid) => tarifEnfantCatalogue({ prestation_id: pid }), personnes, nomPartenaire });
+// `langueDoc` : la langue des documents de l'entreprise (anglais chez Secret et Taxi), pour une option ajoutée sur la facture.
+const optionsService = (personnes) => ({ langueDoc: langueClient(reglages()) === "en" ? "en" : "", prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, netDe: (p) => { const n = netPrestation(p); return n ? n.net : undefined; }, tarifEnfantDe: (pid) => tarifEnfantCatalogue({ prestation_id: pid }), personnes, nomPartenaire });
 
 // Les documents du dossier (devis, factures) avec leur contenu une fois ce service retiré. Vide quand le service n'est sur aucun document.
 export function documentsSansService(documents, r) {
@@ -61,14 +62,17 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
     resultat.changements = s.changements;
     resultat.restes = s.restes;
     // Enfant ajouté : la ligne enfant créée sur la facture devient une ligne de cette réservation (sinon elle paraîtrait en écart).
-    if (s.ajoutees.length) {
+    if (s.ajoutees.length || s.retirees.length) {
       resultat.detailsAvant = { avait: "details" in valeurs, valeur: valeurs.details };
       let ids = null;
       for (const id of s.ajoutees) ids = lignesIdsAvec({ ...r, details: { ...(r.details || {}), ...(ids ? { lignes_ids: ids } : {}) } }, id);
-      valeurs.details = { ...(valeurs.details || r.details || {}), lignes_ids: ids };
+      // Une option retirée de la facture quitte aussi la réservation.
+      const actuels = ids || (r.details && r.details.lignes_ids) || [];
+      valeurs.details = { ...(valeurs.details || r.details || {}), lignes_ids: actuels.filter((id) => !s.retirees.includes(id)) };
       resultat.details = valeurs.details;
     }
     resultat.raisonEnfant = s.raisonEnfant;
+    resultat.enfantAjoute = !!s.enfantAjoute;
   }
   // Sans le droit de modifier les factures : le mode et l'annulation ne se font pas à moitié, mais la date et les personnes s'enregistrent et l'écart reste signalé.
   let factureNonSuivie = false;
@@ -94,7 +98,7 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
     else if (total0 !== total1) phrases.push(tr("La facture suit cette modification, et son total passe de {avant} à {apres}.", { avant: total0, apres: total1 }));
     else phrases.push(tr("La facture suit cette modification."));
     if (modeChange && (dateChangee || personnesChangees)) phrases.push(tr("La date et les personnes de ce service y sont aussi mises à jour."));
-    if (resultat.details) phrases.push(tr("La ligne enfant est ajoutée au tarif enfant du catalogue."));
+    if (resultat.details && resultat.enfantAjoute) phrases.push(tr("La ligne enfant est ajoutée au tarif enfant du catalogue."));
     if (resultat.raisonEnfant) phrases.push(texteRaisonEnfant(resultat.raisonEnfant));
     if (clesService.length && !retirer) {
       // Seulement ce que la facture a vraiment pris : un prix réparti sur plusieurs lignes reste à corriger, il est signalé après l'enregistrement.
@@ -202,7 +206,7 @@ function suitesDocuments(documents, r, { avant, apres, mode = null, service = nu
   const pb = apres.personnes || {};
   const personnesChangees = (Number(pb.adultes) || 0) !== (Number(pa.adultes) || 0) || (Number(pb.enfants) || 0) !== (Number(pa.enfants) || 0);
   // `restes` : par document, ce que contenuAvecService n'a pas pu reporter ([{ cle, reservation, facture }]).
-  const out = { changements: [], ajoutees: [], raisonEnfant: "", restes: new Map() };
+  const out = { changements: [], ajoutees: [], retirees: [], raisonEnfant: "", restes: new Map() };
   for (const doc of documents) {
     let suite = doc.contenu;
     if (mode) suite = contenuAvecSurPlace(suite, r, mode.surPlace) || suite;
@@ -211,13 +215,16 @@ function suitesDocuments(documents, r, { avant, apres, mode = null, service = nu
       const langue = suite.langue === "en" ? "en" : "";
       const e = contenuAvecEnfants(suite, r, avant, apres, { tarifEnfant: tarifEnfantCatalogue, uid, langue, decrire: (l) => descriptionService(l, langue || "fr") });
       if (e.contenu) suite = e.contenu;
-      if (e.ajoutee) out.ajoutees.push(e.ajoutee);
+      if (e.ajoutee) (out.ajoutees.push(e.ajoutee), (out.enfantAjoute = true));
       if (e.raison && doc.type !== "devis" && !out.raisonEnfant) out.raisonEnfant = e.raison;
     }
     if (service) {
       const s = contenuAvecService(suite, r, service, optionsService(apres.personnes));
       suite = s.contenu || suite;
       if (s.reste.length) out.restes.set(doc, s.reste);
+      // Options ajoutées ou retirées (26.11.2026) : les mêmes identifiants sur la facture et le devis, comptés une fois.
+      for (const id of s.ajoutees || []) if (!out.ajoutees.includes(id)) out.ajoutees.push(id);
+      for (const id of s.retirees || []) if (!out.retirees.includes(id)) out.retirees.push(id);
     }
     if (suite !== doc.contenu) out.changements.push({ doc, suite });
   }

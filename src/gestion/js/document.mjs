@@ -81,8 +81,9 @@ export function renderDocument({ type, doc, dossier, client, reglages: reglagesD
         ? h("div", { class: "desc remise" }, h("strong", null, lb.remise), l.libelle ? ": " : "", l.libelle ? h("em", null, l.libelle) : null)
         : h(
             "div",
-            { class: l.kind === "bloc" ? "desc bloc" : "desc" },
-            h("strong", null, l.libelle),
+            { class: l.kind === "bloc" ? "desc bloc" : l.option_de ? "desc option" : "desc" },
+            // Une option du service (26.11.2026) : sous lui, précédée de « + ».
+            h("strong", null, l.option_de ? `+ ${l.libelle}` : l.libelle),
             l.intro ? ` ${l.intro}` : null,
             surPlace ? h("em", { class: "sur-place" }, ` (${TXT_PLACE.court})`) : null,
             l.puces && l.puces.length ? h("ul", null, l.puces.map((x) => h("li", null, x))) : null

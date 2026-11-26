@@ -34,7 +34,7 @@ import { preparation, preparationComplete, optionsCarte, enregistrerReservation,
 import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
 import { suivreFil } from "../fil-defilement.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
-const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
+const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne"), option: N_("Option") };
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -127,6 +127,9 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
   pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service."),
   dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service."),
+  // Options d'un service (26.11.2026, INV-2026-055).
+  option_seule: N_("Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part."),
+  option_inconnue: N_("Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
   remarque_voucher_interne: N_("La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
@@ -837,7 +840,12 @@ export async function vueAgent(idOuvert = "") {
   };
   const bagagesTexte = (s) => (Number(s.bagages) > 0 ? pluriel(Number(s.bagages), N_("{n} bagage"), N_("{n} bagages")) : "");
   // Les deux remarques d'un service (22.11.2026) : ce que le voucher imprime (vu par le client et le chauffeur) et ce qui reste interne.
-  const remarquesCarte = (s) => {
+  // Les options d'un service sur la carte (26.11.2026) : « + Koh Kradan extension · THB 700 », sous le service, jamais un service à part.
+const optionsCarte_ = (s) =>
+  Array.isArray(s.options) && s.options.length
+    ? h("small", { class: "agent-options" }, ...s.options.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""}${o.prix !== null && o.prix !== undefined ? ` · ${formatMontant(o.prix, (reglages() || {}).devise || "THB")}` : ` · ${tr("prix à saisir")}`}`]).filter(Boolean))
+    : null;
+const remarquesCarte = (s) => {
     const voucher = String(s.remarque_voucher || "").trim();
     const interne = [s.note_interne, s.remarque].filter((x) => x && String(x).trim()).join(" ");
     if (!voucher && !interne) return null;
@@ -980,7 +988,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, remarquesCarte(s)), prixTexte(s))))));
+      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, optionsCarte_(s), remarquesCarte(s)), prixTexte(s))))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -997,7 +1005,7 @@ export async function vueAgent(idOuvert = "") {
       if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil }));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), remarquesCarte(s)), prixTexte(s)))));
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), optionsCarte_(s), remarquesCarte(s)), prixTexte(s)))));
       action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, LIBELLES_MODIF[d.champ] ? h("span", null, tr(LIBELLES_MODIF[d.champ]), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);

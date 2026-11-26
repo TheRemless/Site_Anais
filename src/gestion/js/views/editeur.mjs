@@ -600,7 +600,10 @@ function editeurVue(id) {
               type: "button",
               "aria-label": tr("Supprimer la ligne {x}", { x: i + 1 }),
               onclick: () => {
+                // Un service supprimé emporte ses options (26.11.2026) : une option ne reste jamais seule sur la facture.
+                const retiree = c.lignes[i];
                 c.lignes.splice(i, 1);
+                if (retiree && retiree.id) c.lignes = c.lignes.filter((x) => x.option_de !== retiree.id);
                 dessinerLignes();
                 change();
               },

@@ -85,6 +85,8 @@ export const GROUPES_VOUCHER = [
       ["date_heure", "Date & Time"],
       ["remarques", "Remarks"],
       ["ref_operateur", "Operator ref."],
+      // Les options du service (26.11.2026).
+      ["options", "Options"],
     ],
   },
   {
@@ -140,6 +142,7 @@ export const GROUPES_BOOKING = [
       ["b_bagages", "LUGGAGE"],
       ["b_prix", "TOTAL PRICE"],
       ["b_remarques", "REMARKS"],
+      ["b_options", "OPTIONS"],
       ["b_tous_frais", "(all fees included)"],
       ["b_contact", "CONTACT US:"],
     ],

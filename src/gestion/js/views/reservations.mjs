@@ -35,6 +35,7 @@ import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } 
 import { saisieRapideNet } from "./saisie-net.mjs";
 import { texteCorrection } from "../encaisser-calc.mjs";
 import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
+import { blocOptionsReservation } from "./options-reservation.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -389,6 +390,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const reference = h("input", { id: "r-ref", value: r.reference_partenaire || "", placeholder: tr("Numéro donné par le partenaire") });
   const vente = saisie(h("input", { id: "r-vente", value: r.montant_vente ?? "" }), "montant");
   const venteInitiale = vente.value;
+  // Les options du service (26.11.2026) : leur prix se change ici, comme celui du service ; « Vendu au client » suit.
+  // Taxi : la course suit sa propre facture (suivreCourseTaxi), sans options à modifier ici.
+  const blocOptions = modeExcursions() && !modeTaxi() && (peut("finances.voir") || (Array.isArray(r.options_ajout) && r.options_ajout.length)) ? blocOptionsReservation(r, { vente, personnes: () => ({ adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0 }), devise: reglages().devise || "THB" }) : null;
   // Tarif du catalogue (16.11.2026) : la prestation ou le trajet d'où vient le service. Il suit le partenaire : un tarif d'un autre partenaire ne
   // reste pas attaché au service (son voucher, sa facture et sa commission seraient ceux de l'autre). Choisir un tarif reprend son nom et son prix,
   // sauf ce qu'on a tapé soi-même ici.
@@ -668,6 +672,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
           }
         }
         if (focusPremiereErreur(e.target)) return;
+        if (blocOptions && blocOptions.erreur()) return toast(blocOptions.erreur(), true);
         const tarifPrestation = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
         const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
         const tarifChange = tarifTouche && ((tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null));
@@ -693,7 +698,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
             retirer = choix === "retirer";
           }
           // Libellé, partenaire, tarif et prix changés ici : les lignes de la facture (et du devis) suivent, avec le même avertissement (16.11.2026).
-          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {};
+          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}), ...(blocOptions && blocOptions.voulues() ? { options: blocOptions.voulues(), ...(valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {}) } : {};
           const suivi = await suivreFacture(base, valeurs, { avant: cmp.avant, apres: cmp.apres, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
           if (!suivi) return;
           const { changements, ecartRestant } = suivi;
@@ -739,6 +744,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
     h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), bebesDemandes(type, { trajet: !!r.trajet_id }) ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    blocOptions ? blocOptions.noeud : null,
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,
