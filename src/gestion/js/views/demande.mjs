@@ -7,7 +7,7 @@ import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPar
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireDuTexte, demandeEnregistree, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
-import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
+import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut, libelleUnite } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, lieuParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
@@ -114,8 +114,13 @@ function lignesBrutes(offre, d, langue, devise) {
   const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.vehicules || (offre.enfant ? d.adultes || 1 : quantite(offre.source, d)), devise });
   // Prix de base pour 1 ou 2 personnes, puis une ligne de supplément par personne en plus (aucune ligne à une ou deux personnes).
   const supplement = offre.supplement ? [ligneDepuisPrestation(offre.supplement.source, netPrestation(offre.supplement.source), { langue, date: d.date, qte: offre.supplement.qte, devise })] : [];
-  // Extras du site qui ont un tarif (Add Koh Kradan) : une ligne chacun, une seule fois (un prix par bateau).
-  const extras = (offre.extras || []).map((x) => ligneDepuisPrestation(x.source, netPrestation(x.source), { langue, date: d.date, qte: x.qte, devise }));
+  // Extras du site qui ont un tarif (Add Koh Kradan) et options de la carte de l'Assistant (26.11.2026) : une ligne chacun, rattachée à la
+  // ligne du service (`option_de`) : une seule réservation, un seul voucher. Un prix venu de la carte remplace le prix unitaire du catalogue.
+  const extras = (offre.extras || []).map((x) => {
+    const l = ligneDepuisPrestation(x.source, netPrestation(x.source), { langue, date: d.date, qte: x.qte, devise });
+    const prix = x.unitaire !== null && x.unitaire !== undefined && x.unitaire !== "" && Number.isFinite(Number(x.unitaire)) ? { unite: Math.round(Number(x.unitaire) * 100) / 100 } : {};
+    return { ...l, ...prix, option_de: adulte.id };
+  });
   if (!offre.enfant) return [adulte, ...supplement, ...extras];
   // Une ligne par adulte et une ligne enfant au même nom : elles donnent une seule réservation, comme pour un trajet.
   const en = langue === "en";
@@ -206,8 +211,32 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     // Chez Taxi, la famille du tarif pris dans la base suit l'offre : une excursion garde l'hôtel en pickup, une course jamais (reservationDuService).
     // Secret et ZTP ne changent pas.
     if (sv.lignesCustom) return { offre: { genre: "prestation", id: sv.id, titre: sv.lignesCustom.filter((l) => l.kind !== "texte").map((l) => l.libelle).join(" + ") || tr("Service choisi"), total: sommeCustom(sv), source: { libelle: sv.lignesCustom.map((l) => l.libelle).join(" + "), ...(modeTaxi() ? { famille: familleDesLignes(sv.lignesCustom) } : {}) } }, offres: [] };
-    const offres = offresDe(sv);
+    // Les options retirées dans la fiche (« Retirer », relecture de la PR 359) ne comptent plus, quelle que soit l'offre choisie.
+    const offres = offresDe(sv).map((o) => sansOptionsRetirees(sv, o));
     return { offre: choisie(sv, offres), offres };
+  }
+  function sansOptionsRetirees(sv, o) {
+    if (!o || !sv.optionsRetirees || !sv.optionsRetirees.size || !(o.extras || []).some((x) => x.option && sv.optionsRetirees.has(x.source.id))) return o;
+    const retirees = o.extras.filter((x) => x.option && sv.optionsRetirees.has(x.source.id));
+    const moins = retirees.reduce((t, x) => t + (x.unitaire === null || x.unitaire === undefined ? 0 : Number(x.unitaire) * x.qte), 0);
+    return { ...o, extras: o.extras.filter((x) => !retirees.includes(x)), total: o.total === null || o.total === undefined ? o.total : Math.round((o.total - moins) * 100) / 100 };
+  }
+  // Les options de l'offre, visibles sous le service, chacune avec son prix (unitaire et unité) et « Retirer ».
+  function blocOptionsOffre(sv, offre) {
+    const opts = ((offre && offre.extras) || []).filter((x) => x.option);
+    if (!opts.length) return null;
+    return h(
+      "ul",
+      { class: "dsv-options" },
+      opts.map((x) =>
+        h(
+          "li",
+          null,
+          h("span", null, `+ ${x.source.libelle}`, " · ", x.unitaire === null || x.unitaire === undefined ? h("span", { class: "tag attention" }, tr("prix à saisir")) : `${formatMontant(x.unitaire, devise)} ${libelleUnite(x.source.unite)}${x.qte > 1 ? ` × ${x.qte}` : ""}`),
+          h("button", { class: "secondaire petit", type: "button", onclick: () => ((sv.optionsRetirees = new Set([...(sv.optionsRetirees || []), x.source.id])), majService(sv), majTotal()) }, tr("Retirer"))
+        )
+      )
+    );
   }
   // Lignes prises à la main : la date corrigée sur la ligne du service passe aux lignes (elle date la réservation), sauf si le service n'a pas de date.
   // Une offre au prix de la carte (prix venu de la conversation) : ses lignes prennent ce prix (assistant-calc.mjs, lignesAuPrixCarte).
@@ -316,6 +345,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       n.titre.append(sel, offre ? h("span", { class: "dsv-detail" }, offre.detail) : null);
     }
     if (sv.confiance) n.titre.append(badgeConfiance(sv.confiance));
+    if (!sv.lignesCustom && offre) n.titre.append(blocOptionsOffre(sv, offre) || "");
     n.prix.textContent = offre && offre.total !== null && offre.total !== undefined ? formatMontant(offre.total, devise) : "-";
     // Le prix de la conversation l'emporte ; celui du catalogue s'affiche à côté quand il diffère (Jérémy, 22.11.2026).
     if (offre && offre.prixCarte !== undefined && offre.totalCatalogue !== null && offre.totalCatalogue !== undefined && offre.totalCatalogue !== offre.total) n.prix.append(h("small", { class: "dsv-catalogue" }, ` ${tr("catalogue : {prix}", { prix: formatMontant(offre.totalCatalogue, devise) })}`));

@@ -728,7 +728,8 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
   }
   for (const p of prestations) {
     // Les frais de parc (à payer sur place) et les tarifs enfant se rattachent à une excursion, ils ne se proposent pas seuls.
-    if (!proposable(p, partenaires) || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup") continue;
+    // Une option d'un service (migration 130) non plus : elle se choisit sous son service.
+    if (!proposable(p, partenaires) || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup" || (Array.isArray(p.option_de) && p.option_de.length)) continue;
     const groupe = sansAccents(p.groupe || p.libelle);
     let score = 0;
     let motsCommuns = 0;

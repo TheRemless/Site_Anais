@@ -14,7 +14,7 @@ import { pastille, vide, sousTitreDossier, plierSections, resumerEtapes } from "
 import { margeDocument, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
 import { sectionReservationsDossier, formulaireReservation, ajouterServices } from "./reservations.mjs";
-import { etatsServices, personnesDossier, commissionDossier, actionSuivante, varianteFacture } from "../dossier-resume-calc.mjs";
+import { etatsServices, datesResume, personnesDossier, commissionDossier, actionSuivante, varianteFacture } from "../dossier-resume-calc.mjs";
 import { MOTIFS_ECART } from "../encaisser-calc.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
@@ -35,6 +35,7 @@ import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservati
 import { champApporteur, patchApporteur, blocResumeApporteur } from "./apporteurs.mjs";
 import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 import { retourEncaisser, CLE_RETOUR } from "../encaisser-calc.mjs";
+import { alertesPaiementsDossier } from "./paiement-service.mjs";
 
 // La fiche a-t-elle été ouverte depuis À encaisser (la note de la liste, datée, porte ce dossier) ?
 const retourVersEncaisser = (dossierId) => {
@@ -108,6 +109,15 @@ function lienDossierLie(d) {
 export async function ficheDossier(id) {
   await chargerDossier(id);
   return ficheDossierVue(id);
+}
+
+// Ouvre la section repliée qui contient `el` avant d'y aller. plierSections crée des `.repli-section`, pas des `<details>`
+// (relecture de la PR #360 : « Noter un paiement » laissait « Paiements reçus » fermée).
+function ouvrirSection(el) {
+  const repli = el.closest(".repli-section");
+  if (repli && repli._repli && !repli._repli.estOuvert()) repli._repli.ouvrir(true);
+  const details = el.tagName === "DETAILS" ? el : el.closest("details");
+  if (details) details.open = true;
 }
 
 function ficheDossierVue(id) {
@@ -286,7 +296,9 @@ function ficheDossierVue(id) {
               const ref = nouvelleRef({ numerotation: regl.numerotation, prenom: cl.prenom, nom: cl.nom, dateIso: ajd, pays: d.pays || "", refsExistantes: etat.db.dossiers.map((x) => x.ref) });
               const nd = await inserer("dossiers", { ref, client_id: cl.id, pays: d.pays, bandeau: d.bandeau, date_depart: null, date_retour: null, accepte_le: null, annule: false, notes: "" });
               const contenu = structuredClone(modele.contenu);
-              contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
+              // Une option suit le double de la ligne de son service (relecture de la PR 359).
+              const ids = new Map(contenu.lignes.map((l) => [l.id, uid()]));
+              contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: ids.get(l.id), ...(l.option_de && ids.has(l.option_de) ? { option_de: ids.get(l.option_de) } : {}) }));
               contenu.montant_recu = null;
               delete contenu.libelle_recu;
               delete contenu.fige;
@@ -453,6 +465,31 @@ function ficheDossierVue(id) {
     h("div", { class: "grille-form" }, champ(tr("Sens du paiement"), sensP), champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
     h("div", { class: "actions" }, boutonPaiement)
   );
+  // Audit mobile n° 9 : sur téléphone, le formulaire de paiement reste replié derrière un bouton ; chaque chemin vers lui (étape suivante, avancement, ?paiement=1) l'ouvre.
+  // Relecture de la PR #360 : replié seulement sous 720 px (comme les sections), affiché comme avant sur ordinateur, et refermable sur téléphone.
+  const largePaiement = window.matchMedia("(min-width: 720px)");
+  let paiementOuvert = false;
+  const ouvrirFormPaiement = h("button", { class: "secondaire", type: "button", onclick: () => ouvrirPaiement() }, tr("Enregistrer un paiement"));
+  const fermerFormPaiement = h("button", { class: "secondaire", type: "button", onclick: () => { paiementOuvert = false; majPaiement(); ouvrirFormPaiement.focus(); } }, tr("Fermer"));
+  formPaiement.querySelector(".actions").append(fermerFormPaiement);
+  const zonePaiement = h("div", { class: "zone-paiement" }, h("h3", null, tr("Enregistrer un paiement")), formPaiement);
+  function majPaiement() {
+    const large = largePaiement.matches;
+    zonePaiement.hidden = !(large || paiementOuvert);
+    ouvrirFormPaiement.hidden = large || paiementOuvert;
+    fermerFormPaiement.hidden = large;
+  }
+  // Rotation ou fenêtre élargie : le formulaire suit la largeur ; l'écoute s'arrête une fois la fiche quittée.
+  const surLargeurPaiement = () => (formPaiement.isConnected ? majPaiement() : largePaiement.removeEventListener("change", surLargeurPaiement));
+  largePaiement.addEventListener("change", surLargeurPaiement);
+  majPaiement();
+  const ouvrirPaiement = ({ defiler = true } = {}) => {
+    paiementOuvert = true;
+    majPaiement();
+    ouvrirSection(zonePaiement);
+    if (defiler) formPaiement.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    montantP.focus({ preventScroll: true });
+  };
 
   // Corriger un paiement mal saisi (date, montant, type, moyen, note, montant et devise d'origine) sans le supprimer et le ressaisir. Le sens (reçu ou remboursé) ne change pas.
   const corrigerPaiement = (p) => {
@@ -596,7 +633,7 @@ function ficheDossierVue(id) {
     return h(
       "tr",
       null,
-      h("td", { "data-label": tr("Document") }, h("a", { href: `#/doc/${doc.id}` }, tr(libelle))),
+      h("td", { "data-label": tr("Document") }, h("a", { class: "lien-doc", href: `#/doc/${doc.id}` }, tr(libelle))),
       h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
       // Modifié depuis l'envoi : le client a encore l'ancienne version (« Renvoyer » dans l'éditeur). Facture locale en retard sur la facture.
       h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore"), etatEnvoi(doc).modifie ? h("span", { class: "tag alerte" }, tr("modifié depuis l'envoi")) : null, doc.type === "facture_locale" && localeEnRetard(doc, facture) ? h("span", { class: "tag alerte" }, tr("facture modifiée depuis")) : null),
@@ -630,8 +667,7 @@ function ficheDossierVue(id) {
     const cible = document.getElementById(id);
     if (!cible) return;
     // Le champ visé peut se trouver dans une section que la personne a repliée : on ouvre la section avant d'y aller.
-    const section = cible.tagName === "DETAILS" ? cible : cible.closest("details");
-    if (section) section.open = true;
+    ouvrirSection(cible);
     cible.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     if (apres) apres();
   };
@@ -640,7 +676,8 @@ function ficheDossierVue(id) {
   const etats = etatsServices(rsDossier);
   const effectif = personnesDossier(rsDossier);
   const commission = nets ? commissionDossier(rsDossier, netReservation) : null;
-  const dates = d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Le {date}", { date: formatDate(d.date_depart) })) : tr("Dates à fixer");
+  const plage = datesResume(d, rsDossier);
+  const dates = plage ? (plage.fin !== plage.debut ? tr("Du {debut} au {fin}", { debut: formatDate(plage.debut), fin: formatDate(plage.fin) }) : tr("Le {date}", { date: formatDate(plage.debut) })) : tr("Dates à fixer");
   const effectifTexte = effectif ? (effectif.min === effectif.max ? pluriel(effectif.max, N_("{n} personne"), N_("{n} personnes")) : tr("de {min} à {max} personnes", effectif)) : null;
   const acompteRecu = acompte > 0 ? r.recu >= acompte : r.recu > 0;
   const suivante = actionSuivante({ annule: !!d.annule, statut: r.statut, aEnvoyer, avecDevis, devisEnvoye: !!(devis && devis.envoye_le), accepte: !!d.accepte_le, facture: !!facture, acompteRecu, reservations: rsDossier, vouchers, reste: r.reste, excursions, taxi, droit });
@@ -663,19 +700,25 @@ function ficheDossierVue(id) {
   const ligneCarnet = carnetOk && d.carnet_envoye_le && !d.annule ? h("div", { class: "resume-sous-action resume-carnet" }, h("p", { class: "resume-detail" }, tr("Carnet envoyé le {date}", { date: formatDate(d.carnet_envoye_le) })), h("button", { class: "lien", type: "button", onclick: () => ouvrirCarnet(d, rafraichir) }, tr("Modifier"))) : null;
   // Le geste de l'étape suivante : un libellé complet dans le résumé, un libellé court dans la barre du bas du téléphone
   // (à 375 px, le bouton principal tient environ 15 caractères ; le libellé complet reste dans le title).
+  // Voucher : le libellé court dit lequel, par sa date (« Envoyer le voucher du 27/11 », relecture de la PR #360).
+  const voucherCourt = (jour) => {
+    const date = jour ? formatDate(jour).slice(0, 5) : "";
+    if (taxi) return date ? tr("Envoyer la confirmation du {date}", { date }) : tr("Envoyer la confirmation");
+    return date ? tr("Envoyer le voucher du {date}", { date }) : tr("Envoyer le voucher");
+  };
   const gesteSuivant = (() => {
     if (!suivante) return null;
     switch (suivante.cle) {
       case "envoyer":
         return { long: suivante.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture"), court: suivante.type === "devis" ? tr("Envoyer le devis") : excursions ? tr("Envoyer") : tr("Envoyer la facture"), faire: () => envoyerDoc(aEnvoyer) };
       case "accepter":
-        return { long: tr("Le client a accepté"), court: tr("Accepté"), faire: () => accepter() };
+        return { long: tr("Le client a accepté"), court: tr("Devis accepté"), faire: () => accepter() };
       case "voucher":
-        return { long: suivante.voucher.envoi && suivante.voucher.envoi.modifie ? tr("Renvoyer le voucher modifié : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : taxi ? tr("Envoyer la Booking confirmation : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : tr("Envoyer le voucher : {libelle}", { libelle: suivante.voucher.reservation.libelle }), court: taxi ? tr("Confirmation") : tr("Voucher"), faire: () => envoyerVoucher(suivante.voucher) };
+        return { long: suivante.voucher.envoi && suivante.voucher.envoi.modifie ? tr("Renvoyer le voucher modifié : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : taxi ? tr("Envoyer la Booking confirmation : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : tr("Envoyer le voucher : {libelle}", { libelle: suivante.voucher.reservation.libelle }), court: voucherCourt(suivante.voucher.reservation.date_service), faire: () => envoyerVoucher(suivante.voucher) };
       case "facture":
         return { long: tr("Créer la facture"), court: tr("Créer la facture"), faire: creerFacture };
       default:
-        return { long: tr("Enregistrer un paiement"), court: tr("Paiement"), faire: aller("form-paiement", () => document.getElementById("p-montant") && document.getElementById("p-montant").focus({ preventScroll: true })) };
+        return { long: tr("Enregistrer un paiement"), court: tr("Noter un paiement"), faire: () => ouvrirPaiement() };
     }
   })();
   const boutonSuivant = !gesteSuivant
@@ -724,7 +767,10 @@ function ficheDossierVue(id) {
             "div",
             { class: "resume-bloc resume-commission" },
             h("p", { class: "resume-libelle" }, tr("Commission")),
-            h("dl", null, ligne(tr("Prévue"), fm(commission.prevue)), ligne(tr("Reçue"), fm(commission.recue)), ligne(tr("À recevoir"), fm(commission.reste), commission.reste > 0 ? "resume-reste" : "resume-ok"), commission.ecart ? ligne(tr("Écart sur les commissions réglées"), fm(commission.ecart)) : null),
+            // Rien de prévu ni de reçu : pas de colonne de zéros (« À recevoir THB 0 » en vert, audit mobile n° 37), seulement les explications dessous.
+            commission.prevue || commission.recue || commission.ecart
+              ? h("dl", null, ligne(tr("Prévue"), fm(commission.prevue)), ligne(tr("Reçue"), fm(commission.recue)), commission.reste > 0 ? ligne(tr("À recevoir"), fm(commission.reste), "resume-reste") : ligne(tr("À recevoir"), tr("Tout reçu"), "resume-ok"), commission.ecart ? ligne(tr("Écart sur les commissions réglées"), fm(commission.ecart)) : null)
+              : null,
             commission.motifs.length ? h("p", { class: "resume-detail" }, tr("Motif de l'écart : {motifs}", { motifs: commission.motifs.map((m) => [tr((MOTIFS_ECART.find(([k]) => k === m.motif) || [, m.motif])[1]), m.note].filter(Boolean).join(", ")).join(" ; ") })) : null,
             commission.sansCommission > 0 ? h("p", { class: "resume-detail" }, pluriel(commission.sansCommission, N_("{n} service payé sur place sans commission renseignée"), N_("{n} services payés sur place sans commission renseignée"))) : null,
             h("a", { class: "resume-lien-bas", href: "#services", onclick: aller("services") }, tr("Voir dans les services"), icone("fleche", 14))
@@ -734,6 +780,7 @@ function ficheDossierVue(id) {
   ].filter(Boolean);
   const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant, blocSansSuite || (boutonSansSuite || boutonCarnet ? h("div", { class: "resume-sous-action" }, boutonSansSuite || boutonCarnet) : ligneCarnet));
 
+  const alertesTaxi = droit.finances && taxi ? alertesPaiementsDossier(d, r) : null;
   const racine = h(
     "div",
     { "data-titre": nomClient(client) },
@@ -757,7 +804,7 @@ function ficheDossierVue(id) {
             { class: "etapes" },
             etape(true, N_("Course enregistrée"), tr("{montant}, payé au chauffeur en espèces ou par Wise avant le transfert (3 % de frais).", { montant: fm(r.surPlace) })),
             etape(envoisVouchers.client >= vouchers.length && vouchers.length > 0, N_("Booking confirmation envoyée"), !vouchers.length ? tr("Elle se prépare depuis la course ci-dessous.") : [pluriel(vouchers.length, N_("{c} sur {n} envoyée au client"), N_("{c} sur {n} envoyées au client"), { c: envoisVouchers.client }), aRenvoyerTexte(envoisVouchers)].filter(Boolean).join(" · "), vouchers.length && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null),
-            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), d.date_depart ? tr("Service le {date}", { date: formatDate(d.date_depart) }) : "", null)
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), plage ? (plage.fin !== plage.debut ? tr("Courses du {debut} au {fin}", { debut: formatDate(plage.debut), fin: formatDate(plage.fin) }) : tr("Service le {date}", { date: formatDate(plage.debut) })) : "", null)
           )
         : excursions
         ? h(
@@ -766,8 +813,8 @@ function ficheDossierVue(id) {
             { class: "etapes" },
             etape(envoisVouchers.complet, N_("Vouchers envoyés"), !vouchers.length ? tr("Les vouchers se préparent depuis les réservations du dossier.") : envoisVouchers.client || envoisVouchers.aRenvoyer ? [pluriel(envoisVouchers.total, N_("{c} sur {n} envoyé au client"), N_("{c} sur {n} envoyés au client"), { c: envoisVouchers.client }), aRenvoyerTexte(envoisVouchers)].filter(Boolean).join(" · ") : pluriel(vouchers.length, N_("{n} voucher à envoyer au client, rien n'est encore noté comme envoyé."), N_("{n} vouchers à envoyer au client, rien n'est encore noté comme envoyé.")), vouchers.length ? h("span", { class: "carte-actions" }, h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, tr("Voir les vouchers")), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null) : null),
             etape(!!facture, N_("Facture"), facture ? tr("Émise le {date}", { date: formatDate(facture.date_emission) }) + (facture.envoye_le ? tr(", envoyée le {date}", { date: formatDate(facture.envoye_le) }) : tr(", pas encore marquée envoyée")) : tr("À créer."), facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, tr("Ouvrir la facture")) : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, tr("Créer la facture")) : null),
-            etape(r.statut === "solde" || r.statut === "sur_place", N_("Payée"), r.statut === "sur_place" ? tr("Rien à encaisser : le client paie les prestataires sur place.") : r.statut === "solde" ? tr("{montant} reçus", { montant: fm(r.recu) }) : r.recu > 0 ? tr("Partiellement payé : reçu {recu}, reste {reste}", { recu: fm(r.recu), reste: fm(r.reste) }) : tr("En attente du paiement (virement, Wise ou espèces)."), r.statut !== "solde" && r.statut !== "sur_place" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, tr("Enregistrer un paiement")) : null),
-            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Service fait"), d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Services du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Service le {date}", { date: formatDate(d.date_depart) })) : "", null)
+            etape(r.statut === "solde" || r.statut === "sur_place", N_("Payée"), r.statut === "sur_place" ? tr("Rien à encaisser : le client paie les prestataires sur place.") : r.statut === "solde" ? tr("{montant} reçus", { montant: fm(r.recu) }) : r.recu > 0 ? tr("Partiellement payé : reçu {recu}, reste {reste}", { recu: fm(r.recu), reste: fm(r.reste) }) : tr("En attente du paiement (virement, Wise ou espèces)."), r.statut !== "solde" && r.statut !== "sur_place" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); ouvrirPaiement(); } }, tr("Enregistrer un paiement")) : null),
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Service fait"), plage ? (plage.fin !== plage.debut ? tr("Services du {debut} au {fin}", { debut: formatDate(plage.debut), fin: formatDate(plage.fin) }) : tr("Service le {date}", { date: formatDate(plage.debut) })) : "", null)
           )
         : h(
         "ol",
@@ -775,7 +822,7 @@ function ficheDossierVue(id) {
         ...(avecDevis ? [etape(!!devis, N_("Devis créé"), devis ? tr("Émis le {date}", { date: formatDate(devis.date_emission) }) : "", devis ? h("a", { class: "bouton secondaire petit", href: `#/doc/${devis.id}` }, tr("Ouvrir le devis")) : null)] : []),
         ...(avecDevis ? [etape(!!(devis && devis.envoye_le), N_("Devis envoyé au client"), devis && devis.envoye_le ? tr("Le {date}", { date: formatDate(devis.envoye_le) }) : tr("Une fois le PDF expédié, notez-le ici pour suivre les relances."), devis && !devis.envoye_le && droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: marquerEnvoye }, tr("Marquer comme envoyé")) : null)] : []),
         ...(avecDevis ? [etape(!!d.accepte_le, N_("Devis accepté"), d.accepte_le ? tr("Le {date}", { date: formatDate(d.accepte_le) }) + (echeance && r.recu < acompte ? tr(", acompte attendu avant le {date}", { date: formatDate(echeance) }) : "") : "", !d.accepte_le && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: accepter }, tr("Le client a accepté")) : null)] : []),
-        ...(acompte > 0 && droit.finances ? [etape(r.recu >= acompte, N_("Acompte reçu"), r.recu >= acompte && acompte > 0 ? tr("{montant} reçus", { montant: fm(r.recu) }) : acompte ? tr("{montant} attendus", { montant: fm(acompte) }) : tr("Le total du devis est à zéro."), r.recu < acompte && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, tr("Enregistrer un paiement")) : null)] : []),
+        ...(acompte > 0 && droit.finances ? [etape(r.recu >= acompte, N_("Acompte reçu"), r.recu >= acompte && acompte > 0 ? tr("{montant} reçus", { montant: fm(r.recu) }) : acompte ? tr("{montant} attendus", { montant: fm(acompte) }) : tr("Le total du devis est à zéro."), r.recu < acompte && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); ouvrirPaiement(); } }, tr("Enregistrer un paiement")) : null)] : []),
         etape(!!facture, N_("Facture"), facture ? tr("Émise le {date}", { date: formatDate(facture.date_emission) }) + (facture.envoye_le ? tr(", envoyée le {date}", { date: formatDate(facture.envoye_le) }) : "") : tr("À créer quand la prestation est prête, ou dès l'acompte reçu."), facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, tr("Ouvrir la facture")) : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, tr("Créer la facture")) : null),
         etape(r.statut === "solde" || r.statut === "sur_place", N_("Dossier soldé"), r.statut === "sur_place" ? tr("Rien à encaisser, tout est payé sur place.") : r.statut === "solde" ? tr("Tout est encaissé.") : r.total ? tr("Reste {montant} à encaisser.", { montant: fm(r.reste) }) : "")
       )
@@ -805,7 +852,9 @@ function ficheDossierVue(id) {
         : h("p", { class: "vide-court" }, tr("Aucun document.")),
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
-    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, solderEcart, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
+    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), alertesPaiementsDossier(d, r), tableauPaiements, solderEcart, droit.paiements ? [ouvrirFormPaiement, zonePaiement] : null) : null,
+    // Taxi n'a pas de section des paiements : ses alertes (acompte réparti, à rembourser, trop-perçu) se montrent quand même. Relecture de la PR #360 : remontées juste après les services (voir plus bas).
+    alertesTaxi,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
@@ -863,16 +912,17 @@ function ficheDossierVue(id) {
   const avancement = sectionDe(tr("Avancement"));
   const services = sectionDe(TITRE_SERVICES);
   if (services) services.id = "services";
-  // Les réservations juste après l'avancement, avant les vouchers.
-  if (services && avancement) avancement.after(services);
+  // Excursions et taxi : les services sont le cœur du dossier, juste après le résumé (audit mobile n° 10). Agence : après l'avancement, avant les vouchers.
+  if (services && avancement) (excursions || taxi ? avancement.before(services) : avancement.after(services));
+  if (alertesTaxi && services) services.after(alertesTaxi);
   const etapes = racine.querySelector(".etapes");
   if (etapes) resumerEtapes(etapes);
   plierSections(racine, { cle: d.id, ouverts: new Set([tr("Avancement"), TITRE_SERVICES, tr("Vouchers"), tr("Booking confirmation"), tr("Documents"), tr("Paiements reçus")]) });
 
   const gestes = [
     gesteSuivant ? h("button", { class: "principal", type: "button", title: gesteSuivant.long, onclick: gesteSuivant.faire }, gesteSuivant.court) : null,
-    tel ? h("a", { class: "bouton secondaire", href: `https://wa.me/${tel.replace(/\D/g, "")}`, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("WhatsApp")) : null,
-    droit.dossiers && modeExcursions() && moduleActif("reservations") ? h("button", { class: "secondaire", type: "button", onclick: () => ajouterServices(d, facture || devis || null, rafraichir) }, icone("ajouter", 18), tr("Service")) : null,
+    tel ? h("a", { class: "bouton secondaire bouton-icone-seul", href: `https://wa.me/${tel.replace(/\D/g, "")}`, target: "_blank", rel: "noopener", "aria-label": tr("Écrire au client sur WhatsApp"), title: tr("Écrire au client sur WhatsApp") }, icone("whatsapp", 20)) : null,
+    droit.dossiers && modeExcursions() && moduleActif("reservations") ? h("button", { class: "secondaire avec-icone", type: "button", onclick: () => ajouterServices(d, facture || devis || null, rafraichir), "aria-label": tr("Ajouter un service"), title: tr("Ajouter un service") }, icone("ajouter", 18), tr("Service")) : null,
   ].filter(Boolean);
   if (gestes.length) {
     const barre = barreAction(...gestes);
@@ -883,13 +933,9 @@ function ficheDossierVue(id) {
   // des paiements et met le curseur sur le montant, déjà prérempli avec ce qui reste à payer. Après le placement du défilement par app.mjs.
   if (/[?&]paiement=1(&|$)/.test(location.hash) && droit.paiements)
     setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-      const form = document.getElementById("form-paiement");
-      if (!form || !form.isConnected) return;
-      const section = form.closest("details");
-      if (section) section.open = true;
-      form.scrollIntoView({ block: "center" });
-      const montant = document.getElementById("p-montant");
-      if (montant) montant.focus({ preventScroll: true });
+      if (!formPaiement.isConnected) return;
+      ouvrirPaiement({ defiler: false });
+      formPaiement.scrollIntoView({ block: "center" });
     })), 0);
   return racine;
 }

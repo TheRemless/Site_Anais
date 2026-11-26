@@ -1,7 +1,7 @@
 // Validation des cartes de l'onglet Assistant (sorti de views/agent.mjs, relecture de la PR 332, pour que les tests passent par ce code) :
 // la préparation d'une carte « dossier » pour la fiche de création, le chauffeur, le règlement et le lieu d'une carte « reservation »,
 // l'enregistrement d'une réservation par la fenêtre habituelle (cachée), et la carte « dossier » de l'espace unifié (deux dossiers liés).
-import { etat, reglages, nomPartenaire, modeTaxi, modifier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis } from "../etat.mjs";
+import { etat, reglages, nomPartenaire, modeTaxi, modifier, chargerDossier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis } from "../etat.mjs";
 import { modal, toast } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { propositionDepuisCarte, reservationDepuisCarte, chauffeurCarte, payeSurPlaceCarte } from "../agent-calc.mjs";
@@ -43,6 +43,24 @@ export const optionsCarte = (c) => {
 
 export async function enregistrerReservation(valeurs, message, ancienne = null) {
   const { formulaireReservation } = await import("./reservations.mjs");
+  // Une option ajoutée par une carte « modification » (26.11.2026) : les lignes de la facture doivent être lues avant la fenêtre cachée.
+  if (Array.isArray(valeurs.options_ajout) && valeurs.options_ajout.length) {
+    // Taxi : une course suit sa propre facture, sans options (relecture de la PR 359) : refusé, rien n'est écrit.
+    if (modeTaxi()) return { ok: false, motif: tr("Les options ne s'ajoutent pas à une course de Taxi : modifiez le prix de la course.") };
+    const r = ancienne || valeurs;
+    const liee = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
+    if (liee) await chargerDossier(r.dossier_id);
+    else {
+      // Service sans ligne de facture (ajouté par carte) : l'option va sur la réservation, son prix dans le montant vendu, en une écriture.
+      const opts = valeurs.options_ajout.filter((o) => !((r.details && r.details.options) || []).some((x) => x.prestation_id === o.prestation_id));
+      const plus = opts.reduce((t, o) => t + (Number(o.prix) || 0), 0);
+      if (!opts.length) return { ok: false, motif: tr("Cette option est déjà sur le service.") };
+      if (opts.some((o) => o.prix === null || o.prix === undefined)) return { ok: false, motif: tr("Le prix de l'option est à saisir : ouvrez « Vérifier avant ».") };
+      await modifier("reservations", r.id, { montant_vente: r.montant_vente === null || r.montant_vente === undefined ? null : Math.round((Number(r.montant_vente) + plus) * 100) / 100, details: { ...(r.details || {}), options: [...((r.details && r.details.options) || []), ...opts.map((o) => ({ prestation_id: o.prestation_id, libelle: o.libelle || "", prix: o.prix ?? null, qte: Math.max(1, Number(o.qte) || 1) }))] } });
+      toast(message);
+      return { ok: true, reservation: { ...r, id: r.id } };
+    }
+  }
   return new Promise((fin) => {
     let fini = false;
     let minuterie = null;

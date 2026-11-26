@@ -6,7 +6,7 @@ import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, re
 import { voucherExempleDonnees } from "../exemples.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { rolesDuService, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
+import { rolesDuService, optionsVoucher, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, paiementDuService, statutEmpreinte, remarquePaiementImprimee, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi, estBookingSecret, estBookingConfirmation, bagagesBooking, volDejaDans } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
@@ -87,6 +87,25 @@ export function vouchersDuDossier(dossierId) {
 }
 
 // L'empreinte d'un voucher du dossier `d` : le client et le résumé (statut de paiement, devise) ne se lisent qu'une fois, au premier besoin.
+// Les lignes de facture d'un service (ses options comprises), et le texte « Options » que son voucher imprime. Le même texte entre dans
+// l'empreinte : une option ajoutée, retirée, offerte ou échangée fait repasser le voucher « à renvoyer » (relecture de la PR 359).
+function lignesDuVoucher(r) {
+  const ids = new Set([r.ligne_id, ...(((r.details || {}).lignes_ids) || [])].filter(Boolean));
+  return r.dossier_id && etat.db ? (etat.db.documents || []).filter((x) => x.dossier_id === r.dossier_id && x.type !== "devis").flatMap((x) => (x.contenu && x.contenu.lignes) || []).filter((l) => ids.has(l.id)) : [];
+}
+function extrasDuVoucher(r, lignes = lignesDuVoucher(r)) {
+  const prestationDe = (id) => (etat.db ? etat.db.prestations.find((x) => x.id === id) : null) || null;
+  const deLignes = optionsVoucher(lignes, prestationDe);
+  // Un service ajouté par une carte « reservation » n'a pas de ligne de facture : ses options sont sur la réservation (details.options).
+  return (deLignes.length ? deLignes : (Array.isArray((r.details || {}).options) ? r.details.options : []).map((o) => ((prestationDe(o.prestation_id) || {}).libelle_en || libelleClient(o.libelle || "")))).filter(Boolean).join(", ");
+}
+// Ce qui, des options, change le voucher : leur nom (imprimé) et leur prix (une option offerte ou échangée au même total).
+function empreinteOptions(r) {
+  const lignes = lignesDuVoucher(r).filter((l) => l.option_de && l.kind !== "texte");
+  const deDetails = Array.isArray((r.details || {}).options) ? r.details.options : [];
+  if (!lignes.length && !deDetails.length) return "";
+  return `${extrasDuVoucher(r)}|${[...lignes.map((l) => `${l.prestation_id}:${l.unite ?? ""}:${l.qte ?? ""}:${l.montant ?? ""}`), ...deDetails.map((o) => `${o.prestation_id}:${o.prix ?? ""}`)].join(",")}`;
+}
 function empreinteDuDossier(d) {
   let ctx = null;
   return (r) => {
@@ -94,7 +113,7 @@ function empreinteDuDossier(d) {
       const res = d ? resumeDossier(d.id) : null;
       ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, devise: (res && res.devise) || reglages().devise || "THB" };
     }
-    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutPaiementVoucher({ ...(ctx.res || {}), surPlace: !!r.paye_sur_place }), devise: ctx.devise });
+    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutEmpreinte(paiementDuService(r, { resume: ctx.res })), devise: ctx.devise, options: empreinteOptions(r) });
   };
 }
 
@@ -136,10 +155,15 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   // Un service à rôles (ATV) dit au partenaire combien de conducteurs et de passagers : « P3: ATV 1h + Kayak 1h, 1 driver + 1 passenger » (19.11.2026).
   const nomService = p && p.libelle_en && [p.libelle, p.libelle_en].some((x) => brut(x) === brut(r.libelle)) ? p.libelle_en : libelleClient(r.libelle);
   // La composition se relit sur la facture (une ligne de passager retirée ou changée la suit), sinon celle gardée à la création.
-  const idsService = new Set([r.ligne_id, ...((dt.lignes_ids) || [])].filter(Boolean));
-  const lignesService = r.dossier_id && etat.db ? (etat.db.documents || []).filter((x) => x.dossier_id === r.dossier_id && x.type !== "devis").flatMap((x) => (x.contenu && x.contenu.lignes) || []).filter((l) => idsService.has(l.id)) : [];
-  const roles = lignesService.length ? rolesDuService(lignesService) : dt.roles || "";
+  const lignesService = lignesDuVoucher(r);
+  // Les rôles (conducteur, passager) se lisent sur les lignes du service, jamais sur ses options.
+  const lignesRoles = lignesService.filter((l) => !l.option_de);
+  const roles = lignesRoles.length ? rolesDuService(lignesRoles) : dt.roles || "";
   const titrePrestation = roles && !brut(nomService).includes(brut(roles)) ? `${nomService}, ${roles}` : nomService;
+  // Les options du service (26.11.2026) : une ligne « Options » en anglais, sans prix ni partenaire (le prix total les comprend).
+  // Un service ajouté par une carte « reservation » n'a pas de ligne de facture : ses options sont sur la réservation (details.options).
+  const extras = extrasDuVoucher(r, lignesService);
+  const ligneOptions = ligneSi(t("options"), extras);
   // Billet : ce qui est saisi sur la réservation passe avant le trajet de la base ; sans trajet (partenaire ajouté à la main), seulement la saisie
   // et un libellé « A → B ». L'heure de pickup n'est jamais prise pour l'heure de départ du bateau quand le pickup s'imprime à part.
   const dBillet = { de: libelleClient(dt.de || (trajet && trajet.de) || pickupDepuisLibelle(r, p, trajet)), vers: libelleClient(dt.vers || (trajet && trajet.vers) || dropOffDepuisLibelle(r, p)), depart: dt.depart || (trajet && trajet.depart) || (trajet ? r.heure_pickup || "" : ""), arrivee: dt.arrivee || (trajet && trajet.arrivee) || "", mode: dt.bateau || (trajet && trajet.mode ? modeEn(trajet.mode) : "") };
@@ -161,7 +185,10 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   // Fiche partagée par une autre entreprise (ZTP sur un service de Secret ou de Taxi, PR 234) : son adresse est postale, jamais un hôtel.
   // L'entreprise du service : celle de la réservation, sinon du dossier, sinon l'entreprise ouverte.
   const { hotel, chambre } = hebergementVoucher(client, { ...r, entite_id: r.entite_id || d.entite_id || etat.entiteId });
-  const statut = statutPaiementVoucher({ ...(res || {}), surPlace: !!r.paye_sur_place });
+  // Le paiement de CE service : un acompte versé pour un service payé sur place est imprimé avec le reste à payer (paiementDuService).
+  // L'aperçu des réglages (contexte.reservations absent, réservation sans dossier) ne lit que le résumé donné.
+  const pay = paiementDuService(r, { resume: res });
+  const statut = pay.statut;
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };
   const prive = dt.type_tour ? dt.type_tour === "prive" : estPrive(p, r);
@@ -197,7 +224,8 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const bagages = dt.bagages || "";
   // Sur les vouchers de Secret, la même lecture que la ligne LUGGAGE de la Booking confirmation : « 3 pieces », « Yes », jamais « yes ».
   const bagagesTexte = bagagesBooking(bagages);
-  const remarquesPaiement = dt.remarques_paiement || "";
+  // Une remarque de paiement saisie à la main qui donne un autre montant que l'acompte enregistré ne s'imprime pas : le dossier le signale.
+  const remarquesPaiement = remarquePaiementImprimee(dt.remarques_paiement || "", pay, r.montant_vente);
   // Prix par personne : seulement s'il n'y a qu'un tarif connu (audit n° 27), jamais une moyenne.
   // Tarif enfant : celui de la prestation (prix enfant) ou une ancienne prestation enfant séparée, cherchée sur la prestation de la base.
   const tarifEnfant = en_ > 0 && p && ["pp", "ad"].includes(p.unite) ? prestationEnfant(pLive && pLive.unite === p.unite ? pLive : p, etat.db.prestations) : null;
@@ -213,36 +241,42 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
 
   // VIP Taxi Lanta : la « Booking confirmation » de son modèle, pas les vouchers de Secret.
   // Secret : un transfert payé au chauffeur sans partenaire (taxi indépendant) a sa propre Booking confirmation (18.11.2026).
-  if (estBookingSecret(r, type, regl)) return renderBookingSecret({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
-  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
+  if (estBookingSecret(r, type, regl)) return renderBookingSecret({ regl, client, r, paiement: pay, options: extras, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
+  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, paiement: pay, options: extras, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
 
   const cle = (texte) => h("span", { class: "v-cle" }, `${texte}: `);
   const espace = () => h("span", { class: "v-espace" });
   const passagers = (libelle, avecBebes = false) => ligne(libelle, "", cle(t("adultes")), nbp(a), espace(), cle(t("enfants")), nbp(en_), ...(avecBebes ? [espace(), cle(t("bebes")), nbp(pers.bebes)] : []));
   // Statut du paiement : les trois cases du modèle d'Anaïs ; « Payment Pending » s'ajoute seulement quand c'est le cas (rien reçu, pas payé sur place).
-  const statutPaiement = (paye, surPlace) => h("p", { class: "v-ligne" }, cle(t("statut_paiement")), case_(statut === "paye", paye), " ", case_(statut === "acompte", t("acompte")), " ", case_(statut === "sur_place", surPlace), ...(statut === "en_attente" ? [" ", case_(true, t("en_attente"))] : []));
+  // Acompte sur un service payé sur place : « Deposit Paid » ET le mode sur place sont cochés (le reste se paie sur place), puis
+  // le montant déjà versé et le reste à payer (0 quand tout est payé). Sans acompte imputé à ce service, aucun montant (paiementDuService).
+  const statutPaiement = (paye, surPlace) => [
+    h("p", { class: "v-ligne" }, cle(t("statut_paiement")), case_(statut === "paye", paye), " ", case_(statut === "acompte", t("acompte")), " ", case_(statut === "sur_place" || (statut === "acompte" && pay.surPlace), surPlace), ...(statut === "en_attente" ? [" ", case_(true, t("en_attente"))] : [])),
+    pay.verse !== null && pay.verse !== undefined ? ligne(t("montant_verse"), prix(pay.verse, devise)) : null,
+    pay.reste !== null && pay.reste !== undefined ? ligne(t("reste_sur_place"), prix(pay.reste, devise)) : null,
+  ];
 
   const booking =
     type === "billet"
-      ? [ligne(t("route"), [dBillet.de, dBillet.vers].some(Boolean) ? `${dBillet.de} → ${dBillet.vers}` : ""), ligne(t("date_trajet"), dateTexte(r.date_service, "en")), ligne(t("heure_depart"), dBillet.depart, ...cleEnLigne(t("heure_arrivee"), dBillet.arrivee)), ligneSi(t("bateau"), dBillet.mode), ligne(t("compagnie"), operateur), ligneSi(t("embarcadere"), embarquement), pickupInclus ? ligne(t("pickup_hotel"), [r.lieu_pickup, r.heure_pickup ? `${t("a_heure")} ${r.heure_pickup}` : ""].filter(Boolean).join(" ")) : null, passagers(t("passagers"), Number(pers.bebes) > 0 || sansPersonnes), ligneSi(t("bagages"), bagagesTexte), ligneSi(t("remarques"), remarques)]
+      ? [ligne(t("route"), [dBillet.de, dBillet.vers].some(Boolean) ? `${dBillet.de} → ${dBillet.vers}` : ""), ligneOptions, ligne(t("date_trajet"), dateTexte(r.date_service, "en")), ligne(t("heure_depart"), dBillet.depart, ...cleEnLigne(t("heure_arrivee"), dBillet.arrivee)), ligneSi(t("bateau"), dBillet.mode), ligne(t("compagnie"), operateur), ligneSi(t("embarcadere"), embarquement), pickupInclus ? ligne(t("pickup_hotel"), [r.lieu_pickup, r.heure_pickup ? `${t("a_heure")} ${r.heure_pickup}` : ""].filter(Boolean).join(" ")) : null, passagers(t("passagers"), Number(pers.bebes) > 0 || sansPersonnes), ligneSi(t("bagages"), bagagesTexte), ligneSi(t("remarques"), remarques)]
       : type === "bateau"
-      ? [ligne(t("nom_tour"), titrePrestation), ligne(t("date"), dateTexte(r.date_service, "en")), horaires ? ligne(t("horaires"), horaires) : null, bateauTexte ? ligne(t("bateau"), bateauTexte) : null, bq.quai ? ligne(t("quai"), bq.quai) : null, ligne(t("heure_pickup"), r.heure_pickup), ligne(t("lieu_pickup"), r.lieu_pickup || hotel), passagers(t("passagers")), h("p", { class: "v-ligne" }, cle(t("type_tour")), case_(!prive, t("join")), " ", case_(prive, t("prive"))), ligneOperateur, ligneSi(t("remarques"), remarques)]
+      ? [ligne(t("nom_tour"), titrePrestation), ligneOptions, ligne(t("date"), dateTexte(r.date_service, "en")), horaires ? ligne(t("horaires"), horaires) : null, bateauTexte ? ligne(t("bateau"), bateauTexte) : null, bq.quai ? ligne(t("quai"), bq.quai) : null, ligne(t("heure_pickup"), r.heure_pickup), ligne(t("lieu_pickup"), r.lieu_pickup || hotel), passagers(t("passagers")), h("p", { class: "v-ligne" }, cle(t("type_tour")), case_(!prive, t("join")), " ", case_(prive, t("prive"))), ligneOperateur, ligneSi(t("remarques"), remarques)]
       : type === "transfert"
-        ? [ligne(t("date"), dateTexte(r.date_service, "en")), ligne(t("heure_pickup"), r.heure_pickup), ligneSi(t("heure_depart"), departTrajet), ...(retourDepart ? [ligne(t("pickup_retour"), pickupTransfert), ligne(t("programme_trajet"), programmeTrajet), ligneSi(t("duree"), dureeTrajet)] : [ligne(t("lieu_pickup"), pickupTransfert), ligne(t("drop_off"), dropOff)]), avecVol ? ligne(t("vol"), volTexte) : null, ligne(t("passagers"), "", cle(t("adultes")), nbp(a), espace(), cle(t("enfants")), nbp(en_), siegesVoucher(dt), ...cleEnLigne(t("bagages"), bagagesTexte)), h("p", { class: "v-ligne" }, cle(t("type_transfert")), ...[["taxi", t("taxi_prive")], ["minivan", t("minivan_prive")], ["partage", t("minivan_partage")]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligneOperateur, ligneSi(t("remarques"), remarques)]
+        ? [ligne(t("date"), dateTexte(r.date_service, "en")), ligneOptions, ligne(t("heure_pickup"), r.heure_pickup), ligneSi(t("heure_depart"), departTrajet), ...(retourDepart ? [ligne(t("pickup_retour"), pickupTransfert), ligne(t("programme_trajet"), programmeTrajet), ligneSi(t("duree"), dureeTrajet)] : [ligne(t("lieu_pickup"), pickupTransfert), ligne(t("drop_off"), dropOff)]), avecVol ? ligne(t("vol"), volTexte) : null, ligne(t("passagers"), "", cle(t("adultes")), nbp(a), espace(), cle(t("enfants")), nbp(en_), siegesVoucher(dt), ...cleEnLigne(t("bagages"), bagagesTexte)), h("p", { class: "v-ligne" }, cle(t("type_transfert")), ...[["taxi", t("taxi_prive")], ["minivan", t("minivan_prive")], ["partage", t("minivan_partage")]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligneOperateur, ligneSi(t("remarques"), remarques)]
         : type === "location"
-          ? [ligne(t("vehicule"), titrePrestation), typeVehicule ? ligne(t("type_moteur"), typeVehicule) : null, ligne(t("prise"), [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne(t("lieu_pickup"), r.lieu_pickup || hotel), ligne(t("retour"), [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne(t("lieu_retour"), dt.retour_lieu || r.lieu_pickup || hotel), jours ? ligne(t("duree_location"), `${jours} ${jours > 1 ? t("jours") : t("jour")}`) : null, ligne(t("conducteur"), nomClient), ligneSi(t("permis"), dt.permis), ligneSi(t("equipement"), dt.equipement), ligneOperateur, ligneSi(t("remarques"), remarques)]
-          : [ligne(t("activite"), titrePrestation), programme ? ligne(t("programme"), programme) : null, ligne(t("date_heure"), [dateTexte(r.date_service, "en"), dt.heure_service || horaires].filter(Boolean).join(", ")), duree ? ligne(t("duree"), duree) : null, ligneSi(t("heure_pickup"), r.heure_pickup), ligneSi(t("lieu_pickup"), r.lieu_pickup || hotel), passagers(t("invites")), ligneOperateur, ligneSi(t("remarques"), remarques)];
+          ? [ligne(t("vehicule"), titrePrestation), ligneOptions, typeVehicule ? ligne(t("type_moteur"), typeVehicule) : null, ligne(t("prise"), [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne(t("lieu_pickup"), r.lieu_pickup || hotel), ligne(t("retour"), [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne(t("lieu_retour"), dt.retour_lieu || r.lieu_pickup || hotel), jours ? ligne(t("duree_location"), `${jours} ${jours > 1 ? t("jours") : t("jour")}`) : null, ligne(t("conducteur"), nomClient), ligneSi(t("permis"), dt.permis), ligneSi(t("equipement"), dt.equipement), ligneOperateur, ligneSi(t("remarques"), remarques)]
+          : [ligne(t("activite"), titrePrestation), ligneOptions, programme ? ligne(t("programme"), programme) : null, ligne(t("date_heure"), [dateTexte(r.date_service, "en"), dt.heure_service || horaires].filter(Boolean).join(", ")), duree ? ligne(t("duree"), duree) : null, ligneSi(t("heure_pickup"), r.heure_pickup), ligneSi(t("lieu_pickup"), r.lieu_pickup || hotel), passagers(t("invites")), ligneOperateur, ligneSi(t("remarques"), remarques)];
 
   const paiement =
     type === "billet"
-      ? [ligne(t("prix_total"), prix(r.montant_vente, devise)), statutPaiement(t("paye"), t("sur_place_billet")), ligneSi(t("remarques"), remarquesPaiement)]
+      ? [ligne(t("prix_total"), prix(r.montant_vente, devise)), ...statutPaiement(t("paye"), t("sur_place_billet")), ligneSi(t("remarques"), remarquesPaiement)]
       : type === "bateau"
-      ? [ligne(t("prix_total"), prix(r.montant_vente, devise)), parc.inclus === null || parc.inclus === undefined ? null : h("p", { class: "v-ligne" }, cle(t("parc")), case_(parc.inclus === true, t("parc_inclus")), " ", case_(parc.inclus === false, t("parc_non_inclus")), parc.inclus === false && parc.texte ? `: ${parc.texte}` : ""), statutPaiement(t("paye"), t("sur_place_bateau")), ligneSi(t("remarques"), remarquesPaiement)]
+      ? [ligne(t("prix_total"), prix(r.montant_vente, devise)), parc.inclus === null || parc.inclus === undefined ? null : h("p", { class: "v-ligne" }, cle(t("parc")), case_(parc.inclus === true, t("parc_inclus")), " ", case_(parc.inclus === false, t("parc_non_inclus")), parc.inclus === false && parc.texte ? `: ${parc.texte}` : ""), ...statutPaiement(t("paye"), t("sur_place_bateau")), ligneSi(t("remarques"), remarquesPaiement)]
       : type === "transfert"
-        ? [ligne(t("prix_total"), prix(r.montant_vente, devise)), statutPaiement(t("paye"), t("sur_place_transfert")), ligneSi(t("remarques"), remarquesPaiement)]
+        ? [ligne(t("prix_total"), prix(r.montant_vente, devise)), ...statutPaiement(t("paye"), t("sur_place_transfert")), ligneSi(t("remarques"), remarquesPaiement)]
         : type === "location"
-          ? [tarifJour ? ligne(t("tarif_jour"), prix(tarifJour, devise)) : null, ligne(t("prix_total"), prix(r.montant_vente, devise)), ligneSi(t("caution"), dt.caution), statutPaiement(t("paye"), t("sur_place_activite")), ligneSi(t("remarques"), remarquesPaiement)]
-          : [prixPersonne !== null ? ligne(t("prix_personne"), prix(prixPersonne, devise)) : null, ligne(t("montant_total"), prix(r.montant_vente, devise)), statutPaiement(t("paye_tout"), t("sur_place_activite")), ligneSi(t("remarques"), remarquesPaiement)];
+          ? [tarifJour ? ligne(t("tarif_jour"), prix(tarifJour, devise)) : null, ligne(t("prix_total"), prix(r.montant_vente, devise)), ligneSi(t("caution"), dt.caution), ...statutPaiement(t("paye"), t("sur_place_activite")), ligneSi(t("remarques"), remarquesPaiement)]
+          : [prixPersonne !== null ? ligne(t("prix_personne"), prix(prixPersonne, devise)) : null, ligne(t("montant_total"), prix(r.montant_vente, devise)), ...statutPaiement(t("paye_tout"), t("sur_place_activite")), ligneSi(t("remarques"), remarquesPaiement)];
 
   const merci = remplirGabarit(((type === "transfert" || type === "billet") && v.merci_transfert) || v.merci || "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", { entreprise: nomSociete });
   const numero = numeroFige || numeroVoucher(d.ref || "", index);
