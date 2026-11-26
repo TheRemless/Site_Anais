@@ -120,7 +120,8 @@ export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
 // `t` : les textes réglables (textesVoucher) ; sans réglages, ceux du modèle d'Anaïs.
 // `paiement` : paiementDuService (operations-calc.mjs). Un acompte déjà versé ajoute « ALREADY PAID » et « BALANCE TO PAY » sous
 // le prix ; un service sans part imputée par la base (dossiers_resume.parts) : rien de plus.
-export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", paiement = null, t = textesVoucher(null) }) {
+// `options` (26.11.2026) : les options du service en anglais (optionsVoucher), une ligne « OPTIONS » sous les passagers.
+export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", paiement = null, options = "", t = textesVoucher(null) }) {
   ({ pickup, dropoff } = lieuxAvecVol(pickup, retour ? "" : dropoff, vol));
   const rem = String(remarques || "").trim();
   return [
@@ -132,6 +133,7 @@ export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dr
     // Les personnes (et leurs sièges enfant), puis les bagages sur leur propre ligne, seulement s'il y en a (18.11.2026).
     { cle: t("b_passagers"), valeur: passagersBooking(personnes, "", sieges) },
     ...(bagagesBooking(bagages) ? [{ cle: t("b_bagages"), valeur: bagagesBooking(bagages) }] : []),
+    ...(String(options || "").trim() ? [{ cle: t("b_options"), valeur: String(options).trim() }] : []),
     { cle: t("b_prix"), valeur: prixBooking(montant, devise, t) },
     ...(paiement && paiement.verse > 0 ? [{ cle: t("b_verse"), valeur: montantBooking(paiement.verse, devise) }] : []),
     // Tout payé : « BALANCE TO PAY: 0 », jamais rien à encaisser par le chauffeur.

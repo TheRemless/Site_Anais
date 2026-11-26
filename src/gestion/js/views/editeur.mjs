@@ -601,7 +601,10 @@ function editeurVue(id) {
               onclick: () => {
                 // Relecture de la PR #360 : la suppression se rattrape. Copie avant, restauration de la copie entière (options rattachées comprises).
                 const avant = [...c.lignes];
+                // Un service supprimé emporte ses options (26.11.2026) : une option ne reste jamais seule sur la facture.
+                const retiree = c.lignes[i];
                 c.lignes.splice(i, 1);
+                if (retiree && retiree.id) c.lignes = c.lignes.filter((x) => x.option_de !== retiree.id);
                 dessinerLignes();
                 change();
                 toast(tr("Ligne supprimée."), false, { action: tr("Annuler"), faire: () => { if (!listeLignes.isConnected) return; c.lignes = avant; dessinerLignes(); change(); } });

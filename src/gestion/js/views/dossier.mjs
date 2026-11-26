@@ -296,7 +296,9 @@ function ficheDossierVue(id) {
               const ref = nouvelleRef({ numerotation: regl.numerotation, prenom: cl.prenom, nom: cl.nom, dateIso: ajd, pays: d.pays || "", refsExistantes: etat.db.dossiers.map((x) => x.ref) });
               const nd = await inserer("dossiers", { ref, client_id: cl.id, pays: d.pays, bandeau: d.bandeau, date_depart: null, date_retour: null, accepte_le: null, annule: false, notes: "" });
               const contenu = structuredClone(modele.contenu);
-              contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
+              // Une option suit le double de la ligne de son service (relecture de la PR 359).
+              const ids = new Map(contenu.lignes.map((l) => [l.id, uid()]));
+              contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: ids.get(l.id), ...(l.option_de && ids.has(l.option_de) ? { option_de: ids.get(l.option_de) } : {}) }));
               contenu.montant_recu = null;
               delete contenu.libelle_recu;
               delete contenu.fige;

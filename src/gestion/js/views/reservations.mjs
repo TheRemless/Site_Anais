@@ -20,7 +20,7 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige } from "../partenaires-calc.mjs";
+import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige, estPrestationOption } from "../partenaires-calc.mjs";
 import { prestataires } from "../apporteurs-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
@@ -35,6 +35,7 @@ import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } 
 import { saisieRapideNet } from "./saisie-net.mjs";
 import { texteCorrection } from "../encaisser-calc.mjs";
 import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
+import { blocOptionsReservation } from "./options-reservation.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -393,6 +394,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const reference = h("input", { id: "r-ref", value: r.reference_partenaire || "", placeholder: tr("Numéro donné par le partenaire") });
   const vente = saisie(h("input", { id: "r-vente", value: r.montant_vente ?? "" }), "montant");
   const venteInitiale = vente.value;
+  // Les options du service (26.11.2026) : leur prix se change ici, comme celui du service ; « Vendu au client » suit.
+  // Taxi : la course suit sa propre facture (suivreCourseTaxi), sans options à modifier ici.
+  const blocOptions = modeExcursions() && !modeTaxi() && (peut("finances.voir") || (Array.isArray(r.options_ajout) && r.options_ajout.length)) ? blocOptionsReservation(r, { vente, personnes: () => ({ adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0 }), devise: reglages().devise || "THB" }) : null;
   // Tarif du catalogue (16.11.2026) : la prestation ou le trajet d'où vient le service. Il suit le partenaire : un tarif d'un autre partenaire ne
   // reste pas attaché au service (son voucher, sa facture et sa commission seraient ceux de l'autre). Choisir un tarif reprend son nom et son prix,
   // sauf ce qu'on a tapé soi-même ici.
@@ -416,7 +420,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     const options = [h("option", { value: "" }, tr("Hors catalogue"))];
     if (trajetActuel && (trajetActuel.partenaire_id || null) === pid) options.push(h("option", { value: `t:${trajetActuel.id}` }, tr("Trajet : {de} → {vers}, {depart}", { de: trajetActuel.de, vers: trajetActuel.vers, depart: trajetActuel.depart || "" })));
     // Les frais réglés sur place par le client ne sont pas des services : ils restent des notes de la facture.
-    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
+    // Une option (migration 130) n'est pas un tarif du service : elle se choisit dans « Options ».
+    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && !estPrestationOption(x) && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
     for (const x of liste) options.push(h("option", { value: `p:${x.id}` }, x.prix_vente === null || x.prix_vente === undefined ? x.libelle : `${x.libelle} · ${prix(x.prix_vente)}${x.unite ? ` ${libelleUnite(x.unite)}` : ""}`));
     tarif.replaceChildren(...options);
     tarif.value = options.some((o) => o.value === avant) ? avant : "";
@@ -438,9 +443,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
       if (!libelleSaisi) libelle.value = nomTarif(choisi);
       // Une location « par jour » se compte en jours, pas en personnes.
       const quantite = choisi.unite === "day" ? Math.max(1, Number((r.details || {}).jours) || 1) : quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 });
-      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
+      // « Vendu au client » compte le service et ses options (relecture de la PR 359) : le nouveau tarif, plus les options gardées.
+      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round((Number(choisi.prix_vente) * quantite + (blocOptions ? blocOptions.somme() : 0)) * 100) / 100);
       proposerCommission();
     }
+    if (blocOptions) blocOptions.tarif(choisi ? choisi.id : null);
     majAideTarif();
   });
   const netPrevu = saisie(h("input", { id: "r-net", value: n && n.net_prevu != null ? n.net_prevu : "" }), "montant");
@@ -480,12 +487,27 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
     tarifTouche = true;
     remplirTarifs();
+    // La liste « Ajouter l'option » suit le tarif retenu pour ce partenaire (remplirTarifs ne déclenche aucun événement).
+    if (blocOptions) blocOptions.tarif(tarif.value.startsWith("p:") ? tarif.value.slice(2) : null);
     majAideTarif();
     majCommission();
     proposerCommission();
   });
   remplirTarifs();
   majAideTarif();
+  // Tant que les options d'une réservation ouverte hors de son dossier ne sont pas lues, ni le tarif ni le partenaire ne changent : « Vendu
+  // au client » les oublierait.
+  if (blocOptions && !blocOptions.pret()) {
+    tarif.disabled = true;
+    partenaire.disabled = true;
+    aideTarif.textContent = tr("Lecture des options du service…");
+    aideTarif.hidden = false;
+    blocOptions.quandPret(() => {
+      tarif.disabled = false;
+      partenaire.disabled = false;
+      majAideTarif();
+    });
+  }
   // « Vendu au client » d'un service du catalogue : sans le droit « Modifier les prix de vente », il ne se change pas (décision 3, contrôle du
   // 17.11.2026, D3). Un tarif sans prix ou un service hors catalogue se remplit toujours.
   const droitPrix = peut("partenaires.prix");
@@ -540,6 +562,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   // L'heure enregistrée est celle de la grille tant qu'elle lui est égale : un autre choix de zone la remplace, une heure tapée à la main reste.
   if (zonesPickup.valeur() && zonesPickup.heure() === heure.value) heureDeGrille = heure.value;
   partenaire.addEventListener("change", () => zonesPickup.rafraichir());
+  // Un autre partenaire : les options de l'ancien partenaire quittent le service (une option est toujours du partenaire de son service).
+  if (blocOptions) partenaire.addEventListener("change", () => blocOptions.partenaire(partenaire.value || null));
+  // Une option par personne suit le nombre de personnes (sauf une quantité tapée dans le bloc).
+  // Sur `change` : effacer « Adultes » pour retaper ne fait pas passer par un « 1 » intermédiaire.
+  if (blocOptions) for (const x of [adultes, enfants]) x.addEventListener("change", () => blocOptions.personnes());
   lieu.addEventListener("change", () => zonesPickup.rafraichir());
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
@@ -672,10 +699,14 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
           }
         }
         if (focusPremiereErreur(e.target)) return;
+        if (blocOptions && blocOptions.erreur()) return toast(blocOptions.erreur(), true);
         const tarifPrestation = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
         const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
         const tarifChange = tarifTouche && ((tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null));
         const valeurs = { ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
+        // Service sans ligne de facture (ajouté par carte) : ses options vont sur la réservation, leur prix est déjà dans « Vendu au client ».
+        const optionsDetails = blocOptions ? blocOptions.detailsOptions() : null;
+        if (optionsDetails) valeurs.details = { ...valeurs.details, options: optionsDetails };
         // Course hors catalogue passée en « retour au point de départ » (ou revenue à l'aller simple) : son libellé généré suit, sauf s'il a été réécrit ici.
         if (valeurs.libelle === (r.libelle || "").trim()) {
           const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });
@@ -697,7 +728,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
             retirer = choix === "retirer";
           }
           // Libellé, partenaire, tarif et prix changés ici : les lignes de la facture (et du devis) suivent, avec le même avertissement (16.11.2026).
-          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {};
+          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}), ...(blocOptions && blocOptions.voulues() ? { options: blocOptions.voulues(), ...(valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {}) } : {};
           const suivi = await suivreFacture(base, valeurs, { avant: cmp.avant, apres: cmp.apres, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
           if (!suivi) return;
           const { changements, ecartRestant } = suivi;
@@ -743,6 +774,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
     h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), bebesDemandes(type, { trajet: !!r.trajet_id }) ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    blocOptions ? blocOptions.noeud : null,
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,

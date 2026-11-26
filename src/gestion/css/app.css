@@ -546,6 +546,73 @@ input.couleur { width: 72px; padding: 2px; }
 .choix-libre > .aide { margin: 0 0 14px; }
 .choix-mode-prix { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 0 0 8px; }
 .modal.large .choix-prestation .choix-libre .grille-form { grid-template-columns: repeat(2, minmax(0, 220px)); }
+/* Ajout d'un service (26.11.2026) : la recherche, la date et les onglets restent en haut, la liste défile seule, « Terminé » reste en bas.
+   Téléphone : feuille plein écran au-dessus du clavier (--vv), rien n'est caché par lui. Cibles de 44 px. */
+.modal.plein { height: min(86dvh, 820px); }
+.modal.plein .modal-defile { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.modal.plein .choix-prestation { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.cp-haut { flex: none; display: grid; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--bord); }
+.cp-haut .champ { margin: 0; }
+.cp-haut input { min-height: 44px; }
+.cp-recherche input { font-size: 1rem; }
+.cp-haut .onglets { margin: 0; }
+.cp-haut .onglets button { min-height: 44px; }
+.cp-corps { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin: 0 -20px; padding: 8px 20px 12px; }
+.modal.plein .choix-liste { max-height: none; overflow: visible; }
+.modal.plein .barre-modal { flex: none; margin: 0 -20px; padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bord); background: var(--surface); }
+.choix.deplie { background: var(--surface-2); }
+.choix-tete { all: unset; box-sizing: border-box; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 44px; cursor: pointer; border-radius: 6px; }
+.choix-tete:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.choix-tete .choix-options-nb { font-size: 0.8rem; color: var(--teal-700); font-weight: 600; }
+.choix-detail { grid-column: 1 / -1; display: grid; gap: 10px; padding-top: 4px; }
+.choix-detail .choix-qte input, .choix-actions .choix-qte input { min-height: 44px; }
+.cp-options { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.cp-options legend { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--texte-2); padding: 0; margin-bottom: 2px; }
+.cp-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 12px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); cursor: pointer; }
+.cp-option input[type="checkbox"] { width: 22px; height: 22px; margin: 0; }
+.cp-option .cp-option-nom { display: flex; flex-direction: column; min-width: 0; }
+.cp-option .cp-option-nom span { font-size: 0.82rem; color: var(--texte-2); }
+.cp-option .cp-option-prix-bloc { grid-column: 2; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--texte-2); }
+.cp-option input.cp-option-prix { width: 120px; min-height: 44px; text-align: right; }
+@media (min-width: 720px) { .cp-option { grid-template-columns: auto minmax(0, 1fr) auto; } .cp-option .cp-option-prix-bloc { grid-column: auto; } .cp-option .cp-option-prix-bloc > span { min-width: 92px; } }
+.choix-detail .principal, .modal.plein .choix-actions .principal { min-height: 44px; }
+/* Options d'une réservation (26.11.2026) : nom, prix modifiable, « Retirer » ; « Ajouter l'option » en dessous. Cibles de 44 px. */
+.options-resa-liste { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.options-resa-liste li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.options-resa-liste input { min-height: 44px; width: 96px; text-align: right; }
+.options-resa-liste button, .options-resa-ajout button { min-height: 44px; }
+.options-resa-nom { overflow-wrap: anywhere; }
+.options-resa-prix { display: flex; align-items: center; gap: 6px; }
+.options-resa-prix small { color: var(--texte-2); white-space: nowrap; }
+.options-resa-prix .options-resa-qte { width: 4.5em; min-height: 44px; }
+/* Dans une fenêtre, les champs prennent toute la largeur : ici le prix et la quantité gardent la leur, sur une ligne. */
+.options-resa-liste .options-resa-prix input { flex: 0 0 auto; width: 96px; }
+.options-resa-liste .options-resa-prix input.options-resa-qte { width: 4.5em; }
+.agent-option-qte-champ { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.agent-option-qte { width: 4em; min-height: 44px; }
+.options-resa-ajout { display: flex; flex-wrap: wrap; gap: 8px; }
+.options-resa-ajout select { flex: 1 1 200px; min-height: 44px; }
+/* Téléphone : le nom et « Retirer » sur une ligne, le prix et la quantité sur la suivante (le nom n'est plus écrasé par les champs). */
+@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-nom { grid-column: 1; grid-row: 1; } .options-resa-liste li button { grid-column: 2; grid-row: 1; } .options-resa-liste li .options-resa-prix { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; } }
+/* Clavier ouvert (html.clavier, ui.mjs) : l'en-tête fixe se réduit à la recherche et aux onglets, pour que la liste garde au moins
+   quatre rangées visibles au-dessus du clavier d'un iPhone (relecture de la PR 359). */
+html.clavier .modal.plein .cp-haut .grille-form > .champ:not(.cp-recherche),
+html.clavier .modal.plein .cp-haut label,
+html.clavier .modal.plein .cp-corps > .aide { display: none; }
+html.clavier .modal.plein .cp-haut { gap: 6px; padding-bottom: 6px; }
+html.clavier .modal.plein .modal-tete { margin-bottom: 4px; }
+html.clavier .modal.plein .barre-modal { padding-top: 6px; padding-bottom: 6px; }
+/* Clavier ouvert : une rangée repliée tient sur une ligne (nom et prix), pour garder au moins quatre rangées visibles. Dépliée, elle garde tout. */
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > span,
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-prix > span { display: none; }
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.clavier .modal.plein .cp-corps li.choix { padding-top: 0; padding-bottom: 0; }
+@media (max-width: 719px) {
+  .modal.plein { height: var(--vv, 100dvh); max-height: none; border-radius: 0; padding-top: env(safe-area-inset-top); }
+  .modal.plein .modal-poignee { display: none; }
+  .modal.plein .choix-detail .principal { width: 100%; }
+  .modal.plein .cp-haut .grille-form { grid-template-columns: 1fr; }
+}
 
 /* Recherche globale */
 .palette-fond { align-items: flex-start; padding: 8vh 16px; }
@@ -788,6 +855,10 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande-client { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); }
 .demande-client.connu { background: var(--teal-100); border-color: var(--teal-600); }
 .demande-offres { max-height: none; margin-bottom: 12px; }
+/* Options d'un service dans « Vérifier avant » (relecture de la PR 359) : visibles, avec leur prix et « Retirer » (44 px). */
+.dsv-options { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; flex-basis: 100%; }
+.dsv-options li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; font-size: 0.9rem; }
+.dsv-options button { min-height: 44px; }
 .demande-offres li { border-bottom: 1px solid var(--bord); }
 .demande-offres li:last-child { border-bottom: 0; }
 .demande-offre { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 56px; padding: 10px 12px 10px 14px; text-align: left; font-weight: 400; background: var(--surface); border: 0; border-radius: 0; color: var(--texte); }

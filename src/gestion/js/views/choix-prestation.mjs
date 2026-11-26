@@ -4,7 +4,7 @@ import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi, 
 import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant, SUR_PLACE } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique, proposable } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique, proposable, estPrestationOption, optionsDe, ligneOption } from "../partenaires-calc.mjs";
 import { prestataires } from "../apporteurs-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
 import { appliquerModeParDefaut, modeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
@@ -17,7 +17,9 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   // Taxi : pas d'horaires de bateaux, l'onglet Trajets n'a rien à montrer.
   const ongletsDispo = [["tarifs", tr("Tarifs")], ...(modeTaxi() ? [] : [["trajets", tr("Trajets")]]), ["libre", tr("Autre prestation")]];
   // Un tarif ou un trajet masqué, ou d'un partenaire masqué, ne se propose pas (audit n° 16).
-  const proposables = () => etat.db.prestations.filter((x) => proposable(x, etat.db.partenaires));
+  // Une option (26.11.2026) ne se vend pas seule : elle se choisit sous son service.
+  const proposables = () => etat.db.prestations.filter((x) => proposable(x, etat.db.partenaires) && !estPrestationOption(x));
+  const optionsDu = (x) => optionsDe(x.id, etat.db.prestations, etat.db.partenaires);
   let onglet = proposables().length || modeTaxi() ? "tarifs" : "trajets";
   const dernier = dossierId ? etat.db.reservations.filter((r) => r.dossier_id === dossierId).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0] : null;
   const ctx = { date: defauts.date || (dernier && dernier.date_service) || "", adultes: defauts.adultes ?? (dernier && dernier.personnes ? dernier.personnes.adultes : 0) ?? 0, enfants: defauts.enfants ?? (dernier && dernier.personnes ? dernier.personnes.enfants : 0) ?? 0 };
@@ -58,14 +60,20 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     const enfant = ligneDepuisPrestation(e, netPrestation(e), { langue, date: date.value, qte: ctx.enfants, devise });
     return [adultes, { ...enfant, libelle: `${adultes.libelle}, ${langue === "en" ? "child" : "enfant"}`, intro: `(${langue === "en" ? "per child" : "par enfant"})` }];
   };
+  // Le mode de règlement de l'option : exactement celui de son service (absent s'il est absent).
+  const avecModeDe = (l, parent) => {
+    const { paye_sur_place: _ancien, ...reste } = l;
+    return parent.paye_sur_place === undefined ? reste : { ...reste, paye_sur_place: parent.paye_sur_place };
+  };
   const ajoute = (lignes, nom) => {
-    // Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place).
-    onAjout(modeTaxi() ? lignesSurPlace(lignes) : appliquerModeParDefaut(lignes, partenaireDe));
+    // Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place). Une option suit le mode de son service.
+    const reglees = modeTaxi() ? lignesSurPlace(lignes) : appliquerModeParDefaut(lignes, partenaireDe);
+    const parId = new Map(reglees.map((l) => [l.id, l]));
+    onAjout(reglees.map((l) => (l.option_de && parId.has(l.option_de) ? avecModeDe(l, parId.get(l.option_de)) : l)));
     ajoutes++;
     termine.textContent = pluriel(ajoutes, N_("Terminé · {n} ajouté"), N_("Terminé · {n} ajoutés"));
     toast(tr("{nom} ajouté au document.", { nom }));
   };
-  const champRecherche = h("div", { class: "champ" }, h("label", { for: "cp-q" }, tr("Rechercher")), q);
   const noteBas = h("p", { class: "aide" }, langue === "en" ? tr("Document en anglais : le libellé anglais de la prestation est utilisé quand il existe.") : tr("Le libellé, le prix de vente et l'unité viennent de la base partenaires. Le net reste attaché à la ligne pour calculer la marge."));
 
   // Onglet « Autre prestation » : un service qui n'est pas dans la base, saisi à la main mais avec sa réservation et son voucher.
@@ -166,15 +174,75 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   majModePrix();
   const qte = (id, valeur, libelle) => h("label", { class: "choix-qte" }, h("span", null, libelle), h("input", { id, type: "number", min: "0", step: "1", value: valeur, inputmode: "numeric" }));
 
+  // Une rangée de tarif : touchée, elle se déplie (quantité, options, « Ajouter ») ; une seule à la fois, l'état gardé en redessinant.
+  let deplie = null;
+  const choixOptions = new Map(); // prestation → Map(option → { coche, prix })
+  const etatOption = (x, o) => {
+    if (!choixOptions.has(x.id)) choixOptions.set(x.id, new Map());
+    const m = choixOptions.get(x.id);
+    if (!m.has(o.id)) m.set(o.id, { coche: false, prix: o.prix_vente === null || o.prix_vente === undefined ? "" : String(o.prix_vente) });
+    return m.get(o.id);
+  };
+  function rangeeTarif(x) {
+    const d = x.details || {};
+    const options = optionsDu(x);
+    const ouvert = deplie === x.id;
+    const tete = h(
+      "button",
+      { class: "choix-tete", type: "button", "aria-expanded": ouvert ? "true" : "false", onclick: () => ((deplie = ouvert ? null : x.id), dessiner()) },
+      h("span", { class: "choix-texte" }, h("strong", null, x.libelle), h("span", null, [nomPartenaire(x.partenaire_id), x.groupe, d.horaires || d.capacite || d.duree].filter(Boolean).join(" · ")), options.length ? h("span", { class: "choix-options-nb" }, pluriel(options.length, N_("{n} option"), N_("{n} options"))) : null),
+      h("span", { class: "choix-prix" }, h("strong", null, prix(x.prix_vente)), h("span", null, x.sur_place ? tr("à payer sur place") : libelleUnite(x.unite)))
+    );
+    if (!ouvert) return h("li", { class: "choix" }, tete);
+    const champQte = x.sur_place ? null : qte(`cp-q-${x.id}`, qteDefaut(x), tr("Quantité"));
+    const blocOptions = options.length
+      ? h(
+          "fieldset",
+          { class: "cp-options" },
+          h("legend", null, tr("Options")),
+          options.map((o) => {
+            const st = etatOption(x, o);
+            const coche = h("input", { type: "checkbox", id: `cp-oc-${x.id}-${o.id}`, checked: st.coche, "aria-label": tr("Option {nom}", { nom: o.libelle }), onchange: (e) => (st.coche = e.target.checked) });
+            // Un prix changé à la main coche l'option : on ne tape pas un prix pour une option qu'on ne prend pas.
+            const prixO = h("input", { class: "cp-option-prix", id: `cp-o-${x.id}-${o.id}`, type: "number", min: "0", step: "any", inputmode: "decimal", value: st.prix, "aria-label": tr("Prix de l'option {nom}", { nom: o.libelle }), oninput: (e) => ((st.prix = e.target.value), (st.coche = true), (coche.checked = true)) });
+            return h("label", { class: "cp-option", for: `cp-oc-${x.id}-${o.id}` }, coche, h("span", { class: "cp-option-nom" }, h("strong", null, o.libelle)), h("span", { class: "cp-option-prix-bloc" }, "+", prixO, h("span", null, libelleUnite(o.unite))));
+          })
+        )
+      : null;
+    const ajouter = () => {
+      const quantite = champQte ? Number(champQte.querySelector("input").value) : 1;
+      if (x.unite === "sup" && champQte && !(quantite > 0)) return toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true);
+      const lignes = lignesPrestation(x, quantite);
+      const parent = lignes.find((l) => l.kind === "ligne") || null;
+      const choisies = options.filter((o) => etatOption(x, o).coche);
+      for (const o of choisies) {
+        const v = etatOption(x, o).prix;
+        if (v === "" || !(Number(v) >= 0)) return toast(tr("Indiquez le prix de l'option « {nom} », 0 si elle est offerte.", { nom: o.libelle }), true);
+      }
+      const lignesOptions = parent ? choisies.map((o) => ligneOption(o, parent, netPrestation(o), { langue, unitaire: Number(etatOption(x, o).prix) })) : [];
+      ajoute([...lignes, ...lignesOptions], x.sur_place ? tr("Note sur les frais de parc") : choisies.length ? `${x.libelle} + ${choisies.map((o) => o.libelle).join(" + ")}` : x.libelle);
+      choixOptions.delete(x.id);
+      deplie = null;
+      dessiner();
+    };
+    return h(
+      "li",
+      { class: "choix deplie" },
+      tete,
+      h("div", { class: "choix-detail" }, champQte, blocOptions, h("button", { class: "principal", type: "button", onclick: ajouter }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
+    );
+  }
+
   function dessiner() {
     liste.replaceChildren();
     const libre = onglet === "libre";
     formulaireLibre.hidden = !libre;
-    for (const x of [liste, compte, champRecherche, noteBas]) x.hidden = libre;
+    for (const x of [liste, compte, q.parentNode, noteBas]) if (x) x.hidden = libre;
     if (libre) return;
     if (onglet === "tarifs") {
+      // Un service se trouve aussi par le nom de l'une de ses options (« Kradan » trouve le 4 Islands privé).
       const lignes = proposables()
-        .filter((x) => correspond(`${x.libelle} ${x.libelle_en} ${x.groupe} ${nomFamille(x.famille)} ${nomPartenaire(x.partenaire_id)}`, q.value))
+        .filter((x) => correspond(`${x.libelle} ${x.libelle_en} ${x.groupe} ${nomFamille(x.famille)} ${nomPartenaire(x.partenaire_id)} ${optionsDu(x).map((o) => `${o.libelle} ${o.libelle_en}`).join(" ")}`, q.value))
         .sort((a, b) => FAMILLES.findIndex(([c]) => c === a.famille) - FAMILLES.findIndex(([c]) => c === b.famille) || nomPartenaire(a.partenaire_id).localeCompare(nomPartenaire(b.partenaire_id)) || (a.ordre || 0) - (b.ordre || 0));
       compte.textContent = pluriel(lignes.length, N_("{n} tarif."), N_("{n} tarifs."));
       const frequents = q.value.trim() ? [] : recents("prestation_id").map((id) => lignes.find((x) => x.id === id)).filter(Boolean);
@@ -186,17 +254,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
           famille = groupe;
           liste.append(h("li", { class: "choix-groupe" }, groupe === "recent" ? tr("Récemment demandés") : nomFamille(groupe)));
         }
-        const d = x.details || {};
-        const champQte = x.sur_place ? null : qte(`cp-q-${x.id}`, qteDefaut(x), tr("Quantité"));
-        liste.append(
-          h(
-            "li",
-            { class: "choix" },
-            h("div", { class: "choix-texte" }, h("strong", null, x.libelle), h("span", null, [nomPartenaire(x.partenaire_id), x.groupe, d.horaires || d.capacite || d.duree].filter(Boolean).join(" · "))),
-            h("div", { class: "choix-prix" }, h("strong", null, prix(x.prix_vente)), h("span", null, x.sur_place ? tr("à payer sur place") : libelleUnite(x.unite))),
-            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => (x.unite === "sup" && champQte && !(Number(champQte.querySelector("input").value) > 0) ? toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true) : ajoute(lignesPrestation(x, champQte ? Number(champQte.querySelector("input").value) : 1), x.sur_place ? tr("Note sur les frais de parc") : x.libelle)) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
-          )
-        );
+        liste.append(rangeeTarif(x));
       }
     } else {
       const lignes = filtrerTrajets(etat.db.trajets, { date: date.value, q: q.value, nomPartenaire, partenaires: etat.db.partenaires });
@@ -226,16 +284,14 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     h(
       "div",
       { class: "modal-corps choix-prestation" },
-      h("div", { class: "grille-form" }, h("div", { class: "champ" }, h("label", { for: "cp-date" }, tr("Date du service (facultatif)")), date), champRecherche),
-      onglets,
-      formulaireLibre,
-      compte,
-      liste,
-      noteBas,
+      // En haut, fixes : la recherche, la date et les onglets. Seule la liste (ou le formulaire « Autre prestation ») défile.
+      h("div", { class: "cp-haut" }, h("div", { class: "grille-form" }, h("div", { class: "champ cp-recherche" }, h("label", { for: "cp-q" }, tr("Rechercher")), q), h("div", { class: "champ" }, h("label", { for: "cp-date" }, tr("Date du service (facultatif)")), date)), onglets),
+      h("div", { class: "cp-corps" }, formulaireLibre, compte, liste, noteBas),
       h("div", { class: "barre-modal" }, termine)
     ),
-    { large: true, protege: false }
+    { large: true, plein: true, protege: false }
   );
-  setTimeout(() => q.focus(), 50);
+  // Au doigt, le clavier ne s'ouvre pas tout seul : la liste se parcourt d'abord, la recherche se touche quand on veut.
+  if (!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches)) setTimeout(() => q.focus(), 50);
   return fermer;
 }

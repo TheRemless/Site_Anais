@@ -374,6 +374,42 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   return { ...base, ...offert, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: netDeLigne(x, net) };
 }
 
+// ---- Options d'un service (26.11.2026) ---------------------------------------------------------------------------------
+// Une prestation peut être l'option d'une ou plusieurs autres (« Koh Kradan extension » du 4 Islands privé, une lunch box, un transfert
+// d'hôtel) : `prestations.option_de` (migration 130) liste les prestations qu'elle complète. Elle ne se vend pas seule : elle se choisit sous
+// son service. Sur la facture, l'option est une ligne à elle (son prix, son net), rattachée à la ligne du service par `option_de` (l'id de
+// cette ligne) : une seule réservation, un seul voucher, le total du service = base + options.
+export const estPrestationOption = (p) => !!p && Array.isArray(p.option_de) && p.option_de.length > 0;
+export const estLigneOption = (l) => !!l && typeof l.option_de === "string" && l.option_de !== "";
+// Les options proposables d'une prestation, dans l'ordre du catalogue.
+export const optionsDe = (prestationId, prestations = [], partenaires = []) =>
+  !prestationId ? [] : (prestations || []).filter((o) => estPrestationOption(o) && o.option_de.includes(prestationId) && proposable(o, partenaires)).sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || String(a.libelle).localeCompare(String(b.libelle)));
+// La ligne d'une option sous la ligne `parent` du service : même partenaire, même date, même mode de règlement, mêmes participants. Une
+// option par personne compte les personnes du service ; les autres comptent 1. `prix` : le prix total de l'option, s'il remplace celui du
+// catalogue (modifiable comme le prix du service).
+// `unitaire` : le prix unitaire tapé (par bateau, par personne…), `prix` : le prix total de l'option ; l'un ou l'autre remplace le catalogue.
+// `qte` : la quantité choisie (un seul plongeur sur deux) ; sans elle, une option par personne prend le nombre de personnes.
+export function ligneOption(o, parent, net, { langue = "", personnes = null, prix = null, unitaire = null, qte: qteVoulue = null, uid = nouvelId } = {}) {
+  const p = personnes || parent.personnes || {};
+  const nbPers = Math.max(0, Math.floor(Number(p.adultes) || 0)) + Math.max(0, Math.floor(Number(p.enfants) || 0));
+  const qte = Number(qteVoulue) > 0 ? Math.round(Number(qteVoulue)) : ["pp", "ad"].includes(o.unite) ? Math.max(1, nbPers || Number(parent.qte) || 1) : 1;
+  const l = ligneDepuisPrestation(o, net, { langue, date: parent.date_service || "", qte, uid });
+  const out = { ...l, option_de: parent.id, partenaire_id: parent.partenaire_id || o.partenaire_id || null, ...(parent.paye_sur_place !== undefined ? { paye_sur_place: !!parent.paye_sur_place } : {}) };
+  if (unitaire !== null && unitaire !== undefined && unitaire !== "" && Number.isFinite(Number(unitaire))) {
+    Object.assign(out, { unite: Math.round(Number(unitaire) * 100) / 100, montant: null });
+    delete out.offert;
+    if (Number(unitaire) === 0) out.offert = true;
+  } else if (prix !== null && prix !== undefined && prix !== "" && Number.isFinite(Number(prix))) {
+    const total = Math.round(Number(prix) * 100) / 100;
+    const unitaire = Math.round((total / qte) * 100) / 100;
+    if (Math.round(unitaire * qte * 100) === Math.round(total * 100)) Object.assign(out, { unite: unitaire, montant: null });
+    else Object.assign(out, { unite: null, montant: total });
+    delete out.offert;
+    if (total === 0) out.offert = true;
+  }
+  return out;
+}
+
 // Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.
 // `par` (18.11.2026) : "grp", prix total du groupe (quantité 1), ou "pp", prix par personne (quantité = participants, modifiable). Absent : la
 // lecture d'avant (quantité de personnes). `personnes` : { adultes, enfants } qui viennent, gardés à part de la quantité facturée.
