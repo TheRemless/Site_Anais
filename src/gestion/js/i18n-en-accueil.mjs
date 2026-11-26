@@ -5,6 +5,8 @@ export const EN_ACCUEIL = {
   "Avis à demander (hier)": "Reviews to request (yesterday)",
   "Saisir la commission": "Enter the commission",
   "Demandée le {date}": "Asked on {date}",
+  // L'heure d'un service sur l'accueil et le point du soir ; la parenthèse sert de contexte, elle ne s'affiche pas.
+  "départ (heure de prise en charge)": "pickup",
   // Réservations : l'heure sous le titre du jour, et un même nom pour l'écran des rappels (menu « … », accueil, titre du bloc)
   "à {heure_pickup}": "at {heure_pickup}",
   "Rappels avant le départ": "Reminders before departure",

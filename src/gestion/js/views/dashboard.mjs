@@ -43,7 +43,9 @@ function carteService(r, { demain = false } = {}) {
   return h(
     "li",
     { class: "service" },
-    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("départ")) : null),
+    // « départ » en français, « pickup » en anglais : une clé à part (« départ » seul se traduit « departure »), la précision entre
+    // parenthèses ne s'affiche pas (relecture de la PR 361).
+    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("départ (heure de prise en charge)").replace(/ \(.*\)$/, "")) : null),
     h(
       "div",
       { class: "service-corps" },
