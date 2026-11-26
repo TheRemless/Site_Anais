@@ -38,13 +38,14 @@ export function basVisible(innerHeight, vv, reference = innerHeight, options = {
 //   - une hauteur de référence par largeur (Map largeur → plus grande hauteur vue) : tourner l'app installée clavier ouvert puis revenir en
 //     portrait retrouve la référence du portrait.
 // Rend { clavier, bas, haut, references } (references : une nouvelle Map, l'ancienne n'est pas modifiée).
-//   - la fenêtre elle-même qui rétrécit ne compte que sur un téléphone (`telephone` : le plus petit côté de l'écran sous 600 points), où
-//     l'app installée réduit la fenêtre au-dessus du clavier ; sur iPad, une fenêtre réduite (Split View, Stage Manager) n'est jamais un
-//     clavier, même avec un champ actif (contre-relecture de la PR 355).
-export function etatClavier({ largeur, innerHeight, vv, references = new Map(), tactile = false, saisie = false, telephone = true }) {
+//   - la fenêtre elle-même qui rétrécit ne compte que sur un téléphone (`telephone` : le plus petit côté de l'écran sous 600 points) ou
+//     dans une fenêtre aussi large que l'écran (`pleineLargeur`) : l'app installée réduit alors la fenêtre au-dessus du clavier (iPad mini
+//     en portrait, nouvelle discussion : 1101 px de fenêtre, puis 761, 2e contre-relecture de la PR 355). Une fenêtre d'iPad plus étroite
+//     que l'écran (Split View, Stage Manager) qui rétrécit n'est jamais un clavier, même avec un champ actif (contre-relecture de la PR 355).
+export function etatClavier({ largeur, innerHeight, vv, references = new Map(), tactile = false, saisie = false, telephone = true, pleineLargeur = false }) {
   const refs = new Map(references);
   refs.set(largeur, Math.max(refs.get(largeur) || 0, innerHeight || 0));
-  const reference = telephone ? refs.get(largeur) : innerHeight;
+  const reference = telephone || pleineLargeur ? refs.get(largeur) : innerHeight;
   if (!tactile || !saisie || !vv) return { clavier: 0, bas: 0, haut: 0, references: refs };
   const options = { petitSeuil: true };
   const clavier = hauteurClavier(innerHeight, vv, reference, options);

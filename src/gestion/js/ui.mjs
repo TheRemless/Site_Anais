@@ -64,10 +64,12 @@ function suivreClavier() {
   // Calcul dans mobile-calc.mjs (etatClavier) : écran tactile et champ actif seulement, une hauteur de référence par largeur.
   const tactile = () => (navigator.maxTouchPoints || 0) > 0 || matchMedia("(any-pointer: coarse)").matches;
   let references = new Map();
+  // Fenêtre aussi large que l'écran, en portrait comme en paysage (iOS donne les côtés de l'écran sans tenir compte de la rotation).
+  const pleineLargeur = () => [screen.width, screen.height].some((cote) => Math.abs(window.innerWidth - cote) <= 1);
   // Appliqué tout de suite à chaque événement (contre-relecture de la PR 355) : attendre l'image suivante décalait les barres d'une image.
   // Le calcul est léger (quelques lectures du viewport, trois variables), un événement de trop ne coûte rien.
   const maj = () => {
-    const e = etatClavier({ largeur: window.innerWidth, innerHeight: window.innerHeight, vv, references, tactile: tactile(), saisie: ouvreClavier(document.activeElement), telephone: Math.min(screen.width, screen.height) < 600 });
+    const e = etatClavier({ largeur: window.innerWidth, innerHeight: window.innerHeight, vv, references, tactile: tactile(), saisie: ouvreClavier(document.activeElement), telephone: Math.min(screen.width, screen.height) < 600, pleineLargeur: pleineLargeur() });
     references = e.references;
     racine.style.setProperty("--clavier", `${e.bas}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
