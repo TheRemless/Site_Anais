@@ -28,7 +28,7 @@ function iconeWhatsapp() {
 
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
 // `nomSociete` : le nom de l'entreprise (bloc Vouchers des réglages, sinon l'émetteur) ; `retour` : { programme, duree } ou null.
-export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", nomSociete = "", retour = null }) {
+export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", nomSociete = "", retour = null, paiement = null }) {
   const v = regl.voucher || {};
   const textes = textesVoucher(regl);
   // Le modèle de Secret n'écrit rien après le prix (pas de « (all fees included) »).
@@ -37,7 +37,7 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
   const remplir = (s) => String(s || "").replaceAll("{ENTREPRISE}", marque);
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: siegesLus(dt), vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: siegesLus(dt), vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, paiement, t });
   const valeur = (c) => (c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur);
   const logo = (regl.apparence && regl.apparence.logo) || "";
   const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur))) + Math.max(0, champs.length - 7);
@@ -62,7 +62,7 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
         "div",
         { class: "vt-pied" },
         h("p", { class: "vs-info" }, t("bs_info")),
-        h("ul", { class: "vs-points" }, ["bs_paiement", "bs_rencontre", "bs_assistance"].map((k) => h("li", null, remplir(t(k))))),
+        h("ul", { class: "vs-points" }, [paiement && paiement.statut === "paye" ? "bs_paiement_paye" : "bs_paiement", "bs_rencontre", "bs_assistance"].map((k) => h("li", null, remplir(t(k))))),
         h("p", null, ...lignes(t("bs_merci"))),
         h("p", null, remplir(t("bs_signature")))
       ),

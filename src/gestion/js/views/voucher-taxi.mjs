@@ -51,14 +51,14 @@ export function ajusterHorsEcran(noeud) {
 
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
 // `retour` : { programme, duree } pour un retour au point de départ (16.11.2026), sinon null.
-export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null, nomSociete = "" }) {
+export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null, nomSociete = "", paiement = null }) {
   const v = regl.voucher || {};
   // {ENTREPRISE} : le nom de l'entreprise du voucher en capitales (pied de page, migration 44).
   const textes = textesVoucher(regl);
   const t = (cle) => avecMarque(textes(cle), nomSociete);
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: siegesLus(dt), vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: siegesLus(dt), vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, paiement, t });
   const valeur = (c) =>
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
   const logo = (regl.apparence && regl.apparence.logo) || "";
@@ -88,7 +88,8 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
       h(
         "div",
         { class: "vt-pied" },
-        h("p", null, t("b_paiement"), " ", h("em", null, t("b_paiement_wise")), h("br"), t("b_attente"), h("br"), t("b_changement")),
+        // Tout payé par avance (26.11.2026) : ni paiement au chauffeur ni autre moyen de paiement proposé.
+        h("p", null, ...(paiement && paiement.statut === "paye" ? [t("b_paiement_paye")] : [t("b_paiement"), " ", h("em", null, t("b_paiement_wise"))]), h("br"), t("b_attente"), h("br"), t("b_changement")),
         h("p", null, t("b_merci")),
         h("p", null, t("b_salutation")),
         h("p", null, t("b_signature"), h("br"), lieu)

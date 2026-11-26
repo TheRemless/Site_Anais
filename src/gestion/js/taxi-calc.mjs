@@ -78,6 +78,8 @@ export function bagagesBooking(bagages = "") {
 
 // « 2'700 THB (all fees included) » : l'apostrophe des milliers du modèle. Sans prix, rien (la ligne reste à remplir).
 // `t` : les textes de la Booking confirmation (textesVoucher), « (all fees included) » se règle dans Réglages.
+// Un montant seul, à la manière de prixBooking (« 1'650 THB »), sans « (all fees included) ».
+export const montantBooking = (montant, devise = "THB") => prixBooking(montant, devise, () => "");
 export function prixBooking(montant, devise = "THB", t = textesVoucher(null)) {
   if (montant === null || montant === undefined || montant === "" || !Number.isFinite(Number(montant))) return "";
   const n = Math.round(Number(montant) * 100) / 100;
@@ -116,7 +118,9 @@ export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
 // la place au programme (« PLAN ») et à la durée (« DURATION », seulement si elle est donnée). Jamais « From X to X ».
 // `remarques` : le champ « Remarks » de la course (lot B du 17.11.2026), imprimé en dernier seulement s'il est rempli.
 // `t` : les textes réglables (textesVoucher) ; sans réglages, ceux du modèle d'Anaïs.
-export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", t = textesVoucher(null) }) {
+// `paiement` : paiementDuService (operations-calc.mjs). Un acompte déjà versé ajoute « ALREADY PAID » et « BALANCE TO PAY » sous
+// le prix ; un service sans part imputée par la base (dossiers_resume.parts) : rien de plus.
+export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", paiement = null, t = textesVoucher(null) }) {
   ({ pickup, dropoff } = lieuxAvecVol(pickup, retour ? "" : dropoff, vol));
   const rem = String(remarques || "").trim();
   return [
@@ -129,6 +133,9 @@ export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dr
     { cle: t("b_passagers"), valeur: passagersBooking(personnes, "", sieges) },
     ...(bagagesBooking(bagages) ? [{ cle: t("b_bagages"), valeur: bagagesBooking(bagages) }] : []),
     { cle: t("b_prix"), valeur: prixBooking(montant, devise, t) },
+    ...(paiement && paiement.verse > 0 ? [{ cle: t("b_verse"), valeur: montantBooking(paiement.verse, devise) }] : []),
+    // Tout payé : « BALANCE TO PAY: 0 », jamais rien à encaisser par le chauffeur.
+    ...(paiement && paiement.verse > 0 && paiement.reste !== null && paiement.reste !== undefined ? [{ cle: t("b_reste"), valeur: montantBooking(paiement.reste, devise) }] : []),
     ...(rem ? [{ cle: t("b_remarques"), valeur: rem }] : []),
   ];
 }

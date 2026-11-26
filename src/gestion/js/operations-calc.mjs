@@ -731,6 +731,89 @@ export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } 
   return "en_attente";
 }
 
+// L'acompte d'un dossier et ses services payés sur place (26.11.2026, décision de Jérémy) : l'argent reste au DOSSIER, jamais rattaché à un
+// service. La base répartit (recalculer_dossier, migration 131) et range le résultat dans dossiers_resume ; l'outil le LIT, que le dossier
+// soit ouvert ou non (jamais un calcul sur les paiements en mémoire). Cette fonction est la même règle, pour la démo (store-local) et les tests :
+//   1. le reçu net du dossier (paiements moins remboursements) couvre d'abord ce qui est dû chez nous (`total`, services non payés sur place) ;
+//   2. le reste s'impute aux services payés sur place non annulés, par date de service puis ordre de création, chacun jusqu'à son prix ;
+//   3. chaque voucher sur place imprime SA part (déjà versé, reste à payer sur place) : un même montant n'est jamais sur deux vouchers ;
+//   4. un service annulé ne reçoit rien ; ce qui dépasse alors est « à rembourser » (un dossier qui a un service annulé), sinon un trop-perçu.
+//      Un remboursement saisi baisse le reçu : l'alerte disparaît, le reste ne devient jamais négatif.
+// `reservations` : celles du dossier. Rend { parts: { [id]: { verse, reste } }, excedent, a_rembourser, trop_percu }.
+const arr2 = (x) => Math.round(x * 100) / 100;
+export function imputationDossier({ total = 0, recu = 0, reservations = [], annule = false } = {}) {
+  let libre = arr2(Math.max(0, (Number(recu) || 0) - Math.max(0, Number(total) || 0)));
+  const parts = {};
+  // Dossier annulé (même sans annuler ses services) : rien n'est imputé, tout ce qui dépasse est à rembourser.
+  const surPlace = annule ? [] : (reservations || [])
+    .filter((r) => r && r.paye_sur_place && statutReservation(r.statut) !== "annule" && Number(r.montant_vente) > 0)
+    .sort((a, b) => String(a.date_service || "9999-12-31").localeCompare(String(b.date_service || "9999-12-31")) || String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
+  for (const r of surPlace) {
+    const prix = arr2(Number(r.montant_vente));
+    const verse = arr2(Math.min(prix, libre));
+    libre = arr2(libre - verse);
+    parts[r.id] = { verse, reste: arr2(prix - verse) };
+  }
+  const annulation = !!annule || (reservations || []).some((r) => r && statutReservation(r.statut) === "annule");
+  return { parts, excedent: libre, a_rembourser: annulation ? libre : 0, trop_percu: annulation ? 0 : libre };
+}
+
+// Ce que le voucher d'un service dit du paiement, d'après le résumé du dossier (resume.dossier : la ligne dossiers_resume fusionnée).
+// Rend { statut, verse, reste, surPlace } ; `statut` reste l'une des valeurs de statutPaiementVoucher. Un service chez nous garde la règle
+// d'avant (le reçu du dossier contre son total, aucun montant imprimé). Un service sur place sans part versée : « sur place », sans montant.
+export function paiementDuService(r, { resume = null } = {}) {
+  const total = Number(resume && resume.total) || 0;
+  const recu = Number(resume && resume.recu) || 0;
+  if (!r || !r.paye_sur_place) return { statut: statutPaiementVoucher({ total, recu, surPlace: false }), verse: null, reste: null, surPlace: false };
+  const surPlace = { statut: "sur_place", verse: null, reste: null, surPlace: true };
+  if (statutReservation(r.statut) === "annule") return surPlace;
+  const parts = (resume && ((resume.dossier && resume.dossier.parts) || resume.parts)) || {};
+  const part = parts[r.id];
+  if (!part || !(Number(part.verse) > 0)) return surPlace;
+  const verse = arr2(Number(part.verse));
+  const reste = arr2(Math.max(0, Number(part.reste) || 0));
+  return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true } : { statut: "paye", verse, reste: 0, surPlace: false };
+}
+// Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand ils sont imprimés (lus dans le résumé).
+export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
+
+// Les montants d'une remarque de paiement saisie à la main : ni les dates (« 26.11 », « 26/11/2026 »), ni les pourcentages (« 3 % »), ni un
+// montant de frais ne comptent : celui qui précède directement « fee(s) », avec au plus une devise et les mots d'un moyen de paiement entre
+// (« 50 THB fee », « 150 Wise fee », « 40 bank transfer fee »). « Deposit 1500 THB plus fee » garde 1 500, l'acompte.
+export function montantsRemarque(texte) {
+  const t = String(texte || "")
+    .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/g, " ")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
+    .replace(/\d[\d\s',.]*\s?%/g, " ")
+    .replace(/\d[\d\s',.]*?\s*(?:(?:THB|EUR|USD|CHF|GBP|baht|฿)\s*)?(?:(?:wise|bank|transfer|transfert|paypal|card|carte|atm)\s+){0,2}fees?\b/gi, " ");
+  return (t.match(/\d[\d\s',.]*\d|\d/g) || []).map((x) => Number(x.trim().replace(/[\s',]/g, ""))).filter((x) => x > 0);
+}
+const remarqueContredit = (remarque, p, montant) => p && p.verse !== null && p.verse !== undefined && montantsRemarque(remarque).some((x) => x !== p.verse && x !== p.reste && x !== Number(montant));
+
+// Ce que le dossier doit dire des paiements : un remboursement à traiter (reçu au-delà de ce qui reste dû après une annulation), un
+// trop-perçu, une remarque de paiement qui donne un autre montant que la part enregistrée. Tout vient du résumé (la base), sauf la remarque.
+export function alertesPaiements({ reservations = [], resume = null } = {}) {
+  const d = (resume && (resume.dossier || resume)) || {};
+  const out = [];
+  if (Number(d.a_rembourser) > 0) out.push({ code: "remboursement", montant: arr2(Number(d.a_rembourser)) });
+  if (Number(d.trop_percu) > 0) out.push({ code: "trop_percu", montant: arr2(Number(d.trop_percu)) });
+  // Un acompte réparti entre des services sur place de prestataires différents : la répartition calculée, à voir avant d'envoyer les vouchers.
+  const parts = d.parts || {};
+  const servis = (reservations || []).filter((r) => r && parts[r.id] && Number(parts[r.id].verse) > 0).sort((a, b) => String(a.date_service || "").localeCompare(String(b.date_service || "")));
+  if (servis.length > 1 && new Set(servis.map((r) => r.partenaire_id || `sans-${r.id}`)).size > 1)
+    out.push({ code: "repartition", montant: arr2(servis.reduce((t, r) => t + Number(parts[r.id].verse), 0)), repartition: servis.map((r) => ({ reservation_id: r.id, libelle: r.libelle || "", date: r.date_service || "", verse: arr2(Number(parts[r.id].verse)) })) });
+  for (const r of (reservations || []).filter((x) => x && x.paye_sur_place && statutReservation(x.statut) !== "annule")) {
+    const p = paiementDuService(r, { resume });
+    if (remarqueContredit((r.details && r.details.remarques_paiement) || "", p, r.montant_vente)) out.push({ code: "remarque_paiement", montant: p.verse, reservation_id: r.id, libelle: r.libelle || "" });
+  }
+  return out;
+}
+// La remarque de paiement saisie à la main qui donne un autre montant que la part enregistrée ne s'imprime pas (le dossier le signale).
+export function remarquePaiementImprimee(remarque, p, montant) {
+  const t = String(remarque || "");
+  return remarqueContredit(t, p, montant) ? "" : t;
+}
+
 // Prix par personne imprimé sur le voucher d'activité : seulement quand il n'y a qu'un tarif connu (audit n° 27). Une moyenne
 // vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.
 //   - prestation du catalogue vendue à la personne (pas de prix de groupe, de véhicule ni de service hors catalogue) ;
@@ -783,7 +866,9 @@ export function empreinteVoucher({ reservation: r = {}, client = {}, statut = ""
     client: adresseEstHotel(client, r.entite_id) ? [videOuTexte(client.prenom), videOuTexte(client.nom), videOuTexte(client.telephone), videOuTexte(String(client.adresse || "").split("\n")[0])] : [videOuTexte(client.prenom), videOuTexte(client.nom), "", ""],
     // Le statut de paiement de l'agence ne compte pas (contrôle du 17.11.2026, D6) : un paiement reçu ne fait pas repasser les vouchers
     // « à renvoyer ». Seul ce que le client paie sur place compte (`surPlace`, ci-dessus).
-    statut: statut === "sur_place" ? statut : "", devise,
+    // Exception (26.11.2026) : un service payé sur place garde aussi ce qui a déjà été versé et le reste à payer, que son voucher imprime
+    // (statutEmpreinte) : un solde reçu après l'envoi fait repasser son voucher « à renvoyer », sinon le prestataire encaisserait deux fois.
+    statut: r.paye_sur_place || statut === "sur_place" ? statut : "", devise,
   };
   return hacher(stable(donnees));
 }

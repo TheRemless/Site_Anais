@@ -14,7 +14,7 @@ import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier, sourcesVoucher } from "./voucher.mjs";
 import { ajusterBooking } from "./voucher-taxi.mjs";
-import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher, statutPaiementVoucher } from "../operations-calc.mjs";
+import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher, paiementDuService } from "../operations-calc.mjs";
 import { variablesVoucher, sansLignesVides } from "../message-voucher-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
@@ -72,12 +72,15 @@ export function messageClientVoucher(x) {
   const nomEntreprise = (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "";
   // Le pickup vient de la réservation seulement, comme le voucher l'imprime (pickupInclus) : jamais l'hôtel de la fiche client.
   const trajet = !!sourcesVoucher(r, x.prestation || null).trajet;
-  const paiement = statutPaiementVoucher({ ...res, surPlace: !!r.paye_sur_place });
+  // Le paiement de ce service (acompte versé sur un service payé sur place compris) : le reste à payer est le sien, pas celui du dossier.
+  // Un service sur place sans acompte imputé n'annonce aucun montant ; un reste du dossier négatif (trop-perçu) n'en annonce pas non plus.
+  const pay = paiementDuService(r, { resume: res });
+  const paiement = pay.statut;
   const message = messageVoucher({
     pour: "client",
     prenom: client.prenom || "",
     gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
-    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ reservation: r, type: x.type, trajet, paiement, solde: res.reste, devise, entreprise: nomEntreprise }) },
+    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ reservation: r, type: x.type, trajet, paiement, solde: pay.surPlace || pay.verse !== null ? pay.reste : res.reste > 0 ? res.reste : null, devise, entreprise: nomEntreprise }) },
   });
   return sansLignesVides(message);
 }
@@ -98,7 +101,8 @@ export function envoyerVoucher(x, { avantNavigation = null } = {}) {
   const message = { client: messageClientVoucher(x) };
   // La conversation WhatsApp du client, si elle existe : l'image peut y partir depuis Gestion (voucher-whatsapp.mjs). Sinon, rien de plus.
   const conversation = conversationPourVoucher(x);
-  const boutonConversation = () => boutonVoucherWhatsApp({ x, conversation, fichier: () => fichier, legende: () => message.client, noter: () => noter("client", "gestion") });
+  // Sans conversation WhatsApp du client, boutonVoucherWhatsApp rend null : replaceChildren l'écrivait « null » à côté des boutons (vu le 26.11.2026).
+  const boutonConversation = () => boutonVoucherWhatsApp({ x, conversation, fichier: () => fichier, legende: () => message.client, noter: () => noter("client", "gestion") }) || "";
 
   const avertissements = controlesVoucher(r, client, x.type || "");
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));

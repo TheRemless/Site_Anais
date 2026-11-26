@@ -35,6 +35,7 @@ import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservati
 import { champApporteur, patchApporteur, blocResumeApporteur } from "./apporteurs.mjs";
 import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 import { retourEncaisser, CLE_RETOUR } from "../encaisser-calc.mjs";
+import { alertesPaiementsDossier } from "./paiement-service.mjs";
 
 // La fiche a-t-elle été ouverte depuis À encaisser (la note de la liste, datée, porte ce dossier) ?
 const retourVersEncaisser = (dossierId) => {
@@ -848,7 +849,9 @@ function ficheDossierVue(id) {
         : h("p", { class: "vide-court" }, tr("Aucun document.")),
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
-    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, solderEcart, droit.paiements ? [ouvrirFormPaiement, zonePaiement] : null) : null,
+    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), alertesPaiementsDossier(d, r), tableauPaiements, solderEcart, droit.paiements ? [ouvrirFormPaiement, zonePaiement] : null) : null,
+    // Taxi n'a pas de section des paiements : ses alertes (acompte réparti, à rembourser, trop-perçu) se montrent quand même.
+    droit.finances && taxi ? alertesPaiementsDossier(d, r) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
