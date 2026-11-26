@@ -915,7 +915,12 @@ export function fraisDeParc(prestation) {
 export function texteParcEn(texte) {
   let s = String(texte || "").replace(/\s*\n\s*/g, " ").trim();
   s = s.replace(/^(?:Selon destination|Depending on destination)\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
+  // « 100 ฿ à 200 ฿ » (texte français) : « 100 to 200 THB », la devise une seule fois.
+  s = s.replace(/(\d+)\s*฿\s*à\s*(\d+)\s*฿/g, "$1 to $2 ฿");
   s = s.replace(/(\d+)\s*à\s*(\d+)/g, "$1 to $2");
+  // Le voucher écrit déjà « Not included: » devant ce texte : « Not included (as on the other trips). » ou « Not included, paid separately. »
+  // en tête ne se répète pas.
+  s = s.replace(/^(?:Not included|Non inclus|Pas inclus)\b(?:\s*\([^)]*\))?(?:\s*,?\s*(?:paid separately|payé à part))?\s*[.,:;]?\s*/i, "");
   // Le texte de la base est en français (anciennes lignes) ou en anglais (depuis le 12.11.2026) : les deux donnent la même phrase.
   s = s.replace(/\(\s*([\d\s\/฿]+?)\s*(?:thaï|Thai)\s*\)/gi, "(Thai nationals $1)");
   s = s.replace(/\(\s*(?:Thaï|Thai)\s*:\s*/gi, "(Thai nationals ");
