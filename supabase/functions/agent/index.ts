@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
     demande.fichiers = fichiers;
     // La fiche client reliée (26.11.2026), lue avec la session et dans l'entreprise de l'Assistant : son nom est dit à l'agent avec le numéro.
     const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).maybeSingle()).data : null;
-    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit, client: clientWa });
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, client: clientWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
     // Dans une conversation existante, les pièces se contrôlent plus bas avec celles qu'elle garde déjà (nombre et taille).
     controle = conversationId ? null : verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
@@ -1014,7 +1014,7 @@ Deno.serve(async (req) => {
   // La conversation WhatsApp liée où la personne écrit (waLiee) et dont le contact n'est pas un apporteur : son numéro complet va sur la carte
   // « dossier » (whatsapp.js, telephoneDeCarte), jamais une forme raccourcie par le modèle (26.11.2026).
   const telephoneWa = waLiee && !contactApporteur(waLiee) && typeof waLiee.telephone === "string" ? waLiee.telephone : "";
-  const ctx = { ...(telephoneWa ? { telephoneWa } : {}), itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now() };
+  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now(), ...(telephoneWa ? { telephoneWa } : {}) };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

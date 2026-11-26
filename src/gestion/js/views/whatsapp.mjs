@@ -604,7 +604,7 @@ function boutonAssistantTete(c, prop) {
 }
 async function demanderAssistant(c, prop, bouton = null) {
   if (!demandePermise(c)) return;
-  // Un seul départ par toucher : la lecture des conversations liées prend un instant, un second toucher ne relance rien.
+  // Un seul départ par toucher : la lecture des conversations liées prend un instant, un second toucher est ignoré.
   if (bouton) {
     if (bouton.disabled) return;
     bouton.disabled = true;
