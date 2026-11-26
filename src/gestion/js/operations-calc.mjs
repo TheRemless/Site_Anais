@@ -731,6 +731,31 @@ export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } 
   return "en_attente";
 }
 
+// Ce que le voucher d'un service dit du paiement (INV-2026-055, 26.11.2026) : un acompte versé pour un service payé sur place n'apparaissait
+// pas (statutPaiementVoucher rendait « sur place » sans regarder les paiements). Le dossier n'encaisse que les services « chez nous »
+// (`resume.total`) ; ce qui est reçu au-delà (`resume.recu - resume.total`) est un acompte sur les services payés sur place.
+//   - Un seul service sur place dans le dossier (non annulé) : l'acompte est le sien, jusqu'à son prix. Le voucher coche « Deposit Paid »
+//     et le mode sur place, et imprime le montant versé et le reste à payer sur place. Tout versé : « Paid », sans reste.
+//   - Plusieurs services sur place : la part de chacun n'est pas connue. « Deposit Paid » est coché, le montant versé est dit pour tout
+//     le dossier (`global`), aucun reste n'est inventé.
+//   - Rien reçu au-delà des services chez nous : « sur place », comme avant.
+// `reservations` : celles du dossier. Rend { statut, verse, reste, surPlace, global } ; `statut` reste l'une des valeurs de statutPaiementVoucher.
+export function paiementDuService(r, { resume = null, reservations = [] } = {}) {
+  const total = Number(resume && resume.total) || 0;
+  const recu = Number(resume && resume.recu) || 0;
+  if (!r || !r.paye_sur_place) return { statut: statutPaiementVoucher({ total, recu, surPlace: false }), verse: null, reste: null, surPlace: false, global: false };
+  const surplus = Math.round((recu - Math.max(0, total)) * 100) / 100;
+  if (!(surplus > 0)) return { statut: "sur_place", verse: null, reste: null, surPlace: true, global: false };
+  const surPlace = (reservations || []).filter((x) => x && x.paye_sur_place && statutReservation(x.statut) !== "annule" && (!r.dossier_id || x.dossier_id === r.dossier_id));
+  const montant = r.montant_vente === null || r.montant_vente === undefined || r.montant_vente === "" ? NaN : Number(r.montant_vente);
+  if (surPlace.filter((x) => x.id !== r.id).length > 0 || !(montant > 0)) return { statut: "acompte", verse: surplus, reste: null, surPlace: true, global: true };
+  const verse = Math.min(surplus, montant);
+  const reste = Math.round((montant - verse) * 100) / 100;
+  return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true, global: false } : { statut: "paye", verse, reste: 0, surPlace: false, global: false };
+}
+// Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand un acompte est imprimé.
+export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}|${p.surPlace ? 1 : 0}` : (p && p.statut) || "");
+
 // Prix par personne imprimé sur le voucher d'activité : seulement quand il n'y a qu'un tarif connu (audit n° 27). Une moyenne
 // vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.
 //   - prestation du catalogue vendue à la personne (pas de prix de groupe, de véhicule ni de service hors catalogue) ;

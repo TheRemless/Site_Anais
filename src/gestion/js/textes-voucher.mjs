@@ -107,6 +107,10 @@ export const GROUPES_VOUCHER = [
       ["sur_place_bateau", "Pay at Pier / Provider"],
       ["sur_place_transfert", "Pay Driver Directly"],
       ["sur_place_activite", "Pay on Arrival"],
+      // Acompte versé sur un service payé sur place (INV-2026-055, 26.11.2026).
+      ["montant_verse", "Amount Already Paid"],
+      ["montant_verse_dossier", "Amount Already Paid (whole booking)"],
+      ["reste_sur_place", "Balance to Pay on Arrival"],
     ],
   },
   {
@@ -140,6 +144,9 @@ export const GROUPES_BOOKING = [
       ["b_bagages", "LUGGAGE"],
       ["b_prix", "TOTAL PRICE"],
       ["b_remarques", "REMARKS"],
+      ["b_verse", "ALREADY PAID"],
+      ["b_verse_dossier", "ALREADY PAID (WHOLE BOOKING)"],
+      ["b_reste", "BALANCE TO PAY"],
       ["b_tous_frais", "(all fees included)"],
       ["b_contact", "CONTACT US:"],
     ],
