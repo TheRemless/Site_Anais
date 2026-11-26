@@ -31,10 +31,12 @@ export function decisionArrivee({ premiere = false, nouveau = false, colle = tru
 
 // Après un défilement : la personne reste collée en bas, s'en détache (seulement par un geste à elle), ou un défilement venu d'ailleurs
 // (mise en page, autre code) est corrigé pour la garder en bas.
-export function apresDefilement({ position, cible, colle, geste }) {
+// Clavier ouvert (`clavier`, 26.11.2026) : le défilement vient d'iOS, qui montre le champ touché. Il n'est jamais corrigé : le fil et iOS se
+// renverraient la page tant que le clavier reste ouvert. La personne reste collée en bas pour la suite.
+export function apresDefilement({ position, cible, colle, geste, clavier = false }) {
   if (estEnBas(position, cible)) return { colle: true, ecart: Math.max(0, position - cible), corriger: false };
   if (geste) return { colle: false, ecart: 0, corriger: false };
-  return { colle, ecart: 0, corriger: colle };
+  return { colle, ecart: 0, corriger: colle && !clavier };
 }
 
 // La place d'une photo avant son chargement : les proportions du média (largeur / hauteur) quand elles sont connues, bornées entre 9/16 et
@@ -146,7 +148,7 @@ export function suivreFil(zone, { cibleFenetre = null, bouton = null } = {}) {
     const p = position();
     if (posee !== null && Math.abs(p - posee) <= 1) return false;
     posee = p;
-    const r = apresDefilement({ position: p, cible: cible(), colle, geste: Date.now() - geste < DELAI_GESTE_MS });
+    const r = apresDefilement({ position: p, cible: cible(), colle, geste: Date.now() - geste < DELAI_GESTE_MS, clavier: fenetre() && document.documentElement.classList.contains("clavier") });
     colle = r.colle;
     if (colle) (ecart = r.ecart), montrerBouton(false), (repere = null);
     else repere = lireRepere();

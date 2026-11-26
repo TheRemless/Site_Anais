@@ -162,7 +162,7 @@ export const EN = {
   "Changer le client relié": "Change the linked client",
   "Ouvrir la fiche du client": "Open the client record",
   "Ce n'est plus un contact personnel": "No longer a personal contact",
-  "Contact personnel : rien envoyé à l'IA": "Personal contact: nothing sent to the AI",
+  "Marquer comme contact personnel (rien envoyé à l'IA)": "Mark as personal contact (nothing sent to the AI)",
   "Copié : {texte}": "Copied: {texte}",
   "{debut} au {fin}": "{debut} to {fin}",
   "{nom}, aucun dossier": "{nom}, no file",

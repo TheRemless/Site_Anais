@@ -462,7 +462,7 @@ test("revue 298, point 5 : repli de la conversation liée seulement sans demande
   const ts = source("supabase/functions/agent/index.ts");
   assert.match(ts, /if \(!waLiee && !waId && typeof lieeId === "string" && UUID\.test\(lieeId\)\)/);
   assert.match(ts, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: lieeId \}\)/);
-  assert.match(ts, /if \(!w\.error && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data \|\| null;/);
+  assert.match(ts, /if \(!w\.error && dansEntreprise && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data;/);
 });
 
 test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l'écran le dit clairement", async () => {

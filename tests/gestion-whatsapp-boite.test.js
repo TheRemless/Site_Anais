@@ -489,7 +489,7 @@ test("préparer une réponse : chaque erreur de whatsapp-preparer a un libellé 
   assert.match(vue, /tr\("Préparer une réponse"\)/);
   assert.match(vue, /tr\(erreurPreparer\(r && r\.erreur\)\)/);
   // Lot 2 (design n° 7) : le réglage du contact passe dans le menu « … » de l'en-tête, avec un repère visible sur « Jamais ».
-  assert.match(vue, /tr\("Contact personnel : rien envoyé à l'IA"\)/);
+  assert.match(vue, /tr\("Marquer comme contact personnel \(rien envoyé à l'IA\)"\)/);
   assert.match(vue, /reponsesDe\(c\) === "jamais" \? h\("span", \{ class: "wa-jamais" \}/);
   assert.match(vue, /preparationAuto\(reglagesDe\(c\.entite_id \|\| suggeree\.id\)\)/, "le libellé suit le réglage que lit la fonction (entreprise de la conversation ou suggérée)");
   // Plus d'icône d'alerte quand rien n'est préparé : le bouton, et ce que le tri a vu.

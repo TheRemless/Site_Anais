@@ -16,6 +16,7 @@ import { agentActif, quand } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
 import { bandeauSauvegarde } from "./views/bandeau-sauvegarde.mjs";
 import { lecteurWhatsApp, badgeWhatsApp, TABLES_WHATSAPP } from "./whatsapp-calc.mjs";
+import { CLE_RETOUR_ENTITE, entrepriseAAfficher } from "./whatsapp-relie-calc.mjs";
 import { ATTENTE_WHATSAPP_MS, intervalleRepli, signatureWhatsApp, directCoupe } from "./direct-reprise-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
@@ -685,9 +686,28 @@ async function afficher() {
     document.title = tr("Aucun accès - Gestion");
     return;
   }
-  // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès.
-  const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
-  if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
+  // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès. Avant elle, le
+  // retour de l'Assistant d'une autre entreprise sur la même conversation WhatsApp (contre-relecture de la PR 355) : l'entreprise d'origine
+  // revient avant que la coque soit construite, et « entite » quitte l'adresse (entrepriseAAfficher).
+  let retourBrut = null;
+  try {
+    retourBrut = sessionStorage.getItem(CLE_RETOUR_ENTITE);
+  } catch {
+    retourBrut = null;
+  }
+  const choixEntite = entrepriseAAfficher({ hash: location.hash, active: etat.entiteId, accessibles: entitesAccessibles().map((e) => e.id), retourBrut });
+  if (choixEntite.consommer) {
+    try {
+      sessionStorage.removeItem(CLE_RETOUR_ENTITE);
+    } catch {
+      // stockage refusé
+    }
+  }
+  if (choixEntite.adresse) history.replaceState(history.state, "", choixEntite.adresse);
+  if (choixEntite.entite) {
+    changerEntite(choixEntite.entite, { naviguer: false });
+    if (choixEntite.adresse) toast(tr("De retour dans {nom}.", { nom: entiteActive().nom }));
+  }
   // Une notification WhatsApp d'une conversation à trier n'a pas d'entreprise : depuis ZTP, on passe dans la première entreprise du numéro
   // où la personne lit la boîte, au lieu de retomber sur l'accueil.
   if (/^#\/whatsapp(\?|$)/.test(location.hash) && etat.brut.whatsapp_disponible === true && !whatsappVisible()) {
