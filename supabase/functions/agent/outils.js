@@ -1941,7 +1941,8 @@ export async function proposer(nom, e, ctx, memo) {
     if (app.avertissement) avert.push(app.avertissement);
     // Un enfant ou un bébé sur un transfert sans choix des sièges : la carte ne se valide pas, la question est à poser au client.
     if (siegesAChoisirServices(services, { enfants: entier(e.enfants), bebes: entier(e.bebes, 10) })) avert.push("sieges_a_choisir");
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
+    // Préparée depuis une conversation WhatsApp d'un client (ctx.telephoneWa, index.ts) : le numéro complet de la conversation (telephoneDeCarte).
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: ctx.telephoneWa ? telephoneDeCarte(texte(e.client_telephone, 30), ctx.telephoneWa) : texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
@@ -2205,3 +2206,19 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
 }
 
 export { tempsSimule };
+
+// Le numéro du client sur une carte « dossier » préparée depuis une conversation WhatsApp (26.11.2026) : le numéro complet de la conversation
+// (E.164), jamais une forme raccourcie. `saisi` : ce que le modèle a écrit ; `telWa` : le numéro de la conversation liée, donné seulement
+// quand le contact n'est pas un apporteur (le numéro d'un apporteur n'est jamais celui d'un client). Vide, le même numéro ou sa forme locale
+// (« 081… », les derniers chiffres) : le numéro de la conversation. Un autre numéro écrit par le client (celui d'un proche) est gardé.
+export function telephoneDeCarte(saisi, telWa) {
+  const s = String(saisi || "").trim();
+  const wa = String(telWa || "").trim();
+  const chiffresWa = wa.replace(/\D/g, "");
+  if (chiffresWa.length < 6 || chiffresWa.length > 15) return s;
+  const complet = `+${chiffresWa}`;
+  const chiffres = s.replace(/\D/g, "").replace(/^0+/, "");
+  if (!chiffres) return complet;
+  if (chiffres === chiffresWa || (chiffres.length >= 6 && chiffresWa.endsWith(chiffres))) return complet;
+  return s;
+}

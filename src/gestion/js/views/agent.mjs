@@ -12,6 +12,7 @@ import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCart
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { lireMessage } from "../demande-calc.mjs";
+import { numeroAffiche } from "../demandes-site-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -419,6 +420,12 @@ export async function vueAgent(idOuvert = "") {
     return wc ? nomConversation(wc, wc.client_id ? (etat.brut.clients || []).find((x) => x.id === wc.client_id) || null : null) : "";
   };
   const nomWaLiee = () => nomWa(waLiee());
+  // Le numéro complet de la conversation WhatsApp liée (26.11.2026) : on sait toujours avec qui l'Assistant travaille.
+  const numeroWaLiee = () => {
+    const id = waLiee();
+    const wc = id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === id) : null;
+    return wc && wc.telephone ? numeroAffiche(wc.telephone) : "";
+  };
   function enTete() {
     const dossier = conv && conv.dossier_id ? etat.db.dossiers.find((d) => d.id === conv.dossier_id) : null;
     const lienWa = waLiee() ? lienWaLiee() : "";
@@ -439,7 +446,8 @@ export async function vueAgent(idOuvert = "") {
               { class: "agent-fil-liens" },
               dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
               // Liée à WhatsApp (design n° 4, PR B) : un lien pour revenir à la conversation du client.
-              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null
+              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null,
+              lienWa && numeroWaLiee() ? h("span", { class: "agent-wa-numero" }, numeroWaLiee()) : null
             )
           : null
       ),

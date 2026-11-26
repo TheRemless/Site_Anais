@@ -2539,6 +2539,10 @@ button.agent-badge-entreprise { cursor: pointer; }
 .wa-liste .puce-nombre { min-width: 20px; padding: 0 5px; }
 .wa-jamais { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
 .wa-menu { flex: none; width: 44px; height: 44px; }
+/* L'Assistant depuis la conversation (26.11.2026) : toujours visible dans l'en-tête collé, 44 px, l'icône seule sous 360 px. */
+.wa-assistant { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 0.9rem; border-radius: 22px; }
+.wa-assistant svg { color: var(--teal-700); }
+@media (max-width: 359px) { .wa-assistant { padding: 0; justify-content: center; } .wa-assistant span { display: none; } }
 /* Faits du client : le dossier, les dates, l'hôtel, le prochain pickup, les prix donnés, le reste à payer. Un tap copie le fait. */
 .wa-faits { margin: 0 -16px; padding: 8px 16px 12px; background: var(--surface); border-bottom: 1px solid var(--bord); }
 .wa-faits > summary { display: flex; align-items: baseline; gap: 8px; min-height: 36px; cursor: pointer; font-weight: 700; }
@@ -2583,6 +2587,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-fil-liens { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 0; }
 .agent-fil-liens a { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
 .agent-fil-liens svg { color: #128c4a; }
+.agent-wa-numero { display: inline-flex; align-items: center; min-height: 28px; font-size: 0.85rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
 .agent-bulle.agent-whatsapp { align-self: flex-start; max-width: min(92%, 34rem); padding: 8px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 16px 16px 16px 4px; }
 .agent-whatsapp summary { display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; font-weight: 600; }
 .agent-whatsapp summary svg { flex: none; color: #128c4a; }

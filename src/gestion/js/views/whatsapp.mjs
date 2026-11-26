@@ -332,6 +332,9 @@ function enTete(c, prop) {
       { class: "wa-fil-tete" },
       h("a", { class: "bouton-icone lien wa-retour", href: "#/whatsapp", "aria-label": tr("Retour aux conversations") }, icone("retour", 22)),
       h("div", { class: "wa-fil-titre" }, titreNom(c), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), sousTitreNom(c))),
+      // L'Assistant de l'entreprise de la conversation, toujours à portée dans l'en-tête collé (26.11.2026) : le bouton des faits restait
+      // tout en haut de la conversation, hors de l'écran dès qu'elle s'ouvre sur le dernier message.
+      boutonAssistantTete(c, prop),
       h("button", { class: "bouton-icone secondaire wa-menu", type: "button", "aria-label": tr("Options de la conversation"), onclick: () => menuConversation(c) }, icone("ellipsis", 20))
     ),
     h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), selecteurType(c)),
@@ -594,8 +597,19 @@ function boutonDemander(c, prop) {
   const possible = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
   return possible ? h("button", { type: "button", class: "secondaire petit wa-demander", onclick: () => demanderAssistant(c, prop) }, icone("assistant", 16), tr("Demander à l'assistant")) : null;
 }
-async function demanderAssistant(c, prop) {
+// Le même « Demander à l'assistant », en tête de la conversation : 44 px, libellé court, mêmes conditions que boutonDemander.
+function boutonAssistantTete(c, prop) {
+  if (!boutonDemander(c, prop)) return null;
+  return h("button", { type: "button", class: "secondaire wa-assistant", "aria-label": tr("Demander à l'assistant"), onclick: (e) => demanderAssistant(c, prop, e.currentTarget) }, icone("assistant", 18), h("span", null, tr("Assistant")));
+}
+async function demanderAssistant(c, prop, bouton = null) {
   if (!demandePermise(c)) return;
+  // Un seul départ par toucher : la lecture des conversations liées prend un instant, un second toucher ne relance rien.
+  if (bouton) {
+    if (bouton.disabled) return;
+    bouton.disabled = true;
+    setTimeout(() => (bouton.disabled = false), 1500);
+  }
   let entiteId = c.entite_id;
   if (!entiteId) {
     const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));

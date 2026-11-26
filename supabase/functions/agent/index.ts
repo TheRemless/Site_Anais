@@ -267,7 +267,9 @@ Deno.serve(async (req) => {
     const dossierWa = (waMode === "maj" || waMode === "question") && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
-    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
+    // La fiche client reliée (26.11.2026), lue avec la session et dans l'entreprise de l'Assistant : son nom est dit à l'agent avec le numéro.
+    const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).maybeSingle()).data : null;
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit, client: clientWa });
     // Dans une conversation existante, les pièces se contrôlent plus bas avec celles qu'elle garde déjà (nombre et taille).
     controle = conversationId ? null : verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
@@ -1009,7 +1011,10 @@ Deno.serve(async (req) => {
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
-  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now() };
+  // La conversation WhatsApp liée où la personne écrit (waLiee) et dont le contact n'est pas un apporteur : son numéro complet va sur la carte
+  // « dossier » (whatsapp.js, telephoneDeCarte), jamais une forme raccourcie par le modèle (26.11.2026).
+  const telephoneWa = waLiee && !contactApporteur(waLiee) && typeof waLiee.telephone === "string" ? waLiee.telephone : "";
+  const ctx = { ...(telephoneWa ? { telephoneWa } : {}), itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();
