@@ -62,7 +62,7 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
         "div",
         { class: "vt-pied" },
         h("p", { class: "vs-info" }, t("bs_info")),
-        h("ul", { class: "vs-points" }, ["bs_paiement", "bs_rencontre", "bs_assistance"].map((k) => h("li", null, remplir(t(k))))),
+        h("ul", { class: "vs-points" }, [paiement && paiement.statut === "paye" ? "bs_paiement_paye" : "bs_paiement", "bs_rencontre", "bs_assistance"].map((k) => h("li", null, remplir(t(k))))),
         h("p", null, ...lignes(t("bs_merci"))),
         h("p", null, remplir(t("bs_signature")))
       ),

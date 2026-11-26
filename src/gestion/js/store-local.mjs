@@ -7,6 +7,7 @@ import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { imputationDossier } from "./operations-calc.mjs";
 import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
 import { corrigerLocal } from "./encaisser-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
@@ -287,7 +288,11 @@ export function creer() {
     const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
     if (!finances) return base;
     const doc = docs.filter((x) => x.type === "facture").pop() || devis;
-    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)), sur_place: doc ? montantSurPlace(doc.contenu) : 0 };
+    const total = totalDossier(docs);
+    const recu = sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id));
+    // Comme recalculer_dossier (migration 131) : la part du reçu imputée à chaque service payé sur place, et ce qui dépasse.
+    const imp = imputationDossier({ total, recu, reservations: data.reservations.filter((x) => x.dossier_id === d.id), annule: !!d.annule });
+    return { ...base, total, devise: (doc && doc.contenu.devise) || null, recu, sur_place: doc ? montantSurPlace(doc.contenu) : 0, parts: imp.parts, a_rembourser: imp.a_rembourser, trop_percu: imp.trop_percu };
   };
   const dossiersVisibles = () => {
     const ctx = contexte();

@@ -6,7 +6,7 @@ import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, re
 import { voucherExempleDonnees } from "../exemples.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { rolesDuService, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, paiementDuService, statutEmpreinte, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
+import { rolesDuService, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, paiementDuService, statutEmpreinte, remarquePaiementImprimee, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi, estBookingSecret, estBookingConfirmation, bagagesBooking, volDejaDans } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
@@ -92,9 +92,9 @@ function empreinteDuDossier(d) {
   return (r) => {
     if (!ctx) {
       const res = d ? resumeDossier(d.id) : null;
-      ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, reservations: d ? etat.db.reservations.filter((x) => x.dossier_id === d.id) : [], devise: (res && res.devise) || reglages().devise || "THB" };
+      ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, devise: (res && res.devise) || reglages().devise || "THB" };
     }
-    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutEmpreinte(paiementDuService(r, { resume: ctx.res, reservations: ctx.reservations })), devise: ctx.devise });
+    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutEmpreinte(paiementDuService(r, { resume: ctx.res })), devise: ctx.devise });
   };
 }
 
@@ -163,7 +163,7 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const { hotel, chambre } = hebergementVoucher(client, { ...r, entite_id: r.entite_id || d.entite_id || etat.entiteId });
   // Le paiement de CE service : un acompte versé pour un service payé sur place est imprimé avec le reste à payer (paiementDuService).
   // L'aperçu des réglages (contexte.reservations absent, réservation sans dossier) ne lit que le résumé donné.
-  const pay = paiementDuService(r, { resume: res, reservations: contexte.reservations || (r.dossier_id && etat.db ? etat.db.reservations.filter((x) => x.dossier_id === r.dossier_id) : [r]) });
+  const pay = paiementDuService(r, { resume: res });
   const statut = pay.statut;
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };
@@ -200,7 +200,8 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const bagages = dt.bagages || "";
   // Sur les vouchers de Secret, la même lecture que la ligne LUGGAGE de la Booking confirmation : « 3 pieces », « Yes », jamais « yes ».
   const bagagesTexte = bagagesBooking(bagages);
-  const remarquesPaiement = dt.remarques_paiement || "";
+  // Une remarque de paiement saisie à la main qui donne un autre montant que l'acompte enregistré ne s'imprime pas : le dossier le signale.
+  const remarquesPaiement = remarquePaiementImprimee(dt.remarques_paiement || "", pay, r.montant_vente);
   // Prix par personne : seulement s'il n'y a qu'un tarif connu (audit n° 27), jamais une moyenne.
   // Tarif enfant : celui de la prestation (prix enfant) ou une ancienne prestation enfant séparée, cherchée sur la prestation de la base.
   const tarifEnfant = en_ > 0 && p && ["pp", "ad"].includes(p.unite) ? prestationEnfant(pLive && pLive.unite === p.unite ? pLive : p, etat.db.prestations) : null;
@@ -223,12 +224,12 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const espace = () => h("span", { class: "v-espace" });
   const passagers = (libelle, avecBebes = false) => ligne(libelle, "", cle(t("adultes")), nbp(a), espace(), cle(t("enfants")), nbp(en_), ...(avecBebes ? [espace(), cle(t("bebes")), nbp(pers.bebes)] : []));
   // Statut du paiement : les trois cases du modèle d'Anaïs ; « Payment Pending » s'ajoute seulement quand c'est le cas (rien reçu, pas payé sur place).
-  // Acompte sur un service payé sur place (INV-2026-055) : « Deposit Paid » ET le mode sur place sont cochés (le reste se paie sur place), puis
-  // le montant déjà versé et le reste à payer. Plusieurs services sur place : le montant versé pour tout le dossier, sans reste inventé.
+  // Acompte sur un service payé sur place : « Deposit Paid » ET le mode sur place sont cochés (le reste se paie sur place), puis
+  // le montant déjà versé et le reste à payer (0 quand tout est payé). Sans acompte imputé à ce service, aucun montant (paiementDuService).
   const statutPaiement = (paye, surPlace) => [
     h("p", { class: "v-ligne" }, cle(t("statut_paiement")), case_(statut === "paye", paye), " ", case_(statut === "acompte", t("acompte")), " ", case_(statut === "sur_place" || (statut === "acompte" && pay.surPlace), surPlace), ...(statut === "en_attente" ? [" ", case_(true, t("en_attente"))] : [])),
-    pay.verse !== null && pay.verse !== undefined ? ligne(pay.global ? t("montant_verse_dossier") : t("montant_verse"), prix(pay.verse, devise)) : null,
-    pay.reste > 0 ? ligne(t("reste_sur_place"), prix(pay.reste, devise)) : null,
+    pay.verse !== null && pay.verse !== undefined ? ligne(t("montant_verse"), prix(pay.verse, devise)) : null,
+    pay.reste !== null && pay.reste !== undefined ? ligne(t("reste_sur_place"), prix(pay.reste, devise)) : null,
   ];
 
   const booking =

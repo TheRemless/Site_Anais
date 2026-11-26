@@ -194,8 +194,8 @@ test("Secret : le modèle de Jérémy mot pour mot ; le pickup de la réservatio
 test("message avec le voucher : l'envoi direct, le lien wa.me et les cartes de l'Assistant ; une réservation par voucher", () => {
   const vue = lire("src/gestion/js/views/voucher-envoi.mjs");
   assert.match(vue, /const trajet = !!sourcesVoucher\(r, x\.prestation \|\| null\)\.trajet;/);
-  assert.match(vue, /\.\.\.variablesVoucher\(\{ reservation: r, type: x\.type, trajet, paiement, solde: pay\.reste !== null && pay\.reste !== undefined \? pay\.reste : res\.reste, devise, entreprise: nomEntreprise \}\)/);
-  assert.match(vue, /const pay = paiementDuService\(r, \{ resume: res, reservations: etat\.db\.reservations\.filter\(\(y\) => y\.dossier_id === r\.dossier_id\) \}\);\n  const paiement = pay\.statut;/);
+  assert.match(vue, /\.\.\.variablesVoucher\(\{ reservation: r, type: x\.type, trajet, paiement, solde: pay\.surPlace \|\| pay\.verse !== null \? pay\.reste : res\.reste > 0 \? res\.reste : null, devise, entreprise: nomEntreprise \}\)/);
+  assert.match(vue, /const pay = paiementDuService\(r, \{ resume: res \}\);\n  const paiement = pay\.statut;/);
   assert.doesNotMatch(vue, /hotelEtChambre/, "jamais l'hôtel de la fiche client pour le pickup");
   assert.doesNotMatch(vue, /x\.reservations/, "plus de code pour un voucher à plusieurs réservations : vouchersDuDossier en rend une par voucher");
   assert.match(vue, /return sansLignesVides\(message\);/);
