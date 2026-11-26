@@ -15,6 +15,8 @@
 <meta name="apple-mobile-web-app-title" content="Gestion">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preload" href="assets/fonts/raleway-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+<!-- Peint avant la feuille de style : l'app installée n'ouvre plus sur un écran blanc pendant le chargement (audit mobile n° 20). -->
+<style>html,body{margin:0;background:#f5f8f8}.chargement-barre{height:calc(56px + env(safe-area-inset-top));background:#fff;border-bottom:1px solid #dbe4e4}</style>
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/document.css">
 <!-- Les modules du premier écran sont annoncés d'avance : le navigateur les télécharge en parallèle au lieu de les découvrir un par un. -->

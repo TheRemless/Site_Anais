@@ -128,7 +128,8 @@ function vueConnexion() {
     : null;
   // Dit une fois : après une connexion puis une déconnexion, l'écran ne parle plus de ce lien.
   etat.retour = { ...etat.retour, erreur: null };
-  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), lienPerime, form);
+  // Le titre d'abord, le choix de la langue sous le formulaire (audit mobile n° 40 : il flottait seul au-dessus du titre).
+  return h("div", { class: "connexion" }, h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), lienPerime, form, selecteurLangue());
 }
 
 // `ou` : la barre où il s'affiche (« menu », « haut », « simple »). Les deux sélecteurs (barre latérale et barre du haut) sont dans la page
@@ -279,12 +280,15 @@ function blocCompte(apres) {
   const initiales = nom.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((s) => s.charAt(0).toUpperCase()).join("");
   return h("button", { class: "compte", type: "button", title: tr("Mon compte"), "aria-label": tr("Mon compte : {nom}", { nom }), onclick: () => ouvrirMonCompte(apres) }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
+// Dans la feuille « Plus » (téléphone), les outils portent leur libellé en clair à côté de l'icône (audit mobile n° 26).
+const outil = (apres, ic, libelle, onclick, classe = "") => h("button", { class: [apres ? "secondaire outil-libelle" : "bouton-icone secondaire", classe].filter(Boolean).join(" "), type: "button", onclick, "aria-label": apres ? null : libelle, title: libelle }, icone(ic), apres ? h("span", null, libelle) : null);
 const outilsCompte = (apres) => [
   // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
   // Seulement pour l'administratrice de l'entreprise ouverte : la fonction n'envoie les rappels qu'à elle (Jérémy, 17.11.2026).
-  estAdmin() ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels"), title: tr("Rappels") }, icone("cloche")) : null,
-  h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
-  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
+  estAdmin() ? outil(apres, "cloche", tr("Rappels"), async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels())) : null,
+  // Les raccourcis clavier n'ont pas de sens sur un écran tactile sans clavier : le bouton n'y apparaît pas.
+  outil(apres, "clavier", tr("Raccourcis clavier"), () => (apres && apres(), ouvrirAide()), "seulement-clavier"),
+  etat.store.mode === "supabase" ? outil(apres, "deconnexion", tr("Se déconnecter"), deconnecter) : null,
 ];
 
 // Ordinateur : barre latérale avec les écrans par section, la recherche et le compte.
@@ -335,12 +339,43 @@ function ouvrirPlus() {
 
 // Bouton « + » flottant sur les écrans de liste : un geste pour créer. La création elle-même vit dans les écrans de saisie.
 // Seulement sur les listes et l'accueil, pas sur une fiche ni un éditeur : adresses exactes.
+// Le « + » s'efface quand on descend dans une liste et revient dès qu'on remonte : il ne cache plus une action ou un montant (audit mobile n° 5).
+if (typeof window !== "undefined") {
+  let yAvant = 0;
+  window.addEventListener("scroll", () => {
+    const y = window.scrollY;
+    if (Math.abs(y - yAvant) < 8) return;
+    document.documentElement.classList.toggle("plus-replie", y > yAvant && y > 80);
+    yAvant = y;
+  }, { passive: true });
+}
+// Rangées qui défilent de côté (puces, onglets, graphique) : une classe dit s'il reste à voir à droite ou à gauche, le CSS estompe ce bord
+// (audit mobile n° 16 : « Sans su… », « Encaissements » coupés sans indice). Posé une fois par élément, remis à jour au défilement.
+const RANGEES = ".puces, .st-puces, .st-nav, .sous-onglets, .st-graphe-defile";
+function indicesDefilement(racine) {
+  for (const el of racine.querySelectorAll(RANGEES)) {
+    if (el.dataset.indice) continue;
+    el.dataset.indice = "1";
+    const maj = () => {
+      const reste = el.scrollWidth - el.clientWidth - el.scrollLeft;
+      el.classList.toggle("suite-droite", reste > 4);
+      el.classList.toggle("suite-gauche", el.scrollLeft > 4);
+    };
+    el.addEventListener("scroll", maj, { passive: true });
+    maj();
+    // Le graphique se dessine après coup et se cale sur aujourd'hui : on relit une fois en place.
+    setTimeout(maj, 400);
+  }
+}
+if (typeof window !== "undefined") window.addEventListener("resize", () => document.querySelectorAll(RANGEES).forEach((el) => el.dispatchEvent(new Event("scroll"))));
 const ECRANS_AVEC_PLUS = /^#?\/?$|^#\/(dossiers|clients|reservations)(\?.*)?$/;
 function boutonPlus() {
   if (!peut("dossiers.ecrire")) return null;
   return h("button", { class: "bouton-plus", type: "button", "aria-label": tr("Nouveau"), title: tr("Nouveau"), onclick: ouvrirNouveau }, icone("ajouter", 26));
 }
 function ouvrirNouveau() {
+  // Un seul choix possible (pas d'Assistant) : le bouton « + » ouvre directement le nouveau dossier (audit mobile n° 23).
+  if (!agentVisible()) return naviguer("#/dossiers/nouveau");
   let fermer;
   const va = (hash) => () => (fermer(), naviguer(hash));
   const choix = (ic, titre, detail, onclick) => h("button", { type: "button", class: "choix-nouveau", onclick }, icone(ic, 22), h("span", null, h("strong", null, titre), h("span", null, detail)));
@@ -716,7 +751,7 @@ async function afficher() {
     return;
   }
   const principal = document.getElementById("principal");
-  document.documentElement.classList.remove("a-barre-action");
+  document.documentElement.classList.remove("a-barre-action", "plus-replie");
   const moi = ++rendu;
   let noeud;
   // Une première visite d'un écran télécharge son code : au-delà de 150 ms, un squelette tient la place plutôt qu'un écran figé.
@@ -746,6 +781,7 @@ async function afficher() {
   restaurerDefilement(hash);
   // L'écran place lui-même son défilement une fois en place, avant l'affichage (fils WhatsApp, fil-defilement.mjs).
   if (typeof noeud.apresInsertion === "function") noeud.apresInsertion();
+  indicesDefilement(principal);
   derniereVue = hash;
   majBadges();
 }
@@ -998,7 +1034,7 @@ function surveillerDonnees() {
   let hors = typeof navigator !== "undefined" && navigator.onLine === false;
   const majPastille = () => {
     pastille.hidden = !hors && echecs < 2;
-    if (hors) pastille.textContent = tr("Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.");
+    if (hors) pastille.textContent = tr("Hors connexion : rien ne s'enregistre pour l'instant.");
     else if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
   };
   // `force` : actualisation demandée par la personne (tirer pour actualiser), sans attendre les dix secondes ni la visibilité de l'onglet.
