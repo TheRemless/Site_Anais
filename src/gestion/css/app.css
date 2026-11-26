@@ -123,6 +123,11 @@ img { max-width: 100%; }
 .feuille-menu .lien-ecran { padding: 0 8px; }
 .feuille-pied { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--bord); }
 .feuille-pied .compte { flex: 1; }
+/* Avec leur libellé en clair (audit mobile n° 26), « Rappels » et « Se déconnecter » ne tiennent plus à côté du compte :
+   le nom tombait à 22 px de large et passait sous les boutons. Les outils prennent leur propre ligne, à parts égales. */
+.feuille-pied .compte { justify-content: flex-start; }
+.feuille-pied .menu-outils { flex: 1 0 100%; }
+.feuille-pied .menu-outils > button { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 
 @media (min-width: 900px) {
   .barre-fixe { bottom: 0; }
