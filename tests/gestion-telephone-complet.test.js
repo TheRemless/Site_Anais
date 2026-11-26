@@ -269,3 +269,23 @@ test("Vérifier avant : « Reprendre ce numéro » puis « C'est lui » sur une 
   assert.equal(recu.whatsappId, null, "aucune liaison vers une fiche dont le numéro est un autre");
   assert.equal(clientDu(recu.dossier).telephone, "+447700900999", "la fiche n'est pas modifiée en silence");
 });
+
+test("Assistant ouvert depuis WhatsApp, « C'est lui » sur une fiche au numéro différent → la conversation liée est reliée, et le message le dit", async () => {
+  dans("excursions");
+  const { carte: c, nom } = await carte("");
+  const [prenom, ...reste] = nom.split(" ");
+  await E.inserer("clients", { prenom, nom: reste.join(" "), telephone: "+447700900888", adresse: "", notes: "" });
+  let recu = null;
+  ouvrirDemande(null, V.preparation(c), { titre: c.titre, whatsappLie: conv({ id: "wa-liee-autre", telephone: "+15550107766" }), surCree: (x) => (recu = x) });
+  const derniere = () => [...document.body.querySelectorAll(".modal")].pop() || document.body;
+  assert.equal(derniere().querySelector("#dem-tel").value, "+15550107766", "le numéro de la conversation liée");
+  [...derniere().querySelectorAll(".demande-client button")].find((b) => b.textContent === "C'est lui").click();
+  const aides = [...derniere().querySelectorAll(".aide")].map((p) => p.textContent);
+  assert.ok(aides.some((t) => /conversation WhatsApp de l'Assistant lui sera reliée/.test(t)), "le message dit la vérité");
+  assert.ok(!aides.some((t) => /ne lui sera pas reliée/.test(t)));
+  [...derniere().querySelectorAll("button.principal")].find((b) => /^Créer le dossier/.test(b.textContent)).click();
+  for (let i = 0; i < 50 && !recu; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.ok(recu, "le dossier est créé");
+  assert.equal(recu.whatsappId, "wa-liee-autre", "la conversation liée est reliée, comme relierWhatsApp le fait");
+  assert.equal(clientDu(recu.dossier).telephone, "+447700900888", "le numéro de la fiche ne change pas");
+});

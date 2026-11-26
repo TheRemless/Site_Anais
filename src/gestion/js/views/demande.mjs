@@ -569,8 +569,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
             : d.nom
               ? h("p", { class: "aide" }, tr("Nouveau client : il sera créé avec le dossier."))
               : null,
-        connu && whatsappId && !conversationARelier()
-          ? h("p", { class: "aide", role: "status" }, tr("La fiche de {nom} porte un autre numéro : la conversation WhatsApp ne lui sera pas reliée. Corrigez d'abord le numéro de la fiche si c'est bien le même client.", { nom: nomClient(connu) }))
+        connu && numeroDiffere()
+          ? h("p", { class: "aide", role: "status" }, estLiee()
+              ? tr("La fiche de {nom} porte un autre numéro : la conversation WhatsApp de l'Assistant lui sera reliée, et le numéro de la fiche ne change pas. Corrigez-le si c'est le numéro de la conversation qui est le bon.", { nom: nomClient(connu) })
+              : tr("La fiche de {nom} porte un autre numéro : la conversation WhatsApp ne lui sera pas reliée. Corrigez d'abord le numéro de la fiche si c'est bien le même client.", { nom: nomClient(connu) }))
           : null,
         ...(connu ? [] : propositionsWhatsApp()),
       ].filter(Boolean)
@@ -871,13 +873,17 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   }
   // La conversation à relier après la création : pas sur la fiche d'un client déjà connu dont le numéro est un autre (« C'est lui » après
   // « Reprendre ce numéro ») ; la fiche n'est pas modifiée en silence, le dossier le dit (relecture de la PR 356, point 8).
-  const conversationARelier = () => {
-    if (!whatsappId || !clientId) return whatsappId;
+  // La conversation liée de l'Assistant (ouvert depuis WhatsApp) est toujours reliée au dossier (relierWhatsApp, agent.mjs) : c'est le même
+  // échange, la fiche choisie ne change que son numéro affiché ; seule une conversation proposée par le nom n'est pas reliée.
+  const numeroDiffere = () => {
+    if (!whatsappId || !clientId) return false;
     const c = clientParId(clientId);
     const wa = (etat.brut.whatsapp_conversations || []).find((x) => x.id === whatsappId) || candidatsWa.find((x) => x.id === whatsappId) || (options.whatsappLie && options.whatsappLie.id === whatsappId ? options.whatsappLie : null);
     const num = (t) => nettoyerTelephone(t).replace(/\D/g, "").replace(/^0+/, "");
-    return c && wa && num(c.telephone) && num(c.telephone) !== num(wa.telephone) ? null : whatsappId;
+    return !!(c && wa && num(c.telephone) && num(c.telephone) !== num(wa.telephone));
   };
+  const estLiee = () => !!(options.whatsappLie && options.whatsappLie.id === whatsappId);
+  const conversationARelier = () => (numeroDiffere() && !estLiee() ? null : whatsappId);
 
   function vider() {
     clientId = options.clientId || "";

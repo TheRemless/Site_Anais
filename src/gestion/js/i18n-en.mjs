@@ -675,6 +675,7 @@ export const EN = {
   // Téléphone coupé (26.11.2026) : numéro incomplet, en double, et numéro repris de la conversation WhatsApp
   "Ce numéro n'a pas le bon nombre de chiffres pour son pays : vérifiez qu'il est complet.": "This number does not have the right number of digits for its country: check that it is complete.",
   "Numéro thaï sans indicatif ? Écrivez-le avec +66 : {numero}. Sinon, ajoutez l'indicatif de son pays.": "Thai number without its country code? Write it with +66: {numero}. Otherwise, add the code of its country.",
+  "La fiche de {nom} porte un autre numéro : la conversation WhatsApp de l'Assistant lui sera reliée, et le numéro de la fiche ne change pas. Corrigez-le si c'est le numéro de la conversation qui est le bon.": "{nom}'s record has another number: the Assistant's WhatsApp conversation will be linked to it, and the record's number does not change. Correct it if the conversation's number is the right one.",
   "La fiche de {nom} porte un autre numéro : la conversation WhatsApp ne lui sera pas reliée. Corrigez d'abord le numéro de la fiche si c'est bien le même client.": "{nom}'s record has another number: the WhatsApp conversation will not be linked to it. Correct the record's number first if it is the same client.",
   "Numéro coupé ou en double : laissez un seul numéro, complet, avec son indicatif.": "Number cut off or duplicated: leave a single, complete number with its country code.",
   "Téléphone du client : {message}": "Client's phone: {message}",
