@@ -61,14 +61,19 @@ function suivreClavier() {
   // Deux mesures (26.11.2026) : la hauteur du clavier, stable tant qu'il est ouvert, décide de la classe `clavier` (barre d'onglets cachée) ;
   // --clavier, la distance au bas visible, place seulement les barres fixées ou collées en bas. Rien de ce qui change la hauteur de la page
   // ne dépend du décalage d'iOS : sinon la page change de hauteur, iOS redécale, et ainsi de suite (écran qui saute, nouvelle discussion).
+  // La plus grande hauteur de fenêtre vue pour la largeur actuelle (une rotation change la largeur et repart de zéro).
+  let reference = { largeur: 0, hauteur: 0 };
   const maj = () => {
-    const clavier = hauteurClavier(window.innerHeight, vv);
+    if (window.innerWidth !== reference.largeur) reference = { largeur: window.innerWidth, hauteur: window.innerHeight };
+    else reference.hauteur = Math.max(reference.hauteur, window.innerHeight);
+    const clavier = hauteurClavier(window.innerHeight, vv, reference.hauteur);
     racine.style.setProperty("--clavier", `${basVisible(window.innerHeight, vv)}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
     racine.classList.toggle("clavier", clavier > 0);
   };
   vv.addEventListener("resize", maj);
   vv.addEventListener("scroll", maj);
+  window.addEventListener("resize", maj);
   maj();
 }
 suivreClavier();

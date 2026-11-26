@@ -80,6 +80,8 @@ img { max-width: 100%; }
 .onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.72rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
 .onglet-icone { position: relative; display: flex; align-items: center; justify-content: center; width: 60px; height: 32px; border-radius: 999px; transition: background-color var(--duree) var(--courbe); }
 .onglet:active .onglet-icone { background: var(--surface-2); }
+/* iOS garde :hover sur le dernier lien touché : un onglet quitté restait teinté comme l'onglet actif (26.11.2026). */
+@media (hover: none) { a.onglet:not([aria-current]):hover { color: var(--texte-2); } }
 .onglet[aria-current] { color: var(--teal-700); }
 .onglet[aria-current] .onglet-icone { background: var(--teal-100); box-shadow: inset 0 0 0 1.5px var(--teal-600); }
 .badge { position: absolute; top: -3px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; line-height: 18px; text-align: center; }

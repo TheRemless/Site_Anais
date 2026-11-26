@@ -4,9 +4,11 @@
 // réduit aussi le viewport visuel : il ne compte pas comme un clavier. Sous 120 px (barre d'adresse qui bouge), rien.
 // Le décalage du viewport visuel (offsetTop) n'entre pas dans le calcul (26.11.2026) : c'est une position, qui bouge quand la page change de
 // hauteur. Le soustraire faisait boucler iOS sur une page courte (nouvelle discussion de l'Assistant) : hauteur 0, puis 212 px, puis 0…
-export function hauteurClavier(innerHeight, vv) {
+// `reference` : la plus grande hauteur de fenêtre vue pour cette largeur. Dans l'app installée, iOS réduit parfois la fenêtre elle-même
+// (innerHeight = hauteur visible) : sans elle, le clavier ouvert mesurerait 0.
+export function hauteurClavier(innerHeight, vv, reference = innerHeight) {
   if (!vv || (vv.scale || 1) > 1.01) return 0;
-  const perdu = Math.round(innerHeight - vv.height);
+  const perdu = Math.round(Math.max(innerHeight, reference || 0) - vv.height);
   return perdu > 120 ? perdu : 0;
 }
 

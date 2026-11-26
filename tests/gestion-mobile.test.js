@@ -13,6 +13,11 @@ test("hauteurClavier : mesure ce que le clavier a pris, ignore le zoom et la bar
   assert.equal(hauteurClavier(812, { height: 480, offsetTop: 40, scale: 1 }), 332, "le décalage d'iOS ne change pas la hauteur du clavier");
   assert.equal(hauteurClavier(714, { height: 377, offsetTop: 337, scale: 1 }), 337);
   assert.equal(hauteurClavier(714, { height: 377, offsetTop: 125, scale: 1 }), 337);
+  // App installée (PWA) : iOS réduit parfois aussi la fenêtre (innerHeight 409 = la hauteur visible). La référence est la plus grande
+  // hauteur vue pour cette largeur (relevé du simulateur, 26.11.2026 : 812 puis 409).
+  assert.equal(hauteurClavier(409, { height: 409, offsetTop: 0, scale: 1 }, 812), 403);
+  assert.equal(hauteurClavier(812, { height: 812, offsetTop: 0, scale: 1 }, 812), 0);
+  assert.equal(hauteurClavier(760, { height: 760, offsetTop: 0, scale: 1 }, 812), 0, "barre d'adresse : pas un clavier");
   assert.equal(hauteurClavier(812, { height: 760, offsetTop: 0, scale: 1 }), 0, "barre d'adresse : pas un clavier");
   assert.equal(hauteurClavier(812, { height: 400, offsetTop: 0, scale: 2 }), 0, "pincement : pas un clavier");
   assert.equal(hauteurClavier(812, null), 0);
