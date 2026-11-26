@@ -77,7 +77,8 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   // Sans le droit de modifier les factures : le mode et l'annulation ne se font pas à moitié, mais la date et les personnes s'enregistrent et l'écart reste signalé.
   let factureNonSuivie = false;
   if (resultat.changements.length && !peut("documents.ecrire")) {
-    if (modeChange || retirer) return void toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée."), true);
+    // Les options vivent sur la facture : sans le droit de la modifier, elles ne changent pas (relecture de la PR 359).
+    if (modeChange || retirer || (service && service.options)) return void toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée."), true);
     resultat.changements.length = 0;
     factureNonSuivie = true;
     // La ligne enfant n'est pas écrite : la réservation ne la compte pas.
@@ -157,6 +158,8 @@ export function raisonsNonAlignees({ nonAlignes = [], reste = [], lignes = 0, ra
   const raisons = [];
   if (cles.has("montant_vente")) raisons.push(lignes > 1 ? tr("Le prix de ce service est réparti sur {n} lignes de la facture (adulte, enfant ou supplément). Gestion ne devine pas la part de chaque ligne. Corrigez les prix dans la facture, ou alignez la réservation sur la facture.", { n: lignes }) : tr("Le prix de la facture n'a pas pu suivre. Corrigez-le dans la facture, ou alignez la réservation sur la facture."));
   if (cles.has("libelle")) raisons.push(tr("Le nom de la ligne a été réécrit dans la facture. Corrigez-le dans la facture."));
+  // Partenaire changé : les options de l'ancien partenaire ont quitté le service (relecture de la PR 359).
+  if (cles.has("options")) raisons.push(tr("Les options de l'ancien partenaire ont été retirées de la facture : ajoutez celles du nouveau partenaire dans la réservation."));
   if (cles.has("prestation_id")) raisons.push(tr("Ce service a plusieurs lignes adultes sur la facture. Choisissez le tarif de chaque ligne dans la facture."));
   if (cles.has("personnes") && raisonEnfant) raisons.push(texteRaisonEnfant(raisonEnfant));
   if ((cles.has("personnes") && !raisonEnfant) || cles.has("date_service") || cles.has("partenaire_id")) raisons.push(tr("Corrigez ce qui reste dans la facture, ou alignez la réservation sur la facture."));

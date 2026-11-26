@@ -87,6 +87,25 @@ export function vouchersDuDossier(dossierId) {
 }
 
 // L'empreinte d'un voucher du dossier `d` : le client et le résumé (statut de paiement, devise) ne se lisent qu'une fois, au premier besoin.
+// Les lignes de facture d'un service (ses options comprises), et le texte « Options » que son voucher imprime. Le même texte entre dans
+// l'empreinte : une option ajoutée, retirée, offerte ou échangée fait repasser le voucher « à renvoyer » (relecture de la PR 359).
+function lignesDuVoucher(r) {
+  const ids = new Set([r.ligne_id, ...(((r.details || {}).lignes_ids) || [])].filter(Boolean));
+  return r.dossier_id && etat.db ? (etat.db.documents || []).filter((x) => x.dossier_id === r.dossier_id && x.type !== "devis").flatMap((x) => (x.contenu && x.contenu.lignes) || []).filter((l) => ids.has(l.id)) : [];
+}
+function extrasDuVoucher(r, lignes = lignesDuVoucher(r)) {
+  const prestationDe = (id) => (etat.db ? etat.db.prestations.find((x) => x.id === id) : null) || null;
+  const deLignes = optionsVoucher(lignes, prestationDe);
+  // Un service ajouté par une carte « reservation » n'a pas de ligne de facture : ses options sont sur la réservation (details.options).
+  return (deLignes.length ? deLignes : (Array.isArray((r.details || {}).options) ? r.details.options : []).map((o) => ((prestationDe(o.prestation_id) || {}).libelle_en || libelleClient(o.libelle || "")))).filter(Boolean).join(", ");
+}
+// Ce qui, des options, change le voucher : leur nom (imprimé) et leur prix (une option offerte ou échangée au même total).
+function empreinteOptions(r) {
+  const lignes = lignesDuVoucher(r).filter((l) => l.option_de && l.kind !== "texte");
+  const deDetails = Array.isArray((r.details || {}).options) ? r.details.options : [];
+  if (!lignes.length && !deDetails.length) return "";
+  return `${extrasDuVoucher(r)}|${[...lignes.map((l) => `${l.prestation_id}:${l.unite ?? ""}:${l.qte ?? ""}:${l.montant ?? ""}`), ...deDetails.map((o) => `${o.prestation_id}:${o.prix ?? ""}`)].join(",")}`;
+}
 function empreinteDuDossier(d) {
   let ctx = null;
   return (r) => {
@@ -94,7 +113,7 @@ function empreinteDuDossier(d) {
       const res = d ? resumeDossier(d.id) : null;
       ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, devise: (res && res.devise) || reglages().devise || "THB" };
     }
-    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutPaiementVoucher({ ...(ctx.res || {}), surPlace: !!r.paye_sur_place }), devise: ctx.devise });
+    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutPaiementVoucher({ ...(ctx.res || {}), surPlace: !!r.paye_sur_place }), devise: ctx.devise, options: empreinteOptions(r) });
   };
 }
 
@@ -136,15 +155,14 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   // Un service à rôles (ATV) dit au partenaire combien de conducteurs et de passagers : « P3: ATV 1h + Kayak 1h, 1 driver + 1 passenger » (19.11.2026).
   const nomService = p && p.libelle_en && [p.libelle, p.libelle_en].some((x) => brut(x) === brut(r.libelle)) ? p.libelle_en : libelleClient(r.libelle);
   // La composition se relit sur la facture (une ligne de passager retirée ou changée la suit), sinon celle gardée à la création.
-  const idsService = new Set([r.ligne_id, ...((dt.lignes_ids) || [])].filter(Boolean));
-  const lignesService = r.dossier_id && etat.db ? (etat.db.documents || []).filter((x) => x.dossier_id === r.dossier_id && x.type !== "devis").flatMap((x) => (x.contenu && x.contenu.lignes) || []).filter((l) => idsService.has(l.id)) : [];
-  const roles = lignesService.length ? rolesDuService(lignesService) : dt.roles || "";
+  const lignesService = lignesDuVoucher(r);
+  // Les rôles (conducteur, passager) se lisent sur les lignes du service, jamais sur ses options.
+  const lignesRoles = lignesService.filter((l) => !l.option_de);
+  const roles = lignesRoles.length ? rolesDuService(lignesRoles) : dt.roles || "";
   const titrePrestation = roles && !brut(nomService).includes(brut(roles)) ? `${nomService}, ${roles}` : nomService;
   // Les options du service (26.11.2026) : une ligne « Options » en anglais, sans prix ni partenaire (le prix total les comprend).
   // Un service ajouté par une carte « reservation » n'a pas de ligne de facture : ses options sont sur la réservation (details.options).
-  const prestationDe = (id) => (etat.db ? etat.db.prestations.find((x) => x.id === id) : null) || null;
-  const extrasLignes = optionsVoucher(lignesService, prestationDe);
-  const extras = (extrasLignes.length ? extrasLignes : (Array.isArray(dt.options) ? dt.options : []).map((o) => ((prestationDe(o.prestation_id) || {}).libelle_en || libelleClient(o.libelle || "")))).filter(Boolean).join(", ");
+  const extras = extrasDuVoucher(r, lignesService);
   const ligneOptions = ligneSi(t("options"), extras);
   // Billet : ce qui est saisi sur la réservation passe avant le trajet de la base ; sans trajet (partenaire ajouté à la main), seulement la saisie
   // et un libellé « A → B ». L'heure de pickup n'est jamais prise pour l'heure de départ du bateau quand le pickup s'imprime à part.

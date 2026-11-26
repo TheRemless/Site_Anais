@@ -208,7 +208,7 @@ export function propositionDepuisCarte(donnees = {}) {
       // L'origine du prix, gardée jusqu'à la réservation (details.prix_origine) : un prix du client non corrigé ne lève jamais un net.
       prix_origine: ["saisi", "client_non_corrige"].includes(s.origine_prix) ? s.origine_prix : null,
       // Les options du service proposées par l'Assistant (26.11.2026) : [{ id, prix }], le prix total de chaque option (null : celui du catalogue).
-      options: (Array.isArray(s.options) ? s.options : []).filter((o) => o && o.offre && o.offre.id).map((o) => ({ id: o.offre.id, prix: o.prix === null || o.prix === undefined || o.prix === "" ? null : Number(o.prix) })),
+      options: (Array.isArray(s.options) ? s.options : []).filter((o) => o && o.offre && o.offre.id).map((o) => ({ id: o.offre.id, prix: o.prix === null || o.prix === undefined || o.prix === "" ? null : Number(o.prix), qte: Math.max(1, Number(o.qte) || 1) })),
       // Le nombre de véhicules du devis calculé par Nani (devis-calc.mjs, appliquerDevis) : le dossier reprend le devis.
       vehicules: Number.isInteger(Number(s.vehicules)) && Number(s.vehicules) > 1 ? Number(s.vehicules) : null,
       lieu_pickup: s.lieu_pickup || "",
@@ -233,7 +233,7 @@ export const sansLien = (t) => String(t || "").replace(UNE_URL, " ").replace(/\s
 // Les options d'une carte « reservation » (26.11.2026) : [{ prestation_id, libelle (anglais), prix }]. Le service ajouté par carte n'a pas de
 // ligne de facture : elles sont gardées sur la réservation (details.options), que le voucher et la Booking confirmation impriment.
 export const optionsDeLaCarte = (s) =>
-  (Array.isArray(s && s.options) ? s.options : []).filter((o) => o && o.offre && o.offre.id).map((o) => ({ prestation_id: o.offre.id, libelle: String(o.libelle || ""), prix: o.prix === null || o.prix === undefined || o.prix === "" || !Number.isFinite(Number(o.prix)) ? null : Number(o.prix) }));
+  (Array.isArray(s && s.options) ? s.options : []).filter((o) => o && o.offre && o.offre.id).map((o) => ({ prestation_id: o.offre.id, libelle: String(o.libelle || ""), prix: o.prix === null || o.prix === undefined || o.prix === "" || !Number.isFinite(Number(o.prix)) ? null : Number(o.prix), qte: Math.max(1, Number(o.qte) || 1) }));
 function detailsDeCarte(s) {
   const depose = sansLien(s.vers);
   const options = optionsDeLaCarte(s);
@@ -300,7 +300,7 @@ export function reservationModifiee(r, donnees = {}) {
       return { ...r, personnes: { ...p, adultes: Number(v) || 0 } };
     // Une option ajoutée au service (26.11.2026) : la fenêtre de la réservation l'ajoute sur la facture (options-reservation.mjs).
     case "option":
-      return donnees.option && donnees.option.offre ? { ...r, options_ajout: [{ prestation_id: donnees.option.offre.id, prix: donnees.option.prix ?? null, libelle: donnees.option.libelle || "" }] } : r;
+      return donnees.option && donnees.option.offre ? { ...r, options_ajout: [{ prestation_id: donnees.option.offre.id, prix: donnees.option.prix ?? null, libelle: donnees.option.libelle || "", qte: Math.max(1, Number(donnees.option.qte) || 1) }] } : r;
     case "enfants":
       return { ...r, personnes: { ...p, enfants: Number(v) || 0 } };
     // Les sièges enfant ou bébé : dans `details.sieges` (0 les retire), ce que le voucher et la Booking confirmation impriment.

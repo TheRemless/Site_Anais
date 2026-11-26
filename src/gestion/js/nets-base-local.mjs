@@ -80,7 +80,16 @@ export function netReservationCalcule(r, db) {
     const pn = (db.prestations_nets || []).find((y) => y.prestation_id === x.id) || {};
     const jours = nombre(r.details && r.details.jours);
     const q = x.unite === "day" ? Math.max(1, jours || 1) : quantiteParDefaut(x.unite, { adultes: a, enfants: e });
-    return nombre(pn.net) !== null ? { net: arr(nombre(pn.net) * q), complet: true } : { net: null, complet: false };
+    if (nombre(pn.net) === null) return { net: null, complet: false };
+    // Les options d'un service sans ligne de facture (details.options, migration 130) : leur net compte aussi, pour leur quantité.
+    let net = arr(nombre(pn.net) * q);
+    for (const o of Array.isArray(r.details && r.details.options) ? r.details.options : []) {
+      const on = (db.prestations_nets || []).find((y) => y.prestation_id === o.prestation_id) || {};
+      const op = (db.prestations || []).find((y) => y.id === o.prestation_id);
+      if (!op || op.sur_place || nombre(on.net) === null) return { net: null, complet: false };
+      net = arr(net + nombre(on.net) * (nombre(o.qte) || 1));
+    }
+    return { net, complet: true };
   }
   return { net: null, complet: false };
 }
@@ -131,7 +140,7 @@ const differe = (x, y) => stable(x) !== stable(y);
 export function suiviDeclencheur(avant, apres) {
   if (!avant) return { suivreNet: true };
   const d = (r) => r.details || {};
-  const net = ["prestation_id", "trajet_id", "personnes", "ligne_id", "statut"].some((k) => differe(avant[k], apres[k])) || differe(d(avant).jours, d(apres).jours) || differe(d(avant).lignes_ids, d(apres).lignes_ids);
+  const net = ["prestation_id", "trajet_id", "personnes", "ligne_id", "statut"].some((k) => differe(avant[k], apres[k])) || differe(d(avant).jours, d(apres).jours) || differe(d(avant).lignes_ids, d(apres).lignes_ids) || differe(d(avant).options, d(apres).options);
   const autre = ["partenaire_id", "paye_sur_place", "montant_vente"].some((k) => differe(k === "paye_sur_place" ? !!avant[k] : avant[k], k === "paye_sur_place" ? !!apres[k] : apres[k]));
   return net || autre ? { suivreNet: net } : null;
 }

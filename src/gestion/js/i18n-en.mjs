@@ -5,7 +5,7 @@ import { EN_CORRECTION } from "./i18n-en-correction.mjs";
 import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
 
 export const EN = {
-  // Options d'un service (26.11.2026, un dossier du 26.11.2026)
+  // Options d'un service (26.11.2026)
   "Options": "Options",
   "{n} option": "{n} option",
   "{n} options": "{n} options",
@@ -13,12 +13,18 @@ export const EN = {
   "Option {nom}": "Option {nom}",
   "Option à ajouter": "Option to add",
   "Option": "Option",
+  "Total du service avec ses options : {montant}": "Service total with its options: {montant}",
+  "Total à compléter : un prix manque.": "Total to complete: a price is missing.",
+  "Les options de l'ancien partenaire ont été retirées de la facture : ajoutez celles du nouveau partenaire dans la réservation.": "The options of the previous partner were removed from the invoice: add those of the new partner in the booking.",
+  "Autre partenaire : {liste} retirée du service (une option est toujours du partenaire de son service).": "Other partner: {liste} removed from the service (an option always belongs to the partner of its service).",
+  "Le prix de chaque option est son prix unitaire, comme au catalogue. « Vendu au client » compte le service et ses options ; une seule réservation, un seul voucher.": "Each option's price is its unit price, as in the catalogue. “Sold to the client” counts the service and its options; one booking, one voucher.",
+  "Les options ne s'ajoutent pas à une course de Taxi : modifiez le prix de la course.": "Options are not added to a Taxi ride: change the price of the ride.",
+  "Le prix de l'option est à saisir : ouvrez « Vérifier avant ».": "The option price must be entered: open “Check first”.",
   "Cette option est déjà sur le service.": "This option is already on the service.",
   "Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part.": "A service on the card is an option of another one: add it under that service rather than as a separate service.",
   "Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise.": "A proposed option is not an option of this service in the catalogue: it is not kept.",
   "les options": "the options",
   "Ajouter l'option": "Add the option",
-  "Le prix de chaque option est son total. « Vendu au client » compte le service et ses options ; une seule réservation, un seul voucher.": "Each option's price is its total. “Sold to the client” counts the service and its options; one booking, one voucher.",
   "Indiquez le prix de l'option « {nom} », 0 si elle est offerte.": "Enter the price of the option “{nom}”, 0 if it is free.",
   // « Pas bien » sur une réponse de l'Assistant (migration 74)
   "Pas bien": "Not good",

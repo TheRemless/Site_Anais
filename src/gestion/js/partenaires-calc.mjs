@@ -374,7 +374,7 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   return { ...base, ...offert, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: netDeLigne(x, net) };
 }
 
-// ---- Options d'un service (26.11.2026, un dossier du 26.11.2026) ---------------------------------------------------------------------------------
+// ---- Options d'un service (26.11.2026) ---------------------------------------------------------------------------------
 // Une prestation peut être l'option d'une ou plusieurs autres (« Koh Kradan extension » du 4 Islands privé, une lunch box, un transfert
 // d'hôtel) : `prestations.option_de` (migration 130) liste les prestations qu'elle complète. Elle ne se vend pas seule : elle se choisit sous
 // son service. Sur la facture, l'option est une ligne à elle (son prix, son net), rattachée à la ligne du service par `option_de` (l'id de

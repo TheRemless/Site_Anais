@@ -12,6 +12,7 @@ import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCart
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { lireMessage } from "../demande-calc.mjs";
+import { libelleUnite } from "../partenaires-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -127,7 +128,7 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
   pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service."),
   dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service."),
-  // Options d'un service (26.11.2026, un dossier du 26.11.2026).
+  // Options d'un service (26.11.2026).
   option_seule: N_("Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part."),
   option_inconnue: N_("Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
@@ -841,10 +842,26 @@ export async function vueAgent(idOuvert = "") {
   const bagagesTexte = (s) => (Number(s.bagages) > 0 ? pluriel(Number(s.bagages), N_("{n} bagage"), N_("{n} bagages")) : "");
   // Les deux remarques d'un service (22.11.2026) : ce que le voucher imprime (vu par le client et le chauffeur) et ce qui reste interne.
   // Les options d'un service sur la carte (26.11.2026) : « + Koh Kradan extension · THB 700 », sous le service, jamais un service à part.
-const optionsCarte_ = (s) =>
-  Array.isArray(s.options) && s.options.length
-    ? h("small", { class: "agent-options" }, ...s.options.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""}${o.prix !== null && o.prix !== undefined ? ` · ${formatMontant(o.prix, (reglages() || {}).devise || "THB")}` : ` · ${tr("prix à saisir")}`}`]).filter(Boolean))
-    : null;
+const optionsCarte_ = (s) => {
+  const opts = Array.isArray(s.options) ? s.options : [];
+  if (!opts.length) return null;
+  const devise = (reglages() || {}).devise || "THB";
+  const m = (x) => formatMontant(x, devise);
+  // Le prix comme partout : le prix unitaire et son unité (« par personne × 2 »), le total de l'option quand il y en a plusieurs.
+  const prixOption = (o) => {
+    if (o.prix === null || o.prix === undefined) return h("span", { class: "tag attention" }, tr("prix à saisir"));
+    const q = Math.max(1, Number(o.qte) || 1);
+    return q > 1 ? `${m(Math.round((o.prix / q) * 100) / 100)} ${libelleUnite(o.unite || "")} × ${q} = ${m(o.prix)}` : `${m(o.prix)} ${o.unite ? libelleUnite(o.unite) : ""}`.trim();
+  };
+  const complet = s.prix !== null && s.prix !== undefined && opts.every((o) => o.prix !== null && o.prix !== undefined);
+  return h(
+    "small",
+    { class: "agent-options" },
+    ...opts.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""} · `, prixOption(o)]).filter(Boolean),
+    h("br"),
+    complet ? h("strong", null, tr("Total du service avec ses options : {montant}", { montant: m(Number(s.prix) + opts.reduce((t, o) => t + Number(o.prix), 0)) })) : h("span", { class: "tag attention" }, tr("Total à compléter : un prix manque."))
+  );
+};
 const remarquesCarte = (s) => {
     const voucher = String(s.remarque_voucher || "").trim();
     const interne = [s.note_interne, s.remarque].filter((x) => x && String(x).trim()).join(" ");

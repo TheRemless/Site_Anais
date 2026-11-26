@@ -1,6 +1,6 @@
 // Vérifie la migration 130 (options d'un service) sur un Postgres en mémoire : schema.sql puis toutes les migrations. Les règles de la base,
-// le net prévu d'une réservation qui porte une option, le fichier de conversion du catalogue (sur des copies inventées portant les mêmes
-// identifiants), puis rejeu, retour en arrière, rejeu. Libellés et prix inventés.
+// le net prévu d'une réservation qui porte une option (lignes de facture, ou details.options d'un service ajouté par carte), puis rejeu,
+// retour en arrière, rejeu. Libellés et prix inventés.
 //   GESTION_SQL=<repo>/docs/gestion/ node verif-options-prestations.mjs
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
@@ -77,22 +77,30 @@ const resa = (await un("insert into reservations (entite_id, dossier_id, ligne_i
 const calcule = await un("select (net_reservation_calcule(r)).net as net, (net_reservation_calcule(r)).complet as complet from reservations r where r.id = $1", [resa]);
 ok(Number(calcule.net) === 5450 && calcule.complet === true, "le net prévu compte le net de l'option (5 000 + 450)");
 
-// Le fichier de conversion, sur des copies inventées qui portent les identifiants du catalogue : il passe les règles, se rejoue sans effet.
-const conv = lire("donnees-options-catalogue.sql");
-const actif = conv.split("-- 2. À confirmer")[0];
-const paires = [...actif.matchAll(/update prestations set option_de = array\[(.*?)\]::uuid\[\]\s*where id (?:= '([0-9a-f-]+)'|in \((.*?)\))/gs)].map((m) => ({ parents: [...m[1].matchAll(/'([0-9a-f-]{36})'/g)].map((x) => x[1]), options: m[2] ? [m[2]] : [...m[3].matchAll(/'([0-9a-f-]{36})'/g)].map((x) => x[1]) }));
-ok(paires.length === 6 && paires.reduce((n, p) => n + p.parents.length * p.options.length, 0) === 35, "six mises à jour, 35 paires service et option");
-const Pc = {};
-let i = 0;
-for (const p of paires) {
-  const part = (Pc[p.parents[0]] ||= await partenaire(E, `Partenaire ${++i}`));
-  for (const id of p.parents) if (!(await un("select 1 from prestations where id = $1", [id]))) await prestation(E, part, `Service ${id.slice(0, 4)}`, 1000, { id });
-  for (const id of p.options) if (!(await un("select 1 from prestations where id = $1", [id]))) await prestation(E, part, `Option ${id.slice(0, 4)}`, 100, { id });
-}
-const erreurConv = await script(conv);
-ok(!erreurConv, `le fichier de conversion s'applique${erreurConv ? ` (${erreurConv})` : ""}`);
-ok((await un("select count(*)::int n from prestations where cardinality(option_de) > 0 and id = any($1)", [paires.flatMap((p) => p.options)])).n === 7, "sept prestations deviennent des options");
-ok(!(await script(conv)), "et se rejoue sans effet");
+// Un service sans ligne de facture (ajouté par carte) : ses options (details.options) comptent dans son net, et le net suit quand elles changent.
+const resaCarte = (await un("insert into reservations (entite_id, dossier_id, prestation_id, partenaire_id, libelle, personnes, montant_vente, paye_sur_place, details) values ($1, $2, $3, $4, 'Tour privé Exemple', '{\"adultes\":2}', 6600, true, '{}'::jsonb) returning id", [E, dossier, tour, P1])).id;
+// (Le harnais n'écrit pas reservations_nets : le net se lit sur net_reservation_calcule, et le déclencheur doit regarder details.options.)
+const netDe = async (id) => Number((await un("select (net_reservation_calcule(r)).net n from reservations r where r.id = $1", [id])).n);
+ok((await netDe(resaCarte)) === 5000, "service par carte sans option : 5 000");
+await db.query("update reservations set details = $2::jsonb where id = $1", [resaCarte, JSON.stringify({ options: [{ prestation_id: ext, prix: 600, qte: 2 }] })]);
+ok((await netDe(resaCarte)) === 5900, "avec l'option (2 × 450) : 5 900");
+ok(/details->'options'/.test((await un("select pg_get_functiondef('remplir_nets_reservation'::regproc) f")).f), "le net se recalcule quand les options changent");
+
+// Une note « sur place » n'est pas un service à options, ni avant ni après.
+const noteService = await prestation(E, P1, "Note Exemple", 100, { surPlace: true, famille: "frais" });
+const ext3 = await prestation(E, P1, "Option Exemple 3", 80);
+ok(/même partenaire/.test(await essai("update prestations set option_de = $2 where id = $1", [ext3, [noteService]])), "refus : une option d'une note « sur place »");
+ok(/note « à payer sur place »/.test(await essai("update prestations set sur_place = true where id = $1", [tour])), "refus : un service qui a des options ne devient pas une note « sur place »");
+
+// Le dernier service d'une option supprimé : l'option est masquée, jamais vendable seule.
+const tour3 = await prestation(E, P1, "Tour Exemple 3", 3000);
+await db.query("update prestations set option_de = $2 where id = $1", [ext3, [tour3]]);
+await db.query("delete from prestations where id = $1", [tour3]);
+const orpheline = await un("select option_de, actif from prestations where id = $1", [ext3]);
+ok(orpheline.option_de.length === 0 && orpheline.actif === false, "son dernier service supprimé : l'option est masquée");
+
+// Écritures concurrentes : le service visé est verrouillé par le contrôle (for share).
+ok(/for share/.test(lire(MIG)), "le contrôle verrouille les services visés");
 
 await db.exec(lire("retour-130-options-prestations.sql"));
 ok(!(await un("select count(*)::int n from information_schema.columns where table_name = 'prestations' and column_name = 'option_de'")).n, "retour : la colonne et les contrôles sont retirés");

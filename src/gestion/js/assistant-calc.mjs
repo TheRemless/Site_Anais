@@ -49,7 +49,7 @@ export const offresRecalculees = (offres, d, contexte) =>
     })
     .filter(Boolean);
 
-// Les options d'un service proposées par la carte de l'Assistant (26.11.2026, un dossier du 26.11.2026) : [{ id, prix }], `prix` étant le prix total de
+// Les options d'un service proposées par la carte de l'Assistant (26.11.2026) : [{ id, prix }], `prix` étant le prix total de
 // l'option venu de la conversation (sinon celui du catalogue). Seules les options du tarif, au catalogue de l'entreprise, sont gardées ; elles
 // deviennent des extras de l'offre (une ligne rattachée au service, views/demande.mjs) et comptent dans son total.
 export function avecOptionsCarte(offre, options, pax, { prestations = [], partenaires = [] } = {}) {
@@ -63,7 +63,8 @@ export function avecOptionsCarte(offre, options, pax, { prestations = [], parten
     if (!p || extras.some((e) => e.source.id === p.id)) continue;
     const qte = ["pp", "ad"].includes(p.unite) ? nbPers : 1;
     const prixCarte = o.prix !== null && o.prix !== undefined && o.prix !== "" && Number(o.prix) >= 0 ? Number(o.prix) : null;
-    const unitaire = prixCarte !== null ? Math.round((prixCarte / qte) * 100) / 100 : p.prix_vente === null || p.prix_vente === undefined ? null : Number(p.prix_vente);
+    // Le prix tapé est le total pour les personnes de la carte (o.qte) : le prix unitaire en vient, puis suit les personnes du moment.
+    const unitaire = prixCarte !== null ? Math.round((prixCarte / Math.max(1, Number(o.qte) || qte)) * 100) / 100 : p.prix_vente === null || p.prix_vente === undefined ? null : Number(p.prix_vente);
     extras.push({ source: p, qte, unitaire, ligne: p.libelle_en || libelleClient(p.libelle), option: true });
     total = total === null || total === undefined || unitaire === null ? total : Math.round((Number(total) + unitaire * qte) * 100) / 100;
   }
@@ -139,7 +140,7 @@ export function propositionVersDemande(p, contexte) {
     if (s.hors_catalogue) return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.lieu_pickup || de, vers: depose }, prixLibre: s.prix_libre ?? null, prixOrigine: s.prix_libre !== null && s.prix_libre !== undefined ? s.prix_origine || null : null, confiance: s.confiance || "moyenne", ...vol, ...dropoff };
     // La première offre garde le prix de la carte quand il vient de la conversation (prix_carte) ; les autres restent au catalogue.
     // Elle garde aussi les véhicules du devis (s.vehicules, « Calculer le devis ») : le dossier reprend le devis.
-    const offres = [s.offre, ...(s.alternatives || [])].map((r, i) => (i === 0 ? avecOptionsCarte(avecVehicules(auPrixCarte(offreDepuisBase(r, pax, contexte), s.prix_carte, { pax, origine: s.prix_origine || null }), s.vehicules, pax), s.options, pax, contexte) : offreDepuisBase(r, pax, contexte))).filter(Boolean);
+    const offres = [s.offre, ...(s.alternatives || [])].map((r, i) => (i === 0 ? avecOptionsCarte(avecVehicules(auPrixCarte(offreDepuisBase(r, pax, contexte), s.prix_carte, { pax, origine: s.prix_origine || null }), s.vehicules, pax), s.options, pax, contexte) : avecOptionsCarte(offreDepuisBase(r, pax, contexte), s.options, pax, contexte))).filter(Boolean);
     return { ...sieges, phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu, ...vol, ...dropoff };
   });
   const premier = services[0] || {};

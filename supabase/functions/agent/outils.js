@@ -231,7 +231,7 @@ const SERVICE = obj({
   sans_siege: B("true seulement si le client (ou la personne) a dit qu'il ne faut AUCUN siège enfant ni bébé, sinon false. Jamais true par défaut."),
   bagages: I("Nombre de bagages écrit dans la conversation (« 2 valises », « 3 bags »), 0 si rien n'est dit. Imprimé sur le voucher, jamais dans une remarque."),
   prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes. Sans les options : leur prix va dans « options »."),
-  // Les options du service (26.11.2026, l'extension Koh Kradan du 4 Islands privé était devenue un second service).
+  // Les options du service (26.11.2026 : une extension devenait un second service).
   options: {
     type: "array",
     description: "Les options demandées pour CE service (extension d'une île, lunch box, transfert d'hôtel…) : seulement celles que chercher_catalogue rend dans « options » de la ligne de ce service. Une option n'est jamais un service à part. [] s'il n'y en a pas.",
@@ -673,8 +673,8 @@ export async function chercherCatalogue(e, ctx) {
   const lignes = [];
   if (e.famille !== "trajet") {
     const ps = (prestations || []).filter((p) => proposable(p, masques) && prestationProposable(p) && !estOptionCatalogue(p) && (e.famille === "tout" || p.famille === e.famille));
-    // Le texte cherché : la ligne, ses options (« Kradan » trouve le 4 Islands privé) et le nom de son partenaire (« Lanta Longtail » : le
-    // 26.11.2026, « 4 islands Koh Lanta longtail private » ne trouvait rien). Le nom du partenaire ne sort jamais : il sert seulement à trouver.
+    // Le texte cherché : la ligne, ses options (le nom d'une extension trouve son service) et le nom de son partenaire (un mot qui n'est que dans ce nom
+    // ne trouvait rien). Le nom du partenaire ne sort jamais : il sert seulement à trouver.
     const nomDe = new Map((partenaires || []).map((x) => [x.id, x.nom || ""]));
     const trouves = ps.filter((p) => correspond(sansAccents([p.libelle, p.libelle_en, p.groupe, p.famille, nomDe.get(p.partenaire_id) || "", ...optionsDuService(p, prestations, masques).flatMap((o) => [o.libelle, o.libelle_en])].join(" ")), mots));
     // Les zones Private Taxi de Taxi (zonesLanta), si la recherche stricte ne les a pas déjà.
@@ -1609,7 +1609,7 @@ export function optionsDeCarte(s, p, prestations, { adultes = 0, enfants = 0, ta
     let origine = catalogue !== null ? "catalogue" : "a_fixer";
     if (saisi !== null && saisi >= 0 && tapes.has(saisi) && !interdit) (prix = saisi), (origine = "saisi");
     else if (saisi !== null && saisi !== catalogue) avert.push(interdit ? "prix_egal_net" : "prix_non_tape");
-    out.push({ offre: { genre: "prestation", id: x.id }, libelle: texte(x.libelle_en || x.libelle, 160), prix, origine_prix: origine });
+    out.push({ offre: { genre: "prestation", id: x.id }, libelle: texte(x.libelle_en || x.libelle, 160), prix, origine_prix: origine, qte, unite: texte(x.unite, 20) });
   }
   return out;
 }
@@ -1977,6 +1977,18 @@ export async function proposer(nom, e, ctx, memo) {
     const services = [];
     for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes, null, memo));
     if (!services.length) return { erreur: "aucun_service" };
+    // Une option proposée comme service à part (relecture de la PR 359) : rattachée d'office au service de la carte qu'elle complète ; sans
+    // ce service sur la carte, la carte n'est pas proposée (l'option ne se vend jamais seule).
+    const prestationsCarte = await ctx.charger("prestations");
+    for (const x of [...services]) {
+      if (!(x.avertissements || []).includes("option_seule")) continue;
+      const o = prestationsCarte.find((p) => x.offre && p.id === x.offre.id);
+      const parent = services.find((y) => y !== x && y.offre && o && o.option_de.includes(y.offre.id));
+      if (!parent) return { erreur: "option_sans_son_service", conseil: "Une option ne se propose jamais seule : mets-la dans « options » du service qu'elle complète (le même dossier), ou propose ce service." };
+      const qte = ["pp", "ad"].includes(o.unite) ? Math.max(1, (parent.adultes || 0) + (parent.enfants || 0)) : 1;
+      parent.options = [...(parent.options || []), { offre: x.offre, libelle: texte(o.libelle_en || o.libelle, 160), prix: x.prix, origine_prix: x.origine_prix, qte }];
+      services.splice(services.indexOf(x), 1);
+    }
     // Mode unifié : les entreprises de la demande (deux pour une demande mixte, qui donnera deux dossiers liés).
     const entreprises = estUnifie(ctx) ? ENTREPRISES_UNIFIEES.filter((slug) => services.some((x) => x.entreprise === slug)) : null;
     const avert = avertissementsEntreprise(services);
@@ -1999,6 +2011,13 @@ export async function proposer(nom, e, ctx, memo) {
     if (choix.plusieurs) return { ...plusieursDossiers(ctx, choix.plusieurs) };
     const d = choix.ligne;
     if (!d) return { erreur: "dossier_introuvable" };
+    // Une option seule ne s'ajoute pas comme un service (relecture de la PR 359) : elle va sur le service réservé, champ « option ».
+    {
+      const prestationsLues = await ctx.charger("prestations");
+      const visee = trouverRef(texte(e.service && e.service.ref, 12), prestationsLues);
+      const optionSeule = visee && estOptionCatalogue(visee) ? visee : null;
+      if (optionSeule) return { erreur: "option_sans_son_service", conseil: "Cette ligne est une option : ajoute-la au service réservé avec proposer_modification, champ « option »." };
+    }
     // Mode unifié : le service va dans l'entreprise du dossier visé.
     const ent = entrepriseDe(ctx, d.entite_id);
     const service = await serviceDepuis(e.service, ctx, tapes, ent ? ent.id : null, memo);
@@ -2012,7 +2031,10 @@ export async function proposer(nom, e, ctx, memo) {
     // Une option ajoutée à un service réservé (26.11.2026) : seulement une option de SON tarif, au prix tapé ou à celui du catalogue.
     if (e.champ === "option") {
       if (r.statut === "annule") return { erreur: "deja_annule" };
-      const [refOption, prixTexte = ""] = String(e.valeur || "").trim().split(/\s+/, 2);
+      // « P-1a2b3c4d 1 000 » : la référence, puis tout le reste comme montant (un montant écrit avec des espaces reste entier).
+      const valeurOpt = String(e.valeur || "").trim();
+      const refOption = valeurOpt.split(/\s+/)[0] || "";
+      const prixTexte = valeurOpt.slice(refOption.length).trim();
       const p = r.prestation_id ? (await ctx.charger("prestations")).find((x) => x.id === r.prestation_id) || null : null;
       if (!p) return { erreur: "option_sans_service_du_catalogue" };
       const avertOption = [];

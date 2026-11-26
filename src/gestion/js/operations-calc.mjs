@@ -805,7 +805,8 @@ function hacher(texte) {
 }
 const videOuTexte = (v) => (v === null || v === undefined ? "" : typeof v === "string" ? v.trim() : v);
 // `statut` : le statut de paiement imprimé (statutPaiementVoucher). `devise` : celle du dossier.
-export function empreinteVoucher({ reservation: r = {}, client = {}, statut = "", devise = "" } = {}) {
+// `options` : ce que les options du service impriment et coûtent (views/voucher.mjs) ; vide sans option, l'empreinte d'avant ne change pas.
+export function empreinteVoucher({ reservation: r = {}, client = {}, statut = "", devise = "", options = "" } = {}) {
   const dt = r.details || {};
   const p = r.personnes || {};
   const donnees = {
@@ -820,6 +821,7 @@ export function empreinteVoucher({ reservation: r = {}, client = {}, statut = ""
     // Le statut de paiement de l'agence ne compte pas (contrôle du 17.11.2026, D6) : un paiement reçu ne fait pas repasser les vouchers
     // « à renvoyer ». Seul ce que le client paie sur place compte (`surPlace`, ci-dessus).
     statut: statut === "sur_place" ? statut : "", devise,
+    ...(options ? { options } : {}),
   };
   return hacher(stable(donnees));
 }
@@ -1396,6 +1398,14 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
   // option nouvelle prend la ligne `ligne_id` donnée (le même identifiant sur la facture et le devis), sous les lignes du service.
   const retirees = new Set();
   const ajouts = [];
+  // Un autre partenaire sans liste d'options donnée (alignement, carte) : les options d'un autre partenaire quittent le service, et c'est dit.
+  if (cible.partenaire_id !== undefined && !Array.isArray(cible.options)) {
+    for (const o of options) {
+      if ((o.partenaire_id || null) === (cible.partenaire_id || null)) continue;
+      retirees.add(o.id);
+      reste.push({ cle: "options", reservation: null, facture: o.titre || o.libelle });
+    }
+  }
   if (Array.isArray(cible.options)) {
     const voulues = new Map(cible.options.filter((o) => o && o.ligne_id).map((o) => [o.ligne_id, o]));
     for (const o of options) {

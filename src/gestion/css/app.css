@@ -576,13 +576,28 @@ input.couleur { width: 72px; padding: 2px; }
 .choix-detail .principal, .modal.plein .choix-actions .principal { min-height: 44px; }
 /* Options d'une réservation (26.11.2026) : nom, prix modifiable, « Retirer » ; « Ajouter l'option » en dessous. Cibles de 44 px. */
 .options-resa-liste { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
-.options-resa-liste li { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: center; gap: 8px; }
-.options-resa-liste input { min-height: 44px; text-align: right; }
+.options-resa-liste li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.options-resa-liste input { min-height: 44px; width: 96px; text-align: right; }
 .options-resa-liste button, .options-resa-ajout button { min-height: 44px; }
 .options-resa-nom { overflow-wrap: anywhere; }
+.options-resa-prix { display: flex; align-items: center; gap: 6px; }
+.options-resa-prix small { color: var(--texte-2); white-space: nowrap; }
 .options-resa-ajout { display: flex; flex-wrap: wrap; gap: 8px; }
 .options-resa-ajout select { flex: 1 1 200px; min-height: 44px; }
-@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) 100px; } .options-resa-liste li button { grid-column: 1 / -1; } }
+@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-liste li button { grid-column: 1 / -1; } }
+/* Clavier ouvert (html.clavier, ui.mjs) : l'en-tête fixe se réduit à la recherche et aux onglets, pour que la liste garde au moins
+   quatre rangées visibles au-dessus du clavier d'un iPhone (relecture de la PR 359). */
+html.clavier .modal.plein .cp-haut .grille-form > .champ:not(.cp-recherche),
+html.clavier .modal.plein .cp-haut label,
+html.clavier .modal.plein .cp-corps > .aide { display: none; }
+html.clavier .modal.plein .cp-haut { gap: 6px; padding-bottom: 6px; }
+html.clavier .modal.plein .modal-tete { margin-bottom: 4px; }
+html.clavier .modal.plein .barre-modal { padding-top: 6px; padding-bottom: 6px; }
+/* Clavier ouvert : une rangée repliée tient sur une ligne (nom et prix), pour garder au moins quatre rangées visibles. Dépliée, elle garde tout. */
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > span,
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-prix > span { display: none; }
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.clavier .modal.plein .cp-corps li.choix { padding-top: 0; padding-bottom: 0; }
 @media (max-width: 719px) {
   .modal.plein { height: var(--vv, 100dvh); max-height: none; border-radius: 0; padding-top: env(safe-area-inset-top); }
   .modal.plein .modal-poignee { display: none; }
@@ -830,6 +845,10 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande-client { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); }
 .demande-client.connu { background: var(--teal-100); border-color: var(--teal-600); }
 .demande-offres { max-height: none; margin-bottom: 12px; }
+/* Options d'un service dans « Vérifier avant » (relecture de la PR 359) : visibles, avec leur prix et « Retirer » (44 px). */
+.dsv-options { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; flex-basis: 100%; }
+.dsv-options li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; font-size: 0.9rem; }
+.dsv-options button { min-height: 44px; }
 .demande-offres li { border-bottom: 1px solid var(--bord); }
 .demande-offres li:last-child { border-bottom: 0; }
 .demande-offre { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 56px; padding: 10px 12px 10px 14px; text-align: left; font-weight: 400; background: var(--surface); border: 0; border-radius: 0; color: var(--texte); }

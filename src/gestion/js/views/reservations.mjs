@@ -20,7 +20,7 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige } from "../partenaires-calc.mjs";
+import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige, estPrestationOption } from "../partenaires-calc.mjs";
 import { prestataires } from "../apporteurs-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
@@ -416,7 +416,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     const options = [h("option", { value: "" }, tr("Hors catalogue"))];
     if (trajetActuel && (trajetActuel.partenaire_id || null) === pid) options.push(h("option", { value: `t:${trajetActuel.id}` }, tr("Trajet : {de} → {vers}, {depart}", { de: trajetActuel.de, vers: trajetActuel.vers, depart: trajetActuel.depart || "" })));
     // Les frais réglés sur place par le client ne sont pas des services : ils restent des notes de la facture.
-    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
+    // Une option (migration 130) n'est pas un tarif du service : elle se choisit dans « Options ».
+    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && !estPrestationOption(x) && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
     for (const x of liste) options.push(h("option", { value: `p:${x.id}` }, x.prix_vente === null || x.prix_vente === undefined ? x.libelle : `${x.libelle} · ${prix(x.prix_vente)}${x.unite ? ` ${libelleUnite(x.unite)}` : ""}`));
     tarif.replaceChildren(...options);
     tarif.value = options.some((o) => o.value === avant) ? avant : "";
@@ -438,9 +439,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
       if (!libelleSaisi) libelle.value = nomTarif(choisi);
       // Une location « par jour » se compte en jours, pas en personnes.
       const quantite = choisi.unite === "day" ? Math.max(1, Number((r.details || {}).jours) || 1) : quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 });
-      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
+      // « Vendu au client » compte le service et ses options (relecture de la PR 359) : le nouveau tarif, plus les options gardées.
+      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round((Number(choisi.prix_vente) * quantite + (blocOptions ? blocOptions.somme() : 0)) * 100) / 100);
       proposerCommission();
     }
+    if (blocOptions) blocOptions.tarif(choisi ? choisi.id : null);
     majAideTarif();
   });
   const netPrevu = saisie(h("input", { id: "r-net", value: n && n.net_prevu != null ? n.net_prevu : "" }), "montant");
@@ -540,6 +543,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   // L'heure enregistrée est celle de la grille tant qu'elle lui est égale : un autre choix de zone la remplace, une heure tapée à la main reste.
   if (zonesPickup.valeur() && zonesPickup.heure() === heure.value) heureDeGrille = heure.value;
   partenaire.addEventListener("change", () => zonesPickup.rafraichir());
+  // Un autre partenaire : les options de l'ancien partenaire quittent le service (une option est toujours du partenaire de son service).
+  if (blocOptions) partenaire.addEventListener("change", () => blocOptions.partenaire(partenaire.value || null));
   lieu.addEventListener("change", () => zonesPickup.rafraichir());
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.

@@ -1,5 +1,4 @@
-// Options d'un service (26.11.2026). Le 4 Islands privé et son extension Koh Kradan étaient deux prestations : l'Assistant a
-// créé deux services et deux vouchers, refaits à la main en un seul. Une option est maintenant une ligne de facture rattachée à la ligne de
+// Options d'un service (26.11.2026). Une extension et son service étaient deux prestations : deux services et deux vouchers. Une option est maintenant une ligne de facture rattachée à la ligne de
 // son service (`option_de`) : une seule réservation, un seul voucher, total = base + options, partout.
 // Ici : la règle pure, puis chaque chemin réel de la démo, de la carte de l'Assistant (fonction `agent`, executer) jusqu'à la réservation
 // écrite, comparé champ par champ, dans Secret et dans Taxi ; ZTP n'a pas d'options. Libellés et prix inventés.
@@ -72,6 +71,24 @@ test("ligneOption : même partenaire, date et mode que le service ; prix modifia
   assert.deepEqual([l.option_de, l.partenaire_id, l.date_service, l.paye_sur_place, l.qte, l.unite, l.net], ["L1", "pa", "2026-12-22", true, 2, 120, 100]);
   assert.equal(P.ligneOption(o, base, null, { prix: 100.01, uid: () => "Y" }).montant, 100.01, "un total qui ne tombe pas juste devient un montant");
   assert.equal(P.optionsDe("pT", [{ ...o, option_de: ["pT"] }, { id: "z", option_de: [] }]).length, 1);
+});
+
+test("carte de l'Assistant : le prix tapé d'une option par personne donne son prix unitaire, qui suit les personnes ; les autres offres l'ont aussi", async () => {
+  const A = await import("../src/gestion/js/assistant-calc.mjs");
+  const lunch = { id: "pL", libelle: "Lunch box", libelle_en: "Lunch box", prix_vente: 150, unite: "pp", partenaire_id: "pa", option_de: ["pT"], actif: true };
+  const ctxCat = { prestations: [lunch], partenaires: [{ id: "pa", nom: "Bateaux", actif: true }] };
+  // 240 tapés pour 2 personnes (qte de la carte) : 120 l'unité ; 3 personnes au moment de créer → 360.
+  const o = A.avecOptionsCarte({ genre: "prestation", id: "pT", total: 6000, extras: [] }, [{ id: "pL", prix: 240, qte: 2 }], { adultes: 3, enfants: 0 }, ctxCat);
+  assert.deepEqual([o.extras[0].unitaire, o.extras[0].qte, o.total], [120, 3, 6360]);
+});
+
+test("règles de la demande : une option du catalogue n'est jamais proposée comme service", async () => {
+  const D = await import("../src/gestion/js/demande-calc.mjs");
+  const p = { id: "pL", entite_id: "e", famille: "excursion", groupe: "Lunch box island", libelle: "Lunch box island", prix_vente: 150, unite: "grp", partenaire_id: "pa", actif: true };
+  const partenaires = [{ id: "pa", nom: "Bateaux", actif: true }];
+  const ids = (prestations) => D.proposerOffresLibres({ adultes: 2, enfants: 0 }, "lunch box island", { prestations, partenaires }).map((x) => x.id || (x.source && x.source.id));
+  assert.ok(ids([{ ...p, option_de: [] }]).includes("pL"), "témoin : sans option_de, la prestation est proposée");
+  assert.ok(!ids([{ ...p, option_de: ["pT"] }]).includes("pL"));
 });
 
 // ---- Chemins réels de la démo ------------------------------------------------------------------------------------------------------
@@ -158,10 +175,101 @@ test("Secret : prix tapés (service et option) gardés ; une option inconnue n'e
   verifierUnService(r.dossier, { base: 6400, option: 1000, partenaire: pa.id });
 });
 
-test("Secret : une option proposée comme service à part est signalée sur la carte", async () => {
-  const { ext } = await catalogueDe("excursions");
-  const c = await carteDossier([{ ...service({ id: ext.id }, ext), ref: refDe("P", ext.id), options: [] }]);
-  assert.ok(c.donnees.services[0].avertissements.includes("option_seule"));
+test("Secret : une option proposée comme service à part rejoint son service sur la carte ; seule, la carte est refusée", async () => {
+  const { tour, ext } = await catalogueDe("excursions");
+  const seule = { ...service({ id: ext.id }, ext), ref: refDe("P", ext.id), options: [] };
+  const c = await carteDossier([service(tour, ext, { options: [] }), { ...seule, prix_saisi: "900" }], [900]);
+  assert.equal(c.donnees.services.length, 1, "un seul service sur la carte");
+  assert.deepEqual(c.donnees.services[0].options.map((o) => [o.offre.id, o.prix]), [[ext.id, 900]]);
+  const r = await executer("proposer_dossier", { titre: "Dossier", client_nom: "Client Exemple seul", client_telephone: "+41790009999", hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [seule], apporteur: "" }, ctx(), memo());
+  assert.equal((r.contenu || r).erreur, "option_sans_son_service");
+  // Ajoutée à un dossier par une carte « reservation » : refusée aussi (elle va sur le service réservé, champ « option »).
+  const c0 = await carteDossier([service(tour, ext, { options: [] })]);
+  const r0 = await ouvrirDemande(null, V.preparation(c0), { auto: true, titre: c0.titre, surCree: () => {} });
+  const s = await executer("proposer_reservation", { titre: "Service", dossier: refDe("D", r0.dossier.id), service: seule }, { ...ctx(), parRef: async () => E.etat.db.dossiers }, memo());
+  assert.equal((s.contenu || s).erreur, "option_sans_son_service");
+});
+
+test("Secret : carte « modification » au prix « 1 000 » (espace des milliers) : 1 000, pas 1", async () => {
+  const { tour, ext } = await catalogueDe("excursions");
+  const c0 = await carteDossier([service(tour, ext, { options: [] })]);
+  const r0 = await ouvrirDemande(null, V.preparation(c0), { auto: true, titre: c0.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  const m = await executer("proposer_modification", { titre: "Option", reservation: refDe("R", resa.id), champ: "option", valeur: `${refDe("P", ext.id)} 1 000`, raison: "" }, { ...ctx(), parRef: async () => E.etat.db.reservations }, memo(["1 000", 1000]));
+  assert.ok(m.carte, JSON.stringify(m.contenu || m));
+  const v = reservationModifiee(resa, m.carte.donnees);
+  assert.deepEqual(v.options_ajout.map((o) => [o.prestation_id, o.prix]), [[ext.id, 1000]]);
+});
+
+test("Secret : carte « reservation » écrite → le net prévu de la réservation compte le net de l'option", async () => {
+  const { tour, ext } = await catalogueDe("excursions");
+  dans("excursions");
+  for (const [p, net] of [[tour, 5000], [ext, 500]]) if (!E.etat.brut.prestations_nets?.some((x) => x.prestation_id === p.id)) await E.inserer("prestations_nets", { prestation_id: p.id, net });
+  const c0 = await carteDossier([service(tour, ext, { options: [] })]);
+  const r0 = await ouvrirDemande(null, V.preparation(c0), { auto: true, titre: c0.titre, surCree: () => {} });
+  const avant = new Set(resasDu(r0.dossier).map((x) => x.id));
+  const s = await executer("proposer_reservation", { titre: "Service", dossier: refDe("D", r0.dossier.id), service: service(tour, ext, { date: "2026-12-24" }) }, { ...ctx(), parRef: async () => E.etat.db.dossiers }, memo());
+  const res = await V.ajouterParCarte({ id: "carte-resa", genre: "reservation", ...s.carte, statut: "proposee" }, "ok");
+  assert.equal(res.ok, true, res.motif);
+  const ecrite = resasDu(r0.dossier).find((x) => !avant.has(x.id));
+  assert.ok(ecrite, "la réservation est écrite");
+  assert.equal(Number(ecrite.montant_vente), 6700);
+  assert.deepEqual(ecrite.details.options.map((o) => [o.prestation_id, o.prix, o.qte]), [[ext.id, 700, 1]]);
+  const n = (E.etat.brut.reservations_nets || E.etat.db.reservations_nets || []).find((x) => x.reservation_id === ecrite.id);
+  assert.ok(n, "nets calculés");
+  assert.equal(Number(n.net_prevu ?? n.net), 5500, "net du service + net de l'option");
+  // Le voucher de ce service porte l'option ; changer son prix change l'empreinte (le voucher envoyé repasse « à renvoyer »).
+  const x = vouchersDuDossier(r0.dossier.id).find((y) => y.reservation.id === ecrite.id);
+  assert.match(renderVoucher(x).textContent, /Kradan extension Exemple/);
+});
+
+test("Secret : fenêtre de réservation, prix unitaire de l'option ; autre tarif → options gardées ; autre partenaire → options retirées", async () => {
+  const { tour, ext, pa } = await catalogueDe("excursions");
+  dans("excursions");
+  const tour2 = await E.inserer("prestations", { partenaire_id: pa.id, famille: "excursion", groupe: "Private Exemple", libelle: "Private Island Exemple 2", libelle_en: "Private Island Exemple 2", prix_vente: 8000, unite: "grp", actif: true, option_de: [] });
+  const c = await carteDossier([service(tour, ext)]);
+  const r0 = await ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  const { formulaireReservation } = await import("../src/gestion/js/views/reservations.mjs");
+  const f = formulaireReservation(E.etat.db.reservations.find((x) => x.id === resa.id), () => {});
+  document.body.append(f);
+  for (let i = 0; i < 50 && !f.querySelector(".options-resa-liste"); i++) await new Promise((x) => setTimeout(x, 10));
+  const prixOpt = f.querySelector(".options-resa-liste input");
+  assert.equal(prixOpt.value, "700", "prix unitaire de l'option");
+  const vente = f.querySelector("#r-vente");
+  assert.equal(Number(vente.value), 6700);
+  // Autre tarif du même partenaire : 8 000 + l'option gardée.
+  const tarif = f.querySelector("#r-tarif");
+  tarif.value = `p:${tour2.id}`;
+  tarif.dispatchEvent(new Event("change"));
+  assert.equal(Number(vente.value), 8700);
+  assert.ok(f.querySelector(".options-resa-liste"), "l'option reste sur le service");
+  // Autre partenaire : l'option de l'ancien quitte le service, et son prix quitte « Vendu au client ».
+  const autre = E.etat.db.partenaires.find((x) => x.id !== pa.id && x.actif !== false && [...f.querySelector("#r-part").options].some((o) => o.value === x.id));
+  const part = f.querySelector("#r-part");
+  part.value = autre.id;
+  part.dispatchEvent(new Event("change"));
+  assert.equal(f.querySelector(".options-resa-liste"), null);
+  assert.equal(Number(vente.value), 8000);
+  f.remove();
+});
+
+test("Taxi : une carte « modification » d'option est refusée, rien n'est écrit", async () => {
+  await catalogueDe("taxi");
+  const [r] = E.etat.db.reservations;
+  const avant = JSON.stringify(r);
+  const res = await V.enregistrerReservation({ ...r, options_ajout: [{ prestation_id: "x", prix: 100, qte: 1 }] }, "ok", r);
+  assert.equal(res.ok, false);
+  assert.match(res.motif, /Taxi/);
+  assert.equal(JSON.stringify(E.etat.db.reservations.find((x) => x.id === r.id)), avant);
+});
+
+test("empreinte du voucher : une option ajoutée, offerte (0) ou changée change l'empreinte", () => {
+  const r = { id: "R1", libelle: "Tour", date_service: "2026-12-22", montant_vente: 6700, personnes: { adultes: 2 } };
+  const e = (options) => O.empreinteVoucher({ reservation: r, options });
+  assert.equal(e(""), O.empreinteVoucher({ reservation: r }), "sans option : l'empreinte d'avant");
+  const toutes = new Set([e(""), e("x|pE:700::"), e("x|pE:0::"), e("x|pL:700::")]);
+  assert.equal(toutes.size, 4);
 });
 
 test("Secret : « Vérifier avant » (fenêtre visible) crée aussi un seul service avec l'option", async () => {
