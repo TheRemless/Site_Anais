@@ -1268,7 +1268,7 @@ export async function vueAgent(idOuvert = "") {
   // Conversation ouverte depuis l'écran WhatsApp (migration 61) : le dossier validé se relie à la conversation WhatsApp, avec son client
   // (et l'entreprise si elle était à trier). Une panne ici ne gêne jamais la validation ; elle est dite.
   // `choisie` : la conversation au nom du client reprise dans « Vérifier avant » (« Reprendre ce numéro »), quand la conversation de
-  // l'Assistant n'est pas liée à WhatsApp (INV-2026-055 : la conversation est restée sans client ni dossier).
+  // l'Assistant n'est pas liée à WhatsApp (la conversation est restée sans client ni dossier).
   async function relierWhatsApp(dossier, choisie = null) {
     const waId = (conv && conv.whatsapp_conversation_id) || choisie;
     if (!waId) return;

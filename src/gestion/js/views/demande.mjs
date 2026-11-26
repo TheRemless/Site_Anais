@@ -852,7 +852,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (texte.trim() && !(lu && lu.carnet) && !(depuisSite && depuisSite.carnet)) chercherLaDemande(texte);
   }
 
-  // Le numéro de la conversation WhatsApp (INV-2026-055) : celui de la conversation liée (`options.whatsappLie`, l'Assistant ouvert depuis
+  // Le numéro de la conversation WhatsApp : celui de la conversation liée (`options.whatsappLie`, l'Assistant ouvert depuis
   // WhatsApp) remplace un champ vide ou coupé ; sinon les conversations au nom du client se proposent sous le champ, reprises d'un geste.
   // La conversation retenue se relie au client et au dossier après la création (surCree reçoit `whatsappId`).
   function lireWhatsApp() {

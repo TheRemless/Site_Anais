@@ -672,7 +672,7 @@ export const EN = {
   "Rappels sur téléphone": "Phone reminders",
   "Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.": "Add the country code, for example +41, +33 or +66, in place of the leading 0.",
   "Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.": "Unreadable number: write it with its country code, for example +41 79 123 45 67.",
-  // Téléphone coupé (INV-2026-055, 26.11.2026) : numéro incomplet, en double, et numéro repris de la conversation WhatsApp
+  // Téléphone coupé (26.11.2026) : numéro incomplet, en double, et numéro repris de la conversation WhatsApp
   "Ce numéro n'a pas le bon nombre de chiffres pour son pays : vérifiez qu'il est complet.": "This number does not have the right number of digits for its country: check that it is complete.",
   "Numéro coupé ou en double : laissez un seul numéro, complet, avec son indicatif.": "Number cut off or duplicated: leave a single, complete number with its country code.",
   "Téléphone du client : {message}": "Client's phone: {message}",

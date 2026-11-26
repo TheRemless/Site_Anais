@@ -431,7 +431,7 @@ function ajouter(iso, n) {
 // format local (« 081-9789025 » devient +66819789025) passent avec `{ thaiLocal: true }`.
 // Un numéro copié depuis un iPhone ou WhatsApp porte des caractères invisibles ou typographiques : « +1 (555) 010-4477 (trait d’union insécable) » entouré de U+202A et U+202C (marques de sens
 // U+202A et U+202C, trait d'union insécable U+2011). Avant le 26.11.2026, la lecture s'arrêtait au U+2011 et gardait « +1555010 » sans rien
-// dire (INV-2026-055). Ils deviennent des espaces ou des tirets ordinaires ; les chiffres et le plus pleine chasse deviennent des chiffres.
+// dire. Ils deviennent des espaces ou des tirets ordinaires ; les chiffres et le plus pleine chasse deviennent des chiffres.
 export function nettoyerTelephone(brut) {
   return String(brut || "")
     .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")

@@ -28,7 +28,7 @@ export function verifierTelephoneClient(saisie, ancien = "") {
   if (brut === String(ancien || "").trim()) return { ok: true, valeur: brut, raison: "" };
   const t = normaliserTelephone(brut);
   if (!t.numero) return { ok: false, valeur: brut, raison: t.raison };
-  // Un numéro coupé ne passe jamais (INV-2026-055 : « +1555010 » enregistré pour « +1 (555) 010-4477 (trait d’union insécable) ») : tous les chiffres du champ doivent
+  // Un numéro coupé ne passe jamais (« +1555010 » enregistré pour « +1 (555) 010-4477 (trait d’union insécable) ») : tous les chiffres du champ doivent
   // être dans le numéro lu (deux numéros, ou un caractère qui coupe, sont refusés), et un numéro d'Amérique du Nord (+1) a toujours 11 chiffres.
   const lus = t.numero.replace(/\D/g, "");
   const tous = nettoyerTelephone(brut).replace(/\D/g, "");

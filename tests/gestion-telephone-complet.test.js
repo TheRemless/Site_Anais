@@ -1,4 +1,4 @@
-// Téléphone coupé (INV-2026-055, 26.11.2026). Un numéro copié depuis WhatsApp sur iPhone, « +1 (555) 010-4477 (trait d’union insécable) » avec un trait d'union
+// Téléphone coupé (26.11.2026). Un numéro copié depuis WhatsApp sur iPhone, « +1 (555) 010-4477 (trait d’union insécable) » avec un trait d'union
 // insécable (U+2011) entre des marques de sens, était lu « +1555010 » et enregistré sans un mot. La carte de l'Assistant n'avait pas de
 // téléphone et la conversation WhatsApp du client est restée sans client ni dossier.
 // Ici : la lecture des numéros (outil), le numéro de la conversation repris pour la carte, puis les chemins réels de la démo (carte « dossier »

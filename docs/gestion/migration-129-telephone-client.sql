@@ -2,7 +2,7 @@
 -- À exécuter une seule fois, après la migration 128, avec l'outil du même commit. Idempotente. Ne modifie aucune donnée.
 -- Retour en arrière : retour-129-telephone-client.sql.
 --
--- INV-2026-055 : « +1 (555) 010-4477 (trait d’union insécable) » copié depuis WhatsApp sur iPhone (trait d'union insécable U+2011) a été lu « +1555010 » par l'outil et
+-- « +1 (555) 010-4477 (trait d’union insécable) » copié depuis WhatsApp sur iPhone (trait d'union insécable U+2011) a été lu « +1555010 » par l'outil et
 -- enregistré tel quel. L'outil lit maintenant ces caractères et refuse un numéro incomplet ; la base refuse aussi, quel que soit l'écran.
 -- Règle, appliquée seulement quand le numéro est écrit ou changé depuis l'application (rôles authenticated et anon) et qu'il commence par « + » :
 --   8 à 15 chiffres ; +1 (Amérique du Nord), +33 (France) et +41 (Suisse) : 11 chiffres exactement.

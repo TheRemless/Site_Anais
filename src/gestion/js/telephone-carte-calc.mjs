@@ -1,4 +1,4 @@
-// Le numéro du client d'une demande ou d'une carte de l'Assistant, repris de sa conversation WhatsApp (INV-2026-055, 26.11.2026 : la carte
+// Le numéro du client d'une demande ou d'une carte de l'Assistant, repris de sa conversation WhatsApp (26.11.2026 : la carte
 // avait un téléphone vide, le numéro a été recopié à la main et enregistré coupé, la conversation est restée sans client ni dossier).
 //   - Conversation liée (l'Assistant ouvert depuis WhatsApp) : son numéro est repris en entier quand le champ est vide ou n'en est que le début.
 //     Un autre numéro tapé à la main est gardé tel quel : c'est le choix de la personne.

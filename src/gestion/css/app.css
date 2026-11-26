@@ -784,7 +784,7 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 @media (min-width: 720px) { .demande-champs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .demande-champs .champ:first-child, .demande-champs .champ:nth-child(2) { grid-column: span 2; } .demande-champs .champ:last-child { grid-column: 1 / -1; } }
 .demande-client { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); }
 .demande-client.connu { background: var(--teal-100); border-color: var(--teal-600); }
-/* Conversation WhatsApp au nom du client (INV-2026-055) : le numéro se lit en entier, le bouton fait 44 px. */
+/* Conversation WhatsApp au nom du client : le numéro se lit en entier, le bouton fait 44 px. */
 .demande-wa span { overflow-wrap: anywhere; }
 .demande-wa button { min-height: 44px; }
 .demande-offres { max-height: none; margin-bottom: 12px; }
