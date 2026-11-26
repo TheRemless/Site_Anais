@@ -334,7 +334,7 @@ test("apprendre : un prix d'offre retapé dans « Vérifier avant » compte, un 
   assert.match(d, /prix_saisi: prixSaisiIci\(sv\)/);
   assert.match(d, /const prixSaisiIci = \(sv\) => !sv\.prixALaMainAuDepart && prixALaMain\(sv\);/);
   const v = lire("src/gestion/js/views/agent.mjs");
-  assert.match(v, /surCree: \(\{ dossier, services \}\) => noterReussite\(c, \{ ok: true, dossier, ecran: services \}\)/);
+  assert.match(v, /surCree: \(\{ dossier, services, whatsappId \}\) => noterReussite\(c, \{ ok: true, dossier, ecran: services, whatsappId \}\)/);
 });
 
 test("apprendre : une remarque retouchée compte par ce qui a été ajouté aux notes", () => {

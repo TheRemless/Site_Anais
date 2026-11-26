@@ -6,7 +6,7 @@ import { demanderArbitrage } from "./conflit.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { clientsProches } from "../demande-calc.mjs";
-import { verifierTelephoneClient, numerosClient, chambreDeLAdresse, adresseAvecChambre, peutFusionnerClients } from "../client-calc.mjs";
+import { verifierTelephoneClient, numerosClient, chambreDeLAdresse, adresseAvecChambre, peutFusionnerClients, messageTelephone } from "../client-calc.mjs";
 import { servicesSuivantAdresse, fusionClients } from "../dossier-gestes-calc.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
@@ -51,7 +51,7 @@ function formulaireClient(client, apres) {
         const verif = verifierTelephoneClient(tel.value, client.telephone);
         erreurChamp(tel, "");
         if (!verif.ok) {
-          erreurChamp(tel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
+          erreurChamp(tel, messageTelephone(verif.raison));
           return tel.focus();
         }
         const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: verif.valeur, email: email.value.trim(), adresse: avecChambre ? adresseAvecChambre(adresse.value, chambre.value) : adresse.value.trim(), notes: notes.value.trim() };

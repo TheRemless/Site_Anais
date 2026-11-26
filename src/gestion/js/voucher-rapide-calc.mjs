@@ -6,6 +6,7 @@ import { RETOUR_DEPART, lireDuree, dureeInvalide, libelleRetourDepart } from "./
 import { estTaxi } from "./taxi-calc.mjs";
 import { prestataires } from "./apporteurs-calc.mjs";
 import { siegesLus, siegesChoisis } from "./sieges-calc.mjs";
+import { nettoyerTelephone } from "./partenaires-calc.mjs";
 
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
@@ -142,8 +143,9 @@ export const estRetour = (v) => (v && v.trajet) === RETOUR_DEPART;
 export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "sieges_bebe", "sans_siege", "prix", "remarques", "notes"];
 
 // WhatsApp facultatif : vide, ou un numéro d'au moins 8 chiffres, sans lettres (« +66 81 234 5678 », « 0812345678 »).
+// Un numéro collé depuis un iPhone (trait d'union insécable, marques de sens) est d'abord remis en caractères ordinaires (nettoyerTelephone).
 export const telephoneValide = (t) => {
-  const s = String(t || "").trim();
+  const s = nettoyerTelephone(t).trim();
   return !s || (!/[^\d\s+().-]/.test(s) && s.replace(/\D/g, "").length >= 8);
 };
 
@@ -199,7 +201,7 @@ export function donneesVoucher(v) {
   const programme = retour ? String(v.programme || "").trim().replace(/\s+/g, " ") : "";
   return {
     nom: String(v.nom).trim().replace(/\s+/g, " "),
-    telephone: String(v.telephone || "").trim().replace(/\s+/g, " "),
+    telephone: nettoyerTelephone(v.telephone).trim().replace(/\s+/g, " "),
     clientId: v.client_id || null,
     date: v.date,
     heure: v.heure,

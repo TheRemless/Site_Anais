@@ -1267,8 +1267,10 @@ export async function vueAgent(idOuvert = "") {
 
   // Conversation ouverte depuis l'écran WhatsApp (migration 61) : le dossier validé se relie à la conversation WhatsApp, avec son client
   // (et l'entreprise si elle était à trier). Une panne ici ne gêne jamais la validation ; elle est dite.
-  async function relierWhatsApp(dossier) {
-    const waId = conv && conv.whatsapp_conversation_id;
+  // `choisie` : la conversation au nom du client reprise dans « Vérifier avant » (« Reprendre ce numéro »), quand la conversation de
+  // l'Assistant n'est pas liée à WhatsApp (INV-2026-055 : la conversation est restée sans client ni dossier).
+  async function relierWhatsApp(dossier, choisie = null) {
+    const waId = (conv && conv.whatsapp_conversation_id) || choisie;
     if (!waId) return;
     try {
       // Relue en base juste avant : quelqu'un a pu la relier ou la ranger ailleurs pendant la conversation avec l'Assistant.
@@ -1361,8 +1363,8 @@ export async function vueAgent(idOuvert = "") {
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
-      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise });
-      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
+      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise, whatsappLie: await conversationWaLiee() });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, whatsappLie: await conversationWaLiee() });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
       else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier.")));
@@ -1412,7 +1414,7 @@ export async function vueAgent(idOuvert = "") {
       if (typeLie === "apporteur") await noterApporteur(c.donnees.apporteur, r.dossiers || [dossier]);
       else toast(tr("Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur."));
     }
-    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
+    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier, r.whatsappId || null);
     // Migration 72 : la demande du site « nouvelle » du même numéro passe « confirmée » avec ce dossier (views/demandes-whatsapp.mjs).
     if (dossier && c.genre === "dossier") await (await import("./demandes-whatsapp.mjs")).relierDemandesApresDossier(r.dossiers || [dossier]);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
@@ -1435,6 +1437,17 @@ export async function vueAgent(idOuvert = "") {
     if (maj) redessiner(maj);
   }
 
+  // La conversation WhatsApp liée, relue en base (son numéro complète celui de la carte) : null sans liaison ou en cas de panne.
+  async function conversationWaLiee() {
+    const waId = conv && conv.whatsapp_conversation_id;
+    if (!waId) return null;
+    try {
+      return (etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null) || (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+    } catch (err) {
+      console.error("agent : conversation WhatsApp liée", err);
+      return (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+    }
+  }
   // Le type du contact de la conversation WhatsApp liée, relu en base : null sans liaison, illisible ou sans type.
   async function typeContactLie() {
     const waId = conv && conv.whatsapp_conversation_id;
@@ -1502,7 +1515,7 @@ export async function vueAgent(idOuvert = "") {
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     // `services` : ce que l'écran a fait de chaque service (prix tapé à la place de celui du catalogue), pour les apprentissages.
-    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }), ferme: rendreSiRien(c) });
+    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, whatsappLie: await conversationWaLiee(), surCree: ({ dossier, services, whatsappId }) => noterReussite(c, { ok: true, dossier, ecran: services, whatsappId }), ferme: rendreSiRien(c) });
     if (!ouverte) rendreSiRien(c)();
   }
   async function ouvrirCourse(c) {

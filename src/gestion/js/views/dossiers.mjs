@@ -2,7 +2,7 @@ import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, 
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { boutonAssistant } from "./commun.mjs";
 import { h, champ, vider, toast, erreurChamp } from "../ui.mjs";
-import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
+import { identiteDepuisSaisie, verifierNouveauClient, messageTelephone } from "../client-calc.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier, barreFiltres } from "./commun.mjs";
@@ -251,7 +251,7 @@ export function nouveauDossier() {
       const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value, email: nvEmail.value });
       if (!verif.ok) {
         if (verif.champ === "nom") (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
-        else if (verif.champ === "telephone") (erreurChamp(nvTel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.")), nvTel.focus());
+        else if (verif.champ === "telephone") (erreurChamp(nvTel, messageTelephone(verif.raison)), nvTel.focus());
         else (erreur.textContent = tr("Cette adresse e-mail est illisible : vérifiez-la."), nvEmail.focus());
         return;
       }
