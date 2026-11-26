@@ -390,8 +390,10 @@ ul.avertissements-voucher { list-style: none; margin: 0 0 14px; padding: 10px 14
   html.synchro-visible .bouton-plus { bottom: calc(var(--barre-basse) + 16px + var(--haut-synchro, 32px)); }
 }
 /* Hors connexion, rien ne s'enregistre : les actions d'écriture sont grisées (et marquées aria-disabled avec la raison en infobulle par
-   app.mjs). Elles restent cliquables : le serveur refuse déjà, et le message d'erreur dit pourquoi (relecture de la PR 363). */
-html.hors-ligne .principal, html.hors-ligne .bouton-plus, html.hors-ligne .barre-action button { opacity: 0.45; filter: grayscale(1); }
+   app.mjs). Elles restent cliquables : le serveur refuse déjà, et le message d'erreur dit pourquoi (relecture de la PR 363).
+   Seuls les boutons sont visés : un lien (« Ouvrir WhatsApp », « Répondre sur WhatsApp ») n'écrit rien et reste normal. Un bouton qui ne fait
+   que lire ou ouvrir porte data-lecture (passe finale de la PR 363). */
+html.hors-ligne button.principal:not([data-lecture]), html.hors-ligne .bouton-plus, html.hors-ligne .barre-action button:not([data-lecture]) { opacity: 0.45; filter: grayscale(1); }
 
 /* Entreprises, utilisateurs, réglages */
 .entite-choix, .entite-nom { margin: 0 0 14px; padding: 0 8px; }

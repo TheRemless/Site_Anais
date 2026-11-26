@@ -402,7 +402,8 @@ if (typeof window !== "undefined" && typeof MutationObserver !== "undefined") {
 
 // Hors connexion, les actions d'écriture sont grisées par le CSS (html.hors-ligne) ; ici, elles sont annoncées comme indisponibles, avec la
 // raison en infobulle. Pas de blocage : le serveur refuse déjà, et son message le dit. Au retour du réseau, tout est remis comme avant.
-const ACTIONS_ECRITURE = ".principal, .bouton-plus, .barre-action button";
+// Seuls les boutons : un lien n'écrit rien (WhatsApp, demandes du site) ; data-lecture exclut un bouton qui ne fait qu'ouvrir ou lire.
+const ACTIONS_ECRITURE = "button.principal:not([data-lecture]), .bouton-plus, .barre-action button:not([data-lecture])";
 function marquerHorsLigne() {
   if (document.documentElement.classList.contains("hors-ligne")) {
     for (const b of document.querySelectorAll(ACTIONS_ECRITURE)) {
