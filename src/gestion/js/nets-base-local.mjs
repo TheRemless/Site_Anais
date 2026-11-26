@@ -144,3 +144,18 @@ export function suiviDeclencheur(avant, apres) {
   const autre = ["partenaire_id", "paye_sur_place", "montant_vente"].some((k) => differe(k === "paye_sur_place" ? !!avant[k] : avant[k], k === "paye_sur_place" ? !!apres[k] : apres[k]));
   return net || autre ? { suivreNet: net } : null;
 }
+
+// Comme suivre_nets_options_document (migration 130) : les lignes d'option d'un document qui ont changé (ajoutées, retirées, autre prestation,
+// autre quantité). Les réservations qui portent ces lignes recalculent leur net (un net tapé à la main reste).
+export function lignesOptionChangees(avant, apres) {
+  const lignes = (c) => (c && Array.isArray(c.lignes) ? c.lignes : []).filter((l) => l && l.option_de);
+  const a = lignes(avant);
+  const b = lignes(apres);
+  const ids = new Set();
+  for (const l of b) {
+    const o = a.find((x) => x.id === l.id);
+    if (!o || (o.prestation_id || null) !== (l.prestation_id || null) || JSON.stringify(o.qte ?? null) !== JSON.stringify(l.qte ?? null)) ids.add(l.id);
+  }
+  for (const o of a) if (!(apres && Array.isArray(apres.lignes) ? apres.lignes : []).some((l) => l && l.id === o.id)) ids.add(o.id);
+  return ids;
+}

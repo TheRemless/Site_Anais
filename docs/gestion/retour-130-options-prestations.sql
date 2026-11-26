@@ -1,6 +1,8 @@
 -- Gestion : retour en arrière de la migration 130. Les options redeviennent des prestations ordinaires (la colonne est retirée).
 -- Les lignes de facture déjà rattachées (option_de dans le JSON des documents) restent rattachées à leur réservation.
 begin;
+drop trigger if exists suivre_nets_options_document on documents;
+drop function if exists suivre_nets_options_document();
 drop trigger if exists controler_service_sur_place on prestations;
 drop function if exists controler_service_sur_place();
 drop trigger if exists retirer_option_supprimee on prestations;

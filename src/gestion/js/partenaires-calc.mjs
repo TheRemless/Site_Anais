@@ -388,10 +388,11 @@ export const optionsDe = (prestationId, prestations = [], partenaires = []) =>
 // option par personne compte les personnes du service ; les autres comptent 1. `prix` : le prix total de l'option, s'il remplace celui du
 // catalogue (modifiable comme le prix du service).
 // `unitaire` : le prix unitaire tapé (par bateau, par personne…), `prix` : le prix total de l'option ; l'un ou l'autre remplace le catalogue.
-export function ligneOption(o, parent, net, { langue = "", personnes = null, prix = null, unitaire = null, uid = nouvelId } = {}) {
+// `qte` : la quantité choisie (un seul plongeur sur deux) ; sans elle, une option par personne prend le nombre de personnes.
+export function ligneOption(o, parent, net, { langue = "", personnes = null, prix = null, unitaire = null, qte: qteVoulue = null, uid = nouvelId } = {}) {
   const p = personnes || parent.personnes || {};
   const nbPers = Math.max(0, Math.floor(Number(p.adultes) || 0)) + Math.max(0, Math.floor(Number(p.enfants) || 0));
-  const qte = ["pp", "ad"].includes(o.unite) ? Math.max(1, nbPers || Number(parent.qte) || 1) : 1;
+  const qte = Number(qteVoulue) > 0 ? Math.round(Number(qteVoulue)) : ["pp", "ad"].includes(o.unite) ? Math.max(1, nbPers || Number(parent.qte) || 1) : 1;
   const l = ligneDepuisPrestation(o, net, { langue, date: parent.date_service || "", qte, uid });
   const out = { ...l, option_de: parent.id, partenaire_id: parent.partenaire_id || o.partenaire_id || null, ...(parent.paye_sur_place !== undefined ? { paye_sur_place: !!parent.paye_sur_place } : {}) };
   if (unitaire !== null && unitaire !== undefined && unitaire !== "" && Number.isFinite(Number(unitaire))) {

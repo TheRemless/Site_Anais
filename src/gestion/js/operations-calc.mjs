@@ -1393,7 +1393,8 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
     } else reste.push({ cle: "prestation_id", reservation: pid, facture: premiere.prestation_id || null });
   }
 
-  // Options demandées depuis la réservation (26.11.2026) : `cible.options` = [{ ligne_id, prestation_id, prix, nouvelle }], la liste voulue.
+  // Options demandées depuis la réservation (26.11.2026) : `cible.options` = [{ ligne_id, prestation_id, prix, qte, nouvelle }], la liste voulue
+  // (`prix` : le total de l'option ; `qte` : sa quantité, quand elle est donnée).
   // Une option absente de la liste quitte la facture ; le prix d'une option gardée devient son total (prix unitaire s'il tombe juste) ; une
   // option nouvelle prend la ligne `ligne_id` donnée (le même identifiant sur la facture et le devis), sous les lignes du service.
   const retirees = new Set();
@@ -1414,6 +1415,9 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
         retirees.add(o.id);
         continue;
       }
+      // La quantité voulue (un seul plongeur sur deux, relecture de la PR 359) : posée avant le prix, qui se répartit sur elle.
+      const qv = Number(v.qte);
+      if (Number.isFinite(qv) && qv > 0) nouvelles.get(o).qte = Math.round(qv);
       if (v.prix !== null && v.prix !== undefined && v.prix !== "" && Number.isFinite(Number(v.prix))) prixLigne(nouvelles.get(o), arr(Number(v.prix)));
     }
     const parent = nouvelles.get(premiere);
@@ -1426,7 +1430,7 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
       const net = netDe(p);
       // La langue des documents de l'entreprise quand le document ne la porte pas (anciens documents de Secret, sans `langue`).
       const langueOption = langue || langueDoc || "";
-      const l = ligneOption(p, parent, net === undefined || net === null ? null : { net }, { langue: langueOption, personnes: personnes || r.personnes || null, prix: v.prix, uid: () => v.ligne_id });
+      const l = ligneOption(p, parent, net === undefined || net === null ? null : { net }, { langue: langueOption, personnes: personnes || r.personnes || null, prix: v.prix, qte: v.qte, uid: () => v.ligne_id });
       // Comme les autres lignes du dossier : le nom court (`titre`) et la description générée.
       const titre = l.libelle;
       ajouts.push(descriptionGeneree({ ...l, titre }, langueOption) !== null ? { ...l, titre, libelle: descriptionGeneree({ ...l, titre }, langueOption) } : l);

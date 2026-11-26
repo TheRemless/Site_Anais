@@ -198,6 +198,38 @@ begin
 end
 $$;
 
+-- Une ligne d'option changée sur la facture ou le devis (ajoutée, retirée, autre prestation, autre quantité : un seul plongeur sur deux) :
+-- le net prévu des réservations qui portent ces lignes suit, comme pour un changement de la réservation (relecture de la PR 359). Un net tapé
+-- à la main reste (calculer_nets_reservation, migration 32 : seul un net encore égal au dernier calcul suit).
+create or replace function suivre_nets_options_document() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  avant jsonb := case when jsonb_typeof(old.contenu->'lignes') = 'array' then old.contenu->'lignes' else '[]'::jsonb end;
+  apres jsonb := case when jsonb_typeof(new.contenu->'lignes') = 'array' then new.contenu->'lignes' else '[]'::jsonb end;
+  ids text[];
+  x record;
+begin
+  ids := array(
+    select l->>'id' from jsonb_array_elements(apres) l
+    where nullif(l->>'option_de', '') is not null
+      and not exists (select 1 from jsonb_array_elements(avant) o where o->>'id' = l->>'id' and o->>'prestation_id' is not distinct from l->>'prestation_id' and o->'qte' is not distinct from l->'qte')
+    union
+    select o->>'id' from jsonb_array_elements(avant) o
+    where nullif(o->>'option_de', '') is not null and not exists (select 1 from jsonb_array_elements(apres) l where l->>'id' = o->>'id'));
+  if cardinality(ids) = 0 then return null; end if;
+  for x in select r.id from reservations r
+           where r.dossier_id = new.dossier_id and r.statut <> 'annule'
+             and (r.ligne_id = any (ids) or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(r.details->'lignes_ids') = 'array' then r.details->'lignes_ids' else '[]'::jsonb end) z where z = any (ids))) loop
+    perform calculer_nets_reservation(x.id, false, true);
+  end loop;
+  return null;
+end
+$$;
+revoke all on function suivre_nets_options_document() from public, anon, authenticated;
+drop trigger if exists suivre_nets_options_document on documents;
+create trigger suivre_nets_options_document after update of contenu on documents
+  for each row when (new.type in ('facture', 'devis')) execute function suivre_nets_options_document();
+
 revoke all on function retirer_option_supprimee() from public, anon, authenticated;
 
 drop trigger if exists retirer_option_supprimee on prestations;

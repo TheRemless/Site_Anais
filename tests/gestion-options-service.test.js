@@ -74,13 +74,16 @@ test("ligneOption : même partenaire, date et mode que le service ; prix modifia
   assert.equal(P.optionsDe("pT", [{ ...o, option_de: ["pT"] }, { id: "z", option_de: [] }]).length, 1);
 });
 
-test("carte de l'Assistant : le prix tapé d'une option par personne donne son prix unitaire, qui suit les personnes ; les autres offres l'ont aussi", async () => {
+test("carte de l'Assistant : le prix d'une option donne son prix unitaire, sur la quantité de la carte (sinon les personnes)", async () => {
   const A = await import("../src/gestion/js/assistant-calc.mjs");
   const lunch = { id: "pL", libelle: "Lunch box", libelle_en: "Lunch box", prix_vente: 150, unite: "pp", partenaire_id: "pa", option_de: ["pT"], actif: true };
   const ctxCat = { prestations: [lunch], partenaires: [{ id: "pa", nom: "Bateaux", actif: true }] };
-  // 240 tapés pour 2 personnes (qte de la carte) : 120 l'unité ; 3 personnes au moment de créer → 360.
+  // 240 pour 2 lunch box (qte de la carte) : 120 l'unité, 2 lunch box même pour 3 personnes (la quantité de la carte fait foi).
   const o = A.avecOptionsCarte({ genre: "prestation", id: "pT", total: 6000, extras: [] }, [{ id: "pL", prix: 240, qte: 2 }], { adultes: 3, enfants: 0 }, ctxCat);
-  assert.deepEqual([o.extras[0].unitaire, o.extras[0].qte, o.total], [120, 3, 6360]);
+  assert.deepEqual([o.extras[0].unitaire, o.extras[0].qte, o.total], [120, 2, 6240]);
+  // Sans quantité sur la carte : le nombre de personnes.
+  const sans = A.avecOptionsCarte({ genre: "prestation", id: "pT", total: 6000, extras: [] }, [{ id: "pL", prix: null }], { adultes: 3, enfants: 0 }, ctxCat);
+  assert.deepEqual([sans.extras[0].unitaire, sans.extras[0].qte, sans.total], [150, 3, 6450]);
 });
 
 test("règles de la demande : une option du catalogue n'est jamais proposée comme service", async () => {
@@ -351,6 +354,74 @@ test("carte « reservation » : une option sans prix bloque « Ajouter au dossie
   assert.match(src, /bloque: lieuxCarte\(c\)\.length > 0 \|\| optionSansPrix/);
   assert.match(src, /optionsCarte_\(s, champQteOption\(c, 0\)\)/);
   assert.match(src, /optionsCarte_\(s, champQteOption\(c, i\)\)/);
+});
+
+// Deux plongeurs, un seul prend la plongée en plus (1 000, net 600) : de bout en bout, la quantité 1 est écrite partout.
+async function plongee() {
+  dans("excursions");
+  const { pa } = await catalogueDe("excursions");
+  const sortie = await E.inserer("prestations", { partenaire_id: pa.id, famille: "excursion", groupe: "Dives Exemple", libelle: "Sortie plongée Exemple", libelle_en: "Dive trip Exemple", prix_vente: 7000, unite: "grp", actif: true, option_de: [] });
+  const extra = await E.inserer("prestations", { partenaire_id: pa.id, famille: "excursion", groupe: "Dives Exemple", libelle: "Plongée en plus Exemple", libelle_en: "Extra dive Exemple", prix_vente: 1000, unite: "pp", actif: true, option_de: [sortie.id] });
+  for (const [p, net] of [[sortie, 5000], [extra, 600]]) await E.inserer("prestations_nets", { prestation_id: p.id, net });
+  return { sortie, extra };
+}
+const netDe = (resaId) => Number(((E.etat.brut.reservations_nets || []).find((x) => x.reservation_id === resaId) || {}).net_prevu);
+
+test("bout en bout : carte « dossier », un plongeur sur deux prend l'option (quantité 1) → facture 1 × 1 000, net 5 600, voucher sans « ×2 »", async () => {
+  const { sortie, extra } = await plongee();
+  const c = await carteDossier([service(sortie, extra)]);
+  const opt = c.donnees.services[0].options[0];
+  assert.equal(opt.qte, 2, "la carte part du nombre de personnes");
+  // La quantité changée sur la carte (champ « Quantité », avecQtes) : 1, et le prix suit.
+  c.donnees.services[0].options[0] = { ...opt, qte: 1, prix: 1000 };
+  const r = await ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+  assert.equal(r.ok, true, r.motif);
+  const [resa] = resasDu(r.dossier);
+  assert.equal(Number(resa.montant_vente), 8000);
+  const ligne = factureDu(r.dossier).contenu.lignes.find((l) => l.option_de);
+  assert.deepEqual([ligne.qte, ligne.unite], [1, 1000]);
+  assert.equal(netDe(resa.id), 5600, "net prévu : 5 000 + 1 × 600");
+  const texte = renderVoucher(vouchersDuDossier(r.dossier.id)[0]).textContent;
+  assert.match(texte, /Extra dive Exemple/);
+  assert.doesNotMatch(texte, /Extra dive Exemple \(×2\)/);
+});
+
+test("fenêtre d'un service lié à sa facture : quantité 2 → 1 écrite sur la facture, le net suit, relue à la réouverture ; les personnes ne l'écrasent pas", async () => {
+  const { sortie, extra } = await plongee();
+  const c = await carteDossier([service(sortie, extra)]);
+  const r0 = await ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  assert.equal(Number(resa.montant_vente), 9000);
+  const { formulaireReservation } = await import("../src/gestion/js/views/reservations.mjs");
+  let fini = null;
+  const f = formulaireReservation(E.etat.db.reservations.find((x) => x.id === resa.id), (x) => (fini = x || true));
+  document.body.append(f);
+  for (let i = 0; i < 50 && !f.querySelector(".options-resa-qte"); i++) await new Promise((x) => setTimeout(x, 10));
+  const q = f.querySelector(".options-resa-qte");
+  q.value = "1";
+  q.dispatchEvent(new Event("input"));
+  assert.equal(Number(f.querySelector("#r-vente").value), 8000);
+  // Une personne de plus : la quantité choisie (1) ne suit pas, elle n'était pas celle des personnes.
+  const ad = f.querySelector("#r-ad");
+  ad.value = "3";
+  ad.dispatchEvent(new Event("input"));
+  assert.equal(f.querySelector(".options-resa-qte").value, "1");
+  ad.value = "2";
+  ad.dispatchEvent(new Event("input"));
+  const form = f.tagName === "FORM" ? f : f.querySelector("form");
+  form.dispatchEvent(new Event("submit", { cancelable: true }));
+  for (let i = 0; i < 100 && !fini; i++) await new Promise((x) => setTimeout(x, 10));
+  f.remove();
+  const ligne = factureDu(r0.dossier).contenu.lignes.find((l) => l.option_de);
+  assert.deepEqual([ligne.qte, ligne.unite], [1, 1000], "la facture porte 1 × 1 000");
+  assert.equal(Number(E.etat.db.reservations.find((x) => x.id === resa.id).montant_vente), 8000);
+  assert.equal(netDe(resa.id), 5600, "net prévu : 5 000 + 1 × 600");
+  // Réouverture : la quantité relue est 1.
+  const f2 = formulaireReservation(E.etat.db.reservations.find((x) => x.id === resa.id), () => {});
+  document.body.append(f2);
+  for (let i = 0; i < 50 && !f2.querySelector(".options-resa-qte"); i++) await new Promise((x) => setTimeout(x, 10));
+  assert.equal(f2.querySelector(".options-resa-qte").value, "1");
+  f2.remove();
 });
 
 test("Taxi : une carte « modification » d'option est refusée, rien n'est écrit", async () => {

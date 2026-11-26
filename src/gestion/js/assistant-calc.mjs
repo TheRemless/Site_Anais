@@ -61,10 +61,11 @@ export function avecOptionsCarte(offre, options, pax, { prestations = [], parten
   for (const o of options) {
     const p = possibles.find((x) => x.id === (o && o.id));
     if (!p || extras.some((e) => e.source.id === p.id)) continue;
-    const qte = ["pp", "ad"].includes(p.unite) ? nbPers : 1;
+    // La quantité de la carte (o.qte, modifiable : un seul plongeur sur deux) ; sans elle, le nombre de personnes pour une option par personne.
+    const qte = Number(o.qte) > 0 ? Math.round(Number(o.qte)) : ["pp", "ad"].includes(p.unite) ? nbPers : 1;
     const prixCarte = o.prix !== null && o.prix !== undefined && o.prix !== "" && Number(o.prix) >= 0 ? Number(o.prix) : null;
-    // Le prix tapé est le total pour les personnes de la carte (o.qte) : le prix unitaire en vient, puis suit les personnes du moment.
-    const unitaire = prixCarte !== null ? Math.round((prixCarte / Math.max(1, Number(o.qte) || qte)) * 100) / 100 : p.prix_vente === null || p.prix_vente === undefined ? null : Number(p.prix_vente);
+    // Le prix de la carte est le total de l'option : le prix unitaire en vient.
+    const unitaire = prixCarte !== null ? Math.round((prixCarte / qte) * 100) / 100 : p.prix_vente === null || p.prix_vente === undefined ? null : Number(p.prix_vente);
     extras.push({ source: p, qte, unitaire, ligne: p.libelle_en || libelleClient(p.libelle), option: true });
     total = total === null || total === undefined || unitaire === null ? total : Math.round((Number(total) + unitaire * qte) * 100) / 100;
   }

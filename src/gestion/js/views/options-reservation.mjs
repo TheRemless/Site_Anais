@@ -57,6 +57,8 @@ export function blocOptionsReservation(r, { vente, personnes = () => r.personnes
     return Math.max(1, (Number(p.adultes) || 0) + (Number(p.enfants) || 0));
   };
   const qtePour = (o) => (parPersonne(o.unite) ? nbPersonnes() : 1);
+  // Le nombre de personnes connu en dernier : une option qui en avait autant suit un changement, les autres gardent leur quantité.
+  let dernierNb = nbPersonnes();
   const modifierOption = (o, champ, valeur) => {
     const avant = somme(etatOptions);
     o[champ] = valeur;
@@ -169,12 +171,16 @@ export function blocOptionsReservation(r, { vente, personnes = () => r.personnes
       prestationId = id || null;
       if (pret) dessiner();
     },
-    // Les personnes changent : une option par personne suit leur nombre, sauf une quantité tapée ici.
+    // Les personnes changent : une option par personne suit leur nombre seulement si sa quantité était celle des personnes d'avant (comme
+    // contenuAvecReservation) ; une quantité choisie ailleurs (ici, l'éditeur de facture, la carte) reste.
     personnes() {
-      const a = etatOptions.filter((o) => parPersonne(o.unite) && !o.qteTapee && Number(o.qte) !== nbPersonnes());
+      const nouveau = nbPersonnes();
+      const ancien = dernierNb;
+      dernierNb = nouveau;
+      const a = etatOptions.filter((o) => parPersonne(o.unite) && !o.qteTapee && Number(o.qte) === ancien && ancien !== nouveau);
       if (!a.length) return;
       const avant = somme(etatOptions);
-      a.forEach((o) => (o.qte = nbPersonnes()));
+      a.forEach((o) => (o.qte = nouveau));
       majVente(avant);
       dessiner();
     },
@@ -192,7 +198,7 @@ export function blocOptionsReservation(r, { vente, personnes = () => r.personnes
     // contenuAvecService (prix total de chaque option).
     voulues() {
       if (!liee || !pret || !change()) return null;
-      return etatOptions.map((o) => ({ ligne_id: o.ligne_id, prestation_id: o.prestation_id, prix: arr(totalDe(o)), ...(o.nouvelle ? { nouvelle: true } : {}) }));
+      return etatOptions.map((o) => ({ ligne_id: o.ligne_id, prestation_id: o.prestation_id, prix: arr(totalDe(o)), qte: Number(o.qte) || 1, ...(o.nouvelle ? { nouvelle: true } : {}) }));
     },
     // Service sans ligne de facture. null : rien n'a changé. Sinon details.options à écrire (prix total, quantité).
     detailsOptions() {

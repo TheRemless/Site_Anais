@@ -77,6 +77,17 @@ const resa = (await un("insert into reservations (entite_id, dossier_id, ligne_i
 const calcule = await un("select (net_reservation_calcule(r)).net as net, (net_reservation_calcule(r)).complet as complet from reservations r where r.id = $1", [resa]);
 ok(Number(calcule.net) === 5450 && calcule.complet === true, "le net prévu compte le net de l'option (5 000 + 450)");
 
+// La quantité d'une ligne d'option changée sur la facture (un seul plongeur sur deux) : le net prévu de la réservation suit.
+await db.query("insert into reglages (entite_id, valeur) values ($1, '{\"fonctionnement\":\"excursions\"}'::jsonb) on conflict (entite_id) do update set valeur = reglages.valeur || excluded.valeur", [E]);
+await db.query("select calculer_nets_reservation($1, false, true)", [resa]);
+const netResa = async () => Number((await un("select net_prevu from reservations_nets where reservation_id = $1", [resa]) || {}).net_prevu);
+ok((await netResa()) === 5450, "net prévu écrit : 5 000 + 450");
+await db.query("update documents set contenu = jsonb_set(contenu, '{lignes,1,qte}', '2'::jsonb) where dossier_id = $1 and type = 'facture'", [dossier]);
+ok((await netResa()) === 5900, "quantité de l'option passée à 2 sur la facture : le net suit (5 000 + 2 × 450)");
+await db.query("update reservations_nets set net_prevu = 4000 where reservation_id = $1", [resa]);
+await db.query("update documents set contenu = jsonb_set(contenu, '{lignes,1,qte}', '1'::jsonb) where dossier_id = $1 and type = 'facture'", [dossier]);
+ok((await netResa()) === 4000, "un net tapé à la main reste");
+
 // Un service sans ligne de facture (ajouté par carte) : ses options (details.options) comptent dans son net, et le net suit quand elles changent.
 const resaCarte = (await un("insert into reservations (entite_id, dossier_id, prestation_id, partenaire_id, libelle, personnes, montant_vente, paye_sur_place, details) values ($1, $2, $3, $4, 'Tour privé Exemple', '{\"adultes\":2}', 6600, true, '{}'::jsonb) returning id", [E, dossier, tour, P1])).id;
 // (Le harnais n'écrit pas reservations_nets : le net se lit sur net_reservation_calcule, et le déclencheur doit regarder details.options.)
