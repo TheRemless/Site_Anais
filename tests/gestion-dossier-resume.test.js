@@ -145,3 +145,12 @@ test("envoi des documents : « Envoyer » ouvre la fenêtre d'envoi sur tous les
   assert.match(editeur, /h\("button", \{ class: "principal", type: "button", onclick: envoyer \}, tr\("Envoyer"\)\)/);
   assert.match(editeur, /sansImpression\(\) \? null : h\("button", \{ class: "lien", type: "button", title: tr\("Imprimer \(Ctrl\+P\)"\), onclick: imprimer \}, tr\("Imprimer"\)\)/);
 });
+
+test("datesResume : les dates du dossier d'abord, sinon la plage des services datés non annulés (audit mobile n° 2)", async () => {
+  const { datesResume } = await load();
+  assert.deepEqual(datesResume({ date_depart: "2026-12-02", date_retour: "2026-12-12" }, [res({ date_service: "2026-11-27" })]), { debut: "2026-12-02", fin: "2026-12-12" });
+  assert.deepEqual(datesResume({ date_depart: "2026-12-02" }, []), { debut: "2026-12-02", fin: "2026-12-02" });
+  assert.deepEqual(datesResume({}, [res({ id: "a", date_service: "2026-11-29" }), res({ id: "b", date_service: "2026-11-27" }), res({ id: "c", date_service: "2026-11-20", statut: "annule" }), res({ id: "d", date_service: null })]), { debut: "2026-11-27", fin: "2026-11-29" });
+  assert.equal(datesResume({}, [res({ date_service: null })]), null);
+  assert.equal(datesResume({}, []), null);
+});

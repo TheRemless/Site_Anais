@@ -1,6 +1,6 @@
 import { variantesProposees } from "../reglages-calc.mjs";
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument, estAdmin } from "../etat.mjs";
-import { h, champ, toast, num, vider, icone, modal, confirmer, erreurChamp } from "../ui.mjs";
+import { h, champ, toast, num, vider, icone, modal, confirmer, erreurChamp, barreAction } from "../ui.mjs";
 import { montantSaisi } from "../nets-reservation-calc.mjs";
 import { prixVenteFige } from "../partenaires-calc.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
@@ -703,7 +703,7 @@ function editeurVue(id) {
   }
   const boutonEnvoi = h("button", { class: "secondaire", type: "button" });
   function majBoutonEnvoi() {
-    boutonEnvoi.textContent = doc.envoye_le ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(doc.envoye_le) }) : tr("Envoyé le {date}", { date: formatDate(doc.envoye_le) })) : estFacture || locale ? tr("Marquer comme envoyée") : tr("Marquer comme envoyé");
+    boutonEnvoi.textContent = doc.envoye_le ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(doc.envoye_le) }) : tr("Envoyé le {date}", { date: formatDate(doc.envoye_le) })) : estFacture || locale ? tr("Déjà envoyée autrement") : tr("Déjà envoyé autrement");
     boutonEnvoi.title = doc.envoye_le ? tr("Cliquer pour retirer la date d'envoi") : "";
     majVerrouNumero();
     majBandeauEnvoi();
@@ -796,7 +796,9 @@ function editeurVue(id) {
     avertissementAnglais,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,
     barreEditeur,
-    corpsEditeur
+    corpsEditeur,
+    // Téléphone : « Envoyer » reste à portée du pouce une fois descendu dans le document (audit mobile n° 12).
+    lectureSeule ? null : (() => { const b = barreAction(h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer"))); b.classList.add("seulement-mobile"); return b; })()
   );
   if (lectureSeule) {
     for (const el of formulaire.querySelectorAll("input, select, textarea, button")) el.disabled = true;

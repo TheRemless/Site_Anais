@@ -298,6 +298,8 @@ legend { padding: 0 6px; font-weight: 700; }
 .carte-ligne-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; }
 .carte-ligne-tete .calc { margin-left: auto; font-variant-numeric: lining-nums tabular-nums; color: var(--texte-2); font-size: 0.9rem; }
 .outils { display: flex; gap: 2px; }
+/* Téléphone : Monter, Descendre, Supprimer d'une ligne de devis en vrais boutons espacés, plus en liens collés (audit mobile n° 41). */
+@media (max-width: 719px) { .carte-ligne-tete .outils { gap: 6px; flex-wrap: wrap; } .carte-ligne-tete .outils .lien { min-height: 44px; padding: 0 10px; border: 1px solid var(--bord-fort); border-radius: 8px; text-decoration: none; } }
 .ajouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .total-edition { margin: 8px 0 12px; font-weight: 700; }
 
@@ -725,6 +727,7 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 
 /* Barre d'action collante : Enregistrer, Annuler. Fixée au-dessus des onglets, au-dessus du clavier quand il est ouvert. */
 .barre-action-espace { height: 76px; }
+.barre-action .bouton-icone-seul { min-width: 48px; padding: 0 12px; }
 .barre-action { position: fixed; z-index: 29; left: 0; right: 0; bottom: var(--barre-basse); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; padding: 10px 16px; background: rgba(255, 255, 255, 0.96); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); }
 .barre-action > .principal, .barre-action > .secondaire { flex: 1 1 auto; }
 html.clavier .barre-action { bottom: var(--clavier); padding-bottom: 10px; }
@@ -1030,6 +1033,12 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .barre-dossier .barre-action > * { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
 .barre-dossier .barre-action > .principal { flex: 1.5 1 0; }
 .barre-dossier .barre-action svg { display: none; }
+/* WhatsApp en icône seule (le logo suffit) : largeur fixe, le libellé de l'étape suivante garde la place et passe sur deux lignes au besoin (audit mobile n° 11). */
+.barre-dossier .barre-action > .bouton-icone-seul { flex: none; width: 52px; padding: 0; }
+.barre-dossier .barre-action > .bouton-icone-seul svg { display: block; }
+.barre-dossier .barre-action > .avec-icone { gap: 4px; }
+.barre-dossier .barre-action > .avec-icone svg { display: inline-block; flex: none; }
+.barre-dossier .barre-action > .principal { flex: 2 1 0; white-space: normal; line-height: 1.15; }
 
 /* Filtres secondaires repliés derrière une ligne (Trajets) : départ et arrivée restent toujours visibles */
 .filtres-plus { flex: 1 1 100%; }
@@ -1317,6 +1326,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-libelle { margin: 0 0 4px; font-size: 0.82rem; font-weight: 600; color: var(--texte-2); }
 .resume-titre { display: block; margin: -8px 0 0; padding: 8px 0; color: var(--texte); font-size: 1.05rem; font-weight: 700; text-decoration: none; }
 .resume-contact { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; color: var(--teal-700); font-weight: 500; overflow-wrap: anywhere; }
+/* Un numéro ne se coupe jamais en deux lignes (« +41 79 000 00 / 01 », audit mobile n° 29). */
+.resume-contact[href^="tel:"], a[href^="tel:"] { overflow-wrap: normal; white-space: nowrap; }
+.resume-contact svg { flex: none; }
 .resume-valeur { margin: 0; font-weight: 700; }
 .resume-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .resume-lien { display: flex; flex-direction: column; gap: 6px; min-height: 44px; margin: -6px 0; padding: 6px 0; color: var(--texte); text-decoration: none; }

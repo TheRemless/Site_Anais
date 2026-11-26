@@ -218,7 +218,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     ? h(
         "div",
         { class: principal ? "carte-barre" : "carte-barre seul" },
-        principal ? h("button", { class: "principal", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]) : null,
+        // Dans la fiche dossier, l'étape suivante est déjà le bouton principal de la barre : la carte garde un geste secondaire (audit mobile n° 10).
+        principal ? h("button", { class: avecDossier ? "principal" : "secondaire", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]) : null,
         menu.length ? h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null
       )
     : null;
@@ -856,7 +857,7 @@ export function sectionReservationsDossier(d, doc) {
       // « Services » (audit n° 54, contrôle du 17.11.2026, D12), comme dans Nouveau dossier.
       h("h2", null, tr("Services")),
       ecrit
-        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc, { personnesDuDossier: true }), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
+        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc, { personnesDuDossier: true }), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "secondaire petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
         : null
     ),
     rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir, ecart: doc && !modeTaxi() ? (r) => ecartReservation(r, doc) : null }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))
