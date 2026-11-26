@@ -7,4 +7,7 @@ export const EN_DEFILEMENT = {
   // Audit mobile n° 4 (26.11.2026) : réponse préparée repliée sur téléphone.
   "Voir la réponse": "See the reply",
   "Replier": "Collapse",
+  // Retour dans l'entreprise d'origine après l'Assistant d'une autre (relecture de la PR 355).
+  "De retour dans {nom}.": "Back in {nom}.",
+  "Assistant ouvert dans {nom}.": "Assistant opened in {nom}.",
 };

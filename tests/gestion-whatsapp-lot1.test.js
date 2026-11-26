@@ -83,7 +83,7 @@ test("dev B2 : une réponse retouchée ne fige plus l'écran, pas de « lu » ta
   assert.match(vue, /\{ class: "wa-prop", "aria-label": tr\("Réponse préparée"\), "data-pas-saisie": "" \}/);
   const copier = vue.slice(vue.indexOf("async function copier("), vue.indexOf("// Marquer traitée ou ignorer"));
   assert.ok(copier.indexOf("toujoursCourante(c, p)") < copier.indexOf("versPressePapiers("), "contrôle avant la copie (lot 2 : presse-papiers avec repli)");
-  assert.match(vue, /copier\(c, p, zone, e\.currentTarget\)/);
+  assert.match(vue, /copier\(c, p, zone, e\.currentTarget[,)]/);
   const visibilite = vue.slice(vue.indexOf("function suivreVisibilite"), vue.indexOf("// ---- Écran"));
   assert.ok(visibilite.indexOf("if (etat.redessinEnAttente ||") > 0 && visibilite.indexOf("if (etat.redessinEnAttente ||") < visibilite.indexOf("marquerLue("), "pas de lu tant qu'un redessin attend");
   assert.ok(visibilite.indexOf("affiche.dernier !== (c.dernier_message_le || null)") < visibilite.indexOf("marquerLue("), "ni si un message est arrivé depuis le rendu");

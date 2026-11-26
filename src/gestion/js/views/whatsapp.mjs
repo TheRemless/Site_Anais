@@ -29,7 +29,7 @@ import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-
 import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 import { noteTypeDeduit } from "./whatsapp-type.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
-import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
+import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS, CLE_RETOUR_ENTITE } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
 import { suivreFil, decisionArrivee, ratioMedia, cacheLiens, empreinteMessage } from "../fil-defilement.mjs";
@@ -584,7 +584,7 @@ async function versAssistant(c, prop) {
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
-  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  passerDansEntreprise(c, entiteId);
   naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
 }
 // ---- Demander à l'assistant (PR B, 21.11.2026) ----------------------------------------------------------------------------------------
@@ -608,8 +608,27 @@ async function demanderAssistant(c, prop, bouton = null) {
   if (bouton) {
     if (bouton.disabled) return;
     bouton.disabled = true;
-    setTimeout(() => (bouton.disabled = false), 1500);
   }
+  try {
+    await ouvrirAssistantQuestion(c, prop);
+  } finally {
+    // Rallumé à la fin, quoi qu'il arrive (fenêtre fermée, erreur) : jamais après un délai fixe (relecture de la PR 355).
+    if (bouton) bouton.disabled = false;
+  }
+}
+// L'entreprise quittée pour ouvrir l'Assistant d'une autre : rangée pour le retour sur cette conversation, et le changement est dit.
+function passerDansEntreprise(c, entiteId) {
+  if (entiteId === etat.entiteId) return;
+  try {
+    sessionStorage.setItem(CLE_RETOUR_ENTITE, JSON.stringify({ conversation: c.id, entite: etat.entiteId, le: Date.now() }));
+  } catch {
+    // stockage refusé : on reste dans la nouvelle entreprise
+  }
+  changerEntite(entiteId, { naviguer: false });
+  const e = entite(entiteId);
+  if (e) toast(tr("Assistant ouvert dans {nom}.", { nom: e.nom }));
+}
+async function ouvrirAssistantQuestion(c, prop) {
   let entiteId = c.entite_id;
   if (!entiteId) {
     const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
@@ -629,7 +648,7 @@ async function demanderAssistant(c, prop, bouton = null) {
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
-  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  passerDansEntreprise(c, entiteId);
   naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
 }
 
@@ -690,8 +709,9 @@ function actionsDossier(c, prop, dossier = null) {
 
 // Le résumé en trois lignes (fonction « whatsapp », Claude Haiku), repliable ; replié ou non est gardé pour la session.
 const resumesReplies = new Set();
-// Les réponses préparées dépliées par la personne sur téléphone (audit mobile n° 4, 26.11.2026), gardées d'un redessin à l'autre.
-const reponsesDepliees = new Set();
+// Sur téléphone, le choix de la personne pour chaque réponse préparée (audit mobile n° 4, 26.11.2026) : id → dépliée (vrai) ou repliée
+// (faux), gardé d'un redessin à l'autre. Sans choix, la réponse est repliée, sauf texte modifié ou contenu interne qui bloque la copie.
+const choixReponses = new Map();
 function blocResume(c) {
   const lignes = lignesResume(c.resume);
   if (!lignes.length) return null;
@@ -856,7 +876,7 @@ function bulleMessage(m) {
 }
 
 // ---- Proposition de l'agent -------------------------------------------------------------------------------------------------------
-async function copier(c, p, zone, bouton) {
+async function copier(c, p, zone, bouton, deplier = null) {
   if (bouton.disabled) return;
   // Comme pour l'envoi (audit dev B2) : une réponse remplacée entre-temps (le client a réécrit) ne se copie pas sans le dire.
   if (!toujoursCourante(c, p)) {
@@ -872,6 +892,8 @@ async function copier(c, p, zone, bouton) {
     setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier"))), bouton.setAttribute("aria-label", tr("Copier"))), 2500);
     toast(tr("Réponse copiée. Collez-la dans WhatsApp."));
   } catch {
+    // Un champ replié (display: none) ne se sélectionne pas : on déplie d'abord (relecture de la PR 355).
+    if (deplier) deplier();
     zone.focus();
     zone.select();
     toast(tr("Copie impossible dans ce navigateur. Le texte est sélectionné, copiez-le à la main."), true);
@@ -1057,7 +1079,7 @@ function carteProposition(c, p, messages) {
   // Le texte modifié survit au redessin de l'écran (synchronisation, nouveau message dans une autre conversation).
   zone.value = brouillons.has(p.id) ? brouillons.get(p.id) : p.texte || "";
   const f = fenetre(messages);
-  const boutonCopier = h("button", { class: "secondaire wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget) }, icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier")));
+  const boutonCopier = h("button", { class: "secondaire wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget, () => plier(true, { choisi: true })) }, icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier")));
   boutonCopier.setAttribute("aria-label", tr("Copier"));
   // « Ouvrir dans WhatsApp » avec la réponse déjà écrite (wa.me/<numéro>?text=, lot 2, usage n° 3) : un tap, Nani n'a plus qu'à envoyer.
   // Le texte est aussi copié, au cas où l'app ne reprend pas le texte du lien.
@@ -1123,30 +1145,23 @@ function carteProposition(c, p, messages) {
   // nom interne bloque la copie. Ordinateur : rien ne change (la colonne a sa propre hauteur).
   const telephone = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
   const ajusterZone = () => {
-    if (!telephone() || !zone.isConnected || !zone.offsetParent) return false;
+    if (!telephone() || !zone.isConnected || !zone.offsetParent) return;
     zone.style.height = "auto";
     zone.style.height = `${zone.scrollHeight + 2}px`;
-    return true;
-  };
-  let essais = 0;
-  const ajusterQuandAffichee = () => {
-    if (!ajusterZone() && essais++ < 30) requestAnimationFrame(ajusterQuandAffichee);
   };
   zone.addEventListener("input", ajusterZone);
-  if (brouillons.has(p.id) || !alerte.hidden) reponsesDepliees.add(p.id);
   const texteApercu = h("span", { class: "wa-apercu-texte" });
   const apercu = h("button", { class: "wa-apercu", type: "button", "aria-expanded": "false", "aria-controls": "wa-reponse" }, texteApercu, h("span", { class: "wa-apercu-voir" }, tr("Voir la réponse")));
   const replier = h("button", { class: "lien wa-replier", type: "button", "aria-controls": "wa-reponse" }, tr("Replier"));
-  const plier = (deplie) => {
-    if (deplie) reponsesDepliees.add(p.id);
-    else reponsesDepliees.delete(p.id);
+  const plier = (deplie, { choisi = false } = {}) => {
+    if (choisi) choixReponses.set(p.id, deplie);
     section.classList.toggle("repliee", !deplie);
     apercu.setAttribute("aria-expanded", deplie ? "true" : "false");
     texteApercu.textContent = zone.value.replace(/\s+/g, " ").trim();
-    if (deplie) ajusterQuandAffichee();
+    if (deplie) requestAnimationFrame(ajusterZone);
   };
-  apercu.addEventListener("click", () => plier(true));
-  replier.addEventListener("click", () => plier(false));
+  apercu.addEventListener("click", () => plier(true, { choisi: true }));
+  replier.addEventListener("click", () => plier(false, { choisi: true }));
   const avs = avertissements({ ...p, avertissements: filtre.visibles });
   // Préparée avec les données d'une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis) : on le dit.
   const pour = p.entite_id && p.entite_id !== c.entite_id ? entite(p.entite_id) : null;
@@ -1169,7 +1184,18 @@ function carteProposition(c, p, messages) {
     lectureSeule ? null : h("div", { class: "wa-prop-suite" }, boutonTraitee, boutonIgnorer, boutonEnvoyer),
     pourquoi
   );
-  plier(reponsesDepliees.has(p.id));
+  plier(choixReponses.has(p.id) ? choixReponses.get(p.id) : brouillons.has(p.id) || !alerte.hidden);
+  // Le champ suit sa largeur (rotation, fenêtre redimensionnée) et sa première mise en page, sans limite de temps (relecture de la PR 355) :
+  // l'observateur s'arrête quand la réponse quitte l'écran.
+  if (typeof ResizeObserver === "function") {
+    let largeur = 0;
+    const ro = new ResizeObserver(() => {
+      if (!section.isConnected) return ro.disconnect();
+      const l = Math.round(zone.getBoundingClientRect().width);
+      if (l && l !== largeur) ((largeur = l), ajusterZone());
+    });
+    ro.observe(zone);
+  }
   return section;
 }
 
