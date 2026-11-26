@@ -127,7 +127,7 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
   pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service."),
   dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service."),
-  // Options d'un service (26.11.2026, INV-2026-055).
+  // Options d'un service (26.11.2026, un dossier du 26.11.2026).
   option_seule: N_("Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part."),
   option_inconnue: N_("Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),

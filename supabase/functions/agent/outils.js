@@ -231,7 +231,7 @@ const SERVICE = obj({
   sans_siege: B("true seulement si le client (ou la personne) a dit qu'il ne faut AUCUN siège enfant ni bébé, sinon false. Jamais true par défaut."),
   bagages: I("Nombre de bagages écrit dans la conversation (« 2 valises », « 3 bags »), 0 si rien n'est dit. Imprimé sur le voucher, jamais dans une remarque."),
   prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes. Sans les options : leur prix va dans « options »."),
-  // Les options du service (26.11.2026, INV-2026-055 : l'extension Koh Kradan du 4 Islands privé était devenue un second service).
+  // Les options du service (26.11.2026, l'extension Koh Kradan du 4 Islands privé était devenue un second service).
   options: {
     type: "array",
     description: "Les options demandées pour CE service (extension d'une île, lunch box, transfert d'hôtel…) : seulement celles que chercher_catalogue rend dans « options » de la ligne de ce service. Une option n'est jamais un service à part. [] s'il n'y en a pas.",

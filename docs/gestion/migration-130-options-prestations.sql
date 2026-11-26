@@ -4,7 +4,7 @@
 -- les prestations existantes deviennent des options par un fichier à part (donnees-options-catalogue.sql), après accord.
 -- Retour en arrière : retour-130-options-prestations.sql.
 --
--- INV-2026-055 : le 4 Islands privé et son extension Koh Kradan étaient deux prestations à part ; l'Assistant a créé deux services et deux
+-- le 4 Islands privé et son extension Koh Kradan étaient deux prestations à part ; l'Assistant a créé deux services et deux
 -- vouchers, refaits à la main en un seul.
 -- Règles tenues par la base (quel que soit l'écran) :
 --   - `option_de` : les prestations que celle-ci complète. Toutes de la même entreprise ET du même partenaire (un seul voucher, un seul

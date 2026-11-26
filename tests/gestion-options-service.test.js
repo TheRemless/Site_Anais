@@ -1,4 +1,4 @@
-// Options d'un service (INV-2026-055, 26.11.2026). Le 4 Islands privé et son extension Koh Kradan étaient deux prestations : l'Assistant a
+// Options d'un service (26.11.2026). Le 4 Islands privé et son extension Koh Kradan étaient deux prestations : l'Assistant a
 // créé deux services et deux vouchers, refaits à la main en un seul. Une option est maintenant une ligne de facture rattachée à la ligne de
 // son service (`option_de`) : une seule réservation, un seul voucher, total = base + options, partout.
 // Ici : la règle pure, puis chaque chemin réel de la démo, de la carte de l'Assistant (fonction `agent`, executer) jusqu'à la réservation

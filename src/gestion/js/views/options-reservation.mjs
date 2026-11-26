@@ -1,4 +1,4 @@
-// Les options d'une réservation dans sa fenêtre (26.11.2026, INV-2026-055) : chaque option du service avec son prix modifiable (comme le
+// Les options d'une réservation dans sa fenêtre (26.11.2026, un dossier du 26.11.2026) : chaque option du service avec son prix modifiable (comme le
 // prix du service), « Retirer », et « Ajouter une option » parmi celles du tarif. Le montant vendu affiché suit : prix du service + options.
 // À l'enregistrement, `voulues()` donne la liste voulue (ou null si rien n'a changé) ; la facture et le devis suivent par le chemin commun
 // (suivreFacture → contenuAvecService, `options`), la réservation garde les lignes ajoutées et perd les lignes retirées.

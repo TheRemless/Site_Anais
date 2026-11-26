@@ -49,7 +49,7 @@ export const offresRecalculees = (offres, d, contexte) =>
     })
     .filter(Boolean);
 
-// Les options d'un service proposées par la carte de l'Assistant (26.11.2026, INV-2026-055) : [{ id, prix }], `prix` étant le prix total de
+// Les options d'un service proposées par la carte de l'Assistant (26.11.2026, un dossier du 26.11.2026) : [{ id, prix }], `prix` étant le prix total de
 // l'option venu de la conversation (sinon celui du catalogue). Seules les options du tarif, au catalogue de l'entreprise, sont gardées ; elles
 // deviennent des extras de l'offre (une ligne rattachée au service, views/demande.mjs) et comptent dans son total.
 export function avecOptionsCarte(offre, options, pax, { prestations = [], partenaires = [] } = {}) {

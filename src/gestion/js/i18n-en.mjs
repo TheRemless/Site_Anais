@@ -5,7 +5,7 @@ import { EN_CORRECTION } from "./i18n-en-correction.mjs";
 import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
 
 export const EN = {
-  // Options d'un service (26.11.2026, INV-2026-055)
+  // Options d'un service (26.11.2026, un dossier du 26.11.2026)
   "Options": "Options",
   "{n} option": "{n} option",
   "{n} options": "{n} options",

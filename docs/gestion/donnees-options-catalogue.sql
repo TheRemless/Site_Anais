@@ -1,4 +1,4 @@
--- Gestion : les prestations de Secret qui sont en fait des options d'un service deviennent des options (26.11.2026, INV-2026-055).
+-- Gestion : les prestations de Secret qui sont en fait des options d'un service deviennent des options (26.11.2026, un dossier du 26.11.2026).
 -- À appliquer APRÈS la migration 130 et après l'accord explicite de Jérémy. Données seulement : aucun prix, net, libellé ni autre ligne touchés.
 -- Idempotente : relancée, elle ne change plus rien. Relevé du catalogue en lecture seule le 26.11.2026 (mots « extension », « extra »,
 -- « supplement », « additional », « option », « add-on » dans les trois entreprises) : ZTP et VIP Taxi Lanta n'en ont aucune.
