@@ -1404,9 +1404,15 @@ details > summary { padding-block: 11px; margin: 0; }
 .carte-barre.seul { justify-content: flex-end; }
 .carte-barre .bouton-menu { flex: none; width: 48px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .carte-barre .bouton-menu svg { stroke-width: 3; }
+/* Le « … » de l'en-tête de Réservations sur téléphone (audit mobile n° 19). */
+.entete-actions .bouton-menu { width: 48px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.entete-actions .bouton-menu svg { stroke-width: 3; }
 .carte-lien.statique > .prestataire-etat { grid-column: 1 / -1; margin: 6px 0 0; }
 .menu-gestes { display: grid; gap: 8px; padding-top: 4px; }
 .menu-geste { width: 100%; min-height: 48px; justify-content: flex-start; text-align: left; }
+/* Les groupes du menu « … » d'une carte de réservation, sous un petit titre en casse normale (relecture de la PR 361). */
+.menu-groupe { display: grid; gap: 8px; margin-top: 8px; }
+.menu-groupe-titre { margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--texte-2); }
 .menu-geste.courant { border-color: var(--teal); background: var(--teal-100); }
 @media (min-width: 720px) { .carte-barre { justify-content: flex-end; } .carte-barre .principal { flex: 0 1 auto; padding-left: 20px; padding-right: 20px; } }
 .aide-repli { margin: 0 0 10px; }
@@ -2668,6 +2674,10 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .point-soir-bloc { margin-top: 14px; }
 .point-soir-bloc h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 1rem; margin: 0 0 8px; }
 .point-soir-message { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); border-radius: var(--rayon); font-size: 0.92rem; overflow-wrap: anywhere; white-space: pre-line; }
+/* Sur téléphone, l'aperçu de deux lignes du message, déplié par « Voir tout le message » ; sur ordinateur, le message entier (relecture de la PR 361). */
+/* Replié, les sauts de ligne deviennent des espaces : les deux lignes montrent du texte, pas « Hello Ben, » et une ligne vide. */
+@media (max-width: 719px) { .point-soir-message.replie .point-soir-texte { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; } }
+.point-soir-deplier { min-height: 44px; padding: 0; }
 .point-soir-signal { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .point-soir-destinataire { margin: 0; flex: 1 0 100%; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
 .point-soir-numero { flex: 1 0 100%; font-size: 0.9rem; }

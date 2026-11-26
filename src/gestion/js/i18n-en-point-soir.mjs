@@ -37,6 +37,7 @@ export const EN_POINT_SOIR = {
   "WhatsApp a déjà été ouvert pour ce rappel à {heure}. L'envoyer quand même ?": "WhatsApp was already opened for this reminder at {heure}. Send it anyway?",
   "Renvoyer quand même": "Send again anyway",
   "À : {nom}": "To: {nom}",
+  "Ce numéro est bien celui du client (la fiche indique {fiche})": "This is the client's number (the record says {fiche})",
   "Ce matin": "This morning",
   "Rappel à {nom} dans le point du soir": "Reminder to {nom} in the evening check",
   // Motif en clair d'un refus du serveur (point du soir et « Proposer une excursion », 22.11.2026)
@@ -56,4 +57,10 @@ export const EN_POINT_SOIR = {
   "Un montant du message est un prix de vente, mais aussi le net d'un autre service. Vérifiez avant d'envoyer.": "An amount in the message is a selling price, but also the net of another service. Check before sending.",
   "Le message refusé ne part pas par WhatsApp : modifiez-le d'abord.": "The refused message is not sent through WhatsApp: change it first.",
   "Message à modifier avant l'envoi": "Message to change before sending",
+  // Audit mobile, relecture de la PR 361 : aperçu de deux lignes sur téléphone et raison du bouton grisé.
+  "Voir tout le message": "See the whole message",
+  "Réduire": "Show less",
+  "Cochez la case ci-dessus pour envoyer à ce numéro.": "Tick the box above to send to this number.",
+  "Ce bouton reste éteint tant que l'envoi est incertain. Pour renvoyer à ce numéro, cochez la case ci-dessus puis touchez « Renvoyer quand même ».": "This button stays off while the sending is uncertain. To send again to this number, tick the box above, then tap “Send again anyway”.",
+  "Ce bouton reste éteint tant que l'envoi est incertain. Pour renvoyer, touchez « Renvoyer quand même ».": "This button stays off while the sending is uncertain. To send again, tap “Send again anyway”.",
 };

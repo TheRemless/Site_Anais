@@ -119,10 +119,27 @@ function ouvrirModification(r, apres) {
 }
 
 // Menu « … » d'une carte : les gestes qui ne sont pas le geste principal.
+// Les gestes du menu « … » par groupe : le voucher en tête, puis ce qui touche le client, puis la réservation elle-même (audit mobile n° 38,
+// relecture de la PR 361). Un groupe vide ne s'affiche pas.
+const GROUPES_MENU = [
+  [null, ["voucher"]],
+  [N_("Client"), ["message_client", "rappel"]],
+  [N_("Réservation"), ["modifier", "changer", "dupliquer", "statut"]],
+];
+
 function ouvrirMenu(r, entrees) {
+  const bouton = ([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle);
   const fermer = modal(
     r.libelle,
-    h("div", { class: "modal-corps menu-gestes" }, entrees.map(([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle))),
+    h(
+      "div",
+      { class: "modal-corps menu-gestes" },
+      GROUPES_MENU.map(([titre, cles]) => {
+        const liste = cles.filter((k) => entrees[k]).map((k) => bouton(entrees[k]));
+        if (!liste.length) return null;
+        return titre ? h("div", { class: "menu-groupe", role: "group", "aria-label": tr(titre) }, h("p", { class: "menu-groupe-titre", "aria-hidden": "true" }, tr(titre)), liste) : liste;
+      })
+    ),
     { feuille: true, protege: false }
   );
 }
@@ -219,7 +236,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
         "div",
         { class: principal ? "carte-barre" : "carte-barre seul" },
         principal ? h("button", { class: "principal", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]) : null,
-        menu.length ? h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null
+        menu.length ? h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, Object.fromEntries(menu.map((k) => [k, GESTES[k]]))) }, icone("ellipsis", 22)) : null
       )
     : null;
   return h(
@@ -865,6 +882,12 @@ export function sectionReservationsDossier(d, doc) {
 }
 
 // ---- Écran Réservations -------------------------------------------------------------------------------------
+// Le menu « … » de l'en-tête sur téléphone.
+function menuEntete() {
+  const geste = (libelle, fait) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle);
+  const fermer = modal(tr("Réservations"), h("div", { class: "modal-corps menu-gestes" }, geste(tr("Feuille du jour"), ouvrirFeuilleDuJour), geste(tr("Messages types"), () => naviguer("#/messages"))), { feuille: true, protege: false });
+}
+
 export function vueReservations() {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const ajd = aujourdhui();
@@ -912,7 +935,15 @@ export function vueReservations() {
   return h(
     "div",
     { "data-titre": tr("Réservations") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous seulement-bureau" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")), h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous seulement-bureau" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h(
+        "div",
+        { class: "entete-actions" },
+        h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")),
+        h("a", { class: "bouton secondaire seulement-bureau", href: "#/messages" }, tr("Messages types")),
+        // Sur téléphone, les deux passent dans le menu « … » : la liste des jours commence plus haut (audit mobile n° 19, relecture de la PR 361).
+        h("button", { class: "secondaire bouton-menu seulement-mobile", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions"), title: tr("Plus d'actions"), onclick: menuEntete }, icone("ellipsis", 22))
+      )
+    ),
     barre.noeud,
     corps
   );

@@ -43,7 +43,7 @@ function carteService(r, { demain = false } = {}) {
   return h(
     "li",
     { class: "service" },
-    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("prise en charge")) : null),
+    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("départ")) : null),
     h(
       "div",
       { class: "service-corps" },
