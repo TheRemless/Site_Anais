@@ -780,6 +780,7 @@ function ficheDossierVue(id) {
   ].filter(Boolean);
   const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant, blocSansSuite || (boutonSansSuite || boutonCarnet ? h("div", { class: "resume-sous-action" }, boutonSansSuite || boutonCarnet) : ligneCarnet));
 
+  const alertesTaxi = droit.finances && taxi ? alertesPaiementsDossier(d, r) : null;
   const racine = h(
     "div",
     { "data-titre": nomClient(client) },
@@ -803,7 +804,7 @@ function ficheDossierVue(id) {
             { class: "etapes" },
             etape(true, N_("Course enregistrée"), tr("{montant}, payé au chauffeur en espèces ou par Wise avant le transfert (3 % de frais).", { montant: fm(r.surPlace) })),
             etape(envoisVouchers.client >= vouchers.length && vouchers.length > 0, N_("Booking confirmation envoyée"), !vouchers.length ? tr("Elle se prépare depuis la course ci-dessous.") : [pluriel(vouchers.length, N_("{c} sur {n} envoyée au client"), N_("{c} sur {n} envoyées au client"), { c: envoisVouchers.client }), aRenvoyerTexte(envoisVouchers)].filter(Boolean).join(" · "), vouchers.length && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null),
-            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), plage ? tr("Service le {date}", { date: formatDate(plage.debut) }) : "", null)
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), plage ? (plage.fin !== plage.debut ? tr("Courses du {debut} au {fin}", { debut: formatDate(plage.debut), fin: formatDate(plage.fin) }) : tr("Service le {date}", { date: formatDate(plage.debut) })) : "", null)
           )
         : excursions
         ? h(
@@ -852,8 +853,8 @@ function ficheDossierVue(id) {
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
     droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), alertesPaiementsDossier(d, r), tableauPaiements, solderEcart, droit.paiements ? [ouvrirFormPaiement, zonePaiement] : null) : null,
-    // Taxi n'a pas de section des paiements : ses alertes (acompte réparti, à rembourser, trop-perçu) se montrent quand même.
-    droit.finances && taxi ? alertesPaiementsDossier(d, r) : null,
+    // Taxi n'a pas de section des paiements : ses alertes (acompte réparti, à rembourser, trop-perçu) se montrent quand même. Relecture de la PR #360 : remontées juste après les services (voir plus bas).
+    alertesTaxi,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
@@ -913,6 +914,7 @@ function ficheDossierVue(id) {
   if (services) services.id = "services";
   // Excursions et taxi : les services sont le cœur du dossier, juste après le résumé (audit mobile n° 10). Agence : après l'avancement, avant les vouchers.
   if (services && avancement) (excursions || taxi ? avancement.before(services) : avancement.after(services));
+  if (alertesTaxi && services) services.after(alertesTaxi);
   const etapes = racine.querySelector(".etapes");
   if (etapes) resumerEtapes(etapes);
   plierSections(racine, { cle: d.id, ouverts: new Set([tr("Avancement"), TITRE_SERVICES, tr("Vouchers"), tr("Booking confirmation"), tr("Documents"), tr("Paiements reçus")]) });

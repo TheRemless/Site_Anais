@@ -2,6 +2,7 @@ import { variantesProposees } from "../reglages-calc.mjs";
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument, estAdmin } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer, erreurChamp, barreAction } from "../ui.mjs";
 import { montantSaisi } from "../nets-reservation-calc.mjs";
+import { retirerLigne, remettreLignes } from "../lignes-annulation-calc.mjs";
 import { prixVenteFige } from "../partenaires-calc.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
 import { puceMode } from "./mode-reglement.mjs";
@@ -599,15 +600,25 @@ function editeurVue(id) {
               type: "button",
               "aria-label": tr("Supprimer la ligne {x}", { x: i + 1 }),
               onclick: () => {
-                // Relecture de la PR #360 : la suppression se rattrape. Copie avant, restauration de la copie entière (options rattachées comprises).
-                const avant = [...c.lignes];
                 // Un service supprimé emporte ses options (26.11.2026) : une option ne reste jamais seule sur la facture.
-                const retiree = c.lignes[i];
-                c.lignes.splice(i, 1);
-                if (retiree && retiree.id) c.lignes = c.lignes.filter((x) => x.option_de !== retiree.id);
+                // Relecture de la PR #360 : la suppression se rattrape depuis le toast. « Annuler » remet seulement les lignes retirées à leur
+                // place (lignes-annulation-calc.mjs) : une ligne ajoutée entre-temps reste. Place incertaine ou éditeur reconstruit : on le dit.
+                const retrait = retirerLigne(c.lignes, i);
+                c.lignes = retrait.lignes;
                 dessinerLignes();
                 change();
-                toast(tr("Ligne supprimée."), false, { action: tr("Annuler"), faire: () => { if (!listeLignes.isConnected) return; c.lignes = avant; dessinerLignes(); change(); } });
+                const message = retrait.options > 0 ? pluriel(retrait.options, N_("Service et {n} option supprimés."), N_("Service et {n} options supprimés.")) : tr("Ligne supprimée.");
+                toast(message, false, {
+                  action: tr("Annuler"),
+                  faire: () => {
+                    if (!listeLignes.isConnected) return toast(tr("Impossible d'annuler : le document a changé."), true);
+                    const remises = remettreLignes(c.lignes, retrait);
+                    if (!remises) return toast(tr("Impossible d'annuler : les lignes ont changé entre-temps."), true);
+                    c.lignes = remises;
+                    dessinerLignes();
+                    change();
+                  },
+                });
               },
             },
             tr("Supprimer")
