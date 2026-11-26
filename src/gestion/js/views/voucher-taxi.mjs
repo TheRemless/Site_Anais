@@ -88,7 +88,7 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
       h(
         "div",
         { class: "vt-pied" },
-        // Tout payé par avance (26.11.2026) : ni « collected in cash by the driver » ni Wise.
+        // Tout payé par avance (26.11.2026) : ni paiement au chauffeur ni autre moyen de paiement proposé.
         h("p", null, ...(paiement && paiement.statut === "paye" ? [t("b_paiement_paye")] : [t("b_paiement"), " ", h("em", null, t("b_paiement_wise"))]), h("br"), t("b_attente"), h("br"), t("b_changement")),
         h("p", null, t("b_merci")),
         h("p", null, t("b_salutation")),
