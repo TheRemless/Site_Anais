@@ -1,13 +1,11 @@
--- Gestion : retour en arrière de la migration 131. Les paiements ne sont plus rattachés à un service (la colonne est retirée) ; le résumé
--- du dossier et l'écran du chauffeur reprennent leurs fonctions des migrations 19 et 123.
+-- Gestion : retour en arrière de la migration 131. Le résumé du dossier perd la répartition du reçu entre les services payés sur place
+-- (colonnes retirées) ; le résumé et l'écran du chauffeur reprennent leurs fonctions des migrations 19 et 123.
 begin;
-drop trigger if exists recalculer_dossier_paiement_service on reservations;
-drop function if exists recalculer_dossier_paiement_service();
-drop trigger if exists controler_paiement_service on paiements;
-drop function if exists controler_paiement_service();
-alter table paiements drop constraint if exists paiements_reservation_fk;
-drop index if exists paiements_reservation_idx;
-alter table paiements drop column if exists reservation_id;
+drop trigger if exists recalculer_dossier_service on reservations;
+drop function if exists recalculer_dossier_service();
+alter table dossiers_resume drop column if exists parts;
+alter table dossiers_resume drop column if exists a_rembourser;
+alter table dossiers_resume drop column if exists trop_percu;
 create or replace function recalculer_dossier(did uuid) returns void language plpgsql security definer set search_path = public as $$
 declare
   ent uuid;

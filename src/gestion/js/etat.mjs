@@ -427,7 +427,8 @@ async function insererBrut(table, row) {
   if (deja >= 0) etat.brut[table][deja] = r;
   else etat.brut[table].push(r);
   rebatir();
-  if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
+  // Une réservation aussi : la base répartit le reçu entre les services payés sur place (dossiers_resume.parts, migration 131).
+  if ((table === "documents" || table === "paiements" || table === "reservations") && r.dossier_id) await actualiserResume(r.dossier_id);
   if (table === "reservations") await actualiserNets(r.id);
   return r;
 }
@@ -445,7 +446,8 @@ async function modifierBrut(table, id, patch, { verrou = false, version = undefi
   if (i >= 0) etat.brut[table][i] = table === "dossiers" ? { ...etat.brut[table][i], ...r } : r;
   else etat.brut[table].push(r);
   rebatir();
-  if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
+  // Une réservation aussi : la base répartit le reçu entre les services payés sur place (dossiers_resume.parts, migration 131).
+  if ((table === "documents" || table === "paiements" || table === "reservations") && r.dossier_id) await actualiserResume(r.dossier_id);
   if (table === "reservations") await actualiserNets(r.id);
   return r;
 }
@@ -512,7 +514,7 @@ async function supprimerBrut(table, id) {
   const avant = etat.brut[table].find((x) => x.id === id);
   await etat.store.supprimer(table, id);
   etat.brut[table] = etat.brut[table].filter((x) => x.id !== id);
-  if ((table === "documents" || table === "paiements") && avant) await actualiserResume(avant.dossier_id);
+  if ((table === "documents" || table === "paiements" || table === "reservations") && avant && avant.dossier_id) await actualiserResume(avant.dossier_id);
   if (table === "dossiers") {
     etat.brut.documents = etat.brut.documents.filter((d) => d.dossier_id !== id);
     etat.brut.paiements = etat.brut.paiements.filter((p) => p.dossier_id !== id);

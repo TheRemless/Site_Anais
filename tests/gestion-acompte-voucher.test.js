@@ -1,8 +1,9 @@
-// Acompte absent du voucher (26.11.2026). Un service payé sur place avec un acompte encaissé par l'agence (paiement de type
-// « acompte ») sortait avec « Pay at Pier / Provider » seul coché : ni « Deposit Paid », ni le montant versé, ni le reste à payer sur place.
-// Cause : statutPaiementVoucher rendait « sur_place » dès que la réservation était payée sur place, sans regarder les paiements du dossier.
-// Ici : la règle (paiementDuService), le voucher de Secret, la Booking confirmation de Secret et de Taxi, le message WhatsApp de Taxi et
-// l'empreinte d'un voucher déjà envoyé. Noms et montants inventés.
+// Acompte absent du voucher (26.11.2026). Un service payé sur place avec un acompte encaissé par l'agence sortait avec « Pay at Pier /
+// Provider » seul coché : ni « Deposit Paid », ni le montant versé, ni le reste à payer sur place. Cause : statutPaiementVoucher rendait
+// « sur_place » dès que la réservation était payée sur place, sans regarder ce que le dossier avait reçu.
+// L'acompte reste au dossier (décision de Jérémy) : la base l'impute (chez nous d'abord, puis les services sur place par date) et range la
+// part de chacun dans le résumé ; l'outil lit ce résumé. Ici : la règle (imputationDossier, la même que recalculer_dossier), le voucher de
+// Secret, la Booking confirmation, le message WhatsApp de Taxi et l'empreinte. Noms et montants inventés.
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -52,83 +53,99 @@ const { textesVoucher, GROUPES_VOUCHER, GROUPES_BOOKING } = await import("../src
 const tour = (o = {}) => ({ id: "R1", dossier_id: "D1", entite_id: "SECRET", ligne_id: "L1", prestation_id: null, partenaire_id: null, libelle: "Private tour", date_service: "2026-12-22", heure_pickup: "08:00", lieu_pickup: "Resort Exemple", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: 6900, paye_sur_place: true, notes: "", details: {}, ...o });
 const taxi = (o = {}) => tour({ id: "R2", ligne_id: "L2", libelle: "Private taxi", montant_vente: 800, ...o });
 const nous = (o = {}) => tour({ id: "R3", ligne_id: "L3", libelle: "Ferry ticket", montant_vente: 2000, paye_sur_place: false, ...o });
-const pay = (montant, reservation_id = null) => ({ dossier_id: "D1", montant, ...(reservation_id ? { reservation_id } : {}) });
-const P = (r, { total = 0, paiements = [], reservations = [r] } = {}) => O.paiementDuService(r, { resume: { total }, reservations, paiements });
+// Le résumé du dossier tel que la base le tient (dossiers_resume) : total chez nous, reçu, et la part de chaque service sur place.
+const resumeDe = ({ total = 0, recu = 0, reservations = [] } = {}) => ({ total, recu, dossier: { total, recu, ...O.imputationDossier({ total, recu, reservations }) } });
+const P = (r, { total = 0, recu = 0, reservations = [r] } = {}) => O.paiementDuService(r, { resume: resumeDe({ total, recu, reservations }) });
 
-test("règle : un seul service sur place, acompte non rattaché : il est imputé, montant par montant", () => {
+test("règle : le reçu couvre d'abord ce qui est dû chez nous, puis les services sur place par date, chacun jusqu'à son prix", () => {
   const r = tour();
-  assert.deepEqual(P(r, { paiements: [pay(1200)] }), { statut: "acompte", verse: 1200, reste: 5700, surPlace: true, aRattacher: false, tropPercu: 0 });
-  assert.deepEqual(P(r, { paiements: [] }), { statut: "sur_place", verse: null, reste: null, surPlace: true, aRattacher: false, tropPercu: 0 });
-  assert.deepEqual(P(r, { paiements: [pay(6900)] }), { statut: "paye", verse: 6900, reste: 0, surPlace: false, aRattacher: false, tropPercu: 0 });
-  assert.equal(P(r, { paiements: [pay(7000)] }).tropPercu, 100, "un trop-perçu se dit");
-  // L'argent non rattaché paie d'abord les services chez nous : 2 000 chez nous, 2 500 reçus → 500 pour le bateau.
-  assert.deepEqual([P(r, { total: 2000, paiements: [pay(2500)], reservations: [r, nous()] }).verse, P(r, { total: 2000, paiements: [pay(2500)], reservations: [r, nous()] }).reste], [500, 6400]);
-  assert.equal(P(r, { total: 2000, paiements: [pay(1500)], reservations: [r, nous()] }).statut, "sur_place");
+  assert.deepEqual(P(r, { recu: 1200 }), { statut: "acompte", verse: 1200, reste: 5700, surPlace: true });
+  assert.deepEqual(P(r, { recu: 0 }), { statut: "sur_place", verse: null, reste: null, surPlace: true });
+  assert.deepEqual(P(r, { recu: 6900 }), { statut: "paye", verse: 6900, reste: 0, surPlace: false });
+  // 2 000 chez nous, 2 500 reçus → 500 pour le bateau ; 1 500 reçus → rien pour lui.
+  assert.deepEqual([P(r, { total: 2000, recu: 2500, reservations: [r, nous()] }).verse, P(r, { total: 2000, recu: 2500, reservations: [r, nous()] }).reste], [500, 6400]);
+  assert.equal(P(r, { total: 2000, recu: 1500, reservations: [r, nous()] }).statut, "sur_place");
+  // Deux services sur place : le plus tôt d'abord (le transfert, le 21), puis le bateau ; jamais le même montant deux fois.
+  const [a, b] = [tour(), taxi({ date_service: "2026-12-21" })];
+  const imp = O.imputationDossier({ total: 0, recu: 1200, reservations: [a, b] });
+  assert.deepEqual(imp.parts, { R2: { verse: 800, reste: 0 }, R1: { verse: 400, reste: 6500 } });
+  assert.equal(imp.parts.R1.verse + imp.parts.R2.verse, 1200, "la somme imprimée est le reçu, pas plus");
+  // Même date : l'ordre de création.
+  const c1 = tour({ id: "C1", created_at: "2026-11-02" });
+  const c2 = tour({ id: "C2", created_at: "2026-11-01", montant_vente: 1000 });
+  assert.deepEqual(O.imputationDossier({ recu: 1000, reservations: [c1, c2] }).parts.C2, { verse: 1000, reste: 0 });
 });
 
-test("règle : plusieurs services sur place, acompte non rattaché : AUCUN montant sur aucun voucher (jamais compté deux fois)", () => {
-  const [a, b] = [tour(), taxi()];
-  for (const r of [a, b]) {
-    const p = P(r, { paiements: [pay(1200)], reservations: [a, b] });
-    assert.deepEqual([p.statut, p.verse, p.reste, p.aRattacher], ["sur_place", null, null, true], r.libelle);
-  }
-  // Rattaché au bateau : seul son voucher le dit ; le transfert garde son prix entier à payer.
-  assert.deepEqual([P(a, { paiements: [pay(1200, "R1")], reservations: [a, b] }).verse, P(a, { paiements: [pay(1200, "R1")], reservations: [a, b] }).reste], [1200, 5700]);
-  assert.deepEqual(P(b, { paiements: [pay(1200, "R1")], reservations: [a, b] }), { statut: "sur_place", verse: null, reste: null, surPlace: true, aRattacher: false, tropPercu: 0 });
-  // Deux acomptes rattachés, un par service.
-  assert.equal(P(b, { paiements: [pay(1200, "R1"), pay(300, "R2")], reservations: [a, b] }).reste, 500);
-  // Un service annulé ne reçoit rien et ne transmet rien : le seul service sur place restant n'hérite pas de son acompte rattaché.
-  const ann = taxi({ statut: "annule" });
-  assert.equal(P(ann, { paiements: [pay(300, "R2")], reservations: [a, ann] }).verse, null);
-  assert.equal(P(a, { paiements: [pay(300, "R2")], reservations: [a, ann] }).verse, null);
+test("règle : un service annulé ne reçoit rien ; ce qui dépasse est à rembourser, puis soldé par le remboursement ; sinon trop-perçu", () => {
+  const [a, ann] = [tour({ montant_vente: 800 }), taxi({ statut: "annule" })];
+  const avant = O.imputationDossier({ recu: 1200, reservations: [a, ann] });
+  assert.deepEqual([avant.parts.R2, avant.parts.R1, avant.a_rembourser, avant.trop_percu], [undefined, { verse: 800, reste: 0 }, 400, 0]);
+  const apres = O.imputationDossier({ recu: 1200 - 400, reservations: [a, ann] });
+  assert.deepEqual([apres.a_rembourser, apres.trop_percu, apres.parts.R1.verse], [0, 0, 800], "le remboursement saisi solde l'alerte");
+  const trop = O.imputationDossier({ recu: 7000, reservations: [tour()] });
+  assert.deepEqual([trop.trop_percu, trop.a_rembourser], [100, 0]);
+  // Le reste du dossier ne devient jamais négatif à cause d'un remboursement.
+  assert.ok(O.imputationDossier({ recu: -500, reservations: [tour()] }).parts.R1.verse === 0);
 });
 
-test("règle : un acompte rattaché à un service sur place ne paie pas les services chez nous (ZTP inchangé)", () => {
+test("règle : chez nous et ZTP, la règle d'avant (le reçu contre le total, aucun montant imprimé)", () => {
   const [a, n] = [tour(), nous()];
-  assert.equal(P(n, { total: 2000, paiements: [pay(1200, "R1")], reservations: [a, n] }).statut, "en_attente");
-  assert.equal(P(n, { total: 2000, paiements: [pay(1200, "R1"), pay(500)], reservations: [a, n] }).statut, "acompte");
-  // ZTP : pas de service sur place, la règle d'avant (statutPaiementVoucher).
-  assert.equal(P(n, { total: 2000, paiements: [pay(2000)], reservations: [n] }).statut, "paye");
-  assert.equal(P(n, { total: 2000, paiements: [], reservations: [n] }).statut, "en_attente");
+  assert.equal(P(n, { total: 2000, recu: 1200, reservations: [a, n] }).statut, "acompte");
+  assert.equal(P(n, { total: 2000, recu: 2000, reservations: [n] }).statut, "paye");
+  assert.equal(P(n, { total: 2000, recu: 0, reservations: [n] }).statut, "en_attente");
+  assert.equal(P(n, { total: 2000, recu: 2000, reservations: [n] }).verse, null);
 });
 
-test("alertes du dossier : acompte à rattacher, trop-perçu, remboursement à traiter, remarque contradictoire", () => {
-  const [a, b] = [tour({ details: { remarques_paiement: "Deposit of 1000 paid" } }), taxi()];
+test("dossier non chargé : la part vient du résumé de la base, pas des paiements en mémoire (le même résultat, ouvert ou non)", () => {
+  const r = tour();
+  // Résumé lu dans dossiers_resume (store Supabase) : aucun paiement en mémoire.
+  const base = { total: 0, recu: 1200, paiements: [], dossier: { total: 0, recu: 1200, parts: { R1: { verse: 1200, reste: 5700 } } } };
+  assert.deepEqual(O.paiementDuService(r, { resume: base }), { statut: "acompte", verse: 1200, reste: 5700, surPlace: true });
+  // Ouvert (paiements chargés) : la même part, puisqu'elle vient toujours du résumé.
+  assert.deepEqual(O.paiementDuService(r, { resume: { ...base, paiements: [{ montant: 1200 }] } }), O.paiementDuService(r, { resume: base }));
+  // Un service chez nous déjà payé, dossier non ouvert : « Paid », jamais « Payment Pending ».
+  assert.equal(O.paiementDuService(nous(), { resume: { total: 2000, recu: 2000, paiements: [], dossier: { parts: {} } } }).statut, "paye");
+});
+
+test("alertes du dossier : remboursement à traiter, trop-perçu, remarque contradictoire ; les dates, % et frais ne comptent pas", () => {
+  const a = tour({ details: { remarques_paiement: "Deposit of 1000 paid" } });
   const codes = (x) => x.map((y) => `${y.code}:${y.montant}`);
-  assert.deepEqual(codes(O.alertesPaiements({ reservations: [a, b], paiements: [pay(1200)], resume: { total: 0 } })), ["a_rattacher:1200"]);
-  assert.deepEqual(codes(O.alertesPaiements({ reservations: [a, b], paiements: [pay(1200, "R1")], resume: { total: 0 } })), ["remarque_paiement:1200"]);
-  assert.deepEqual(codes(O.alertesPaiements({ reservations: [tour(), b], paiements: [pay(7000, "R1")], resume: { total: 0 } })), ["trop_percu:100"]);
-  assert.deepEqual(codes(O.alertesPaiements({ reservations: [tour(), taxi({ statut: "annule" })], paiements: [pay(300, "R2")], resume: { total: 0 } })), ["remboursement:300"]);
-  assert.deepEqual(O.alertesPaiements({ reservations: [nous()], paiements: [pay(2000)], resume: { total: 2000 } }), [], "ZTP ou chez nous : rien");
-  // La remarque qui donne un autre montant ne s'imprime pas ; celle qui donne le bon montant, si.
-  const p = P(a, { paiements: [pay(1200)] });
+  assert.deepEqual(codes(O.alertesPaiements({ reservations: [a], resume: resumeDe({ recu: 1200, reservations: [a] }) })), ["remarque_paiement:1200"]);
+  assert.deepEqual(codes(O.alertesPaiements({ reservations: [tour()], resume: resumeDe({ recu: 7000, reservations: [tour()] }) })), ["trop_percu:100"]);
+  const ann = taxi({ statut: "annule" });
+  assert.deepEqual(codes(O.alertesPaiements({ reservations: [tour({ montant_vente: 800 }), ann], resume: resumeDe({ recu: 1200, reservations: [tour({ montant_vente: 800 }), ann] }) })), ["remboursement:400"]);
+  assert.deepEqual(O.alertesPaiements({ reservations: [nous()], resume: resumeDe({ total: 2000, recu: 2000, reservations: [nous()] }) }), [], "ZTP ou chez nous : rien");
+  const p = P(a, { recu: 1200 });
   assert.equal(O.remarquePaiementImprimee("Deposit of 1000 paid", p, 6900), "");
   assert.equal(O.remarquePaiementImprimee("Deposit of 1,200 paid", p, 6900), "Deposit of 1,200 paid");
   assert.equal(O.remarquePaiementImprimee("Cash only", p, 6900), "Cash only");
+  for (const t of ["Deposit 1,200 paid on 26.11.2026", "Deposit 1,200 paid 26/11", "Wise 3 % included, 1200 paid", "1200 paid, 50 THB fee", "1200 paid + 40 fees"]) assert.equal(O.remarquePaiementImprimee(t, p, 6900), t, t);
 });
 
 const REGL = { emetteur: { nom: "Excursions Exemple", adresse: "", telephone: "+66 00" }, apparence: {}, voucher: {}, devise: "THB", fonctionnement: "excursions" };
 const CLIENT = { prenom: "Jane", nom: "Example", telephone: "+44 7700 900123", adresse: "" };
-const voucher = (r, { paiements = [], reservations = [r], type = "bateau", total = 0 } = {}) => renderVoucher({ reservation: r, prestation: null, type, index: 1 }, { reglages: REGL, dossier: { ref: "INV-2026-900" }, client: CLIENT, resume: { total, recu: 0, paiements }, reservations, trajet: null }).lignes;
+const voucher = (r, { recu = 0, reservations = [r], type = "bateau", total = 0 } = {}) => renderVoucher({ reservation: r, prestation: null, type, index: 1 }, { reglages: REGL, dossier: { ref: "INV-2026-900" }, client: CLIENT, resume: resumeDe({ total, recu, reservations }), reservations, trajet: null }).lignes;
 const ligneDe = (l, debut) => l.find((x) => x.startsWith(debut));
 
-test("voucher de Secret : acompte imprimé sur SON voucher seulement ; tout payé : reste 0", () => {
-  const l = voucher(tour(), { paiements: [pay(1200)] });
+test("voucher de Secret : chaque voucher imprime SA part ; tout payé : reste 0", () => {
+  const l = voucher(tour(), { recu: 1200 });
   assert.match(ligneDe(l, "Payment Status"), /☐ Paid ☒ Deposit Paid ☒ Pay at Pier \/ Provider/);
   assert.match(ligneDe(l, "Amount Already Paid"), /1'200/);
   assert.match(ligneDe(l, "Balance to Pay on Arrival"), /5'700/);
-  const sans = voucher(tour(), { paiements: [] });
+  const sans = voucher(tour(), { recu: 0 });
   assert.match(ligneDe(sans, "Payment Status"), /☐ Deposit Paid ☒ Pay at Pier/);
   assert.equal(ligneDe(sans, "Amount Already Paid"), undefined);
-  // Deux services sur place, acompte non rattaché : ni l'un ni l'autre n'imprime de montant.
-  for (const r of [tour(), taxi()]) assert.equal(ligneDe(voucher(r, { paiements: [pay(1200)], reservations: [tour(), taxi()] }), "Amount Already Paid"), undefined);
+  // Deux services sur place, 1 200 reçus : le transfert (le 21) reçoit 800, le bateau 400 ; chacun n'imprime que sa part.
+  const deux = [tour(), taxi({ date_service: "2026-12-21" })];
+  assert.match(ligneDe(voucher(deux[1], { recu: 1200, reservations: deux }), "Amount Already Paid"), /800/);
+  assert.match(ligneDe(voucher(deux[0], { recu: 1200, reservations: deux }), "Amount Already Paid"), /400/);
   // Tout payé d'avance : « Paid » coché, reste 0, rien à payer sur place.
-  const paye = voucher(tour(), { paiements: [pay(6900)] });
+  const paye = voucher(tour(), { recu: 6900 });
   assert.match(ligneDe(paye, "Payment Status"), /☒ Paid ☐ Deposit Paid ☐ Pay at Pier/);
   assert.match(ligneDe(paye, "Balance to Pay on Arrival"), /THB 0|: 0/);
   // Une remarque de paiement qui contredit l'acompte enregistré ne s'imprime pas.
-  assert.ok(!voucher(tour({ details: { remarques_paiement: "Deposit of 1000 paid" } }), { paiements: [pay(1200)] }).some((x) => /Deposit of 1000/.test(x)));
-  assert.ok(voucher(tour({ details: { remarques_paiement: "Cash only" } }), { paiements: [pay(1200)] }).some((x) => /Cash only/.test(x)));
+  assert.ok(!voucher(tour({ details: { remarques_paiement: "Deposit of 1000 paid" } }), { recu: 1200 }).some((x) => /Deposit of 1000/.test(x)));
+  assert.ok(voucher(tour({ details: { remarques_paiement: "Cash only" } }), { recu: 1200 }).some((x) => /Cash only/.test(x)));
 });
 
 test("Booking confirmation : déjà payé et reste ; tout payé : « BALANCE TO PAY: 0 », plus de paiement au chauffeur", () => {
@@ -141,23 +158,24 @@ test("Booking confirmation : déjà payé et reste ; tout payé : « BALANCE TO 
   assert.ok(!("b_verse_dossier" in Object.fromEntries(GROUPES_BOOKING.flatMap((g) => g.cles))), "plus de montant « pour tout le dossier »");
 });
 
-test("message WhatsApp de Taxi : le reste du service ; aucun montant quand l'acompte n'est pas imputé ou que le dossier a trop reçu", () => {
-  const p = P(taxi(), { paiements: [pay(500)] , reservations: [taxi()] });
+test("message WhatsApp de Taxi : le reste du service ; aucun montant quand rien ne lui est imputé ou que le dossier a trop reçu", () => {
+  const p = P(taxi(), { recu: 500, reservations: [taxi()] });
   assert.equal(variablesVoucher({ paiement: p.statut, solde: p.reste, devise: "THB" }).paiement, "The remaining 300 THB will be collected in cash directly by the driver.");
-  const deux = P(taxi(), { paiements: [pay(500)], reservations: [tour(), taxi()] });
+  // Le bateau passe avant (le 20) et prend les 500 : rien pour le transfert, aucun montant annoncé.
+  const deux = P(taxi(), { recu: 500, reservations: [tour({ date_service: "2026-12-20" }), taxi()] });
   assert.doesNotMatch(variablesVoucher({ paiement: deux.statut, solde: deux.reste, devise: "THB" }).paiement, /remaining/);
   assert.doesNotMatch(variablesVoucher({ paiement: "acompte", solde: -1650, devise: "THB" }).paiement, /remaining -/);
 });
 
 test("empreinte : chaque montant versé change l'empreinte d'un voucher sur place ; un voucher chez nous ne bouge pas (D6)", () => {
   const r = tour();
-  const e = (paiements, x = r) => O.empreinteVoucher({ reservation: x, client: CLIENT, statut: O.statutEmpreinte(P(x, { paiements, reservations: [x] })), devise: "THB" });
-  const sans = e([]);
+  const e = (recu, x = r, total = 0) => O.empreinteVoucher({ reservation: x, client: CLIENT, statut: O.statutEmpreinte(P(x, { recu, total, reservations: [x] })), devise: "THB" });
+  const sans = e(0);
   assert.equal(sans, O.empreinteVoucher({ reservation: r, client: CLIENT, statut: "sur_place", devise: "THB" }), "sans acompte : l'empreinte d'avant (pas de faux « modifié »)");
-  const vus = new Set([sans, e([pay(1200)]), e([pay(2000)]), e([pay(6900)])]);
+  const vus = new Set([sans, e(1200), e(2000), e(6900)]);
   assert.equal(vus.size, 4, "1 200, 2 000 et tout payé donnent trois empreintes différentes");
   const n = nous();
-  assert.equal(e([pay(1000)], n), e([pay(2000)], n), "chez nous : un paiement reçu ne change pas l'empreinte");
+  assert.equal(e(1000, n, 2000), e(2000, n, 2000), "chez nous : un paiement reçu ne change pas l'empreinte");
 });
 
 test("textes réglables : les lignes d'acompte sont dans les réglages des vouchers et de la Booking confirmation", () => {

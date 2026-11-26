@@ -1,5 +1,6 @@
-// Vérifie la migration 131 (acompte rattaché à un service) sur un Postgres en mémoire : schema.sql puis toutes les migrations ; l'écran du
-// chauffeur (partenaire_courses_de) avec un acompte non rattaché, puis rattaché ; le résumé du dossier ; la restauration ; rejeu et retour.
+// Vérifie la migration 131 (l'acompte du dossier imputé à ses services payés sur place) sur un Postgres en mémoire : schema.sql puis toutes
+// les migrations ; la répartition dans dossiers_resume (chez nous d'abord, puis par date), l'annulation, le remboursement, le trop-perçu,
+// l'écran du chauffeur (partenaire_courses_de) ; rejeu et retour. Montants inventés.
 //   GESTION_SQL=<repo>/docs/gestion/ node verif-acompte-service.mjs
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
@@ -110,71 +111,78 @@ const brown = async () => {
   try { return (await db.query("select * from partenaire_courses()")).rows; } finally { await db.exec("reset role; select set_config('request.jwt.claim.sub', '', false);"); }
 };
 
-// ---- Migration 131 : un acompte rattaché à un service ------------------------------------------------------------------------------------
-// Un dossier de deux courses payées sur place (aller 1500, retour 800) et un acompte. Montants inventés.
-async function dossierAR({ surPlace = true } = {}) {
+// ---- Migration 131 : l'acompte du dossier, imputé à ses services payés sur place ----------------------------------------------------------
+// Un dossier de deux courses payées sur place (aller 1500 au jour 5, retour 800 au jour 6), et en option une course chez nous (1000).
+async function dossierAR({ chezNous = 0 } = {}) {
   const cl = (await un("insert into clients (entite_id, prenom, nom, telephone) values ($1, 'Acompte', $2, '+44 7700 900333') returning id", [ent.taxi, "Test" + ++nref])).id;
   const dos = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, $2, $3) returning id", [ent.taxi, "TX-AC-" + nref, cl])).id;
-  const res = async (n, ligne, prix) => (await un("insert into reservations (entite_id, dossier_id, partenaire_id, ligne_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, paye_sur_place) values ($1, $2, $3, $4, 'Private taxi', $5, '09:00', 'Hotel', '{\"adultes\":2}', 'confirme', $6, $7) returning id", [ent.taxi, dos, P.vip, ligne, await jour(n), prix, surPlace])).id;
-  const aller = await res(5, "AC-1-" + nref, 1500);
+  const res = async (n, ligne, prix, surPlace = true) => (await un("insert into reservations (entite_id, dossier_id, partenaire_id, ligne_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, paye_sur_place) values ($1, $2, $3, $4, 'Private taxi', $5, '09:00', 'Hotel', '{\"adultes\":2}', 'confirme', $6, $7) returning id", [ent.taxi, dos, P.vip, ligne, await jour(n), prix, surPlace])).id;
+  // Le retour est créé avant l'aller : l'ordre suit la date de service, pas la création.
   const retour = await res(6, "AC-2-" + nref, 800);
-  await db.query("insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, 'facture', $3, $4::jsonb)", [ent.taxi, dos, await jour(0), JSON.stringify({ lignes: [{ id: "AC-1-" + nref, kind: "ligne", par: "veh", qte: 1, unite: 1500, paye_sur_place: surPlace }, { id: "AC-2-" + nref, kind: "ligne", par: "veh", qte: 1, unite: 800, paye_sur_place: surPlace }] })]);
+  const aller = await res(5, "AC-1-" + nref, 1500);
+  const lignes = [{ id: "AC-1-" + nref, kind: "ligne", par: "veh", qte: 1, unite: 1500, paye_sur_place: true }, { id: "AC-2-" + nref, kind: "ligne", par: "veh", qte: 1, unite: 800, paye_sur_place: true }];
+  if (chezNous) { await res(4, "AC-3-" + nref, chezNous, false); lignes.push({ id: "AC-3-" + nref, kind: "ligne", par: "veh", qte: 1, unite: chezNous }); }
+  await db.query("insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, 'facture', $3, $4::jsonb)", [ent.taxi, dos, await jour(0), JSON.stringify({ lignes })]);
   return { dos, aller, retour };
 }
+const payer = async (dos, montant) => db.query("insert into paiements (entite_id, dossier_id, date, montant) values ($1, $2, $3, $4)", [ent.taxi, dos, await jour(0), montant]);
+const resumeDe = async (dos) => un("select total, recu, parts, a_rembourser, trop_percu from dossiers_resume where dossier_id = $1", [dos]);
+const part = (rs, id) => (rs.parts || {})[id] || null;
 const ligneDe = async (id) => (await brown()).find((x) => x.id === id);
 {
-  const { dos, aller, retour } = await dossierAR();
-  // Non rattaché, deux courses sur place : aucun montant deviné, ni sur l'une ni sur l'autre (le même acompte ne se déduit pas deux fois).
-  await db.query("insert into paiements (entite_id, dossier_id, date, montant) values ($1, $2, $3, 600)", [ent.taxi, dos, await jour(0)]);
+  // Chez nous d'abord (1000), puis l'aller (date la plus proche) : 1600 reçus → aller 600 versés, retour rien.
+  const { dos, aller, retour } = await dossierAR({ chezNous: 1000 });
+  await payer(dos, 1600);
+  let rs = await resumeDe(dos);
+  ok(Number(rs.total) === 1000 && Number(rs.recu) === 1600, "résumé : total chez nous 1000, reçu 1600 (tout le reçu du dossier)");
+  ok(Number(part(rs, aller).verse) === 600 && Number(part(rs, aller).reste) === 900 && Number(part(rs, retour).verse) === 0 && Number(part(rs, retour).reste) === 800, "chez nous d'abord, puis par date : aller 600 versés / 900 à payer, retour 0 / 800 " + JSON.stringify(rs.parts));
   const [a, r] = [await ligneDe(aller), await ligneDe(retour)];
-  ok(a.paiement === "acompte_partage" && a.a_encaisser === null && r.paiement === "acompte_partage" && r.a_encaisser === null, "acompte non rattaché sur deux courses sur place : aucun montant " + JSON.stringify([a.paiement, a.a_encaisser, r.paiement, r.a_encaisser]));
-  // Rattaché à l'aller : l'aller encaisse 1500 - 600, le retour son prix entier.
-  await db.query("update paiements set reservation_id = $2 where dossier_id = $1", [dos, aller]);
-  const [a2, r2] = [await ligneDe(aller), await ligneDe(retour)];
-  ok(a2.paiement === "acompte" && Number(a2.a_encaisser) === 900 && r2.paiement === "sur_place" && Number(r2.a_encaisser) === 800, "acompte rattaché à l'aller : 900 pour l'aller, 800 pour le retour " + JSON.stringify([a2.paiement, a2.a_encaisser, r2.paiement, r2.a_encaisser]));
-  ok(Number((await un("select recu from dossiers_resume where dossier_id = $1", [dos])).recu) === 0, "le résumé du dossier ne compte pas l'acompte rattaché à un service sur place");
-  // Le solde payé d'avance sur l'aller : rien à encaisser, « paye ».
-  await db.query("insert into paiements (entite_id, dossier_id, date, montant, reservation_id) values ($1, $2, $3, 900, $4)", [ent.taxi, dos, await jour(0), aller]);
-  const a3 = await ligneDe(aller);
-  ok(a3.paiement === "paye" && Number(a3.a_encaisser) === 0, "aller payé en entier d'avance : rien à encaisser " + JSON.stringify([a3.paiement, a3.a_encaisser]));
-  // Un paiement ne se rattache pas au service d'un autre dossier.
-  const autre = await dossierAR();
-  const refus = await essaie(u.nani, "update paiements set reservation_id = $2 where dossier_id = $1", [dos, autre.aller]);
-  ok(!refus.ok && /son dossier/.test(refus.err), "refus : rattacher un paiement au service d'un autre dossier");
-  // Un service supprimé : le paiement reste, sans rattachement.
-  await db.query("delete from reservations where id = $1", [retour]);
-  ok(true, "supprimer un service sans paiement rattaché passe");
+  ok(a.paiement === "acompte" && Number(a.a_encaisser) === 900 && r.paiement === "sur_place" && Number(r.a_encaisser) === 800, "écran du chauffeur : 900 pour l'aller, 800 pour le retour " + JSON.stringify([a.paiement, a.a_encaisser, r.paiement, r.a_encaisser]));
+  // Le solde arrive : l'aller est payé, le reste passe au retour, jamais deux fois le même montant.
+  await payer(dos, 1500);
+  rs = await resumeDe(dos);
+  ok(Number(part(rs, aller).verse) === 1500 && Number(part(rs, retour).verse) === 600 && Number(part(rs, retour).reste) === 200, "le solde : aller payé, 600 sur le retour " + JSON.stringify(rs.parts));
+  ok((await ligneDe(aller)).paiement === "paye" && Number((await ligneDe(aller)).a_encaisser) === 0, "aller payé d'avance : rien à encaisser");
+  // Trop-perçu, sans annulation.
+  await payer(dos, 500);
+  rs = await resumeDe(dos);
+  ok(Number(rs.trop_percu) === 300 && Number(rs.a_rembourser) === 0, "trop-perçu de 300 signalé " + JSON.stringify([rs.trop_percu, rs.a_rembourser]));
 }
 {
-  // Une seule course sur place et un acompte non rattaché : le reste dû est exact.
+  // Annulation : l'aller annulé ne reçoit rien ; le reçu va au retour, ce qui dépasse est à rembourser ; le remboursement solde l'alerte.
   const { dos, aller, retour } = await dossierAR();
-  await db.query("update reservations set statut = 'annule' where id = $1", [retour]);
-  await db.query("insert into paiements (entite_id, dossier_id, date, montant) values ($1, $2, $3, 500)", [ent.taxi, dos, await jour(0)]);
-  const a = await ligneDe(aller);
-  ok(a.paiement === "acompte" && Number(a.a_encaisser) === 1000, "une seule course sur place : acompte non rattaché déduit (1500 - 500) " + JSON.stringify([a.paiement, a.a_encaisser]));
+  await payer(dos, 1200);
+  await db.query("update reservations set statut = 'annule' where id = $1", [aller]);
+  let rs = await resumeDe(dos);
+  ok(!part(rs, aller) && Number(part(rs, retour).verse) === 800 && Number(rs.a_rembourser) === 400 && Number(rs.trop_percu) === 0, "service annulé : rien pour lui, 800 sur le retour, 400 à rembourser " + JSON.stringify(rs));
+  await payer(dos, -400);
+  rs = await resumeDe(dos);
+  ok(Number(rs.a_rembourser) === 0 && Number(rs.recu) === 800 && Number(part(rs, retour).verse) === 800, "remboursement saisi : l'alerte disparaît, le retour garde 800 " + JSON.stringify(rs));
+  // Un service qui change de prix ou de mode : le résumé suit sans nouveau paiement.
+  await db.query("update reservations set montant_vente = 1000 where id = $1", [retour]);
+  rs = await resumeDe(dos);
+  ok(Number(part(rs, retour).reste) === 200, "prix du service changé : la part suit");
+  await db.query("update reservations set paye_sur_place = false where id = $1", [retour]);
+  rs = await resumeDe(dos);
+  ok(!part(rs, retour), "service passé chez nous : plus de part sur place");
 }
 {
-  // Restauration : les paiements reviennent avant les réservations, la clé vérifiée en fin de transaction laisse passer.
+  // Le résumé est lu par tous, dossier ouvert ou non : un utilisateur qui voit les montants lit les parts dans dossiers_resume.
   const { dos, aller } = await dossierAR();
-  await db.query("insert into paiements (entite_id, dossier_id, date, montant, reservation_id) values ($1, $2, $3, 300, $4)", [ent.taxi, dos, await jour(0), aller]);
-  const p = await un("select * from paiements where dossier_id = $1", [dos]);
-  const r = await un("select * from reservations where id = $1", [aller]);
-  await db.exec("begin");
-  await db.query("delete from paiements where dossier_id = $1", [dos]);
-  await db.query("delete from reservations where id = $1", [aller]);
-  await db.query("insert into paiements select * from jsonb_populate_record(null::paiements, $1::jsonb)", [JSON.stringify(p)]);
-  await db.query("insert into reservations select * from jsonb_populate_record(null::reservations, $1::jsonb)", [JSON.stringify(r)]);
-  let fin = null;
-  try { await db.exec("commit"); } catch (e) { fin = e.message; await db.exec("rollback"); }
-  ok(!fin && (await un("select reservation_id from paiements where dossier_id = $1", [dos])).reservation_id === aller, "paiement remis avant sa réservation dans une même transaction : accepté " + (fin || ""));
+  await payer(dos, 500);
+  const lu = await essaie(u.nani, "select parts from dossiers_resume where dossier_id = $1", [dos]);
+  ok(lu.ok && lu.rows.length === 1 && Number(lu.rows[0].parts[aller].verse) === 500, "les parts se lisent dans dossiers_resume (droit « finances.voir ») " + (lu.err || ""));
+  const mook = await essaie(u.mook, "select parts from dossiers_resume where dossier_id = $1", [dos]);
+  ok(mook.ok, "lecture sans erreur pour un autre rôle " + (mook.err || ""));
 }
+ok(/for update/.test(lire(MIG)), "le calcul verrouille le dossier (écritures simultanées)");
 
 await db.exec(lire(MIG));
 ok(true, "la migration 131 se rejoue sans erreur");
 await db.exec(lire("retour-131-acompte-service.sql"));
-ok(!(await un("select count(*)::int n from information_schema.columns where table_name = 'paiements' and column_name = 'reservation_id'")).n, "retour : la colonne est retirée, les fonctions d'avant reviennent");
+ok(!(await un("select count(*)::int n from information_schema.columns where table_name = 'dossiers_resume' and column_name = 'parts'")).n, "retour : les colonnes sont retirées, les fonctions d'avant reviennent");
 await db.exec(lire(MIG));
-ok((await un("select count(*)::int n from information_schema.columns where table_name = 'paiements' and column_name = 'reservation_id'")).n === 1, "et la 131 se repose après le retour");
+ok((await un("select count(*)::int n from information_schema.columns where table_name = 'dossiers_resume' and column_name = 'parts'")).n === 1, "et la 131 se repose après le retour");
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

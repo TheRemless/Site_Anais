@@ -92,9 +92,9 @@ function empreinteDuDossier(d) {
   return (r) => {
     if (!ctx) {
       const res = d ? resumeDossier(d.id) : null;
-      ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, reservations: d ? etat.db.reservations.filter((x) => x.dossier_id === d.id) : [], devise: (res && res.devise) || reglages().devise || "THB" };
+      ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, devise: (res && res.devise) || reglages().devise || "THB" };
     }
-    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutEmpreinte(paiementDuService(r, { resume: ctx.res, reservations: ctx.reservations })), devise: ctx.devise });
+    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutEmpreinte(paiementDuService(r, { resume: ctx.res })), devise: ctx.devise });
   };
 }
 
@@ -163,7 +163,7 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const { hotel, chambre } = hebergementVoucher(client, { ...r, entite_id: r.entite_id || d.entite_id || etat.entiteId });
   // Le paiement de CE service : un acompte versé pour un service payé sur place est imprimé avec le reste à payer (paiementDuService).
   // L'aperçu des réglages (contexte.reservations absent, réservation sans dossier) ne lit que le résumé donné.
-  const pay = paiementDuService(r, { resume: res, reservations: contexte.reservations || (r.dossier_id && etat.db ? etat.db.reservations.filter((x) => x.dossier_id === r.dossier_id) : [r]) });
+  const pay = paiementDuService(r, { resume: res });
   const statut = pay.statut;
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };

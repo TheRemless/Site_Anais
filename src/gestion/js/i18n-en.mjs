@@ -5,17 +5,12 @@ import { EN_CORRECTION } from "./i18n-en-correction.mjs";
 import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
 
 export const EN = {
-  // Acompte rattaché à un service (26.11.2026, migration 131)
-  "Le dossier (services chez nous)": "The booking (services paid to us)",
-  "Service payé": "Service paid",
-  "Un acompte pour un service payé sur place : choisissez-le. Son voucher montre alors ce qui est déjà payé et le reste à payer sur place.": "A deposit for a service paid on site: choose it. Its voucher then shows what is already paid and the balance to pay on site.",
-  "Acompte à rattacher : {montant} reçus ne sont attribués à aucun des services payés sur place. Corrigez le paiement et choisissez le service, sinon aucun voucher ne montre ce montant.": "Deposit to assign: {montant} received is not assigned to any of the services paid on site. Correct the payment and choose the service, otherwise no voucher shows this amount.",
-  "Trop-perçu de {montant} sur « {service} » : ce qui a été versé dépasse son prix.": "Overpayment of {montant} on “{service}”: what was paid exceeds its price.",
-  "Remboursement à traiter : {montant} versés pour « {service} », qui est annulé.": "Refund to handle: {montant} paid for “{service}”, which is cancelled.",
+  // Acompte du dossier imputé aux services payés sur place (26.11.2026, migration 131)
+  "Remboursement à traiter : {montant} reçus dépassent ce qui reste dû après l'annulation. Enregistrez le remboursement quand il est fait.": "Refund to handle: {montant} received exceeds what is still due after the cancellation. Record the refund once it is made.",
+  "Trop-perçu de {montant} : le dossier a reçu plus que le prix de ses services.": "Overpayment of {montant}: the booking received more than the price of its services.",
   "La remarque de paiement de « {service} » donne un autre montant que l'acompte enregistré ({montant}) : elle n'est pas imprimée sur le voucher.": "The payment remark of “{service}” gives another amount than the recorded deposit ({montant}): it is not printed on the voucher.",
-  "Le paiement doit être rattaché à un service de son dossier.": "The payment must be assigned to a service of its booking.",
   "Remboursements à traiter": "Refunds to handle",
-  "Un acompte versé pour un service annulé : à rembourser au client, ou à rattacher à un autre service dans le dossier.": "A deposit paid for a cancelled service: to refund to the client, or to assign to another service in the booking.",
+  "Reçu au-delà de ce qui reste dû après une annulation : à rembourser au client, puis à enregistrer comme remboursement dans le dossier.": "Received beyond what is still due after a cancellation: to refund to the client, then to record as a refund in the booking.",
   // « Pas bien » sur une réponse de l'Assistant (migration 74)
   "Pas bien": "Not good",
   "Ce qui ne va pas, en quelques mots": "What is wrong, in a few words",

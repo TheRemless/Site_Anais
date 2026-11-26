@@ -1,8 +1,7 @@
 // À encaisser : ce que les clients doivent encore à l'agence, et les commissions que les prestataires reversent après les services payés sur place.
 // Chaque entreprise ne voit que ce qui la concerne : Zwald les clients seulement, Secret les deux, Taxi les commissions seulement (le client paie toujours le chauffeur).
 // Les commissions se rapprochent dossier par dossier : Anaïs coche ce que le partenaire a payé et encaisse la sélection (encaisser-commissions.mjs).
-import { etat, peut, naviguer, nomClient, resumes, reglages, modeExcursions, modeTaxi } from "../etat.mjs";
-import { statutReservation } from "../operations-calc.mjs";
+import { peut, naviguer, nomClient, resumes, reglages, modeExcursions, modeTaxi } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { formatMontant, formatSommes, formatDate } from "../calc.mjs";
 import { vide, listeAdaptative } from "./commun.mjs";
@@ -21,13 +20,9 @@ export function vueEncaisser() {
   // ---- Les clients ----
   const dus = voitClients ? resumes().filter((r) => (r.statut === "accepte" || r.statut === "acompte") && r.reste > 0).sort((a, b) => (a.dossier.date_depart || "9999").localeCompare(b.dossier.date_depart || "9999") || b.reste - a.reste) : [];
   const devise = reglages().devise;
-  // Remboursements à traiter (migration 131) : un acompte rattaché à un service annulé ne passe à aucun autre service ; il revient au client.
-  const aRembourser = voitClients
-    ? (etat.db.reservations || [])
-        .filter((x) => statutReservation(x.statut) === "annule")
-        .map((x) => ({ r: x, montant: Math.round((etat.db.paiements || []).filter((p) => p.reservation_id === x.id).reduce((t, p) => t + (Number(p.montant) || 0), 0) * 100) / 100, dossier: (etat.db.dossiers || []).find((d) => d.id === x.dossier_id) || null }))
-        .filter((x) => x.montant > 0 && x.dossier)
-    : [];
+  // Remboursements à traiter (migration 131) : ce que la base a compté au-delà de ce qui reste dû après une annulation
+  // (dossiers_resume.a_rembourser), pour tous les dossiers, ouverts ou non. Chacun dans la devise de son dossier.
+  const aRembourser = voitClients ? resumes().filter((r) => Number(r.dossier.a_rembourser) > 0).map((r) => ({ dossier: r.dossier, client: r.client, montant: Number(r.dossier.a_rembourser), devise: r.devise || devise })) : [];
 
   // ---- Les commissions : par partenaire puis par dossier, voir encaisser-commissions.mjs ----
   const commissions = voitCommissions ? sectionCommissions({ rafraichir, ecrit }) : null;
@@ -67,7 +62,7 @@ export function vueEncaisser() {
     rienADire ? vide(tr("Rien à encaisser"), modeTaxi() ? tr("Aucune commission n'est en attente.") : modeExcursions() ? tr("Les clients ont tout payé et aucune commission n'est en attente.") : tr("Les clients ont tout payé.")) : null,
     dus.length ? h("section", null, h("h2", null, tr("Les clients doivent")), listeClients()) : null,
     aRembourser.length
-      ? h("section", null, h("h2", null, tr("Remboursements à traiter")), h("p", { class: "aide" }, tr("Un acompte versé pour un service annulé : à rembourser au client, ou à rattacher à un autre service dans le dossier.")), h("ul", { class: "liste-simple" }, aRembourser.map((x) => h("li", null, h("a", { href: `#/dossier/${x.dossier.id}` }, `${x.dossier.ref} · ${x.r.libelle}`), " · ", h("strong", null, formatMontant(x.montant, devise))))))
+      ? h("section", null, h("h2", null, tr("Remboursements à traiter")), h("p", { class: "aide" }, tr("Reçu au-delà de ce qui reste dû après une annulation : à rembourser au client, puis à enregistrer comme remboursement dans le dossier.")), h("ul", { class: "liste-simple" }, aRembourser.map((x) => h("li", null, h("a", { href: `#/dossier/${x.dossier.id}` }, `${x.dossier.ref} · ${nomClient(x.client)}`), " · ", h("strong", null, formatMontant(x.montant, x.devise))))))
       : null,
     commissions ? commissions.noeud : null
   );

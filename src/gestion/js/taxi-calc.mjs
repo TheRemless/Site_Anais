@@ -119,7 +119,7 @@ export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
 // `remarques` : le champ « Remarks » de la course (lot B du 17.11.2026), imprimé en dernier seulement s'il est rempli.
 // `t` : les textes réglables (textesVoucher) ; sans réglages, ceux du modèle d'Anaïs.
 // `paiement` : paiementDuService (operations-calc.mjs). Un acompte déjà versé ajoute « ALREADY PAID » et « BALANCE TO PAY » sous
-// le prix ; un service sans acompte imputé (plusieurs services sur place, rien de rattaché) : rien de plus.
+// le prix ; un service sans part imputée par la base (dossiers_resume.parts) : rien de plus.
 export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", paiement = null, t = textesVoucher(null) }) {
   ({ pickup, dropoff } = lieuxAvecVol(pickup, retour ? "" : dropoff, vol));
   const rem = String(remarques || "").trim();

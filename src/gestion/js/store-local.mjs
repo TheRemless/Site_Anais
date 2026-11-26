@@ -7,6 +7,7 @@ import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { imputationDossier } from "./operations-calc.mjs";
 import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
 import { corrigerLocal } from "./encaisser-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
@@ -40,12 +41,6 @@ const ORG_DEMO = "demo-organisation";
 
 export function creer() {
   let data;
-  // Comme controler_paiement_service (migration 131) : le service d'un paiement est un service de son dossier.
-  const controlerPaiementService = (p) => {
-    if (!p.reservation_id) return;
-    const r = (data.reservations || []).find((x) => x.id === p.reservation_id);
-    if (!r || r.dossier_id !== p.dossier_id) throw new Error(tr("Le paiement doit être rattaché à un service de son dossier."));
-  };
   let utilisateur;
   const charge = () => {
     try {
@@ -293,7 +288,11 @@ export function creer() {
     const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
     if (!finances) return base;
     const doc = docs.filter((x) => x.type === "facture").pop() || devis;
-    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)), sur_place: doc ? montantSurPlace(doc.contenu) : 0 };
+    const total = totalDossier(docs);
+    const recu = sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id));
+    // Comme recalculer_dossier (migration 131) : la part du reçu imputée à chaque service payé sur place, et ce qui dépasse.
+    const imp = imputationDossier({ total, recu, reservations: data.reservations.filter((x) => x.dossier_id === d.id), annule: !!d.annule });
+    return { ...base, total, devise: (doc && doc.contenu.devise) || null, recu, sur_place: doc ? montantSurPlace(doc.contenu) : 0, parts: imp.parts, a_rembourser: imp.a_rembourser, trop_percu: imp.trop_percu };
   };
   const dossiersVisibles = () => {
     const ctx = contexte();
@@ -1547,7 +1546,6 @@ export function creer() {
     },
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
-      if (table === "paiements") controlerPaiementService(ligne);
       garderPrix(table, null, ligne);
       garderClientDossier(table, null, ligne);
       garderApporteurDossier(table, null, ligne);
@@ -1579,8 +1577,6 @@ export function creer() {
       return structuredClone(ligne);
     },
     async modifier(table, id, patch, avant) {
-      // Comme controler_paiement_service (migration 131) : un paiement ne se rattache qu'à un service de son dossier.
-      if (table === "paiements" && patch && "reservation_id" in patch) controlerPaiementService({ ...(data.paiements.find((x) => x.id === id) || {}), ...patch });
       const ligne = data[table].find((r) => r.id === id);
       // Même contrôle que la base : la ligne a changé depuis qu'on l'a lue (autre onglet), rien n'est écrit.
       if (avant && ligne.updated_at && ligne.updated_at !== avant) throw Object.assign(new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte.")), { conflit: true });

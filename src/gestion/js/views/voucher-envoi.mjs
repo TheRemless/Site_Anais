@@ -74,7 +74,7 @@ export function messageClientVoucher(x) {
   const trajet = !!sourcesVoucher(r, x.prestation || null).trajet;
   // Le paiement de ce service (acompte versé sur un service payé sur place compris) : le reste à payer est le sien, pas celui du dossier.
   // Un service sur place sans acompte imputé n'annonce aucun montant ; un reste du dossier négatif (trop-perçu) n'en annonce pas non plus.
-  const pay = paiementDuService(r, { resume: res, reservations: etat.db.reservations.filter((y) => y.dossier_id === r.dossier_id) });
+  const pay = paiementDuService(r, { resume: res });
   const paiement = pay.statut;
   const message = messageVoucher({
     pour: "client",

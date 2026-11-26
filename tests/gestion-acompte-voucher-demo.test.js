@@ -42,23 +42,51 @@ test("Taxi : la Booking confirmation dit ce qui est déjà payé et le reste à 
   assert.match(t, /BALANCE TO PAY\s*:?\s*1'000 THB/);
 });
 
-test("Secret : deux services sur place, acompte rattaché au bateau → seul son voucher le montre ; le dossier ne le compte pas chez nous", async () => {
+test("Secret : deux services sur place, un acompte au dossier → le plus tôt d'abord, chaque voucher sa part ; annulé puis remboursé", async () => {
   dans("excursions");
   const l1 = { id: `L-${++n}`, kind: "ligne", libelle: "Private longtail tour", libre: true, qte: 1, unite: 6900, paye_sur_place: true, date_service: "2026-12-22", personnes: { adultes: 2, enfants: 0 } };
-  const l2 = { id: `L-${++n}`, kind: "ligne", libelle: "Private taxi to the pier", libre: true, qte: 1, unite: 800, paye_sur_place: true, date_service: "2026-12-22", personnes: { adultes: 2, enfants: 0 } };
+  const l2 = { id: `L-${++n}`, kind: "ligne", libelle: "Private taxi to the pier", libre: true, qte: 1, unite: 800, paye_sur_place: true, date_service: "2026-12-21", personnes: { adultes: 2, enfants: 0 } };
   const d = await creerDossierExcursions({ client: { prenom: "Jane", nom: `Example ${n}`, telephone: `+4477009002${10 + n}`, hotel: "Resort Exemple" }, lignes: [l1, l2], ref: refProposee(), silencieux: true });
   const [bateau, taxi] = ["Private longtail tour", "Private taxi to the pier"].map((lib) => E.etat.db.reservations.find((r) => r.dossier_id === d.id && r.libelle === lib));
   await E.inserer("paiements", { dossier_id: d.id, date: "2026-11-26", montant: 1200, type: "acompte", moyen: "virement", note: "" });
   const textes = () => Object.fromEntries(vouchersDuDossier(d.id).map((x) => [x.reservation.libelle, renderVoucher(x).textContent]));
   let t = textes();
-  assert.doesNotMatch(t[bateau.libelle] + t[taxi.libelle], /Amount Already Paid/, "non rattaché : aucun montant, sur aucun des deux");
-  const p = E.etat.db.paiements.find((x) => x.dossier_id === d.id);
-  await E.modifier("paiements", p.id, { reservation_id: bateau.id });
-  t = textes();
-  assert.match(t[bateau.libelle], /Amount Already Paid: THB 1'200/);
-  assert.doesNotMatch(t[taxi.libelle], /Amount Already Paid|BALANCE/);
-  assert.equal(E.resumeDossier(d.id).recu, 0, "le reçu des services chez nous ne compte pas l'acompte du bateau");
-  // Un service d'un autre dossier est refusé, comme par la base.
-  const autre = E.etat.db.reservations.find((r) => r.dossier_id !== d.id && r.entite_id === d.entite_id);
-  await assert.rejects(() => E.modifier("paiements", p.id, { reservation_id: autre.id }), /son dossier/);
+  // Le transfert (le 21) est payé en entier ; le bateau (le 22) reçoit les 400 qui restent. 800 + 400 = 1 200, jamais plus.
+  assert.match(t[taxi.libelle], /800/);
+  assert.doesNotMatch(t[taxi.libelle], /1'200/);
+  assert.match(t[bateau.libelle], /Amount Already Paid: THB 400/);
+  assert.match(t[bateau.libelle], /Balance to Pay on Arrival: THB 6'500/);
+  // Le bateau annulé : il ne reçoit rien ; les 400 sont à rembourser, puis le remboursement saisi solde l'alerte (le reste ne devient pas négatif).
+  await E.modifier("reservations", bateau.id, { statut: "annule" });
+  assert.equal(Number(E.etat.db.dossiers.find((x) => x.id === d.id).a_rembourser), 400);
+  await E.inserer("paiements", { dossier_id: d.id, date: "2026-11-27", montant: -400, type: "remboursement", moyen: "virement", note: "" });
+  const apres = E.resumeDossier(d.id);
+  assert.equal(Number(apres.dossier.a_rembourser), 0);
+  assert.ok(apres.reste >= 0, "le reste ne devient pas négatif");
+  assert.match(textes()[taxi.libelle], /800/);
+});
+
+test("dossier non chargé (store Supabase simulé) : le voucher lit la part du résumé de la base, sans aucun paiement en mémoire", async () => {
+  const { creer } = await import("../src/gestion/js/store-supabase.mjs");
+  const { resume } = await import("../src/gestion/js/calc.mjs");
+  const { paiementDuService } = await import("../src/gestion/js/operations-calc.mjs");
+  const tables = {
+    dossiers: [{ id: "D9", entite_id: "SECRET", ref: "INV-2026-901", client_id: "C9" }],
+    dossiers_resume: [{ dossier_id: "D9", total: "0", devise: "THB", recu: "1200", sur_place: "6900", parts: { R9: { verse: 1200, reste: 5700 } }, a_rembourser: "0", trop_percu: "0" }],
+  };
+  const requete = (t) => {
+    let lignes = tables[t] || [];
+    const q = { select: () => q, eq: (k, v) => ((lignes = lignes.filter((x) => x[k] === v)), q), maybeSingle: async () => ({ data: lignes[0] || null, error: null }) };
+    return q;
+  };
+  const store = creer({}, { client: { from: requete, auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } } });
+  const d = await store.resumeDossier("D9");
+  assert.deepEqual(d.parts, { R9: { verse: 1200, reste: 5700 } });
+  const r = { id: "R9", dossier_id: "D9", paye_sur_place: true, statut: "confirme", montant_vente: 6900 };
+  // Aucun document ni paiement chargé : le résumé de la base fait foi.
+  const res = resume(d, { documents: [], paiements: [], clients: [], reservations: [r] }, { devise: "THB" });
+  assert.equal(res.paiements.length, 0);
+  assert.deepEqual(paiementDuService(r, { resume: res }), { statut: "acompte", verse: 1200, reste: 5700, surPlace: true });
+  // Un service chez nous payé, dossier non ouvert : « Paid », pas « Payment Pending ».
+  assert.equal(paiementDuService({ id: "R8", paye_sur_place: false }, { resume: resume({ ...d, total: 2000, recu: 2000 }, { documents: [], paiements: [], clients: [], reservations: [] }, { devise: "THB" }) }).statut, "paye");
 });

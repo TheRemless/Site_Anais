@@ -165,7 +165,8 @@ export function totaux(contenu, recu = 0) {
   const remises = arrondi(lignes.reduce((s, l, i) => (l.kind === "remise" ? s + montants[i] : s), 0));
   const net = arrondi(sousTotal + remises);
   const r = arrondi(recu);
-  return { sousTotal, remises, net, recu: r, reste: arrondi(net - r), montants };
+  // Le reste imprimé ne devient jamais négatif (migration 131) : un reçu au-delà du dû chez nous paie les services sur place (leurs vouchers).
+  return { sousTotal, remises, net, recu: r, reste: arrondi(Math.max(0, net - r)), montants };
 }
 
 export function afficherSousTotal(contenu, recu = 0) {
@@ -350,10 +351,7 @@ export function resume(dossier, db, reglages) {
   const devis = dernier(documents, "devis");
   const doc = dernier(documents, "facture") || devis;
   const total = charge ? totalDossier(documents) : Number(dossier.total) || 0;
-  // Un acompte rattaché à un service payé sur place (paiements.reservation_id, migration 131) ne paie pas les services chez nous : il ne
-  // compte ni dans le reçu ni dans le reste dû du dossier (comme dossiers_resume). Son voucher le montre (paiementDuService).
-  const surPlaceIds = new Set((db.reservations || []).filter((x) => x.dossier_id === dossier.id && x.paye_sur_place).map((x) => x.id));
-  const recu = charge ? sommePaiements(paiements.filter((p) => !(p.reservation_id && surPlaceIds.has(p.reservation_id)))) : Number(dossier.recu) || 0;
+  const recu = charge ? sommePaiements(paiements) : Number(dossier.recu) || 0;
   // Prix des services payés directement aux prestataires (hors total) : sans documents chargés, la base le tient à jour (migration 19).
   const surPlace = charge ? (doc ? montantSurPlace(doc.contenu) : 0) : Number(dossier.sur_place) || 0;
   const devisEnvoyeLe = charge ? (devis && devis.envoye_le) || null : dossier.devis_envoye_le || null;
@@ -367,7 +365,8 @@ export function resume(dossier, db, reglages) {
     devise: (doc && doc.contenu.devise) || (!charge && dossier.devise) || reglages.devise || null,
     total,
     recu,
-    reste: arrondi(total - recu),
+    // Jamais négatif (migration 131) : ce qui dépasse le dû chez nous paie les services sur place, ou se dit en alerte (à rembourser, trop-perçu).
+    reste: arrondi(Math.max(0, total - recu)),
     surPlace,
     devisEnvoyeLe,
     pct,
