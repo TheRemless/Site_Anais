@@ -831,7 +831,7 @@ export function creer() {
     },
     async whatsappConversation(id) {
       const c = conversationLue(id);
-      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, telephone: c.telephone || "", nom: c.nom || "", partenaire_id: c.partenaire_id || null, ...(c.type_contact ? { type_contact: c.type_contact } : {}) } : null;
+      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, telephone: c.telephone || "", nom: c.nom || "", partenaire_id: c.partenaire_id || null, ...(c.type_contact ? { type_contact: c.type_contact } : {}), ...(c.reponses ? { reponses: c.reponses } : {}) } : null;
     },
     // Demandes du site et WhatsApp reliés (migration 72), avec les contrôles de demande_site_relier et whatsapp_relier_apres_demande.
     async demandeSite(id) {

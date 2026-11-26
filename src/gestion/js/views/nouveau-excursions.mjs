@@ -170,7 +170,7 @@ export function nouveauDossierExcursions() {
     erreurChamp(nvTel, "");
     if (selClient.nouveau) {
       const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value });
-      if (!verif.ok && verif.champ === "telephone") return erreurChamp(nvTel, messageTelephone(verif.raison)), nvTel.focus();
+      if (!verif.ok && verif.champ === "telephone") return erreurChamp(nvTel, messageTelephone(verif.raison, verif.proposition)), nvTel.focus();
     }
     if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = tr("Ajoutez au moins un service."));
     if (!ref.value.trim()) return (erreur.textContent = taxi ? tr("Indiquez le numéro de réservation.") : tr("Indiquez le numéro de facture."));

@@ -47,7 +47,7 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   let telephone = (client.telephone || "").trim();
   if (!clientId) {
     const verif = verifierTelephoneClient(telephone, "");
-    if (!verif.ok) throw new Error(tr("Téléphone du client : {message}", { message: messageTelephone(verif.raison) }));
+    if (!verif.ok) throw new Error(tr("Téléphone du client : {message}", { message: messageTelephone(verif.raison, verif.proposition) }));
     telephone = verif.valeur;
   }
   if (!clientId) {

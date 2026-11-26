@@ -7,7 +7,7 @@ import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPar
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireDuTexte, demandeEnregistree, serviceCree, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, siegesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
-import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
+import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut, nettoyerTelephone } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut, lieuParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
@@ -25,7 +25,7 @@ import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal, estCarnet } from "../demandes-site-calc.mjs";
 import { refDeLaPage } from "../carnet-colle.mjs";
-import { telephoneDepuisWhatsApp } from "../telephone-carte-calc.mjs";
+import { telephoneDepuisWhatsApp, entreprisesVoisines } from "../telephone-carte-calc.mjs";
 import { verifierTelephoneClient, messageTelephone } from "../client-calc.mjs";
 
 // Le plus long qu'une validation d'un geste attend la liste des hôtels situés avant de créer le dossier.
@@ -569,6 +569,9 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
             : d.nom
               ? h("p", { class: "aide" }, tr("Nouveau client : il sera créé avec le dossier."))
               : null,
+        connu && whatsappId && !conversationARelier()
+          ? h("p", { class: "aide", role: "status" }, tr("La fiche de {nom} porte un autre numéro : la conversation WhatsApp ne lui sera pas reliée. Corrigez d'abord le numéro de la fiche si c'est bien le même client.", { nom: nomClient(connu) }))
+          : null,
         ...(connu ? [] : propositionsWhatsApp()),
       ].filter(Boolean)
     );
@@ -665,7 +668,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (nouveauClient && !peut("clients.ecrire")) return (erreur.textContent = tr("Votre rôle ne permet pas de créer un client : choisissez un client existant."));
     // Le numéro se contrôle ici, champ en main, plutôt qu'à l'écriture (un numéro coupé ou en double n'est jamais enregistré).
     const verifTel = nouveauClient ? verifierTelephoneClient(d.telephone || "", "") : { ok: true };
-    if (!verifTel.ok) return (erreur.textContent = tr("Téléphone du client : {message}", { message: messageTelephone(verifTel.raison) })), saisies.tel && saisies.tel.focus();
+    if (!verifTel.ok) return (erreur.textContent = tr("Téléphone du client : {message}", { message: messageTelephone(verifTel.raison, verifTel.proposition) })), saisies.tel && saisies.tel.focus();
     const b = preparer();
     if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque && b.manque.transfertLibre) return (erreur.textContent = tr("Indiquez le prix du transfert privé, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
@@ -701,10 +704,10 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));
       const total = Math.round(somme * 100) / 100;
-      if (depuisSite && depuisSite.surCree) return void depuisSite.surCree({ dossier, services: finals, total, whatsappId });
+      if (depuisSite && depuisSite.surCree) return void depuisSite.surCree({ dossier, services: finals, total, whatsappId: conversationARelier() });
       // Depuis une carte de l'onglet Assistant : la conversation se relie au dossier et garde les corrections (agent.mjs).
       if (depuisItineraire && depuisItineraire.surCree) depuisItineraire.surCree({ dossier });
-      if (options.surCree) options.surCree({ dossier, services: finals, total, whatsappId });
+      if (options.surCree) options.surCree({ dossier, services: finals, total, whatsappId: conversationARelier() });
       if ((depuisItineraire && depuisItineraire.surCree) || options.surCree) return { ok: true, dossier };
       naviguer(`#/dossier/${dossier.id}`);
       return { ok: true, dossier };
@@ -856,13 +859,25 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   // WhatsApp) remplace un champ vide ou coupé ; sinon les conversations au nom du client se proposent sous le champ, reprises d'un geste.
   // La conversation retenue se relie au client et au dossier après la création (surCree reçoit `whatsappId`).
   function lireWhatsApp() {
-    const voisines = (etat.brut.entites || []).filter((e) => e.id !== etat.entiteId && partageClientsPermis(e.id, etat.entiteId)).map((e) => e.id);
+    // L'autre entreprise de l'espace unifié seulement (Secret et Taxi), jamais ZTP : une conversation ZTP ne se relie pas à Secret.
+    const voisines = entreprisesVoisines(etat.brut.entites || [], etat.entiteId).filter((id) => partageClientsPermis(id, etat.entiteId));
     const lu = telephoneDepuisWhatsApp({ saisi: d.telephone || "", liee: options.whatsappLie || null, conversations: etat.brut.whatsapp_conversations || [], nomClient: d.nom || "", entites: [etat.entiteId, ...voisines], aujourdhui: aujourdhui() });
     const garde = whatsappId;
     d.telephone = lu.telephone;
     candidatsWa = lu.candidats;
     whatsappId = lu.whatsappId || (candidatsWa.some((c) => c.id === garde) ? garde : null);
+    // Le champ affiché suit le numéro qui sera enregistré (relecture de la PR 356, point 7).
+    if (saisies.tel && saisies.tel.value !== (d.telephone || "")) saisies.tel.value = d.telephone || "";
   }
+  // La conversation à relier après la création : pas sur la fiche d'un client déjà connu dont le numéro est un autre (« C'est lui » après
+  // « Reprendre ce numéro ») ; la fiche n'est pas modifiée en silence, le dossier le dit (relecture de la PR 356, point 8).
+  const conversationARelier = () => {
+    if (!whatsappId || !clientId) return whatsappId;
+    const c = clientParId(clientId);
+    const wa = (etat.brut.whatsapp_conversations || []).find((x) => x.id === whatsappId) || candidatsWa.find((x) => x.id === whatsappId) || (options.whatsappLie && options.whatsappLie.id === whatsappId ? options.whatsappLie : null);
+    const num = (t) => nettoyerTelephone(t).replace(/\D/g, "").replace(/^0+/, "");
+    return c && wa && num(c.telephone) && num(c.telephone) !== num(wa.telephone) ? null : whatsappId;
+  };
 
   function vider() {
     clientId = options.clientId || "";

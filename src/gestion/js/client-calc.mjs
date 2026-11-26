@@ -26,6 +26,11 @@ export function verifierTelephoneClient(saisie, ancien = "") {
   const brut = String(saisie || "").trim();
   if (!brut) return { ok: true, valeur: "", raison: "" };
   if (brut === String(ancien || "").trim()) return { ok: true, valeur: brut, raison: "" };
+  // « 81 234 5678 » : sans + ni 0, lu comme un numéro japonais (+81). Neuf chiffres qui commencent par 6, 8 ou 9 : un mobile thaï sans son
+  // indicatif, probablement ; rien n'est deviné, le numéro avec +66 est proposé (relecture de la PR 356, point 11).
+  const sansPlus = nettoyerTelephone(brut).trim();
+  const seuls = sansPlus.replace(/\D/g, "");
+  if (!/^(\+|00|0)/.test(sansPlus) && /^[689]\d{8}$/.test(seuls)) return { ok: false, valeur: brut, raison: "thai_sans_indicatif", proposition: `+66 ${seuls.slice(0, 2)} ${seuls.slice(2, 5)} ${seuls.slice(5)}` };
   const t = normaliserTelephone(brut);
   if (!t.numero) return { ok: false, valeur: brut, raison: t.raison };
   // Un numéro coupé ne passe jamais (« +1555010 » enregistré pour « +1 (555) 010-4477 (trait d’union insécable) ») : tous les chiffres du champ doivent
@@ -53,7 +58,8 @@ const LONGUEURS_INDICATIF = [
 ];
 
 // Le message à montrer pour un téléphone refusé par verifierTelephoneClient.
-export function messageTelephone(raison) {
+export function messageTelephone(raison, proposition = "") {
+  if (raison === "thai_sans_indicatif") return tr("Numéro thaï sans indicatif ? Écrivez-le avec +66 : {numero}. Sinon, ajoutez l'indicatif de son pays.", { numero: proposition });
   if (raison === "sans_indicatif") return tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.");
   if (raison === "longueur") return tr("Ce numéro n'a pas le bon nombre de chiffres pour son pays : vérifiez qu'il est complet.");
   if (raison === "illisible") return tr("Numéro coupé ou en double : laissez un seul numéro, complet, avec son indicatif.");

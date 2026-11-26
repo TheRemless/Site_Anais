@@ -27,6 +27,7 @@ import { CLE_DEMANDE_AGENT, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "
 import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
+import { conversationDansEntreprise } from "../telephone-carte-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { boutonPasBien } from "./agent-retour.mjs";
@@ -1445,16 +1446,20 @@ export async function vueAgent(idOuvert = "") {
     if (maj) redessiner(maj);
   }
 
-  // La conversation WhatsApp liée, relue en base (son numéro complète celui de la carte) : null sans liaison ou en cas de panne.
+  // La conversation WhatsApp liée, relue en base (son numéro complète celui de la carte) : null sans liaison ou en cas de panne. Même condition
+  // que le serveur (index.ts, PR 355) : rangée dans l'entreprise de l'Assistant, ou à trier chez Secret et Taxi ; jamais un apporteur.
   async function conversationWaLiee() {
     const waId = conv && conv.whatsapp_conversation_id;
     if (!waId) return null;
+    let wc = null;
     try {
-      return (etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null) || (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+      wc = (etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null) || (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
     } catch (err) {
       console.error("agent : conversation WhatsApp liée", err);
-      return (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+      wc = (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
     }
+    const slug = ((etat.brut.entites || []).find((e) => e.id === etat.entiteId) || {}).slug || "";
+    return wc && conversationDansEntreprise(wc, etat.entiteId, slug) && !apporteurConfirme(wc) ? wc : null;
   }
   // Le type du contact de la conversation WhatsApp liée, relu en base : null sans liaison, illisible ou sans type.
   async function typeContactLie() {

@@ -7,6 +7,7 @@ import { estTaxi } from "./taxi-calc.mjs";
 import { prestataires } from "./apporteurs-calc.mjs";
 import { siegesLus, siegesChoisis } from "./sieges-calc.mjs";
 import { nettoyerTelephone } from "./partenaires-calc.mjs";
+import { verifierTelephoneClient } from "./client-calc.mjs";
 
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
@@ -144,9 +145,13 @@ export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", 
 
 // WhatsApp facultatif : vide, ou un numéro d'au moins 8 chiffres, sans lettres (« +66 81 234 5678 », « 0812345678 »).
 // Un numéro collé depuis un iPhone (trait d'union insécable, marques de sens) est d'abord remis en caractères ordinaires (nettoyerTelephone).
+// Un numéro international (« + » ou « 00 ») suit la règle de la fiche client et de la base (verifierTelephoneClient, migration 129) : un
+// numéro coupé ou trop long est refusé ici, jamais par la base après coup (relecture de la PR 356, point 5).
 export const telephoneValide = (t) => {
   const s = nettoyerTelephone(t).trim();
-  return !s || (!/[^\d\s+().-]/.test(s) && s.replace(/\D/g, "").length >= 8);
+  if (!s) return true;
+  if (/[^\d\s+().-]/.test(s) || s.replace(/\D/g, "").length < 8) return false;
+  return /^(\+|00)/.test(s) ? verifierTelephoneClient(s).ok : true;
 };
 
 // Contrôle avant l'aperçu : { champ: code d'erreur } (codes de TH, « e_… »). Vide = tout est bon.

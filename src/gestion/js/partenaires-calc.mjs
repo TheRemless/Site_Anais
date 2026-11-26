@@ -444,7 +444,8 @@ export function nettoyerTelephone(brut) {
 }
 export function normaliserTelephone(brut, { thaiLocal = false } = {}) {
   const texte = nettoyerTelephone(brut);
-  const m = texte.match(/\+?\d[\d\s\-().\/]{6,}\d/);
+  // « / » reste une coupure : « 081-978-9025 / 089-123-4567 » donne le premier numéro, jamais les deux collés (liens d'appel et wa.me).
+  const m = texte.match(/\+?\d[\d\s\-().]{6,}\d/);
   if (!m) return { numero: "", raison: /\d/.test(texte) ? "trop_court" : "vide" };
   const d = m[0].replace(/[^\d+]/g, "");
   if (d[0] === "+") return { numero: d, raison: "" };

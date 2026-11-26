@@ -8,7 +8,7 @@
 --   8 à 15 chiffres ; +1 (Amérique du Nord), +33 (France) et +41 (Suisse) : 11 chiffres exactement.
 -- Un ancien numéro local (« 079… ») reste accepté, comme dans l'outil. Les fonctions de la base (fusion de fiches, restauration de la
 -- corbeille, liaison WhatsApp) ne sont pas bloquées : elles recopient un numéro déjà enregistré.
--- Relevé du 26.11.2026 en lecture seule : deux fiches de Secret n'y répondent pas (7 chiffres), elles restent telles quelles jusqu'à leur correction.
+-- Les fiches existantes qui n'y répondent pas restent telles quelles jusqu'à leur correction (la règle ne joue qu'à l'écriture du numéro).
 begin;
 
 create or replace function controler_telephone_client() returns trigger

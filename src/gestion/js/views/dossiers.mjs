@@ -251,7 +251,7 @@ export function nouveauDossier() {
       const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value, email: nvEmail.value });
       if (!verif.ok) {
         if (verif.champ === "nom") (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
-        else if (verif.champ === "telephone") (erreurChamp(nvTel, messageTelephone(verif.raison)), nvTel.focus());
+        else if (verif.champ === "telephone") (erreurChamp(nvTel, messageTelephone(verif.raison, verif.proposition)), nvTel.focus());
         else (erreur.textContent = tr("Cette adresse e-mail est illisible : vérifiez-la."), nvEmail.focus());
         return;
       }

@@ -132,8 +132,8 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
     const autre = brut.whatsapp_conversations.find((c) => c.entite_id && c.entite_id !== excursions.id);
     if (autre) assert.deepEqual(await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: autre.id, whatsapp_mode: "creer", texte: "" }, () => {}), { erreur: "whatsapp_introuvable" }, "rangée ailleurs : refusée");
     await store.modifier("whatsapp_conversations", aTrier.id, { entite_id: excursions.id });
-    // Le numéro et le nom de la conversation sont relus aussi (26.11.2026) : ils complètent le téléphone d'une carte « dossier ».
-    assert.deepEqual(await store.whatsappConversation(aTrier.id), { id: aTrier.id, entite_id: excursions.id, client_id: null, dossier_id: null, telephone: aTrier.telephone || "", nom: aTrier.nom || "", partenaire_id: aTrier.partenaire_id || null, ...(aTrier.type_contact ? { type_contact: aTrier.type_contact } : {}) }, "relue en base pour la liaison");
+    // Le numéro et le nom de la conversation sont relus aussi : ils complètent le téléphone d'une carte « dossier » ; `reponses` écarte un contact personnel.
+    assert.deepEqual(await store.whatsappConversation(aTrier.id), { id: aTrier.id, entite_id: excursions.id, client_id: null, dossier_id: null, telephone: aTrier.telephone || "", nom: aTrier.nom || "", partenaire_id: aTrier.partenaire_id || null, ...(aTrier.type_contact ? { type_contact: aTrier.type_contact } : {}), ...(aTrier.reponses ? { reponses: aTrier.reponses } : {}) }, "relue en base pour la liaison");
     const evenements = [];
     const rep = await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: aTrier.id, whatsapp_mode: "creer", texte: "" }, (ev) => evenements.push(ev));
     assert.deepEqual(rep, { ok: true });

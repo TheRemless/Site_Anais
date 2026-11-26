@@ -674,6 +674,8 @@ export const EN = {
   "Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.": "Unreadable number: write it with its country code, for example +41 79 123 45 67.",
   // Téléphone coupé (26.11.2026) : numéro incomplet, en double, et numéro repris de la conversation WhatsApp
   "Ce numéro n'a pas le bon nombre de chiffres pour son pays : vérifiez qu'il est complet.": "This number does not have the right number of digits for its country: check that it is complete.",
+  "Numéro thaï sans indicatif ? Écrivez-le avec +66 : {numero}. Sinon, ajoutez l'indicatif de son pays.": "Thai number without its country code? Write it with +66: {numero}. Otherwise, add the code of its country.",
+  "La fiche de {nom} porte un autre numéro : la conversation WhatsApp ne lui sera pas reliée. Corrigez d'abord le numéro de la fiche si c'est bien le même client.": "{nom}'s record has another number: the WhatsApp conversation will not be linked to it. Correct the record's number first if it is the same client.",
   "Numéro coupé ou en double : laissez un seul numéro, complet, avec son indicatif.": "Number cut off or duplicated: leave a single, complete number with its country code.",
   "Téléphone du client : {message}": "Client's phone: {message}",
   "Numéro repris de la conversation WhatsApp « {nom} » : {telephone}": "Number taken from the WhatsApp conversation “{nom}”: {telephone}",

@@ -542,7 +542,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async whatsappConversation(id) {
       const lire = (cols) => sb.from("whatsapp_conversations").select(cols).eq("id", id).maybeSingle();
       // telephone et nom (26.11.2026) : le numéro complet de la conversation reprend un téléphone vide ou coupé sur la carte.
-      let { data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact");
+      // reponses (« jamais » : contact personnel) et type_contact : le filtre des contacts personnels et l'exclusion des apporteurs s'appliquent.
+      let { data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact, reponses");
+      if (error && colonneAbsente(error, "reponses")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact"));
       if (error && ["type_contact", "partenaire_id"].some((c) => colonneAbsente(error, c))) ({ data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom"));
       if (error) throw new Error(error.message);
       return data || null;

@@ -1,6 +1,5 @@
-// Téléphone coupé (26.11.2026). Un numéro copié depuis WhatsApp sur iPhone, « +1 (555) 010-4477 (trait d’union insécable) » avec un trait d'union
-// insécable (U+2011) entre des marques de sens, était lu « +1555010 » et enregistré sans un mot. La carte de l'Assistant n'avait pas de
-// téléphone et la conversation WhatsApp du client est restée sans client ni dossier.
+// Téléphone coupé. Un numéro copié depuis WhatsApp sur iPhone, avec un trait d'union insécable (U+2011) entre des marques de sens, était lu
+// jusqu'au premier tiret et enregistré sans un mot ; une carte sans téléphone laissait la conversation WhatsApp sans client ni dossier.
 // Ici : la lecture des numéros (outil), le numéro de la conversation repris pour la carte, puis les chemins réels de la démo (carte « dossier »
 // d'un geste et « Vérifier avant », dans Secret et dans Taxi) jusqu'à la fiche client écrite. Numéros et noms inventés.
 import { test, after } from "node:test";
@@ -8,7 +7,10 @@ import assert from "node:assert/strict";
 import { installerDom } from "./aides-dom.mjs";
 import { normaliserTelephone, nettoyerTelephone } from "../src/gestion/js/partenaires-calc.mjs";
 import { verifierTelephoneClient, verifierNouveauClient, messageTelephone } from "../src/gestion/js/client-calc.mjs";
-import { telephoneDepuisWhatsApp } from "../src/gestion/js/telephone-carte-calc.mjs";
+import { telephoneDepuisWhatsApp, telephoneDeCarte as telephoneDeCarteEcran, conversationDansEntreprise as dansEntrepriseEcran, entreprisesVoisines } from "../src/gestion/js/telephone-carte-calc.mjs";
+import { lireLibre } from "../src/gestion/js/demande-calc.mjs";
+import { telephoneDeCarte as telephoneDeCarteServeur } from "../supabase/functions/agent/outils.js";
+import { conversationDansEntreprise as dansEntrepriseServeur } from "../supabase/functions/agent/whatsapp.js";
 import { telephoneValide, donneesVoucher, valeursVides } from "../src/gestion/js/voucher-rapide-calc.mjs";
 import { EN } from "../src/gestion/js/i18n-en.mjs";
 import fs from "node:fs";
@@ -50,6 +52,68 @@ test("lecture : un numéro coupé, en double ou de mauvaise longueur est refusé
   for (const r of ["sans_indicatif", "longueur", "illisible", "trop_court", "vide"]) assert.ok(messageTelephone(r).length > 10, r);
 });
 
+test("texte collé ou demande du site : le numéro copié d'un iPhone (U+2011) est lu en entier, pour +1, +44, +49, +61 et +66", () => {
+  const T = U(0x2011);
+  const cas = [
+    [`+1 (555) 010${T}4477`, "+1 (555) 010-4477"],
+    [`+44 7700 900${T}123`, "+44 7700 900-123"],
+    [`+49 30 1234${T}5678`, "+49 30 1234-5678"],
+    [`+61 412${T}345${T}678`, "+61 412-345-678"],
+    [`+66 81${T}234${T}5678`, "+66 81-234-5678"],
+  ];
+  for (const [colle, attendu] of cas) {
+    const d = lireLibre(`Hello, private taxi for 2 adults tomorrow. My WhatsApp ${U(0x202a)}${colle}${U(0x202c)} thanks`, "2026-11-26");
+    assert.equal(d.telephone, attendu, colle);
+    assert.equal(verifierTelephoneClient(d.telephone).ok, true, attendu);
+  }
+});
+
+test("normaliserTelephone : « / » reste une coupure (deux numéros jamais collés) ; verifierTelephoneClient refuse les deux", () => {
+  const tableau = [
+    ["081-978-9025 / 089-123-4567", { thaiLocal: true }, "+66819789025"],
+    ["+66 81 978 9025 / +66 89 123 4567", {}, "+66819789025"],
+    ["+41 79 123 45 67", {}, "+41791234567"],
+    ["081.978.9025", { thaiLocal: true }, "+66819789025"],
+  ];
+  for (const [brut, o, attendu] of tableau) assert.equal(normaliserTelephone(brut, o).numero, attendu, brut);
+  assert.equal(verifierTelephoneClient("+66 81 978 9025 / +66 89 123 4567").ok, false);
+});
+
+test("« 81 234 5678 » sans indicatif : +66 est proposé, rien n'est deviné ; un vrai numéro japonais avec + passe", () => {
+  const v = verifierTelephoneClient("81 234 5678");
+  assert.deepEqual([v.ok, v.raison, v.proposition], [false, "thai_sans_indicatif", "+66 81 234 5678"]);
+  assert.match(messageTelephone(v.raison, v.proposition), /\+66 81 234 5678/);
+  assert.equal(verifierTelephoneClient("+81 3 1234 5678").ok, true);
+});
+
+test("même règle que le serveur (PR 355) : telephoneDeCarte et conversationDansEntreprise, à l'identique", () => {
+  const cas = [["", "+15550104477"], ["0812345678", "+66812345678"], ["5550104477", "+15550104477"], ["+15550104477", "+15550104477"], ["+33 6 12 34 56 78", "+15550104477"], ["", "123"]];
+  for (const [saisi, wa] of cas) assert.equal(telephoneDeCarteEcran(saisi, wa), telephoneDeCarteServeur(saisi, wa), `${saisi} / ${wa}`);
+  for (const [c, e, slug] of [[{ entite_id: "s" }, "s", "secret"], [{ entite_id: null }, "s", "secret"], [{ entite_id: null }, "z", "ztp"], [{ entite_id: "t" }, "s", "secret"]]) assert.equal(dansEntrepriseEcran(c, e, slug), dansEntrepriseServeur(c, e, slug));
+  // Le numéro coupé (début de celui de la conversation) est complété à l'écran, en plus de la règle du serveur.
+  assert.equal(telephoneDepuisWhatsApp({ saisi: "+1555010", liee: conv() }).telephone, COMPLET);
+});
+
+test("voisines : seulement l'autre entreprise de l'espace unifié, jamais ZTP", () => {
+  const entites = [{ id: "z", slug: "ztp" }, { id: "s", slug: "secret" }, { id: "t", slug: "taxi" }];
+  assert.deepEqual(entreprisesVoisines(entites, "s"), ["t"]);
+  assert.deepEqual(entreprisesVoisines(entites, "t"), ["s"]);
+  assert.deepEqual(entreprisesVoisines(entites, "z"), []);
+});
+
+test("propositions par nom : les civilités et les mots génériques ne désignent personne", () => {
+  const conversations = [conv({ id: "g1", nom: "Mr Hotel" }), conv({ id: "g2", nom: "Villa Resort" }), conv({ id: "g3", nom: "Lena" })];
+  const r = telephoneDepuisWhatsApp({ saisi: "", conversations, nomClient: "Mr Lena Exemple, Hotel Villa", entites: [ENT], aujourdhui: "2026-11-26" });
+  assert.deepEqual(r.candidats.map((c) => c.id), ["g3"]);
+});
+
+test("voucher rapide : un numéro en + suit la règle de la fiche (coupé refusé) ; le refus de la base est traduit", () => {
+  assert.equal(telephoneValide("+1555010"), false);
+  assert.equal(telephoneValide(`+1 (555) 010${U(0x2011)}4477`), true);
+  assert.equal(telephoneValide("0812345678"), true);
+  assert.match(fs.readFileSync(new URL("../src/gestion/js/views/voucher-rapide.mjs", import.meta.url), "utf8"), /Téléphone du client\/\.test\(String\(err && err\.message\)\) \? TH\.e_tel/);
+});
+
 test("voucher rapide de Taxi : le numéro collé depuis un iPhone est accepté et enregistré en caractères ordinaires", () => {
   assert.equal(telephoneValide(COPIE_IPHONE), true);
   const x = donneesVoucher({ ...valeursVides(), nom: "Client Exemple", telephone: COPIE_IPHONE, date: "2026-12-03", pickup: "Resort Exemple", heure: "09:00", trajet: "aller", dropoff: "Krabi Airport", prix: "1500" });
@@ -58,10 +122,10 @@ test("voucher rapide de Taxi : le numéro collé depuis un iPhone est accepté e
 
 // ---- Le numéro de la conversation WhatsApp ---------------------------------------------------------------------------------------
 const ENT = "e-secret";
-const conv = (o = {}) => ({ id: "w1", telephone: COMPLET, nom: "Abby", entite_id: null, client_id: null, type_contact: null, partenaire_id: null, reponses: "auto", dernier_message_le: "2026-11-25T16:25:00Z", ...o });
+const conv = (o = {}) => ({ id: "w1", telephone: COMPLET, nom: "Lena", entite_id: null, client_id: null, type_contact: null, partenaire_id: null, reponses: "auto", dernier_message_le: "2026-11-25T16:25:00Z", ...o });
 
 test("conversation liée : son numéro complet remplace un champ vide ou coupé, jamais un autre numéro tapé", () => {
-  const base = { conversations: [], nomClient: "Abby Exemple", entites: [ENT], aujourdhui: "2026-11-26" };
+  const base = { conversations: [], nomClient: "Lena Exemple", entites: [ENT], aujourdhui: "2026-11-26" };
   assert.deepEqual(telephoneDepuisWhatsApp({ ...base, saisi: "", liee: conv() }), { telephone: COMPLET, whatsappId: "w1", candidats: [] });
   assert.equal(telephoneDepuisWhatsApp({ ...base, saisi: "+1555010", liee: conv() }).telephone, COMPLET, "un début du numéro est complété");
   assert.equal(telephoneDepuisWhatsApp({ ...base, saisi: "+44 7700 900123", liee: conv() }).telephone, "+44 7700 900123", "un autre numéro est le choix de la personne");
@@ -72,19 +136,19 @@ test("conversation liée : son numéro complet remplace un champ vide ou coupé,
 test("sans conversation liée : les conversations au nom du client sont proposées, jamais reprises seules", () => {
   const conversations = [
     conv(),
-    conv({ id: "w2", nom: "Abby", telephone: "+447700900123", client_id: "c-autre" }), // déjà reliée à une autre fiche
-    conv({ id: "w3", nom: "Abby", telephone: "+447700900124", entite_id: "e-ztp" }), // rangée dans une autre entreprise
-    conv({ id: "w4", nom: "Abby", telephone: "+447700900125", dernier_message_le: "2026-09-01T10:00:00Z" }), // trop ancienne
-    conv({ id: "w5", nom: "Abby", telephone: "+447700900126", type_contact: "partenaire" }),
+    conv({ id: "w2", nom: "Lena", telephone: "+447700900123", client_id: "c-autre" }), // déjà reliée à une autre fiche
+    conv({ id: "w3", nom: "Lena", telephone: "+447700900124", entite_id: "e-ztp" }), // rangée dans une autre entreprise
+    conv({ id: "w4", nom: "Lena", telephone: "+447700900125", dernier_message_le: "2026-09-01T10:00:00Z" }), // trop ancienne
+    conv({ id: "w5", nom: "Lena", telephone: "+447700900126", type_contact: "partenaire" }),
     conv({ id: "w6", nom: "Bob", telephone: "+447700900127" }),
-    conv({ id: "w7", nom: "Abby Exemple", telephone: "+66812345678", entite_id: ENT, dernier_message_le: "2026-11-24T08:00:00Z" }),
+    conv({ id: "w7", nom: "Lena Exemple", telephone: "+66812345678", entite_id: ENT, dernier_message_le: "2026-11-24T08:00:00Z" }),
   ];
-  const r = telephoneDepuisWhatsApp({ saisi: "", liee: null, conversations, nomClient: "Abby Exemple", entites: [ENT], aujourdhui: "2026-11-26" });
+  const r = telephoneDepuisWhatsApp({ saisi: "", liee: null, conversations, nomClient: "Lena Exemple", entites: [ENT], aujourdhui: "2026-11-26" });
   assert.equal(r.telephone, "", "rien n'est repris sans un geste");
   assert.equal(r.whatsappId, null);
   assert.deepEqual(r.candidats.map((c) => c.id), ["w1", "w7"], "la plus récente d'abord");
   // Un numéro déjà tapé, coupé : seule la conversation qui le complète reste proposée.
-  assert.deepEqual(telephoneDepuisWhatsApp({ saisi: "+1555010", conversations, nomClient: "Abby Exemple", entites: [ENT], aujourdhui: "2026-11-26" }).candidats.map((c) => c.id), ["w1"]);
+  assert.deepEqual(telephoneDepuisWhatsApp({ saisi: "+1555010", conversations, nomClient: "Lena Exemple", entites: [ENT], aujourdhui: "2026-11-26" }).candidats.map((c) => c.id), ["w1"]);
   assert.deepEqual(telephoneDepuisWhatsApp({ saisi: "", conversations, nomClient: "", entites: [ENT] }).candidats, [], "sans nom, rien");
 });
 
@@ -118,7 +182,7 @@ let n = 0;
 async function carte(telephone) {
   const transfert = await E.inserer("prestations", { famille: "transfert", groupe: "Taxi", libelle: "Ao Nang", libelle_en: "Ao Nang", prix_vente: 2500, unite: "veh", actif: true });
   const { refDe } = await import("../supabase/functions/agent/outils.js");
-  const nom = `Abby Exemple${++n}`;
+  const nom = `Lena Exemple${++n}`;
   const r = await executer("proposer_dossier", { titre: "Dossier", client_nom: nom, client_telephone: telephone, hotel: "", langue: "en", adultes: 2, enfants: 0, bebes: 0, services: [{ texte: "Taxi to Ao Nang", ref: refDe("P", transfert.id), date: "2026-12-03", heure_pickup: "09:15", lieu_pickup: "Resort Exemple", de: "Resort Exemple", vers: "Ao Nang", adultes: 2, enfants: 0, prix: 2500 }], apporteur: "" }, ctx(), memo());
   assert.ok(r.carte, JSON.stringify(r.contenu || r));
   return { carte: { id: `carte-${n}`, ...r.carte, statut: "proposee" }, nom };
@@ -181,4 +245,27 @@ test("Vérifier avant (Secret) : la conversation au nom du client est proposée,
   assert.ok(recu, "le dossier est créé");
   assert.equal(clientDu(recu.dossier).telephone, COMPLET);
   assert.equal(recu.whatsappId, "wa-nom");
+});
+
+test("Vérifier avant : « Reprendre ce numéro » puis « C'est lui » sur une fiche au numéro différent → la conversation n'est pas reliée, et on le dit", async () => {
+  dans("excursions");
+  const { carte: c, nom } = await carte("");
+  const [prenom, ...reste] = nom.split(" ");
+  await E.inserer("clients", { prenom, nom: reste.join(" "), telephone: "+447700900999", adresse: "", notes: "" });
+  E.etat.brut.whatsapp_conversations = [...(E.etat.brut.whatsapp_conversations || []), conv({ id: "wa-autre-fiche", telephone: "+15550109988", nom: `${prenom} ${reste.join(" ")}`, dernier_message_le: new Date().toISOString() })];
+  let recu = null;
+  ouvrirDemande(null, V.preparation(c), { titre: c.titre, surCree: (x) => (recu = x) });
+  // Les fenêtres des tests précédents restent dans la page : seule la dernière compte.
+  const derniere = () => [...document.body.querySelectorAll(".modal")].pop() || document.body;
+  [...derniere().querySelectorAll(".demande-wa button")].find((b) => b.textContent === "Reprendre ce numéro").click();
+  assert.equal(derniere().querySelector("#dem-tel").value, "+15550109988", "le champ affiché suit le numéro repris");
+  const cestLui = [...derniere().querySelectorAll(".demande-client button")].find((b) => b.textContent === "C'est lui");
+  assert.ok(cestLui, "la fiche au même nom est proposée");
+  cestLui.click();
+  assert.ok([...derniere().querySelectorAll(".aide")].some((p) => /porte un autre numéro/.test(p.textContent)), "on dit que la conversation ne sera pas reliée");
+  [...derniere().querySelectorAll("button.principal")].find((b) => /^Créer le dossier/.test(b.textContent)).click();
+  for (let i = 0; i < 50 && !recu; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.ok(recu, "le dossier est créé");
+  assert.equal(recu.whatsappId, null, "aucune liaison vers une fiche dont le numéro est un autre");
+  assert.equal(clientDu(recu.dossier).telephone, "+447700900999", "la fiche n'est pas modifiée en silence");
 });

@@ -51,7 +51,7 @@ function formulaireClient(client, apres) {
         const verif = verifierTelephoneClient(tel.value, client.telephone);
         erreurChamp(tel, "");
         if (!verif.ok) {
-          erreurChamp(tel, messageTelephone(verif.raison));
+          erreurChamp(tel, messageTelephone(verif.raison, verif.proposition));
           return tel.focus();
         }
         const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: verif.valeur, email: email.value.trim(), adresse: avecChambre ? adresseAvecChambre(adresse.value, chambre.value) : adresse.value.trim(), notes: notes.value.trim() };
