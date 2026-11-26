@@ -1326,8 +1326,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-libelle { margin: 0 0 4px; font-size: 0.82rem; font-weight: 600; color: var(--texte-2); }
 .resume-titre { display: block; margin: -8px 0 0; padding: 8px 0; color: var(--texte); font-size: 1.05rem; font-weight: 700; text-decoration: none; }
 .resume-contact { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; color: var(--teal-700); font-weight: 500; overflow-wrap: anywhere; }
-/* Un numéro ne se coupe jamais en deux lignes (« +41 79 000 00 / 01 », audit mobile n° 29). */
-.resume-contact[href^="tel:"], a[href^="tel:"] { overflow-wrap: normal; white-space: nowrap; }
+/* Un numéro ne se coupe jamais en deux lignes (« +41 79 000 00 / 01 », audit mobile n° 29). Limité au résumé du dossier
+   (relecture de la PR #360) : ailleurs un double numéro doit pouvoir passer à la ligne à 375 px. */
+.resume-contact[href^="tel:"] { overflow-wrap: normal; white-space: nowrap; }
 .resume-contact svg { flex: none; }
 .resume-contact[href^="tel:"] { gap: 6px; font-size: 0.94rem; letter-spacing: -0.01em; }
 .resume-valeur { margin: 0; font-weight: 700; }
@@ -2772,3 +2773,28 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 /* Les deux remarques d'un service sur une carte de l'Assistant : « Sur le voucher » et « Interne » (22.11.2026). */
 .agent-remarques { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 2px 12px; margin-top: 4px; font-size: 0.85rem; }
 .agent-remarques p { margin: 0; }
+
+/* ---- Relecture de la PR #360 (fiche dossier et éditeur sur téléphone, 26.11.2026) ---------------------------------- */
+/* Toast avec un bouton (« Ligne supprimée. Annuler ») : le bouton reste lisible sur le fond sombre et fait 44 px de haut. */
+.toast.avec-action { display: flex; align-items: center; gap: 12px; padding-block: 0; padding-right: 6px; }
+.toast.avec-action > span { padding-block: 12px; }
+.toast-action { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #9fe3dc; font: inherit; font-weight: 700; cursor: pointer; }
+.toast-action:hover { background: rgba(255, 255, 255, 0.1); }
+/* Barre du bas de la fiche : « Envoyer la confirmation du 29/11 » tient en deux lignes à 375 px, pas trois. */
+.barre-dossier .barre-action > .principal { padding: 0 6px; font-size: 0.92rem; }
+/* Éditeur : la barre « Envoyer » du bas s'efface quand le clavier est ouvert, comme la barre d'onglets. */
+html.clavier .barre-editeur-bas { display: none; }
+/* Éditeur sur téléphone : l'en-tête de l'application ne colle plus, seule la barre Éditer / Aperçu reste en haut. */
+@media (max-width: 719px) {
+  html:has(#principal.plein .editeur) .barre-haut { position: relative; }
+  .editeur-barre { top: 0; padding-top: max(4px, env(safe-area-inset-top)); }
+}
+/* Carte de réservation sans geste principal : le « … » sur la ligne du titre, à droite de la date. */
+.carte-lien.menu-en-haut { grid-template-columns: minmax(0, 1fr) auto auto; }
+.carte-lien.menu-en-haut .carte-menu-haut { grid-column: 3; grid-row: 1 / span 2; align-self: start; flex: none; width: 44px; min-height: 44px; margin: -6px -8px 0 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.carte-lien.menu-en-haut .carte-menu-haut svg { stroke-width: 3; }
+/* Liens texte de la fiche dossier (Facture, Devis, Dossier lié) : 44 px de zone de toucher sans changer l'aspect (audit mobile n° 13). */
+@media (pointer: coarse) {
+  .lien-doc { display: inline-block; padding-block: 10px; margin-block: -10px; }
+  .dossier-lie a { display: inline-block; padding-block: 11px; margin-block: -11px; }
+}

@@ -110,6 +110,15 @@ export async function ficheDossier(id) {
   return ficheDossierVue(id);
 }
 
+// Ouvre la section repliée qui contient `el` avant d'y aller. plierSections crée des `.repli-section`, pas des `<details>`
+// (relecture de la PR #360 : « Noter un paiement » laissait « Paiements reçus » fermée).
+function ouvrirSection(el) {
+  const repli = el.closest(".repli-section");
+  if (repli && repli._repli && !repli._repli.estOuvert()) repli._repli.ouvrir(true);
+  const details = el.tagName === "DETAILS" ? el : el.closest("details");
+  if (details) details.open = true;
+}
+
 function ficheDossierVue(id) {
   const r = resumeDossier(id);
   if (!r) return vide(tr("Dossier introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Retour aux dossiers")));
@@ -453,14 +462,28 @@ function ficheDossierVue(id) {
     h("div", { class: "grille-form" }, champ(tr("Sens du paiement"), sensP), champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
     h("div", { class: "actions" }, boutonPaiement)
   );
-  // Audit mobile n° 9 : le formulaire de paiement reste replié derrière un bouton ; chaque chemin vers lui (étape suivante, avancement, ?paiement=1) l'ouvre.
-  const zonePaiement = h("div", { class: "zone-paiement", hidden: true }, h("h3", null, tr("Enregistrer un paiement")), formPaiement);
+  // Audit mobile n° 9 : sur téléphone, le formulaire de paiement reste replié derrière un bouton ; chaque chemin vers lui (étape suivante, avancement, ?paiement=1) l'ouvre.
+  // Relecture de la PR #360 : replié seulement sous 720 px (comme les sections), affiché comme avant sur ordinateur, et refermable sur téléphone.
+  const largePaiement = window.matchMedia("(min-width: 720px)");
+  let paiementOuvert = false;
   const ouvrirFormPaiement = h("button", { class: "secondaire", type: "button", onclick: () => ouvrirPaiement() }, tr("Enregistrer un paiement"));
+  const fermerFormPaiement = h("button", { class: "secondaire", type: "button", onclick: () => { paiementOuvert = false; majPaiement(); ouvrirFormPaiement.focus(); } }, tr("Fermer"));
+  formPaiement.querySelector(".actions").append(fermerFormPaiement);
+  const zonePaiement = h("div", { class: "zone-paiement" }, h("h3", null, tr("Enregistrer un paiement")), formPaiement);
+  function majPaiement() {
+    const large = largePaiement.matches;
+    zonePaiement.hidden = !(large || paiementOuvert);
+    ouvrirFormPaiement.hidden = large || paiementOuvert;
+    fermerFormPaiement.hidden = large;
+  }
+  // Rotation ou fenêtre élargie : le formulaire suit la largeur ; l'écoute s'arrête une fois la fiche quittée.
+  const surLargeurPaiement = () => (formPaiement.isConnected ? majPaiement() : largePaiement.removeEventListener("change", surLargeurPaiement));
+  largePaiement.addEventListener("change", surLargeurPaiement);
+  majPaiement();
   const ouvrirPaiement = ({ defiler = true } = {}) => {
-    zonePaiement.hidden = false;
-    ouvrirFormPaiement.hidden = true;
-    const section = zonePaiement.closest("details");
-    if (section) section.open = true;
+    paiementOuvert = true;
+    majPaiement();
+    ouvrirSection(zonePaiement);
     if (defiler) formPaiement.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     montantP.focus({ preventScroll: true });
   };
@@ -607,7 +630,7 @@ function ficheDossierVue(id) {
     return h(
       "tr",
       null,
-      h("td", { "data-label": tr("Document") }, h("a", { href: `#/doc/${doc.id}` }, tr(libelle))),
+      h("td", { "data-label": tr("Document") }, h("a", { class: "lien-doc", href: `#/doc/${doc.id}` }, tr(libelle))),
       h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
       // Modifié depuis l'envoi : le client a encore l'ancienne version (« Renvoyer » dans l'éditeur). Facture locale en retard sur la facture.
       h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore"), etatEnvoi(doc).modifie ? h("span", { class: "tag alerte" }, tr("modifié depuis l'envoi")) : null, doc.type === "facture_locale" && localeEnRetard(doc, facture) ? h("span", { class: "tag alerte" }, tr("facture modifiée depuis")) : null),
@@ -641,8 +664,7 @@ function ficheDossierVue(id) {
     const cible = document.getElementById(id);
     if (!cible) return;
     // Le champ visé peut se trouver dans une section que la personne a repliée : on ouvre la section avant d'y aller.
-    const section = cible.tagName === "DETAILS" ? cible : cible.closest("details");
-    if (section) section.open = true;
+    ouvrirSection(cible);
     cible.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     if (apres) apres();
   };
@@ -675,6 +697,12 @@ function ficheDossierVue(id) {
   const ligneCarnet = carnetOk && d.carnet_envoye_le && !d.annule ? h("div", { class: "resume-sous-action resume-carnet" }, h("p", { class: "resume-detail" }, tr("Carnet envoyé le {date}", { date: formatDate(d.carnet_envoye_le) })), h("button", { class: "lien", type: "button", onclick: () => ouvrirCarnet(d, rafraichir) }, tr("Modifier"))) : null;
   // Le geste de l'étape suivante : un libellé complet dans le résumé, un libellé court dans la barre du bas du téléphone
   // (à 375 px, le bouton principal tient environ 15 caractères ; le libellé complet reste dans le title).
+  // Voucher : le libellé court dit lequel, par sa date (« Envoyer le voucher du 27/11 », relecture de la PR #360).
+  const voucherCourt = (jour) => {
+    const date = jour ? formatDate(jour).slice(0, 5) : "";
+    if (taxi) return date ? tr("Envoyer la confirmation du {date}", { date }) : tr("Envoyer la confirmation");
+    return date ? tr("Envoyer le voucher du {date}", { date }) : tr("Envoyer le voucher");
+  };
   const gesteSuivant = (() => {
     if (!suivante) return null;
     switch (suivante.cle) {
@@ -683,7 +711,7 @@ function ficheDossierVue(id) {
       case "accepter":
         return { long: tr("Le client a accepté"), court: tr("Devis accepté"), faire: () => accepter() };
       case "voucher":
-        return { long: suivante.voucher.envoi && suivante.voucher.envoi.modifie ? tr("Renvoyer le voucher modifié : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : taxi ? tr("Envoyer la Booking confirmation : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : tr("Envoyer le voucher : {libelle}", { libelle: suivante.voucher.reservation.libelle }), court: taxi ? tr("Envoyer la confirmation") : tr("Envoyer le voucher"), faire: () => envoyerVoucher(suivante.voucher) };
+        return { long: suivante.voucher.envoi && suivante.voucher.envoi.modifie ? tr("Renvoyer le voucher modifié : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : taxi ? tr("Envoyer la Booking confirmation : {libelle}", { libelle: suivante.voucher.reservation.libelle }) : tr("Envoyer le voucher : {libelle}", { libelle: suivante.voucher.reservation.libelle }), court: voucherCourt(suivante.voucher.reservation.date_service), faire: () => envoyerVoucher(suivante.voucher) };
       case "facture":
         return { long: tr("Créer la facture"), court: tr("Créer la facture"), faire: creerFacture };
       default:
@@ -772,7 +800,7 @@ function ficheDossierVue(id) {
             { class: "etapes" },
             etape(true, N_("Course enregistrée"), tr("{montant}, payé au chauffeur en espèces ou par Wise avant le transfert (3 % de frais).", { montant: fm(r.surPlace) })),
             etape(envoisVouchers.client >= vouchers.length && vouchers.length > 0, N_("Booking confirmation envoyée"), !vouchers.length ? tr("Elle se prépare depuis la course ci-dessous.") : [pluriel(vouchers.length, N_("{c} sur {n} envoyée au client"), N_("{c} sur {n} envoyées au client"), { c: envoisVouchers.client }), aRenvoyerTexte(envoisVouchers)].filter(Boolean).join(" · "), vouchers.length && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null),
-            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), d.date_depart ? tr("Service le {date}", { date: formatDate(d.date_depart) }) : "", null)
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), plage ? tr("Service le {date}", { date: formatDate(plage.debut) }) : "", null)
           )
         : excursions
         ? h(
@@ -782,7 +810,7 @@ function ficheDossierVue(id) {
             etape(envoisVouchers.complet, N_("Vouchers envoyés"), !vouchers.length ? tr("Les vouchers se préparent depuis les réservations du dossier.") : envoisVouchers.client || envoisVouchers.aRenvoyer ? [pluriel(envoisVouchers.total, N_("{c} sur {n} envoyé au client"), N_("{c} sur {n} envoyés au client"), { c: envoisVouchers.client }), aRenvoyerTexte(envoisVouchers)].filter(Boolean).join(" · ") : pluriel(vouchers.length, N_("{n} voucher à envoyer au client, rien n'est encore noté comme envoyé."), N_("{n} vouchers à envoyer au client, rien n'est encore noté comme envoyé.")), vouchers.length ? h("span", { class: "carte-actions" }, h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, tr("Voir les vouchers")), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null) : null),
             etape(!!facture, N_("Facture"), facture ? tr("Émise le {date}", { date: formatDate(facture.date_emission) }) + (facture.envoye_le ? tr(", envoyée le {date}", { date: formatDate(facture.envoye_le) }) : tr(", pas encore marquée envoyée")) : tr("À créer."), facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, tr("Ouvrir la facture")) : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, tr("Créer la facture")) : null),
             etape(r.statut === "solde" || r.statut === "sur_place", N_("Payée"), r.statut === "sur_place" ? tr("Rien à encaisser : le client paie les prestataires sur place.") : r.statut === "solde" ? tr("{montant} reçus", { montant: fm(r.recu) }) : r.recu > 0 ? tr("Partiellement payé : reçu {recu}, reste {reste}", { recu: fm(r.recu), reste: fm(r.reste) }) : tr("En attente du paiement (virement, Wise ou espèces)."), r.statut !== "solde" && r.statut !== "sur_place" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); ouvrirPaiement(); } }, tr("Enregistrer un paiement")) : null),
-            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Service fait"), d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Services du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Service le {date}", { date: formatDate(d.date_depart) })) : "", null)
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Service fait"), plage ? (plage.fin !== plage.debut ? tr("Services du {debut} au {fin}", { debut: formatDate(plage.debut), fin: formatDate(plage.fin) }) : tr("Service le {date}", { date: formatDate(plage.debut) })) : "", null)
           )
         : h(
         "ol",

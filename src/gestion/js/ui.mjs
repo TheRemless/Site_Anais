@@ -40,15 +40,18 @@ export function champ(libelle, controle, aide) {
   return h("div", { class: "champ" }, h("label", { for: id }, libelle), controle, aide ? h("p", { class: "aide" }, aide) : null);
 }
 
-export function toast(message, erreur = false) {
+// `{ action, faire }` ajoute un bouton au message (« Annuler » après une suppression, relecture de la PR #360) : le message reste
+// alors 6 secondes pour laisser le temps de toucher, et disparaît dès que le bouton a servi.
+export function toast(message, erreur = false, { action = null, faire = null } = {}) {
   let zone = document.getElementById("toasts");
   if (!zone) {
     zone = h("div", { id: "toasts", "aria-live": "polite" });
     document.body.append(zone);
   }
-  const t = h("div", { class: erreur ? "toast erreur" : "toast", role: erreur ? "alert" : "status" }, message);
+  const bouton = action && faire ? h("button", { class: "toast-action", type: "button", onclick: () => (t.remove(), faire()) }, action) : null;
+  const t = h("div", { class: [erreur ? "toast erreur" : "toast", bouton ? "avec-action" : ""].filter(Boolean).join(" "), role: erreur ? "alert" : "status" }, bouton ? h("span", null, message) : message, bouton);
   zone.append(t);
-  setTimeout(() => t.remove(), erreur ? 6000 : 3000);
+  setTimeout(() => t.remove(), erreur || bouton ? 6000 : 3000);
 }
 
 // ---- Clavier et viewport visuel ----------------------------------------------------------------------------------
@@ -280,7 +283,21 @@ export function focusPremiereErreur(racine) {
 // Enregistrer, Annuler : toujours visible en bas d'un écran de saisie. Au téléphone elle est fixée au-dessus de la barre d'onglets,
 // et quand le clavier s'ouvre elle monte juste au-dessus de lui (la barre d'onglets se cache). Un espace est réservé à la fin
 // du contenu pour que le dernier champ ne passe jamais dessous. Sur ordinateur elle colle en bas de la zone de contenu.
+// Dernier argument `{ seulementMobile: true }` : la barre ne se montre que sous 720 px (classe `seulement-mobile`) et `a-barre-action`
+// (qui remonte les toasts) ne se pose qu'à cette largeur ; elle suit la rotation (relecture de la PR #360, iPad en portrait).
 export function barreAction(...enfants) {
+  const dernier = enfants[enfants.length - 1];
+  const options = dernier && !(dernier instanceof Node) && typeof dernier === "object" && !Array.isArray(dernier) ? enfants.pop() : {};
+  if (options.seulementMobile) {
+    const etroit = window.matchMedia("(max-width: 719px)");
+    const groupe = h("div", { class: "barre-action-groupe seulement-mobile" }, h("div", { class: "barre-action", role: "group", "aria-label": tr("Actions") }, enfants), h("div", { class: "barre-action-espace", "aria-hidden": "true" }));
+    const poser = () => document.documentElement.classList.toggle("a-barre-action", etroit.matches);
+    // Écran quitté (app.mjs retire déjà la classe à la navigation) : on cesse d'écouter sans toucher à la classe.
+    const surChangement = () => (groupe.isConnected ? poser() : etroit.removeEventListener("change", surChangement));
+    etroit.addEventListener("change", surChangement);
+    poser();
+    return groupe;
+  }
   document.documentElement.classList.add("a-barre-action");
   return h("div", { class: "barre-action-groupe" }, h("div", { class: "barre-action", role: "group", "aria-label": tr("Actions") }, enfants), h("div", { class: "barre-action-espace", "aria-hidden": "true" }));
 }

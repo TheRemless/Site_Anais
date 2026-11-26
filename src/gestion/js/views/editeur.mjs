@@ -174,7 +174,6 @@ function editeurVue(id) {
       envoiActuel: (() => { const e = etatEnvoi(doc); return e.envoye && !e.modifie && e.envois.length ? tr("Version envoyée au client le {date}", { date: formatDate(e.le) }) : ""; })(),
     });
   }
-  const btnVersions = h("button", { class: "secondaire petit", type: "button", onclick: ouvrirVersions }, tr("Versions"));
 
   // ---- Historique : annuler et rétablir -----------------------------------------------------------------
   const instantanePris = () => JSON.stringify({ contenu: doc.contenu, date_emission: doc.date_emission });
@@ -600,9 +599,12 @@ function editeurVue(id) {
               type: "button",
               "aria-label": tr("Supprimer la ligne {x}", { x: i + 1 }),
               onclick: () => {
+                // Relecture de la PR #360 : la suppression se rattrape. Copie avant, restauration de la copie entière (options rattachées comprises).
+                const avant = [...c.lignes];
                 c.lignes.splice(i, 1);
                 dessinerLignes();
                 change();
+                toast(tr("Ligne supprimée."), false, { action: tr("Annuler"), faire: () => { if (!listeLignes.isConnected) return; c.lignes = avant; dessinerLignes(); change(); } });
               },
             },
             tr("Supprimer")
@@ -776,6 +778,17 @@ function editeurVue(id) {
   );
 
   const lectureSeule = !peut("documents.ecrire");
+  // Relecture de la PR #360 : « Déjà envoyé autrement » ne se touche plus par erreur à côté d'« Envoyer ». Lui, Versions et Imprimer
+  // passent dans une feuille « … », comme le menu des cartes de réservation. La feuille relit l'état du bouton d'envoi à chaque ouverture.
+  const entreesMenu = () =>
+    [
+      lectureSeule ? null : [tr("Versions"), ouvrirVersions],
+      sansImpression() ? null : [tr("Imprimer"), imprimer, tr("Imprimer (Ctrl+P)")],
+      boutonEnvoi.disabled ? null : [boutonEnvoi.textContent, () => boutonEnvoi.click(), boutonEnvoi.title],
+    ].filter(Boolean);
+  const boutonMenu = h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions"), title: tr("Plus d'actions"), onclick: () => {
+    const fermer = modal(nomDoc, h("div", { class: "modal-corps menu-gestes" }, entreesMenu().map(([libelle, faire, aide]) => h("button", { class: "secondaire menu-geste", type: "button", title: aide || null, onclick: () => (fermer(), faire()) }, libelle))), { feuille: true, protege: false });
+  } }, icone("ellipsis", 22));
   const corpsEditeur = h("div", { class: "editeur" }, formulaire, zoneApercu);
   const barreEditeur = apercuMobile({ racine: corpsEditeur, zoneApercu, ajuster: ajusterEchelle });
   const racine = h(
@@ -786,7 +799,7 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, sansImpression() ? null : h("button", { class: "lien", type: "button", title: tr("Imprimer (Ctrl+P)"), onclick: imprimer }, tr("Imprimer")), h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer")))
+      h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonMenu, h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer")))
     ),
     h("p", { class: "aide-pdf seulement-bureau" }, tr("« Envoyer » prépare le PDF « {nomDoc} {ref} » et ouvre WhatsApp ou l'e-mail du client avec le message. Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P imprimer. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: numeroDocument(doc, dossier) })),
     bandeauConflit,
@@ -798,11 +811,13 @@ function editeurVue(id) {
     barreEditeur,
     corpsEditeur,
     // Téléphone : « Envoyer » reste à portée du pouce une fois descendu dans le document (audit mobile n° 12).
-    lectureSeule ? null : (() => { const b = barreAction(h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer"))); b.classList.add("seulement-mobile"); return b; })()
+    // Classe `barre-editeur-bas` : masquée quand le clavier est ouvert (relecture de la PR #360) ; a-barre-action seulement sous 720 px.
+    lectureSeule ? null : (() => { const b = barreAction(h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer")), { seulementMobile: true }); b.classList.add("barre-editeur-bas"); return b; })()
   );
   if (lectureSeule) {
     for (const el of formulaire.querySelectorAll("input, select, textarea, button")) el.disabled = true;
     for (const b of [btnAnnuler, btnRetablir, boutonEnvoi, boutonRenvoyer]) b.disabled = true;
+    boutonMenu.hidden = !entreesMenu().length;
   }
 
   // Après un « annuler », l'écran est reconstruit : on retrouve les positions de défilement.

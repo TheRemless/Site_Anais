@@ -214,20 +214,23 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   };
   const principal = gestePrincipal(ctx);
   const menu = entreesMenu(ctx);
-  const barre = principal || menu.length
+  const boutonMenu = menu.length ? h("button", { class: principal ? "secondaire bouton-menu" : "secondaire bouton-menu carte-menu-haut", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null;
+  // Sans geste principal (frais de parc par exemple), le « … » monte sur la ligne du titre plutôt que de rester seul en bas de la carte (relecture de la PR #360).
+  const barre = principal
     ? h(
         "div",
-        { class: principal ? "carte-barre" : "carte-barre seul" },
+        { class: "carte-barre" },
         // Dans la fiche dossier, l'étape suivante est déjà le bouton principal de la barre : la carte garde un geste secondaire (audit mobile n° 10).
-        principal ? h("button", { class: avecDossier ? "principal" : "secondaire", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]) : null,
-        menu.length ? h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null
+        h("button", { class: avecDossier ? "principal" : "secondaire", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]),
+        boutonMenu
       )
     : null;
   return h(
     "div",
-    { class: "carte-lien statique" },
+    { class: !principal && boutonMenu ? "carte-lien statique menu-en-haut" : "carte-lien statique" },
     h("span", { class: "carte-titre" }, avecDossier ? lienDossier(r.libelle, r.dossier_id) : r.libelle),
     h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
+    principal ? null : boutonMenu,
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive()), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
     // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
