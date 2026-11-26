@@ -561,7 +561,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   // Un autre partenaire : les options de l'ancien partenaire quittent le service (une option est toujours du partenaire de son service).
   if (blocOptions) partenaire.addEventListener("change", () => blocOptions.partenaire(partenaire.value || null));
   // Une option par personne suit le nombre de personnes (sauf une quantité tapée dans le bloc).
-  if (blocOptions) for (const x of [adultes, enfants]) x.addEventListener("input", () => blocOptions.personnes());
+  // Sur `change` : effacer « Adultes » pour retaper ne fait pas passer par un « 1 » intermédiaire.
+  if (blocOptions) for (const x of [adultes, enfants]) x.addEventListener("change", () => blocOptions.personnes());
   lieu.addEventListener("change", () => zonesPickup.rafraichir());
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.

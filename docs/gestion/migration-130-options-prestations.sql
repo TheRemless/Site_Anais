@@ -219,7 +219,8 @@ begin
   if cardinality(ids) = 0 then return null; end if;
   for x in select r.id from reservations r
            where r.dossier_id = new.dossier_id and r.statut <> 'annule'
-             and (r.ligne_id = any (ids) or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(r.details->'lignes_ids') = 'array' then r.details->'lignes_ids' else '[]'::jsonb end) z where z = any (ids))) loop
+             and (r.ligne_id = any (ids) or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(r.details->'lignes_ids') = 'array' then r.details->'lignes_ids' else '[]'::jsonb end) z where z = any (ids)))
+           order by r.id loop
     perform calculer_nets_reservation(x.id, false, true);
   end loop;
   return null;

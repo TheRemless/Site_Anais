@@ -1606,7 +1606,10 @@ export function creer() {
             const n = data.reservations_nets.find((y) => y.reservation_id === r.id) || null;
             const excursions = (entiteId) => ((data.reglages || {})[entiteId] || {}).fonctionnement === "excursions";
             const valeurs = calculerNets(r, n, { ...data, excursions }, { suivreNet: true });
-            if (valeurs && n) Object.assign(n, valeurs);
+            if (!valeurs) continue;
+            if (n) Object.assign(n, valeurs);
+            // Pas encore de ligne de nets : créée, comme calculer_nets_reservation (migration 32).
+            else data.reservations_nets.push({ id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, commission_recue_moyen: null, commission_partielle_le: null, commission_ecart_motif: null, commission_ecart_note: null, ...valeurs });
           }
       }
       sauve();

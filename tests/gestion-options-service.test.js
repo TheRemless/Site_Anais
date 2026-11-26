@@ -320,9 +320,14 @@ test("service ajouté par carte (sans ligne de facture) : ses options se voient,
   // Trois personnes : l'option par personne passe à 3 ; « Vendu au client » suit (6 300 + 150).
   const ad = f.querySelector("#r-ad");
   ad.value = "3";
-  ad.dispatchEvent(new Event("input"));
+  ad.dispatchEvent(new Event("change"));
   assert.equal(f.querySelector(".options-resa-qte").value, "3");
   assert.equal(Number(f.querySelector("#r-vente").value), 6450);
+  // Effacer le champ pour retaper : rien ne bouge avant la fin de la saisie (pas de « 1 » intermédiaire).
+  ad.value = "";
+  ad.dispatchEvent(new Event("input"));
+  assert.equal(f.querySelector(".options-resa-qte").value, "3");
+  ad.value = "3";
   // Un seul des trois la prend (N5) : 1 × 150.
   const q = f.querySelector(".options-resa-qte");
   q.value = "1";
@@ -404,10 +409,10 @@ test("fenêtre d'un service lié à sa facture : quantité 2 → 1 écrite sur l
   // Une personne de plus : la quantité choisie (1) ne suit pas, elle n'était pas celle des personnes.
   const ad = f.querySelector("#r-ad");
   ad.value = "3";
-  ad.dispatchEvent(new Event("input"));
+  ad.dispatchEvent(new Event("change"));
   assert.equal(f.querySelector(".options-resa-qte").value, "1");
   ad.value = "2";
-  ad.dispatchEvent(new Event("input"));
+  ad.dispatchEvent(new Event("change"));
   const form = f.tagName === "FORM" ? f : f.querySelector("form");
   form.dispatchEvent(new Event("submit", { cancelable: true }));
   for (let i = 0; i < 100 && !fini; i++) await new Promise((x) => setTimeout(x, 10));
@@ -422,6 +427,23 @@ test("fenêtre d'un service lié à sa facture : quantité 2 → 1 écrite sur l
   for (let i = 0; i < 50 && !f2.querySelector(".options-resa-qte"); i++) await new Promise((x) => setTimeout(x, 10));
   assert.equal(f2.querySelector(".options-resa-qte").value, "1");
   f2.remove();
+});
+
+test("démo : une ligne d'option changée sur la facture crée la ligne de nets qui manque, comme la base", async () => {
+  const { sortie, extra } = await plongee();
+  const c = await carteDossier([service(sortie, extra)]);
+  const r0 = await ouvrirDemande(null, V.preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+  const [resa] = resasDu(r0.dossier);
+  // La réservation n'a pas encore de ligne de nets (créée avant le catalogue des nets, par exemple).
+  for (const n of await E.etat.store.netsReservations([resa.id])) await E.etat.store.supprimer("reservations_nets", n.id);
+  assert.equal((await E.etat.store.netsReservations([resa.id])).length, 0);
+  const doc = factureDu(r0.dossier);
+  const contenu = structuredClone(doc.contenu);
+  contenu.lignes.find((l) => l.option_de).qte = 1;
+  await E.modifier("documents", doc.id, { contenu });
+  const lignes = await E.etat.store.netsReservations([resa.id]);
+  assert.equal(lignes.length, 1, "ligne de nets créée");
+  assert.equal(Number(lignes[0].net_prevu), 5600, "5 000 + 1 × 600");
 });
 
 test("Taxi : une carte « modification » d'option est refusée, rien n'est écrit", async () => {
