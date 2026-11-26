@@ -350,7 +350,10 @@ export function resume(dossier, db, reglages) {
   const devis = dernier(documents, "devis");
   const doc = dernier(documents, "facture") || devis;
   const total = charge ? totalDossier(documents) : Number(dossier.total) || 0;
-  const recu = charge ? sommePaiements(paiements) : Number(dossier.recu) || 0;
+  // Un acompte rattaché à un service payé sur place (paiements.reservation_id, migration 131) ne paie pas les services chez nous : il ne
+  // compte ni dans le reçu ni dans le reste dû du dossier (comme dossiers_resume). Son voucher le montre (paiementDuService).
+  const surPlaceIds = new Set((db.reservations || []).filter((x) => x.dossier_id === dossier.id && x.paye_sur_place).map((x) => x.id));
+  const recu = charge ? sommePaiements(paiements.filter((p) => !(p.reservation_id && surPlaceIds.has(p.reservation_id)))) : Number(dossier.recu) || 0;
   // Prix des services payés directement aux prestataires (hors total) : sans documents chargés, la base le tient à jour (migration 19).
   const surPlace = charge ? (doc ? montantSurPlace(doc.contenu) : 0) : Number(dossier.sur_place) || 0;
   const devisEnvoyeLe = charge ? (devis && devis.envoye_le) || null : dossier.devis_envoye_le || null;

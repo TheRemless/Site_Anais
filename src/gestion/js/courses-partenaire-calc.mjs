@@ -365,20 +365,27 @@ function detailLocal(data, r, d, c, acces) {
   const doc = docs.sort((a, b) => rang(b).localeCompare(rang(a)))[0] || null;
   const lignes = (((doc && doc.contenu) || {}).lignes || []).filter((l) => idsLignes.has(l.id) && (l.par || (p && p.unite) || "") === "veh");
   const vehicules = lignes.length ? lignes.reduce((s, l) => s + (l.qte === null || l.qte === undefined || l.qte === "" ? 1 : Number(l.qte)), 0) : 1;
-  const recu = (data.paiements || []).filter((x) => x.dossier_id === d.id).reduce((s, x) => s + Number(x.montant || 0), 0);
   const prix = r.montant_vente ?? null;
-  // Comme la base : le total du dossier (ses courses actives), la part payée sur place, et les courses réglées d'avance entre qui l'acompte se partage.
+  // Comme la base (migration 131) : les paiements rattachés à CETTE course, et ceux qui ne sont rattachés à aucune course payée sur place.
+  const pays = (data.paiements || []).filter((x) => x.dossier_id === d.id);
+  const surPlaceIds = new Set((data.reservations || []).filter((y) => y.dossier_id === d.id && y.paye_sur_place).map((y) => y.id));
+  const propre = pays.filter((x) => x.reservation_id === r.id).reduce((s, x) => s + Number(x.montant || 0), 0);
+  const libre = pays.filter((x) => !(x.reservation_id && surPlaceIds.has(x.reservation_id))).reduce((s, x) => s + Number(x.montant || 0), 0);
+  // Le total des courses réglées d'avance (chez nous), et les courses entre qui un acompte non rattaché se partage.
   const actives = (data.reservations || []).filter((y) => y.dossier_id === d.id && y.statut !== "annule");
-  const total = actives.reduce((s, y) => s + Number(y.montant_vente || 0), 0);
-  const surPlace = actives.filter((y) => y.paye_sur_place).reduce((s, y) => s + Number(y.montant_vente || 0), 0);
+  const total = actives.filter((y) => !y.paye_sur_place).reduce((s, y) => s + Number(y.montant_vente || 0), 0);
   const avance = actives.filter((y) => !y.paye_sur_place).length;
-  const paiement = r.paye_sur_place ? "sur_place" : total > 0 && recu >= total ? "paye" : recu > 0 && avance > 1 ? "acompte_partage" : recu > 0 ? "acompte" : "en_attente";
+  const nSurPlace = actives.filter((y) => y.paye_sur_place).length;
+  const verse = r.paye_sur_place ? (propre > 0 ? propre : libre - total > 0 && nSurPlace === 1 ? libre - total : 0) : 0;
+  const paiement = r.paye_sur_place
+    ? verse > 0 ? (Number(prix) > 0 && verse >= Number(prix) ? "paye" : "acompte") : libre - total > 0 ? "acompte_partage" : "sur_place"
+    : total > 0 && libre >= total ? "paye" : libre > 0 && avance > 1 ? "acompte_partage" : libre > 0 ? "acompte" : "en_attente";
   return {
     ref: d.ref || "", reference_partenaire: r.partenaire_id === acces.partenaire.id ? r.reference_partenaire || "" : "",
     libelle: r.libelle || "", service: (p && p.groupe) || "", vehicules,
     adresse_client: c.entite_id === r.entite_id ? String(c.adresse || "").split("\n")[0] : "",
     details: Object.fromEntries(Object.entries(dt).filter(([k]) => CHAMPS_COURSE.includes(k)).map(([k, v]) => [k, k === "pickup_zone" ? nomZone(v) || null : v]).filter(([, v]) => v !== null && v !== undefined)),
-    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, total - surPlace - recu) : null,
+    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, r.paye_sur_place ? Number(prix || 0) - verse : total - libre) : null,
   };
 }
 

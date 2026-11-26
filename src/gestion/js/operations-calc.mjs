@@ -731,30 +731,81 @@ export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } 
   return "en_attente";
 }
 
-// Ce que le voucher d'un service dit du paiement (INV-2026-055, 26.11.2026) : un acompte versé pour un service payé sur place n'apparaissait
-// pas (statutPaiementVoucher rendait « sur place » sans regarder les paiements). Le dossier n'encaisse que les services « chez nous »
-// (`resume.total`) ; ce qui est reçu au-delà (`resume.recu - resume.total`) est un acompte sur les services payés sur place.
-//   - Un seul service sur place dans le dossier (non annulé) : l'acompte est le sien, jusqu'à son prix. Le voucher coche « Deposit Paid »
-//     et le mode sur place, et imprime le montant versé et le reste à payer sur place. Tout versé : « Paid », sans reste.
-//   - Plusieurs services sur place : la part de chacun n'est pas connue. « Deposit Paid » est coché, le montant versé est dit pour tout
-//     le dossier (`global`), aucun reste n'est inventé.
-//   - Rien reçu au-delà des services chez nous : « sur place », comme avant.
-// `reservations` : celles du dossier. Rend { statut, verse, reste, surPlace, global } ; `statut` reste l'une des valeurs de statutPaiementVoucher.
-export function paiementDuService(r, { resume = null, reservations = [] } = {}) {
+// Ce que le voucher d'un service dit du paiement (26.11.2026). Un acompte encaissé par l'agence pour un service payé sur place doit se lire sur
+// SON voucher, et sur aucun autre : un même acompte compté sur deux vouchers serait déduit deux fois par deux prestataires.
+//   - Un paiement peut être rattaché à un service (`paiements.reservation_id`, migration 131) : il ne compte que pour ce service.
+//   - Un paiement non rattaché sert d'abord les services chez nous (`resume.total`). Ce qui dépasse n'est imputé que s'il n'y a qu'UN service
+//     payé sur place, non annulé, dans le dossier ; avec plusieurs, aucun montant n'est imprimé et le dossier affiche « acompte à rattacher ».
+//   - Un service annulé ne reçoit rien et ne transmet rien : son acompte rattaché est un remboursement à traiter (alertesPaiements).
+//   - Un acompte rattaché à un service sur place ne compte pas pour les services chez nous.
+// `paiements` : ceux du dossier (sinon resume.paiements). Rend { statut, verse, reste, surPlace, aRattacher, tropPercu } ; `statut` reste
+// l'une des valeurs de statutPaiementVoucher. Un service chez nous garde la règle d'avant (aucun montant imprimé).
+const somme2 = (liste) => Math.round((liste || []).reduce((s, p) => s + (Number(p && p.montant) || 0), 0) * 100) / 100;
+const arr2 = (x) => Math.round(x * 100) / 100;
+export function paiementDuService(r, { resume = null, reservations = [], paiements = null } = {}) {
+  const vide = { verse: null, reste: null, aRattacher: false, tropPercu: 0 };
+  // Sans la liste des paiements (aperçu des réglages, ancien appelant) : le reçu du résumé, comme un paiement non rattaché.
+  const pays = (paiements || (resume && resume.paiements) || (resume && Number(resume.recu) ? [{ montant: Number(resume.recu) }] : [])).filter((p) => p && (!r || !r.dossier_id || !p.dossier_id || p.dossier_id === r.dossier_id));
   const total = Number(resume && resume.total) || 0;
-  const recu = Number(resume && resume.recu) || 0;
-  if (!r || !r.paye_sur_place) return { statut: statutPaiementVoucher({ total, recu, surPlace: false }), verse: null, reste: null, surPlace: false, global: false };
-  const surplus = Math.round((recu - Math.max(0, total)) * 100) / 100;
-  if (!(surplus > 0)) return { statut: "sur_place", verse: null, reste: null, surPlace: true, global: false };
-  const surPlace = (reservations || []).filter((x) => x && x.paye_sur_place && statutReservation(x.statut) !== "annule" && (!r.dossier_id || x.dossier_id === r.dossier_id));
+  const duDossier = (reservations || []).filter((x) => x && (!r || !r.dossier_id || x.dossier_id === r.dossier_id));
+  const surPlaceIds = new Set(duDossier.filter((x) => x.paye_sur_place).map((x) => x.id));
+  const pourSurPlace = (p) => !!p.reservation_id && surPlaceIds.has(p.reservation_id);
+  const autres = pays.filter((p) => !pourSurPlace(p));
+  if (!r || !r.paye_sur_place) return { ...vide, statut: statutPaiementVoucher({ total, recu: somme2(autres), surPlace: false }), surPlace: false };
+  const surPlace = { ...vide, statut: "sur_place", surPlace: true };
+  if (statutReservation(r.statut) === "annule") return surPlace;
+  const propres = pays.filter((p) => p.reservation_id === r.id);
+  let verse;
+  if (propres.length) verse = somme2(propres);
+  else {
+    const surplus = arr2(somme2(autres) - Math.max(0, total));
+    if (!(surplus > 0)) return surPlace;
+    const actifs = duDossier.filter((x) => x.paye_sur_place && statutReservation(x.statut) !== "annule");
+    if (actifs.length !== 1 || actifs[0].id !== r.id) return { ...surPlace, aRattacher: true };
+    verse = surplus;
+  }
+  if (!(verse > 0)) return surPlace;
   const montant = r.montant_vente === null || r.montant_vente === undefined || r.montant_vente === "" ? NaN : Number(r.montant_vente);
-  if (surPlace.filter((x) => x.id !== r.id).length > 0 || !(montant > 0)) return { statut: "acompte", verse: surplus, reste: null, surPlace: true, global: true };
-  const verse = Math.min(surplus, montant);
-  const reste = Math.round((montant - verse) * 100) / 100;
-  return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true, global: false } : { statut: "paye", verse, reste: 0, surPlace: false, global: false };
+  if (!(montant > 0)) return { ...vide, statut: "acompte", verse, surPlace: true };
+  const reste = arr2(montant - verse);
+  return reste > 0 ? { ...vide, statut: "acompte", verse, reste, surPlace: true } : { ...vide, statut: "paye", verse, reste: 0, surPlace: false, tropPercu: reste < 0 ? arr2(-reste) : 0 };
 }
-// Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand un acompte est imprimé.
-export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}|${p.surPlace ? 1 : 0}` : (p && p.statut) || "");
+// Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand ils sont imprimés.
+export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
+
+// Ce que le dossier doit dire des paiements (26.11.2026) : un acompte à rattacher (plusieurs services sur place, aucun choisi), un trop-perçu
+// sur un service sur place, un acompte rattaché à un service annulé (remboursement à traiter), une remarque de paiement qui donne un autre
+// montant que l'acompte enregistré. `reservations` et `paiements` : ceux du dossier ; `resume` : son résumé (total chez nous).
+export function alertesPaiements({ reservations = [], paiements = [], resume = null } = {}) {
+  const out = [];
+  const actives = (reservations || []).filter((x) => x && statutReservation(x.statut) !== "annule");
+  for (const r of (reservations || []).filter((x) => x && statutReservation(x.statut) === "annule")) {
+    const m = somme2((paiements || []).filter((p) => p.reservation_id === r.id));
+    if (m > 0) out.push({ code: "remboursement", montant: m, reservation_id: r.id, libelle: r.libelle || "" });
+  }
+  let aRattacher = false;
+  for (const r of actives.filter((x) => x.paye_sur_place)) {
+    const p = paiementDuService(r, { resume, reservations, paiements });
+    if (p.aRattacher) aRattacher = true;
+    if (p.tropPercu > 0) out.push({ code: "trop_percu", montant: p.tropPercu, reservation_id: r.id, libelle: r.libelle || "" });
+    const rem = String((r.details && r.details.remarques_paiement) || "");
+    const nombres = (rem.match(/\d[\d\s',.]*\d|\d/g) || []).map((x) => Number(x.replace(/[\s',]/g, ""))).filter((x) => x > 0);
+    if (p.verse !== null && nombres.some((x) => x !== p.verse && x !== p.reste && x !== Number(r.montant_vente))) out.push({ code: "remarque_paiement", montant: p.verse, reservation_id: r.id, libelle: r.libelle || "" });
+  }
+  if (aRattacher) {
+    const surPlaceIds = new Set((reservations || []).filter((x) => x.paye_sur_place).map((x) => x.id));
+    const libre = arr2(somme2((paiements || []).filter((p) => !(p.reservation_id && surPlaceIds.has(p.reservation_id)))) - Math.max(0, Number(resume && resume.total) || 0));
+    out.unshift({ code: "a_rattacher", montant: libre, reservation_id: null, libelle: "" });
+  }
+  return out;
+}
+// La remarque de paiement saisie à la main qui donne un autre montant que l'acompte enregistré ne s'imprime pas (le dossier le signale).
+export function remarquePaiementImprimee(remarque, p, montant) {
+  const t = String(remarque || "");
+  if (!p || p.verse === null || p.verse === undefined) return t;
+  const nombres = (t.match(/\d[\d\s',.]*\d|\d/g) || []).map((x) => Number(x.replace(/[\s',]/g, ""))).filter((x) => x > 0);
+  return nombres.some((x) => x !== p.verse && x !== p.reste && x !== Number(montant)) ? "" : t;
+}
 
 // Prix par personne imprimé sur le voucher d'activité : seulement quand il n'y a qu'un tarif connu (audit n° 27). Une moyenne
 // vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.
@@ -808,7 +859,9 @@ export function empreinteVoucher({ reservation: r = {}, client = {}, statut = ""
     client: adresseEstHotel(client, r.entite_id) ? [videOuTexte(client.prenom), videOuTexte(client.nom), videOuTexte(client.telephone), videOuTexte(String(client.adresse || "").split("\n")[0])] : [videOuTexte(client.prenom), videOuTexte(client.nom), "", ""],
     // Le statut de paiement de l'agence ne compte pas (contrôle du 17.11.2026, D6) : un paiement reçu ne fait pas repasser les vouchers
     // « à renvoyer ». Seul ce que le client paie sur place compte (`surPlace`, ci-dessus).
-    statut: statut === "sur_place" ? statut : "", devise,
+    // Exception (26.11.2026) : un service payé sur place garde aussi ce qui a déjà été versé et le reste à payer, que son voucher imprime
+    // (statutEmpreinte) : un solde reçu après l'envoi fait repasser son voucher « à renvoyer », sinon le prestataire encaisserait deux fois.
+    statut: r.paye_sur_place || statut === "sur_place" ? statut : "", devise,
   };
   return hacher(stable(donnees));
 }

@@ -73,13 +73,14 @@ export function messageClientVoucher(x) {
   // Le pickup vient de la réservation seulement, comme le voucher l'imprime (pickupInclus) : jamais l'hôtel de la fiche client.
   const trajet = !!sourcesVoucher(r, x.prestation || null).trajet;
   // Le paiement de ce service (acompte versé sur un service payé sur place compris) : le reste à payer est le sien, pas celui du dossier.
+  // Un service sur place sans acompte imputé n'annonce aucun montant ; un reste du dossier négatif (trop-perçu) n'en annonce pas non plus.
   const pay = paiementDuService(r, { resume: res, reservations: etat.db.reservations.filter((y) => y.dossier_id === r.dossier_id) });
   const paiement = pay.statut;
   const message = messageVoucher({
     pour: "client",
     prenom: client.prenom || "",
     gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
-    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ reservation: r, type: x.type, trajet, paiement, solde: pay.reste !== null && pay.reste !== undefined ? pay.reste : res.reste, devise, entreprise: nomEntreprise }) },
+    vars: { ...variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: nomEntreprise, telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }), ...variablesVoucher({ reservation: r, type: x.type, trajet, paiement, solde: pay.surPlace || pay.verse !== null ? pay.reste : res.reste > 0 ? res.reste : null, devise, entreprise: nomEntreprise }) },
   });
   return sansLignesVides(message);
 }

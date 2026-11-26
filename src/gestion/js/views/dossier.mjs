@@ -35,6 +35,7 @@ import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservati
 import { champApporteur, patchApporteur, blocResumeApporteur } from "./apporteurs.mjs";
 import { boutonProposerExcursion } from "./proposer-excursion.mjs";
 import { retourEncaisser, CLE_RETOUR } from "../encaisser-calc.mjs";
+import { champServicePaiement, alertesPaiementsDossier, avecService } from "./paiement-service.mjs";
 
 // La fiche a-t-elle été ouverte depuis À encaisser (la note de la liste, datée, porte ce dossier) ?
 const retourVersEncaisser = (dossierId) => {
@@ -405,6 +406,8 @@ function ficheDossierVue(id) {
   const origineM = h("input", { id: "p-orig-m", type: "number", step: "0.01", min: "0", inputmode: "decimal" });
   const origineD = h("select", { id: "p-orig-d" }, ["", ...(reglages().listes.devises || ["CHF", "EUR", "THB", "USD"])].map((v) => h("option", { value: v }, v || tr("Aucune"))));
   const noteP = h("input", { id: "p-note" });
+  // Le service qu'un acompte règle (migration 131) : seulement quand le dossier a des services payés sur place.
+  const servicePaiement = champServicePaiement(d.id, { totalChezNous: r.total, devise: r.devise || regl.devise });
   const boutonPaiement = h("button", { type: "submit", class: "principal" }, tr("Enregistrer le paiement"));
   const formPaiement = h(
     "form",
@@ -424,11 +427,12 @@ function ficheDossierVue(id) {
           return;
         }
         // Un montant au-delà du reste à payer est le plus souvent une faute de frappe : on demande avant d'enregistrer.
-        if (!rembourse && r.total > 0 && arrondi(montant - Math.max(0, r.reste)) > 0 && !(await confirmer(tr("Ce montant dépasse le reste à payer ({reste}). L'enregistrer quand même ?", { reste: fm(Math.max(0, r.reste)) }), tr("Enregistrer")))) return;
+        const serviceChoisi = !rembourse && servicePaiement ? servicePaiement.valeur() : null;
+        if (!rembourse && !serviceChoisi && r.total > 0 && arrondi(montant - Math.max(0, r.reste)) > 0 && !(await confirmer(tr("Ce montant dépasse le reste à payer ({reste}). L'enregistrer quand même ?", { reste: fm(Math.max(0, r.reste)) }), tr("Enregistrer")))) return;
         if (!(await pasEnDouble({ date: dateP.value, montant: rembourse ? -montant : montant }))) return;
         boutonPaiement.disabled = true;
         try {
-          await inserer("paiements", {
+          await inserer("paiements", avecService({
             dossier_id: d.id,
             date: dateP.value,
             montant: rembourse ? -montant : montant,
@@ -437,7 +441,7 @@ function ficheDossierVue(id) {
             origine_montant: rembourse ? null : num(origineM.value),
             origine_devise: rembourse ? "" : origineD.value,
             note: noteP.value.trim(),
-          });
+          }, serviceChoisi));
           // Un premier paiement vaut acceptation (sans quoi le dossier soldé reste « devis en attente »).
           const acceptation = acceptationAuPaiement(d, dateP.value, rembourse);
           if (acceptation) await modifier("dossiers", d.id, { accepte_le: acceptation });
@@ -450,7 +454,7 @@ function ficheDossierVue(id) {
         }
       },
     },
-    h("div", { class: "grille-form" }, champ(tr("Sens du paiement"), sensP), champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
+    h("div", { class: "grille-form" }, champ(tr("Sens du paiement"), sensP), champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), servicePaiement ? servicePaiement.noeud : null, champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
     h("div", { class: "actions" }, boutonPaiement)
   );
 
@@ -471,6 +475,7 @@ function ficheDossierVue(id) {
     f.type.value = rembourse ? "remboursement" : TYPES_PAIEMENT.includes(p.type) ? p.type : "autre";
     const typeInitial = f.type.value;
     f.origineD.value = p.origine_devise || "";
+    f.service = rembourse ? null : champServicePaiement(d.id, { valeur: p.reservation_id || null, totalChezNous: r.total, devise: r.devise || regl.devise, id: "pc-service" });
     const enregistrer = h("button", { type: "submit", class: "principal" }, tr("Enregistrer"));
     const fermer = modal(
       rembourse ? tr("Corriger le remboursement") : tr("Corriger le paiement"),
@@ -489,7 +494,7 @@ function ficheDossierVue(id) {
             if ((f.date.value !== p.date || arrondi(montant) !== arrondi(Math.abs(Number(p.montant)))) && !(await pasEnDouble({ date: f.date.value, montant: rembourse ? -montant : montant }, p.id))) return;
             enregistrer.disabled = true;
             try {
-              await modifier("paiements", p.id, { date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim(), ...(f.type.value !== typeInitial ? { type: f.type.value } : {}), origine_montant: rembourse ? null : num(f.origineM.value), origine_devise: rembourse ? "" : f.origineD.value });
+              await modifier("paiements", p.id, { ...(f.service && (f.service.valeur() || null) !== (p.reservation_id || null) ? { reservation_id: f.service.valeur() } : {}), date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim(), ...(f.type.value !== typeInitial ? { type: f.type.value } : {}), origine_montant: rembourse ? null : num(f.origineM.value), origine_devise: rembourse ? "" : f.origineD.value });
               fermer();
               toast(tr("Paiement corrigé."));
               rafraichir();
@@ -499,7 +504,7 @@ function ficheDossierVue(id) {
             }
           },
         },
-        h("div", { class: "grille-form" }, champ(tr("Date de réception"), f.date), champ(rembourse ? tr("Montant remboursé ({x})", { x: r.devise || regl.devise }) : tr("Montant reçu ({x})", { x: r.devise || regl.devise }), f.montant), champ(tr("Type"), f.type), champ(tr("Moyen de paiement"), f.moyen), champ(tr("Note"), f.note), rembourse ? null : champ(tr("Montant d'origine, si payé en devise"), f.origineM), rembourse ? null : champ(tr("Devise d'origine"), f.origineD)),
+        h("div", { class: "grille-form" }, champ(tr("Date de réception"), f.date), champ(rembourse ? tr("Montant remboursé ({x})", { x: r.devise || regl.devise }) : tr("Montant reçu ({x})", { x: r.devise || regl.devise }), f.montant), champ(tr("Type"), f.type), champ(tr("Moyen de paiement"), f.moyen), f.service ? f.service.noeud : null, champ(tr("Note"), f.note), rembourse ? null : champ(tr("Montant d'origine, si payé en devise"), f.origineM), rembourse ? null : champ(tr("Devise d'origine"), f.origineD)),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), enregistrer)
       )
     );
@@ -805,7 +810,7 @@ function ficheDossierVue(id) {
         : h("p", { class: "vide-court" }, tr("Aucun document.")),
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
-    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, solderEcart, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
+    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), alertesPaiementsDossier(d, r), tableauPaiements, solderEcart, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
