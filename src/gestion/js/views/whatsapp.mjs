@@ -79,7 +79,7 @@ function ligneConversation(c, prop, ouverte) {
   const att = attenteClient(c, prop);
   const texte = ap.texte || (ap.type === "supprime" ? tr(LIBELLE_SUPPRIME) : ap.type ? tr(libelleType(ap.type)) : "");
   const apercu = texte
-    ? h("span", { class: "wa-conv-apercu" }, ap.deNani ? h("span", { class: "wa-conv-vous" }, tr("Vous : ")) : null, texte)
+    ? h("span", { class: `wa-conv-apercu${!ap.texte && ap.type === "supprime" ? " supprime" : ""}` }, ap.deNani ? h("span", { class: "wa-conv-vous" }, tr("Vous : ")) : null, texte)
     : h("span", { class: `wa-conv-etat ${et.cle}` }, et.libelle ? tr(et.libelle) : "");
   return h(
     "li",
@@ -215,7 +215,7 @@ function menuConversation(c) {
       { class: "agent-menu" },
       ici && !lectureSeule ? item(client ? tr("Changer le client relié") : tr("Relier un client"), () => ouvrirRelier(c)) : null,
       client ? item(tr("Ouvrir la fiche du client"), () => naviguer(`#/client/${client.id}`)) : null,
-      etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Contact personnel : rien envoyé à l'IA"), () => basculerReponses(c)) : null,
+      etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Marquer comme contact personnel (rien envoyé à l'IA)"), () => basculerReponses(c)) : null,
       // IA coupée pour cette conversation (migration 105), sans la classer en Contact personnel.
       etapesDisponibles() && !lectureSeule && reponsesDe(c) !== "jamais" ? item(c.ia_coupee ? tr("Rallumer l'IA pour cette conversation") : tr("Couper l'IA pour cette conversation"), () => basculerIA(c, rafraichir)) : null,
       wa ? h("a", { class: "bouton secondaire", href: wa, target: "_blank", rel: "noopener", onclick: () => fermer() }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null
@@ -690,6 +690,8 @@ function actionsDossier(c, prop, dossier = null) {
 
 // Le résumé en trois lignes (fonction « whatsapp », Claude Haiku), repliable ; replié ou non est gardé pour la session.
 const resumesReplies = new Set();
+// Les réponses préparées dépliées par la personne sur téléphone (audit mobile n° 4, 26.11.2026), gardées d'un redessin à l'autre.
+const reponsesDepliees = new Set();
 function blocResume(c) {
   const lignes = lignesResume(c.resume);
   if (!lignes.length) return null;
@@ -864,8 +866,10 @@ async function copier(c, p, zone, bouton) {
   try {
     await versPressePapiers(zone.value);
     bouton.classList.add("fait");
-    bouton.replaceChildren(icone("coche", 20), tr("Copié"));
-    setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), tr("Copier"))), 2500);
+    // Le libellé reste dans son span (caché sous 380 px, audit mobile n° 3) ; l'étiquette accessible suit.
+    bouton.replaceChildren(icone("coche", 20), h("span", { class: "wa-copier-texte" }, tr("Copié")));
+    bouton.setAttribute("aria-label", tr("Copié"));
+    setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier"))), bouton.setAttribute("aria-label", tr("Copier"))), 2500);
     toast(tr("Réponse copiée. Collez-la dans WhatsApp."));
   } catch {
     zone.focus();
@@ -1053,7 +1057,8 @@ function carteProposition(c, p, messages) {
   // Le texte modifié survit au redessin de l'écran (synchronisation, nouveau message dans une autre conversation).
   zone.value = brouillons.has(p.id) ? brouillons.get(p.id) : p.texte || "";
   const f = fenetre(messages);
-  const boutonCopier = h("button", { class: "secondaire wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget) }, icone("copier", 20), tr("Copier"));
+  const boutonCopier = h("button", { class: "secondaire wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget) }, icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier")));
+  boutonCopier.setAttribute("aria-label", tr("Copier"));
   // « Ouvrir dans WhatsApp » avec la réponse déjà écrite (wa.me/<numéro>?text=, lot 2, usage n° 3) : un tap, Nani n'a plus qu'à envoyer.
   // Le texte est aussi copié, au cas où l'app ne reprend pas le texte du lien.
   const boutonOuvrir = lienWhatsApp(c.telephone)
@@ -1113,6 +1118,35 @@ function carteProposition(c, p, messages) {
   });
   marquerBrouillon();
   majEnvoi();
+  // Téléphone (audit mobile n° 4, 26.11.2026) : la réponse se replie sur deux lignes, « Voir la réponse » la déplie ; dépliée, le champ
+  // grandit avec son texte au lieu de défiler dans une page qui défile. Dépliée d'office quand le texte a été modifié ou qu'un montant ou un
+  // nom interne bloque la copie. Ordinateur : rien ne change (la colonne a sa propre hauteur).
+  const telephone = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+  const ajusterZone = () => {
+    if (!telephone() || !zone.isConnected || !zone.offsetParent) return false;
+    zone.style.height = "auto";
+    zone.style.height = `${zone.scrollHeight + 2}px`;
+    return true;
+  };
+  let essais = 0;
+  const ajusterQuandAffichee = () => {
+    if (!ajusterZone() && essais++ < 30) requestAnimationFrame(ajusterQuandAffichee);
+  };
+  zone.addEventListener("input", ajusterZone);
+  if (brouillons.has(p.id) || !alerte.hidden) reponsesDepliees.add(p.id);
+  const texteApercu = h("span", { class: "wa-apercu-texte" });
+  const apercu = h("button", { class: "wa-apercu", type: "button", "aria-expanded": "false", "aria-controls": "wa-reponse" }, texteApercu, h("span", { class: "wa-apercu-voir" }, tr("Voir la réponse")));
+  const replier = h("button", { class: "lien wa-replier", type: "button", "aria-controls": "wa-reponse" }, tr("Replier"));
+  const plier = (deplie) => {
+    if (deplie) reponsesDepliees.add(p.id);
+    else reponsesDepliees.delete(p.id);
+    section.classList.toggle("repliee", !deplie);
+    apercu.setAttribute("aria-expanded", deplie ? "true" : "false");
+    texteApercu.textContent = zone.value.replace(/\s+/g, " ").trim();
+    if (deplie) ajusterQuandAffichee();
+  };
+  apercu.addEventListener("click", () => plier(true));
+  replier.addEventListener("click", () => plier(false));
   const avs = avertissements({ ...p, avertissements: filtre.visibles });
   // Préparée avec les données d'une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis) : on le dit.
   const pour = p.entite_id && p.entite_id !== c.entite_id ? entite(p.entite_id) : null;
@@ -1120,13 +1154,14 @@ function carteProposition(c, p, messages) {
   const boutonIgnorer = h("button", { class: "lien", type: "button" }, tr("Ignorer"));
   boutonTraitee.addEventListener("click", () => traiter(p, "traitee", [boutonTraitee, boutonIgnorer]));
   boutonIgnorer.addEventListener("click", () => traiter(p, "ignoree", [boutonTraitee, boutonIgnorer]));
-  return h(
+  const section = h(
     "section",
     // Hors saisie (audit dev B2) : le texte modifié survit au redessin (Map brouillons), il ne doit donc pas figer l'écran. Seul le curseur
     // dans le champ retient le redessin (curseurDansUnChamp).
     { class: "wa-prop", "aria-label": tr("Réponse préparée"), "data-pas-saisie": "" },
-    h("h3", null, tr("Réponse préparée"), p.langue ? h("span", { class: "tag" }, p.langue.toUpperCase()) : null, pour ? h("span", { class: "wa-pour" }, tr("préparée pour {nom}", { nom: pour.nom })) : null),
+    h("h3", null, tr("Réponse préparée"), p.langue ? h("span", { class: "tag" }, p.langue.toUpperCase()) : null, pour ? h("span", { class: "wa-pour" }, tr("préparée pour {nom}", { nom: pour.nom })) : null, replier),
     avs.length ? h("ul", { class: "wa-avertissements" }, avs.map((a) => h("li", { class: a.niveau }, icone(a.niveau === "alerte" ? "alerte" : "coche", 16), h("span", null, tr(a.texte, a.vars))))) : null,
+    apercu,
     zone,
     alerte,
     morceaux,
@@ -1134,6 +1169,8 @@ function carteProposition(c, p, messages) {
     lectureSeule ? null : h("div", { class: "wa-prop-suite" }, boutonTraitee, boutonIgnorer, boutonEnvoyer),
     pourquoi
   );
+  plier(reponsesDepliees.has(p.id));
+  return section;
 }
 
 async function fil(c, prop) {
