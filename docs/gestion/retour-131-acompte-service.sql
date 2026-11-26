@@ -3,6 +3,8 @@
 begin;
 drop trigger if exists recalculer_dossier_service on reservations;
 drop function if exists recalculer_dossier_service();
+drop trigger if exists recalculer_dossier_annule on dossiers;
+drop function if exists recalculer_dossier_annule();
 alter table dossiers_resume drop column if exists parts;
 alter table dossiers_resume drop column if exists a_rembourser;
 alter table dossiers_resume drop column if exists trop_percu;

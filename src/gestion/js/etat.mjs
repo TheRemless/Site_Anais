@@ -448,6 +448,8 @@ async function modifierBrut(table, id, patch, { verrou = false, version = undefi
   rebatir();
   // Une réservation aussi : la base répartit le reçu entre les services payés sur place (dossiers_resume.parts, migration 131).
   if ((table === "documents" || table === "paiements" || table === "reservations") && r.dossier_id) await actualiserResume(r.dossier_id);
+  // Un dossier annulé ou rétabli : rien n'est plus imputé à ses services (migration 131), le résumé est relu.
+  if (table === "dossiers" && patch && "annule" in patch) await actualiserResume(id);
   if (table === "reservations") await actualiserNets(r.id);
   return r;
 }

@@ -744,7 +744,8 @@ const arr2 = (x) => Math.round(x * 100) / 100;
 export function imputationDossier({ total = 0, recu = 0, reservations = [], annule = false } = {}) {
   let libre = arr2(Math.max(0, (Number(recu) || 0) - Math.max(0, Number(total) || 0)));
   const parts = {};
-  const surPlace = (reservations || [])
+  // Dossier annulé (même sans annuler ses services) : rien n'est imputé, tout ce qui dépasse est à rembourser.
+  const surPlace = annule ? [] : (reservations || [])
     .filter((r) => r && r.paye_sur_place && statutReservation(r.statut) !== "annule" && Number(r.montant_vente) > 0)
     .sort((a, b) => String(a.date_service || "9999-12-31").localeCompare(String(b.date_service || "9999-12-31")) || String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
   for (const r of surPlace) {
@@ -777,13 +778,13 @@ export function paiementDuService(r, { resume = null } = {}) {
 export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
 
 // Les montants d'une remarque de paiement saisie à la main : ni les dates (« 26.11 », « 26/11/2026 »), ni les pourcentages (« 3 % »), ni un
-// montant suivi de « fee(s) » (« 50 THB fee ») ne comptent.
+// montant suivi de « fee(s) », avec un ou deux mots entre (« 50 THB fee », « 150 Wise fee », « 40 bank transfer fee ») ne comptent.
 export function montantsRemarque(texte) {
   const t = String(texte || "")
     .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/g, " ")
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
     .replace(/\d[\d\s',.]*\s?%/g, " ")
-    .replace(/\d[\d\s',.]*\s*(?:[A-Za-z]{3}\s*)?fees?\b/gi, " ");
+    .replace(/\d[\d\s',.]*?\s*(?:[A-Za-zÀ-ÿ]+\s+){0,2}fees?\b/gi, " ");
   return (t.match(/\d[\d\s',.]*\d|\d/g) || []).map((x) => Number(x.trim().replace(/[\s',]/g, ""))).filter((x) => x > 0);
 }
 const remarqueContredit = (remarque, p, montant) => p && p.verse !== null && p.verse !== undefined && montantsRemarque(remarque).some((x) => x !== p.verse && x !== p.reste && x !== Number(montant));
@@ -795,6 +796,11 @@ export function alertesPaiements({ reservations = [], resume = null } = {}) {
   const out = [];
   if (Number(d.a_rembourser) > 0) out.push({ code: "remboursement", montant: arr2(Number(d.a_rembourser)) });
   if (Number(d.trop_percu) > 0) out.push({ code: "trop_percu", montant: arr2(Number(d.trop_percu)) });
+  // Un acompte réparti entre des services sur place de prestataires différents : la répartition calculée, à voir avant d'envoyer les vouchers.
+  const parts = d.parts || {};
+  const servis = (reservations || []).filter((r) => r && parts[r.id] && Number(parts[r.id].verse) > 0).sort((a, b) => String(a.date_service || "").localeCompare(String(b.date_service || "")));
+  if (servis.length > 1 && new Set(servis.map((r) => r.partenaire_id || `sans-${r.id}`)).size > 1)
+    out.push({ code: "repartition", montant: arr2(servis.reduce((t, r) => t + Number(parts[r.id].verse), 0)), repartition: servis.map((r) => ({ reservation_id: r.id, libelle: r.libelle || "", date: r.date_service || "", verse: arr2(Number(parts[r.id].verse)) })) });
   for (const r of (reservations || []).filter((x) => x && x.paye_sur_place && statutReservation(x.statut) !== "annule")) {
     const p = paiementDuService(r, { resume });
     if (remarqueContredit((r.details && r.details.remarques_paiement) || "", p, r.montant_vente)) out.push({ code: "remarque_paiement", montant: p.verse, reservation_id: r.id, libelle: r.libelle || "" });

@@ -807,6 +807,8 @@ function ficheDossierVue(id) {
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
     droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), alertesPaiementsDossier(d, r), tableauPaiements, solderEcart, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
+    // Taxi n'a pas de section des paiements : ses alertes (acompte réparti, à rembourser, trop-perçu) se montrent quand même.
+    droit.finances && taxi ? alertesPaiementsDossier(d, r) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),

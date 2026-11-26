@@ -175,6 +175,27 @@ const ligneDe = async (id) => (await brown()).find((x) => x.id === id);
   const mook = await essaie(u.mook, "select parts from dossiers_resume where dossier_id = $1", [dos]);
   ok(mook.ok, "lecture sans erreur pour un autre rôle " + (mook.err || ""));
 }
+{
+  // Dossier annulé sans annuler ses services : rien n'est imputé, tout est à rembourser ; rétabli, les parts reviennent.
+  const { dos, aller } = await dossierAR();
+  await payer(dos, 1200);
+  await db.query("update dossiers set annule = true where id = $1", [dos]);
+  let rs = await resumeDe(dos);
+  ok(Object.keys(rs.parts || {}).length === 0 && Number(rs.a_rembourser) === 1200, "dossier annulé (services non annulés) : rien d'imputé, 1200 à rembourser " + JSON.stringify(rs));
+  await db.query("update dossiers set annule = false where id = $1", [dos]);
+  rs = await resumeDe(dos);
+  ok(Number(part(rs, aller).verse) === 1200 && Number(rs.a_rembourser) === 0, "dossier rétabli : les parts reviennent");
+}
+{
+  // Trop-perçu sans service sur place : visible tout de suite après la migration (requête de recalcul ciblée).
+  const cl = (await un("insert into clients (entite_id, prenom, nom) values ($1, 'Trop', 'Percu') returning id", [ent.taxi])).id;
+  const dos = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'TX-TP-1', $2) returning id", [ent.taxi, cl])).id;
+  await db.query("insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, 'facture', $3, $4::jsonb)", [ent.taxi, dos, await jour(0), JSON.stringify({ lignes: [{ id: "TP-1", kind: "ligne", qte: 1, unite: 1000 }] })]);
+  await payer(dos, 1300);
+  await db.query("update dossiers_resume set trop_percu = 0 where dossier_id = $1", [dos]);
+  await db.exec(lire(MIG));
+  ok(Number((await resumeDe(dos)).trop_percu) === 300, "la migration recalcule un dossier sans service sur place qui a trop reçu (300)");
+}
 ok(/for update/.test(lire(MIG)), "le calcul verrouille le dossier (écritures simultanées)");
 
 await db.exec(lire(MIG));

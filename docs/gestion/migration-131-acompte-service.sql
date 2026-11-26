@@ -13,7 +13,8 @@
 --   3. un service annulé ne reçoit rien ; ce qui dépasse est `a_rembourser` quand le dossier a une annulation (un service annulé ou le
 --      dossier annulé), sinon `trop_percu`. Un remboursement saisi baisse le reçu : l'alerte disparaît, aucun reste ne devient négatif ;
 --   4. le résumé suit les paiements et les documents (migration 19) et maintenant les services (prix, mode de règlement, statut, date) ;
---   5. deux écritures simultanées sur un même dossier se suivent : le dossier est verrouillé (for update) avant le calcul.
+--   5. deux écritures simultanées sur un même dossier se suivent : le dossier est verrouillé (for update) avant le calcul ;
+--   6. un dossier annulé (même sans annuler ses services) n'impute rien : tout ce qui dépasse son total est à rembourser.
 -- L'écran du chauffeur (partenaire_courses_de) lit la part de SA course.
 begin;
 
@@ -47,6 +48,8 @@ begin
   t := coalesce(total_document(coalesce(f, v)), 0);
   rc := (select coalesce(sum(montant), 0) from paiements where dossier_id = did);
   libre := greatest(rc - greatest(t, 0), 0);
+  -- Dossier annulé (même si ses services ne le sont pas) : rien n'est imputé, tout ce qui dépasse est à rembourser.
+  if not coalesce(dos_annule, false) then
   for x in select r.id, round(r.montant_vente, 2) as prix from reservations r
            where r.dossier_id = did and r.paye_sur_place and r.statut <> 'annule' and coalesce(r.montant_vente, 0) > 0
            order by r.date_service nulls last, r.created_at, r.id loop
@@ -54,6 +57,7 @@ begin
     libre := libre - vs;
     pts := pts || jsonb_build_object(x.id::text, jsonb_build_object('verse', vs, 'reste', x.prix - vs));
   end loop;
+  end if;
   annulation := coalesce(dos_annule, false) or exists (select 1 from reservations r where r.dossier_id = did and r.statut = 'annule');
   insert into dossiers_resume (dossier_id, entite_id, total, devise, recu, sur_place, parts, a_rembourser, trop_percu)
   values (did, ent, t, coalesce(f, v)->>'devise', rc, coalesce(montant_sur_place(coalesce(f, v)), 0), pts,
@@ -158,7 +162,25 @@ $$;
 revoke all on function partenaire_courses_de(uuid) from public, anon, authenticated;
 
 
--- Les dossiers qui ont un service payé sur place : leur résumé reçoit ses parts.
-select recalculer_dossier(x.dossier_id) from (select distinct dossier_id from reservations where paye_sur_place and dossier_id is not null) x;
+-- Un dossier annulé ou rétabli : le résumé suit (rien n'est imputé aux services d'un dossier annulé).
+create or replace function recalculer_dossier_annule() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform recalculer_dossier(new.id);
+  return null;
+end
+$$;
+revoke all on function recalculer_dossier_annule() from public, anon, authenticated;
+drop trigger if exists recalculer_dossier_annule on dossiers;
+create trigger recalculer_dossier_annule after update of annule on dossiers
+  for each row when (old.annule is distinct from new.annule) execute function recalculer_dossier_annule();
+
+-- Les résumés à recalculer tout de suite : les dossiers qui ont un service payé sur place (leurs parts), ceux qui ont reçu plus que leur
+-- total (trop-perçu visible) et les dossiers annulés qui ont reçu un paiement (à rembourser).
+select recalculer_dossier(x.dossier_id) from (
+  select dossier_id from reservations where paye_sur_place and dossier_id is not null
+  union select dossier_id from dossiers_resume where recu > total
+  union select p.dossier_id from paiements p join dossiers d on d.id = p.dossier_id where d.annule
+) x;
 
 commit;

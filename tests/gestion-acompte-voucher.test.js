@@ -88,6 +88,20 @@ test("règle : un service annulé ne reçoit rien ; ce qui dépasse est à rembo
   assert.ok(O.imputationDossier({ recu: -500, reservations: [tour()] }).parts.R1.verse === 0);
 });
 
+test("règle : un dossier annulé, même sans annuler ses services, n'impute rien ; tout est à rembourser", () => {
+  const imp = O.imputationDossier({ recu: 1200, reservations: [tour()], annule: true });
+  assert.deepEqual([imp.parts, imp.a_rembourser, imp.trop_percu], [{}, 1200, 0]);
+  assert.equal(O.paiementDuService(tour(), { resume: { total: 0, recu: 1200, dossier: imp } }).verse, null, "aucun montant sur le voucher");
+});
+
+test("alerte : un acompte réparti entre des prestataires différents montre la répartition ; un seul prestataire, rien", () => {
+  const [bateau, transfert] = [tour({ partenaire_id: "pB" }), taxi({ partenaire_id: "pT", date_service: "2026-12-20" })];
+  const a = O.alertesPaiements({ reservations: [bateau, transfert], resume: resumeDe({ recu: 1200, reservations: [bateau, transfert] }) }).find((x) => x.code === "repartition");
+  assert.deepEqual(a.repartition.map((x) => [x.libelle, x.date, x.verse]), [["Private taxi", "2026-12-20", 800], ["Private tour", "2026-12-22", 400]]);
+  const meme = [tour({ partenaire_id: "pB" }), taxi({ partenaire_id: "pB", date_service: "2026-12-20" })];
+  assert.ok(!O.alertesPaiements({ reservations: meme, resume: resumeDe({ recu: 1200, reservations: meme }) }).some((x) => x.code === "repartition"));
+});
+
 test("règle : chez nous et ZTP, la règle d'avant (le reçu contre le total, aucun montant imprimé)", () => {
   const [a, n] = [tour(), nous()];
   assert.equal(P(n, { total: 2000, recu: 1200, reservations: [a, n] }).statut, "acompte");
@@ -119,7 +133,7 @@ test("alertes du dossier : remboursement à traiter, trop-perçu, remarque contr
   assert.equal(O.remarquePaiementImprimee("Deposit of 1000 paid", p, 6900), "");
   assert.equal(O.remarquePaiementImprimee("Deposit of 1,200 paid", p, 6900), "Deposit of 1,200 paid");
   assert.equal(O.remarquePaiementImprimee("Cash only", p, 6900), "Cash only");
-  for (const t of ["Deposit 1,200 paid on 26.11.2026", "Deposit 1,200 paid 26/11", "Wise 3 % included, 1200 paid", "1200 paid, 50 THB fee", "1200 paid + 40 fees"]) assert.equal(O.remarquePaiementImprimee(t, p, 6900), t, t);
+  for (const t of ["Deposit 1,200 paid on 26.11.2026", "Deposit 1,200 paid 26/11", "Wise 3 % included, 1200 paid", "1200 paid, 50 THB fee", "1200 paid + 40 fees", "1200 + 150 Wise fee", "1200 + 150 bank transfer fee"]) assert.equal(O.remarquePaiementImprimee(t, p, 6900), t, t);
 });
 
 const REGL = { emetteur: { nom: "Excursions Exemple", adresse: "", telephone: "+66 00" }, apparence: {}, voucher: {}, devise: "THB", fonctionnement: "excursions" };

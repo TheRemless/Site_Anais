@@ -10,6 +10,8 @@ export const EN = {
   "Trop-perçu de {montant} : le dossier a reçu plus que le prix de ses services.": "Overpayment of {montant}: the booking received more than the price of its services.",
   "La remarque de paiement de « {service} » donne un autre montant que l'acompte enregistré ({montant}) : elle n'est pas imprimée sur le voucher.": "The payment remark of “{service}” gives another amount than the recorded deposit ({montant}): it is not printed on the voucher.",
   "Remboursements à traiter": "Refunds to handle",
+  "Acompte réparti entre plusieurs prestataires : {detail}. Vérifiez avant d'envoyer les vouchers.": "Deposit split between several providers: {detail}. Check before sending the vouchers.",
+  "{montant} imputés à « {service} » du {date}": "{montant} assigned to “{service}” on {date}",
   "Reçu au-delà de ce qui reste dû après une annulation : à rembourser au client, puis à enregistrer comme remboursement dans le dossier.": "Received beyond what is still due after a cancellation: to refund to the client, then to record as a refund in the booking.",
   // « Pas bien » sur une réponse de l'Assistant (migration 74)
   "Pas bien": "Not good",

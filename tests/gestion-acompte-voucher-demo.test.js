@@ -90,3 +90,15 @@ test("dossier non chargé (store Supabase simulé) : le voucher lit la part du r
   // Un service chez nous payé, dossier non ouvert : « Paid », pas « Payment Pending ».
   assert.equal(paiementDuService({ id: "R8", paye_sur_place: false }, { resume: resume({ ...d, total: 2000, recu: 2000 }, { documents: [], paiements: [], clients: [], reservations: [] }, { devise: "THB" }) }).statut, "paye");
 });
+
+test("Secret : dossier annulé sans annuler ses services → plus aucun montant sur le voucher, tout est à rembourser (À encaisser)", async () => {
+  dans("excursions");
+  const d = await dossierAvecAcompte({ prix: 6900, acompte: 1200, libelle: "Private longtail tour" });
+  assert.match(texte(d), /Amount Already Paid/);
+  await E.modifier("dossiers", d.id, { annule: true });
+  const lu = E.etat.db.dossiers.find((x) => x.id === d.id);
+  assert.equal(Number(lu.a_rembourser), 1200);
+  assert.deepEqual(lu.parts, {});
+  assert.doesNotMatch(texte(d), /Amount Already Paid/);
+  assert.ok(E.resumes().some((r) => r.dossier.id === d.id && Number(r.dossier.a_rembourser) === 1200), "listé pour À encaisser");
+});
