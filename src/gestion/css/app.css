@@ -2424,6 +2424,16 @@ button.agent-joint { cursor: pointer; }
 .wa-reglages-etat { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 0.92rem; }
 .wa-reglages-etat dt { color: var(--texte-2); }
 .wa-reglages-etat dd { margin: 0; }
+/* Message de nuit (migration 132) : heures côte à côte, boutons de 44 px (règle commune des boutons), qui passent à la ligne sur téléphone. */
+.wa-nuit { margin: 18px 0 12px; padding-top: 14px; border-top: 1px solid var(--bord); }
+.wa-nuit h3 { margin: 0 0 4px; font-size: 1rem; }
+.wa-nuit label:not(.case) { display: block; margin: 12px 0 0; font-weight: 500; font-size: 0.92rem; }
+.wa-nuit label:not(.case) > input, .wa-nuit label:not(.case) > textarea { margin-top: 4px; }
+.wa-nuit-heures { display: grid; grid-template-columns: repeat(2, minmax(0, 9rem)); gap: 0 14px; }
+.wa-nuit textarea { min-height: 12rem; }
+.wa-nuit-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 4px; }
+.wa-nuit .erreur-form { margin: 10px 0 0; }
+.wa-meta .wa-auto { font-weight: 600; color: var(--teal-700); }
 .wa-compte.connecte { color: var(--teal-700); font-weight: 600; }
 .wa-compte.deconnecte, .wa-compte.retire { color: var(--danger); font-weight: 600; }
 

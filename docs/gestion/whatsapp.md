@@ -210,6 +210,18 @@ Constat du 22.11 : des messages de clients visibles dans l'app de Nani n'arriven
   - Mesure sur les 300 réponses de Nani du 20 au 22.11 (lecture seule) : 3 repères, les 3 pertes réelles connues (une réponse avec un prix après plus de 6 heures, deux premiers messages qui répondent), aucun faux. Les 17 autres conversations ouvertes par Nani (relances, remerciements, propositions, confirmations d'office, questions à des prestataires, médias) n'en ont pas. La première version (6 heures seulement) donnait 6 repères, dont 5 faux, et manquait deux des pertes.
 - **Fonction à redéployer** : `whatsapp` (et `agent`, pour le filtre de l'Assistant). Contrôle : `verif-whatsapp-manquants.mjs`. Retour : `retour-100-whatsapp-manquants.sql`.
 
+## Message automatique de nuit (migration 132, 27.11.2026)
+
+Nani met son téléphone en mode avion la nuit : le message d'absence de l'app WhatsApp Business ne part pas. La fonction « whatsapp » l'envoie à sa place par Telnyx (`supabase/functions/whatsapp/nuit.ts`, logique pure dans `nuit.js`).
+
+- Quand : un message du client reçu entre 22:00 et 06:00, heure de Bangkok (réglable). La nuit a pour clé la date du soir où elle commence : un message à 01:00 le 28 appartient à la nuit du 27. Un message de nuit rangé après la fin de la nuit (rattrapage tardif) n'appelle rien.
+- Une fois par personne et par nuit : contrainte unique `whatsapp_messages_nuit (conversation_id, nuit)`, réservée par `whatsapp_reserver_nuit` sous le verrou de la conversation, avant l'appel à Telnyx. Deux webhooks à la même seconde donnent un seul envoi.
+- À qui : un client ou un inconnu. Jamais un Contact personnel (`reponses = 'jamais'`), un partenaire, un apporteur ni une fiche partenaire, ni une conversation sans numéro. Rien non plus si l'équipe a déjà écrit dans la conversation depuis le début de la nuit, pour une réaction, une ligne « non transmis », un message supprimé, un message de Nani ou un doublon d'événement.
+- Dans la conversation : rangé comme un envoi de Gestion (sortant, `statut_envoi`), marqué « Message automatique de nuit » (`whatsapp_messages.automatique = 'nuit'`). La liste ne le prend pas pour une réponse : au matin, la conversation montre le message du client et « Le client attend une réponse », non-lus gardés.
+- Échecs : un refus sûr de Telnyx est repris par la reprise (pg_cron « whatsapp-reprise », toutes les 5 minutes), 3 essais en tout, la même nuit et si rien n'a changé. Un résultat incertain (délai dépassé, 5xx) n'est jamais renvoyé : le message passe « à vérifier » après 5 minutes, comme tout envoi de Gestion.
+- Réglages > WhatsApp > Message de nuit : activé ou non, le texte, les heures. Enregistré par `whatsapp_regler_nuit`, réservé aux administrateurs de Secret ou de Taxi (contrôlé en base).
+- Mise en service : migration 132, puis déploiement de la fonction « whatsapp » (aucun nouveau secret : `TELNYX_API_KEY` sert déjà aux médias). Sans `TELNYX_API_KEY`, rien ne part. Contrôle : `docs/gestion/verif-whatsapp-message-nuit.mjs`, `tests/gestion-whatsapp-nuit.test.js`.
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature

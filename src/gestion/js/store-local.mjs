@@ -21,6 +21,7 @@ import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
+import { lireReglageNuit } from "./whatsapp-nuit-calc.mjs";
 import { refusLienDemande, refusDelier, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -987,6 +988,16 @@ export function creer() {
     },
     async whatsappRelancerEvenements() {
       return 0;
+    },
+    // Message de nuit (migration 132) : mêmes contrôles que whatsapp_regler_nuit.
+    async whatsappMessageNuit(organisationId, valeurs) {
+      const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
+      if (!r || organisationId !== monOrg() || !litWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      const lu = lireReglageNuit(valeurs);
+      if (lu.erreur) throw new Error(tr(lu.erreur));
+      Object.assign(r, { nuit_active: lu.valeurs.active, nuit_texte: lu.valeurs.texte, nuit_debut: lu.valeurs.debut, nuit_fin: lu.valeurs.fin, updated_at: new Date().toISOString() });
+      sauve();
+      return { organisation_id: r.organisation_id, nuit_active: r.nuit_active, nuit_texte: r.nuit_texte, nuit_debut: r.nuit_debut, nuit_fin: r.nuit_fin };
     },
     async whatsappReception(organisationId, actif) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
