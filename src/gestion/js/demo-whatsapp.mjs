@@ -10,6 +10,7 @@
 // Suivi (migrations 61 et 62) : résumé en trois lignes, signal de paiement et promesse en tâche, sur la conversation 3 reliée à un
 // dossier de Secret non soldé (`suivi` : { dossier, client, ajd, ajouterJours }). Rend aussi `taches` à ajouter à la démo.
 import { apercuDepuisMessages } from "./whatsapp-calc.mjs";
+import { TEXTE_NUIT, DEBUT_NUIT, FIN_NUIT } from "./whatsapp-nuit-calc.mjs";
 
 const SECRET = ["excursions", "secret"];
 const TAXI = ["taxi"];
@@ -20,7 +21,7 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
   const out = { whatsapp_conversations: [], whatsapp_messages: [], whatsapp_propositions: [], whatsapp_reglages: [], taches: [] };
   if (!secret && !taxi) return out;
   const il_y_a = (minutes) => new Date(maintenant - minutes * 60000).toISOString();
-  out.whatsapp_reglages.push({ organisation_id: organisation, reception_active: true, numero: "+447700900100", etat_compte: "CONNECTED", etat_le: il_y_a(60 * 24 * 3), dernier_evenement_le: il_y_a(4), updated_at: il_y_a(60 * 24 * 3) });
+  out.whatsapp_reglages.push({ organisation_id: organisation, reception_active: true, numero: "+447700900100", etat_compte: "CONNECTED", etat_le: il_y_a(60 * 24 * 3), dernier_evenement_le: il_y_a(4), updated_at: il_y_a(60 * 24 * 3), nuit_active: true, nuit_texte: TEXTE_NUIT, nuit_debut: DEBUT_NUIT, nuit_fin: FIN_NUIT });
 
   const conversation = (o) => {
     const c = { id: uid(), created_at: il_y_a(60 * 24 * 2), updated_at: il_y_a(5), organisation_id: organisation, nom: null, entite_id: null, entite_source: "auto", client_id: null, dossier_id: null, dernier_message_le: null, dernier_sens: null, non_lus: 0, reponses: "auto", tri: {}, ...o };

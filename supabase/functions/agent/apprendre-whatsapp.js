@@ -26,6 +26,7 @@ import { conversationDeClient, dossierPourControle, netsPourControle } from "./o
 import { nomsABloquer } from "./apporteur.js";
 import { CONTACTS_NOMMES } from "./whatsapp-lecture.js";
 import { montantsDe } from "./apprentissages.js";
+import { avecAutomatique } from "../whatsapp/automatique.js";
 
 export const FENETRE_APPRENDRE_MS = 2 * 3600 * 1000;
 // Un vrai message : au moins 12 lettres (un « ❤️ », un « ok » ou une photo ne remplacent pas une réponse).
@@ -56,13 +57,15 @@ export function iaOuvertePour({ receptionActive, conv, agents = {} }) {
 // La réponse préparée que le message de Nani remplace, ou null. `propositions` et `messages` : ceux de la conversation (dans n'importe
 // quel ordre) ; `message` : celui de Nani.
 export function propositionAComparer({ propositions = [], messages = [], message } = {}) {
-  if (!vraiMessage(message)) return null;
+  // Le message automatique de nuit (migration 132) n'est ni une réponse de Nani à comparer, ni un message qui sépare la proposition de sa
+  // vraie réponse (relecture n° 2 de la PR 364).
+  if (!vraiMessage(message) || message.automatique) return null;
   const t = ms(message.envoye_le);
   const avant = (propositions || []).filter((p) => p && ms(p.cree_le) <= t).sort((a, b) => ms(b.cree_le) - ms(a.cree_le));
   const p = avant[0];
   if (!p || !STATUTS_COMPARABLES.includes(p.statut) || !propre(p.texte)) return null;
   if (t - ms(p.cree_le) > FENETRE_APPRENDRE_MS) return null;
-  const entre = (messages || []).filter((m) => m && m.id !== message.id && ms(m.envoye_le) > ms(p.cree_le) && (ms(m.envoye_le) < t || (ms(m.envoye_le) === t && String(m.id) < String(message.id))));
+  const entre = (messages || []).filter((m) => m && !m.automatique && m.id !== message.id && ms(m.envoye_le) > ms(p.cree_le) && (ms(m.envoye_le) < t || (ms(m.envoye_le) === t && String(m.id) < String(message.id))));
   if (entre.some((m) => m.sens === "entrant" && !m.supprime_le)) return null;
   if (entre.some((m) => vraiMessage(m))) return null;
   return p;
@@ -102,7 +105,8 @@ export async function apprendreDeNani(db, conversationId, messageId, { auteur = 
     const { data: propositions, error: errP } = await db.from("whatsapp_propositions").select("id, cree_le, statut, texte, langue, entite_id").eq("conversation_id", conv.id).gte("cree_le", depuis).lte("cree_le", message.envoye_le).order("cree_le", { ascending: false }).limit(5);
     if (errP || !propositions || !propositions.length) return { rien: "aucune_proposition" };
     // Les 200 plus récents de la fenêtre, remis dans l'ordre chronologique.
-    const { data: recents, error: errL } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, envoye_le, supprime_le").eq("conversation_id", conv.id).gte("envoye_le", depuis).lte("envoye_le", message.envoye_le).order("envoye_le", { ascending: false }).limit(200);
+    // automatique (migration 132) : lu pour écarter le message de nuit, sans lui si la migration manque.
+    const { data: recents, error: errL } = await avecAutomatique((cols) => db.from("whatsapp_messages").select(cols).eq("conversation_id", conv.id).gte("envoye_le", depuis).lte("envoye_le", message.envoye_le).order("envoye_le", { ascending: false }).limit(200), "id, sens, origine, type, texte, envoye_le, supprime_le");
     if (errL) return { rien: "messages" };
     const messages = [...(recents || [])].reverse();
     const proposition = propositionAComparer({ propositions, messages, message });

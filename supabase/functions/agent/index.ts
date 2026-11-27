@@ -52,6 +52,7 @@ import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
+import { avecAutomatique } from "../whatsapp/automatique.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -245,7 +246,8 @@ Deno.serve(async (req) => {
       if (!ent || ent.error || !ent.data || !["secret", "taxi"].includes(ent.data.slug)) return json({ erreur: "whatsapp_introuvable" }, 404);
     }
     // Ligne « non transmis » (migration 100) : jamais envoyée à l'Assistant.
-    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
+    // automatique (migration 132) : le message de nuit est marqué comme tel, jamais présenté comme une réponse de Nani.
+    const wm = await avecAutomatique((cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", waId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA), "sens, texte, medias, envoye_le, modifie_le, supprime_le");
     if (wm.error) return json({ erreur: "base" }, 500);
     const messagesWa = wm.data || [];
     textesPage = messagesWa.filter((m: { sens?: string; texte?: string; supprime_le?: string | null }) => m.sens === "entrant" && !m.supprime_le && typeof m.texte === "string" && m.texte.trim()).sort((a: { envoye_le?: string }, b: { envoye_le?: string }) => String(a.envoye_le || "").localeCompare(String(b.envoye_le || ""))).map((m: { texte: string }) => m.texte);
@@ -735,10 +737,14 @@ Deno.serve(async (req) => {
           const n = Math.min(200, Math.max(1, Number(derniers) || 40));
           // Ligne « non transmis » (migration 100) : jamais lue par l'Assistant.
           const base = (cols: string, opts?: any) => sb.from("whatsapp_messages").select(cols, opts).eq("conversation_id", id).is("supprime_le", null).neq("type", "non_transmis");
-          let q = base("id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le");
-          if (depuis) q = q.gte("envoye_le", borneJour(depuis));
-          else if (avant) q = q.lt("envoye_le", borneJour(avant));
-          const messages = await lire(q.order("envoye_le", { ascending: !!depuis }).limit(n), "whatsapp_messages");
+          // automatique (migration 132) : le message de nuit est rendu marqué comme tel (whatsapp-lecture.js).
+          const requete = (cols: string) => {
+            let q = base(cols);
+            if (depuis) q = q.gte("envoye_le", borneJour(depuis));
+            else if (avant) q = q.lt("envoye_le", borneJour(avant));
+            return q.order("envoye_le", { ascending: !!depuis }).limit(n);
+          };
+          const messages = await lire(avecAutomatique(requete, "id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le"), "whatsapp_messages");
           let compte: { avant: number; apres: number } | null = null;
           if (messages.length) {
             const dates = messages.map((m) => String(m.envoye_le)).sort();
@@ -1001,8 +1007,9 @@ Deno.serve(async (req) => {
   // Le prix du client non corrigé par Nani (revue de la PR 307) : calculé ici, à chaque échange, sur les 60 derniers messages de la
   // conversation WhatsApp liée, lus en base avec la session, dans l'ordre d'envoi. Jamais du bloc joint ni de lire_conversation : une
   // correction faite ensuite dans WhatsApp retire le prix au prochain échange. Une lecture en échec ne valide rien.
+  // Le message automatique de nuit (migration 132) ne valide aucun prix : il n'est pas de Nani (montantsClientValides l'écarte).
   if (waLue && clientConfirme(waLue)) {
-    const lusWa = await sb.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).neq("type", "non_transmis").order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
+    const lusWa = await avecAutomatique((cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", waLue.id).neq("type", "non_transmis").order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT), "id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le");
     if (!lusWa.error) memo.clientValides = prixClientValides([...(lusWa.data || [])].reverse(), waLue);
   }
   // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte

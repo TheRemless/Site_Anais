@@ -4798,3 +4798,7 @@ for (const [k, v] of Object.entries(EN_TRANSFERT)) if (!(k in EN)) EN[k] = v;
 // Défilement des fils et photo en grand (23.11.2026) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_DEFILEMENT } from "./i18n-en-defilement.mjs";
 for (const [k, v] of Object.entries(EN_DEFILEMENT)) if (!(k in EN)) EN[k] = v;
+
+// Message automatique de nuit (migration 132) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_NUIT } from "./i18n-en-nuit.mjs";
+for (const [k, v] of Object.entries(EN_NUIT)) if (!(k in EN)) EN[k] = v;

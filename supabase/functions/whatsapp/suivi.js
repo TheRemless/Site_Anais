@@ -14,7 +14,7 @@ const heure = (iso) => {
   const b = new Date(d.getTime() + 7 * 3600 * 1000);
   return `${String(b.getUTCDate()).padStart(2, "0")}.${String(b.getUTCMonth() + 1).padStart(2, "0")} ${String(b.getUTCHours()).padStart(2, "0")}:${String(b.getUTCMinutes()).padStart(2, "0")}`;
 };
-const vivants = (messages) => messages.filter((m) => !m.supprime_le).sort((a, b) => String(a.envoye_le).localeCompare(String(b.envoye_le)));
+const vivants = (messages) => messages.filter((m) => !m.supprime_le && !m.automatique).sort((a, b) => String(a.envoye_le).localeCompare(String(b.envoye_le)));
 
 // ---- Résumé (trois lignes, en français) ------------------------------------------------------------------------------------------
 export const RESUME_MESSAGES_MIN = 4;

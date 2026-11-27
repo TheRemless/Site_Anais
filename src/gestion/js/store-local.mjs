@@ -22,6 +22,7 @@ import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
+import { lireReglageNuit } from "./whatsapp-nuit-calc.mjs";
 import { refusLienDemande, refusDelier, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -992,6 +993,19 @@ export function creer() {
     },
     async whatsappRelancerEvenements() {
       return 0;
+    },
+    // Message de nuit (migration 132) : mêmes contrôles que whatsapp_regler_nuit.
+    async whatsappMessageNuit(organisationId, valeurs) {
+      const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
+      // Le droit d'écrire dans la boîte (whatsapp_ecrit), comme la base.
+      if (!r || organisationId !== monOrg() || !ecritWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      const lu = lireReglageNuit(valeurs);
+      if (lu.erreur) throw new Error(tr(lu.erreur));
+      if ((r.nuit_modifie_le || null) !== ((valeurs && valeurs.luLe) || null)) throw new Error(tr("Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version."));
+      const maintenant = new Date().toISOString();
+      Object.assign(r, { nuit_active: lu.valeurs.active, nuit_texte: lu.valeurs.texte, nuit_debut: lu.valeurs.debut, nuit_fin: lu.valeurs.fin, nuit_modifie_le: maintenant, updated_at: maintenant });
+      sauve();
+      return { organisation_id: r.organisation_id, nuit_active: r.nuit_active, nuit_texte: r.nuit_texte, nuit_debut: r.nuit_debut, nuit_fin: r.nuit_fin, nuit_modifie_le: r.nuit_modifie_le };
     },
     async whatsappReception(organisationId, actif) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);

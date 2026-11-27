@@ -863,14 +863,16 @@ function bulleMessage(m) {
   const texte = m.texte && !(medias.length && medias.some((x) => x.legende === m.texte)) ? m.texte : "";
   // Statut d'envoi (migration 64) : envoyé, remis, lu, ou non remis avec la raison de WhatsApp. Discret, à la suite de l'heure.
   const statut = statutEnvoi(m);
-  const meta = [heureBangkok(m.envoye_le), m.sens === "sortant" && ORIGINES[m.origine] ? tr(ORIGINES[m.origine]) : "", m.modifie_le ? tr("modifié") : ""].filter(Boolean).join(" · ");
+  // Message automatique de nuit (migration 132) : envoyé par Gestion à la place de Nani, marqué comme tel au lieu de « Envoyé depuis Gestion ».
+  const auto = m.automatique === "nuit";
+  const meta = [heureBangkok(m.envoye_le), m.sens === "sortant" && !auto && ORIGINES[m.origine] ? tr(ORIGINES[m.origine]) : "", m.modifie_le ? tr("modifié") : ""].filter(Boolean).join(" · ");
   return h(
     "div",
     { class: `wa-bulle ${m.sens}${m.supprime_le ? " supprime" : ""}${m.type === "reaction" ? " reaction" : ""}${statut && statut.cle === "echec" ? " non-remis" : ""}`, "data-message": m.id },
     m.supprime_le ? h("p", { class: "wa-supprime" }, tr("Supprimé par le client")) : null,
     medias.map(blocMedia),
     texte ? h("p", { class: "wa-texte" }, m.type === "reaction" ? `${tr("Réaction")} ${texte}` : texte) : !medias.length ? h("p", { class: "wa-texte wa-type" }, tr(libelleType(m.type))) : null,
-    h("p", { class: "wa-meta" }, meta, statut ? h("span", { class: `wa-statut ${statut.cle}` }, ` · ${tr(statut.libelle)}`) : null),
+    h("p", { class: "wa-meta" }, meta, auto ? h("span", { class: "wa-auto" }, ` · ${tr("Message automatique de nuit")}`) : null, statut ? h("span", { class: `wa-statut ${statut.cle}` }, ` · ${tr(statut.libelle)}`) : null),
     statut && statut.cle === "echec" && m.statut_envoi === "echec" && m.erreur_envoi !== "sans_confirmation" ? h("p", { class: "wa-statut-detail" }, statut.detail ? tr(statut.detail) : m.erreur_envoi || tr("WhatsApp n'a pas remis ce message.")) : null
   );
 }
@@ -1229,8 +1231,9 @@ async function fil(c, prop) {
       cartePaiement(c),
       cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
+    // Le message automatique de nuit (migration 132) n'est pas une réponse : « Préparer une réponse » reste là au matin.
     doute ? carteVerifier(c, doute) : null,
-    carteProposition(c, prop, messages)
+    carteProposition(c, prop, messages.filter((m) => !m.automatique))
   );
   return { noeud, messages };
 }

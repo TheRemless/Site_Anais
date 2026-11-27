@@ -163,7 +163,7 @@ test("écran : carte « Vérifiez dans WhatsApp », statut sous la bulle, compte
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(vue, /etat\.store\.whatsappConfirmerEnvoi\(c\.id, parti\)/);
   assert.match(vue, /tr\("C'est parti"\)[\s\S]{0,200}tr\("Pas parti"\)/);
-  assert.match(vue, /doute \? carteVerifier\(c, doute\) : null,\s+carteProposition\(c, prop, messages\)/);
+  assert.match(vue, /doute \? carteVerifier\(c, doute\) : null,\s+carteProposition\(c, prop, messages(?:\.filter\(\(m\) => !m\.automatique\))?\)/);
   assert.match(vue, /minuterieEnvoi = setTimeout/);
   assert.match(lire("src/gestion/js/views/whatsapp-reglages.mjs"), /etat\.store\.whatsappEtatReception\(\)\.then\(remplir/);
   assert.match(lire("src/gestion/js/store-supabase.mjs"), /signal: AbortSignal\.timeout\(40_000\)/, "M19 : délai côté client");

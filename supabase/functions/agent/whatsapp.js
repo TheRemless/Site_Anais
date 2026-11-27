@@ -96,7 +96,8 @@ export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui =
     .sort((a, b) => String(b.envoye_le).localeCompare(String(a.envoye_le)))
     .slice(0, MESSAGES_MAX)
     .map((m) => {
-      const auteur = m.sens === "entrant" ? (apporteur ? "Apporteur" : "Client") : qui;
+      // Le message automatique de nuit (migration 132) n'est pas de Nani : marqué comme tel.
+      const auteur = m.sens === "entrant" ? (apporteur ? "Apporteur" : "Client") : m.automatique ? `Message automatique de nuit, pas une réponse de ${qui}` : qui;
       const medias = (m.medias || []).map((x) => `(${x.type || "fichier"}${x.legende ? ` : ${neutre(x.legende)}` : ""})`).join(" ");
       const corps = [neutre(m.texte).slice(0, 2000), medias].filter(Boolean).join(" ");
       return corps ? `[${auteur} ${heure(m.envoye_le)}${m.modifie_le ? ", modifié" : ""}] ${corps}` : null;

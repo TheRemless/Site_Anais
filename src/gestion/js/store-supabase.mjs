@@ -251,7 +251,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     const [conversations, propositions, reglages] = await Promise.all([
       lireConversations(),
       lire("whatsapp_propositions", sb.from("whatsapp_propositions").select("id, cree_le, conversation_id, message_id, entite_id, statut, texte, langue, avertissements, entreprise_proposee, erreur, traitee_le, traitee_par_quoi").order("cree_le", { ascending: false }).limit(1000)),
-      lire("whatsapp_reglages", sb.from("whatsapp_reglages").select("organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at")),
+      // Message de nuit (migration 132) : relu sans ses colonnes tant que la migration n'est pas appliquée.
+      (async () => {
+        const COLS = "organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at";
+        let r = await sb.from("whatsapp_reglages").select(`${COLS}, nuit_active, nuit_texte, nuit_debut, nuit_fin, nuit_modifie_le`);
+        if (colonneAbsente(r.error, "nuit_active")) r = await sb.from("whatsapp_reglages").select(COLS);
+        return lire("whatsapp_reglages", Promise.resolve(r));
+      })(),
     ]);
     return {
       whatsapp_conversations: conversations || [],
@@ -430,9 +436,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async whatsappMessages(conversationId, { inclure = "" } = {}) {
       const base = "id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le";
       // repere (migration 100) : relu sans lui tant que la migration n'est pas appliquée.
-      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere`;
+      // automatique (migration 132) : relu sans lui tant que la migration n'est pas appliquée.
+      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere, automatique`;
       const requete = (cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId);
       let r = await requete(colonnes).order("envoye_le", { ascending: false }).limit(500);
+      if (colonneAbsente(r.error, "automatique")) r = await requete((colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere`)).order("envoye_le", { ascending: false }).limit(500);
       if (colonneAbsente(r.error, "repere")) r = await requete((colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`)).order("envoye_le", { ascending: false }).limit(500);
       if (colonneAbsente(r.error, "statut_envoi")) r = await requete((colonnes = base)).order("envoye_le", { ascending: false }).limit(500);
       const lus = verifie(r).reverse();
@@ -630,6 +638,25 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return data || null;
     },
     // L'interrupteur « Recevoir les messages WhatsApp » (Réglages), seule colonne des réglages WhatsApp ouverte à l'outil.
+    // Message de nuit (migration 132) : whatsapp_regler_nuit contrôle les droits (administrateur de Secret ou de Taxi) et les valeurs.
+    // luLe : nuit_modifie_le tel qu'il a été lu ; changé ailleurs entre-temps, refusé (modifie_ailleurs).
+    async whatsappMessageNuit(organisationId, { active, texte, debut, fin, luLe = null }) {
+      const { data, error } = await sb.rpc("whatsapp_regler_nuit", { p_org: organisationId, p_active: !!active, p_texte: texte, p_debut: debut, p_fin: fin, p_lu_le: luLe });
+      if (error) {
+        const m = String(error.message || "");
+        if (/droit_manquant/.test(m) || error.code === "42501") throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+        if (/texte_vide/.test(m)) throw new Error(tr("Le message ne peut pas être vide."));
+        if (/texte_trop_long/.test(m)) throw new Error(tr("Le message est trop long pour WhatsApp (4 096 octets au plus)."));
+        if (/heures_invalides/.test(m)) throw new Error(tr("L'heure de début et l'heure de fin doivent être différentes."));
+        if (/plage_de_jour/.test(m)) throw new Error(tr("La plage doit être la nuit : le début et la fin entre 18:00 et 08:00."));
+        if (/plage_trop_longue/.test(m)) throw new Error(tr("La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin."));
+        if (/nom_partenaire/.test(m)) throw new Error(tr("Le texte cite un partenaire : retirez son nom, ce message part chez tous les clients."));
+        if (/montant_net/.test(m)) throw new Error(tr("Le texte contient un montant égal à un net du catalogue : retirez-le."));
+        if (/modifie_ailleurs/.test(m)) throw new Error(tr("Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version."));
+        throw new Error(m);
+      }
+      return data || null;
+    },
     async whatsappReception(organisationId, actif) {
       const lignes = verifie(await sb.from("whatsapp_reglages").update({ reception_active: !!actif }).eq("organisation_id", organisationId).select());
       if (!lignes.length) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));

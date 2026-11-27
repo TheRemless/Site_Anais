@@ -196,7 +196,9 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
   const f = lire("supabase/functions/agent/index.ts");
   const i403 = f.indexOf('if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);');
   assert.ok(i403 > 0, "contact personnel : 403");
-  assert.ok(i403 < f.indexOf('sb.from("whatsapp_messages").select("sens, texte, medias'), "refusé avant de lire un seul message");
+  // Migration 132 (PR 364) : la lecture passe par avecAutomatique ; c'est toujours la première lecture de messages.
+  const iLecture = f.indexOf('sb.from("whatsapp_messages").select(cols).eq("conversation_id", waId)');
+  assert.ok(iLecture > 0 && i403 < iLecture, "refusé avant de lire un seul message");
   assert.match(f, /"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
   assert.match(f, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: waId \}\)/);
   assert.match(f, /if \(!waEcrit && waMode !== "question"\) return json\(\{ erreur: "whatsapp_lecture_seule" \}, 403\);/, "créer et mettre à jour refusés");
