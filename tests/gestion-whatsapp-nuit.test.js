@@ -40,7 +40,8 @@ test("le texte est celui de Jérémy, mot pour mot, dans le code et dans la migr
   assert.equal((TEXTE_NUIT.match(/ !/g) || []).length, 3, "trois espaces avant « ! »");
   // Correction de Jérémy du 27.11.2026 : un point, pas un deux-points, après « efficiently ».
   assert.ok(TEXTE_NUIT.includes("assist you more efficiently.\n") && !TEXTE_NUIT.includes("efficiently:"));
-  const sql = /nuit_texte text not null default \$nuit\$([\s\S]*?)\$nuit\$/.exec(MIGRATION);
+  const sql = /function whatsapp_nuit_texte_defaut\(\) returns text[^$]*\$\$\n  select \$nuit\$([\s\S]*?)\$nuit\$::text/.exec(MIGRATION);
+  assert.match(MIGRATION, /nuit_texte text not null default whatsapp_nuit_texte_defaut\(\);/);
   assert.ok(sql, "défaut du texte dans la migration");
   assert.equal(sql[1], DEMANDE);
   assert.equal(DEBUT_NUIT, "22:00");
@@ -127,7 +128,15 @@ test("formulaire de réglage : contrôles avant l'envoi au serveur", () => {
   assert.ok(lireReglageNuit({ texte: "Hi", debut: "18:00", fin: "06:00" }).ok, "12 heures pile");
   assert.ok(lireReglageNuit({ texte: "Hi", debut: "01:00", fin: "05:00" }).ok);
   assert.match(MIGRATION, /whatsapp_nuit_minutes\(p_debut, p_fin\) > 720 then raise exception 'plage_trop_longue'/);
-  assert.match(MIGRATION, /and whatsapp_nuit_minutes\(nuit_debut, nuit_fin\) <= 720\);/);
+  assert.match(MIGRATION, /check \(whatsapp_nuit_plage_valide\(nuit_debut, nuit_fin\)\);/);
+  // Relecture n° 2 : la nuit, pas seulement 12 heures (08:00 à 20:00 refusé), même règle à l'écran et en base.
+  const nuitPlage = "La plage doit être la nuit : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard.";
+  assert.equal(lireReglageNuit({ texte: "Hi", debut: "08:00", fin: "20:00" }).erreur, nuitPlage);
+  assert.equal(lireReglageNuit({ texte: "Hi", debut: "12:00", fin: "17:00" }).erreur, nuitPlage);
+  for (const [d, f] of [["19:00", "23:30"], ["01:00", "05:00"], ["22:00", "06:00"], ["18:00", "06:00"]]) assert.ok(lireReglageNuit({ texte: "Hi", debut: d, fin: f }).ok, `${d} à ${f}`);
+  assert.match(MIGRATION, /and \(p_debut > p_fin or p_debut >= time '18:00' or p_fin <= time '08:00'\)/);
+  // Contraintes recréées à chaque passage.
+  assert.match(MIGRATION, /alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_heures_check;\nalter table whatsapp_reglages add constraint/);
 });
 
 test("réglages lus : valeurs par défaut tant que la migration manque", () => {
@@ -323,4 +332,34 @@ test("I2, M5 à M8 : fiche partenaire, rattrapage par le cron, reprise courte, s
   assert.match(lire("src/gestion/js/store-local.mjs"), /!ecritWhatsApp\(null\)\) throw new Error/);
   assert.match(lire("src/gestion/js/views/whatsapp-reglages.mjs"), /lu\.valeurs\.luLe = reglageNuit\(r\)\.modifieLe/);
   assert.match(lire("src/gestion/js/store-supabase.mjs"), /p_lu_le: luLe/);
+});
+
+test("relecture n° 2 : contrôle du texte (noms, nets) seulement quand il compte, tous les séparateurs", () => {
+  const regler = MIGRATION.slice(MIGRATION.indexOf("create or replace function whatsapp_regler_nuit"), MIGRATION.indexOf("-- 8. Aperçu"));
+  assert.match(regler, /controler := p_active and \(p_texte is distinct from ancien or ancien_actif is distinct from true\);/);
+  assert.match(regler, /if controler then/);
+  assert.match(regler, /if controler and exists \(/);
+  // Forme courte : 2 mots au moins ; aucune suite de mots du texte par défaut.
+  assert.match(regler, /k\.court like '% %' and defaut not like '% ' \|\| k\.court \|\| ' %'/);
+  assert.match(regler, /length\(n\.entier\) >= 4 and defaut not like '% ' \|\| n\.entier \|\| ' %'/);
+  // Heures : deux chiffres sans un troisième ; séparateurs ' et ’ et espaces insécables.
+  assert.match(regler, /\\d\{2\}\(\?!\[0-9\]\)/);
+  assert.match(regler, /\[ ,\.''’\\u00a0\\u202f\]/);
+});
+
+test("relecture n° 2 : rattrapage sur un vrai message, du plus ancien au plus récent", () => {
+  const reprise = MIGRATION.slice(MIGRATION.indexOf("create or replace function whatsapp_reprendre_nuit"), MIGRATION.indexOf("create or replace function whatsapp_regler_nuit"));
+  assert.match(reprise, /m\.type not in \('reaction', 'non_transmis'\) and m\.supprime_le is null/);
+  assert.match(reprise, /order by m\.conversation_id, m\.recu_le desc\n    \) d\n    order by d\.recu_le asc/);
+});
+
+test("relecture n° 2 : apprendre de Nani ignore le message de nuit", async () => {
+  const { propositionAComparer } = await import("../supabase/functions/agent/apprendre-whatsapp.js");
+  const p = { id: "p1", cree_le: "2026-11-27T16:05:00Z", statut: "a_faire", texte: "Hello! A taxi to the pier is 800 THB." };
+  const client = { id: "c1", sens: "entrant", origine: "client", type: "text", texte: "Taxi?", envoye_le: "2026-11-27T16:00:00Z" };
+  const auto = { id: "a1", sens: "sortant", origine: "gestion", type: "text", texte: TEXTE_NUIT, envoye_le: "2026-11-27T16:06:00Z", automatique: "nuit" };
+  const nani = { id: "n1", sens: "sortant", origine: "app", type: "text", texte: "Hi! The taxi to the pier is 800 THB.", envoye_le: "2026-11-27T16:50:00Z" };
+  assert.equal(propositionAComparer({ propositions: [p], messages: [client, auto, nani], message: nani })?.id, "p1", "le message de nuit entre les deux ne coupe pas l'apprentissage");
+  assert.equal(propositionAComparer({ propositions: [p], messages: [client, auto], message: auto }), null, "le message de nuit n'est jamais appris");
+  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /const \{ data: recents, error: errL \} = await avecAutomatique\(/);
 });

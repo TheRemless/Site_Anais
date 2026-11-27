@@ -52,6 +52,9 @@ export function resultatTelnyx(statut, corps, { exception = false } = {}) {
   return { resultat: "echec", erreur: `telnyx_refuse${code ? ` ${code}` : ""}` };
 }
 
+// Une plage de nuit (en minutes) : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard.
+export const plageDeNuit = (d, f) => d > f || d >= 18 * 60 || f <= 8 * 60;
+
 // Formulaire de Réglages > WhatsApp : { ok, valeurs } ou { erreur } (texte français, traduit par l'écran). Le serveur refait ces contrôles.
 export function lireReglageNuit({ active, texte, debut, fin } = {}) {
   const t = typeof texte === "string" ? texte.replace(/\r\n?/g, "\n") : "";
@@ -62,6 +65,8 @@ export function lireReglageNuit({ active, texte, debut, fin } = {}) {
   if (d === null || f === null) return { erreur: "Indiquez les heures au format 22:00." };
   if (d === f) return { erreur: "L'heure de début et l'heure de fin doivent être différentes." };
   if ((f - d + 1440) % 1440 > NUIT_MAX_MINUTES) return { erreur: "La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin." };
+  // Même règle que whatsapp_nuit_plage_valide (migration 132) : 08:00 à 20:00 n'est pas une nuit.
+  if (!plageDeNuit(d, f)) return { erreur: "La plage doit être la nuit : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard." };
   return { ok: true, valeurs: { active: active !== false, texte: t, debut: String(debut).slice(0, 5), fin: String(fin).slice(0, 5) } };
 }
 

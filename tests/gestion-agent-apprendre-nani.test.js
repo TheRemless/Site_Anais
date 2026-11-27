@@ -624,7 +624,7 @@ test("constat 8 : les messages lus sont les plus récents de la fenêtre, remis 
     { id: "m1", conversation_id: "c1", sens: "sortant", origine: "app", type: "text", texte: NANI, envoye_le: iso(T0 + 600_000) },
   ];
   assert.deepEqual(await apprendreDeNani(scene({ messages }), "c1", "m1"), { rien: "rien_a_comparer" });
-  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /\.order\("envoye_le", \{ ascending: false \}\)\.limit\(200\);[\s\S]{0,120}const messages = \[\.\.\.\(recents \|\| \[\]\)\]\.reverse\(\);/);
+  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /\.order\("envoye_le", \{ ascending: false \}\)\.limit\(200\)(?:, "id, sens, origine, type, texte, envoye_le, supprime_le"\))?;[\s\S]{0,120}const messages = \[\.\.\.\(recents \|\| \[\]\)\]\.reverse\(\);/);
 });
 
 test("contre-vérification : un contact typé est masqué aussi par son prénom, un nom d'un seul mot courant ne masque rien", () => {

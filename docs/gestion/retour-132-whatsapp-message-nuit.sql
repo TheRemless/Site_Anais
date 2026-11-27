@@ -93,5 +93,7 @@ alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_h
 alter table whatsapp_reglages drop column if exists nuit_active, drop column if exists nuit_texte, drop column if exists nuit_debut, drop column if exists nuit_fin,
   drop column if exists nuit_modifie_le;
 drop function if exists whatsapp_nuit_minutes(time, time);
+drop function if exists whatsapp_nuit_plage_valide(time, time);
+drop function if exists whatsapp_nuit_texte_defaut();
 
 commit;

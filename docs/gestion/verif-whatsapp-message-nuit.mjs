@@ -75,6 +75,9 @@ const hm = (d) => d.toLocaleTimeString("en-GB", { timeZone: "Asia/Bangkok", hour
 const maintenant = Date.now();
 const debut = hm(new Date(maintenant - 3 * 3600_000));
 const fin = hm(new Date(maintenant + 3 * 3600_000));
+// Harnais : la plage autour de l'heure actuelle peut être une plage de jour, que la contrainte refuse. Elle est retirée le temps des tests
+// et recréée par le rejeu de la migration (section 5 de la relecture n° 2), qui la vérifie.
+await db.exec("alter table whatsapp_reglages drop constraint whatsapp_reglages_nuit_heures_check");
 await db.query("update whatsapp_reglages set numero = '+66900000000', nuit_debut = $2::time, nuit_fin = $3::time where organisation_id = $1", [ORG, debut, fin]);
 
 const u = {};
@@ -318,6 +321,76 @@ r = await essaie(u.adminSecret, "select nuit_active, nuit_texte from whatsapp_re
 ok(r.ok && r.rows[0].nuit_active === false, "les administrateurs lisent le réglage");
 r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'x', '22:00', '06:00')", ["00000000-0000-0000-0000-0000000000ff"]);
 ok(!r.ok && /droit_manquant/.test(r.err), "une autre organisation : refusé");
+
+// ---- Relecture n° 2 de la PR 364 ---------------------------------------------------------------------------------------------------
+const luLe = async () => (await un("select nuit_modifie_le::text t from whatsapp_reglages where organisation_id = $1", [ORG])).t;
+const regler = (user, active, texte, debut = "22:00", fin = "06:00") => luLe().then((lu) => essaie(u[user], "select whatsapp_regler_nuit($1, $2, $3, $4::time, $5::time, $6::timestamptz) r", [ORG, active, texte, debut, fin, lu]));
+// 1. Noms de partenaires faits de mots du texte de Jérémy.
+await db.query("insert into partenaires (entite_id, nom) values ($1, 'Hello Tours'), ($2, 'Discover Thailand Co., Ltd')", [ent.secret, ent.taxi]);
+r = await regler("adminSecret", true, TEXTE);
+ok(r.ok, "« Hello Tours » et « Discover Thailand Co., Ltd » ne bloquent pas le texte par défaut");
+r = await regler("adminSecret", true, TEXTE.replace("Our team", "Hello again, our team"));
+ok(r.ok, "un texte modifié qui garde « hello », « team », « discover », « thailand » passe");
+r = await regler("adminSecret", true, TEXTE + "\n\nNeed a boat? Hello Tours can help.");
+ok(!r.ok && /nom_partenaire/.test(r.err), "« Hello Tours » écrit en entier est refusé");
+// Le contrôle ne bloque ni la coupure ni un changement d'heures.
+await db.query("update whatsapp_reglages set nuit_texte = 'Ask Blue Lagoon tonight' where organisation_id = $1", [ORG]);
+r = await regler("adminSecret", false, "Ask Blue Lagoon tonight");
+ok(r.ok && r.rows[0].r.nuit_active === false, "couper le message n'est jamais refusé, même avec un texte qui cite un partenaire");
+r = await regler("adminSecret", false, "Ask Blue Lagoon tonight", "21:00", "06:00");
+ok(r.ok, "changer les heures d'un message coupé n'est pas refusé");
+r = await regler("adminSecret", true, "Ask Blue Lagoon tonight");
+ok(!r.ok && /nom_partenaire/.test(r.err), "rallumer avec un texte qui cite un partenaire est refusé (pas de contournement)");
+r = await regler("adminSecret", true, TEXTE);
+ok(r.ok, "rallumé avec le texte par défaut");
+r = await regler("adminSecret", true, TEXTE, "22:30", "06:30");
+ok(r.ok, "texte inchangé et message actif : un changement d'heures passe");
+// 2. Séparateurs des nets (net de 1 800 posé plus haut).
+for (const t of ["1.800 THB", "1'800 THB", "1\u2019800 THB", "1\u00a0800 THB", "1\u202f800 THB", "1,800 THB", "1 800 THB", "1800 THB"]) {
+  r = await regler("adminSecret", true, `Night boats from ${t}`);
+  ok(!r.ok && /montant_net/.test(r.err), `net écrit « ${t} » refusé`);
+}
+for (const t of ["back at 7:00 AM", "back at 7.30 pm", "back at 18:00", "back at 7h30"]) {
+  r = await regler("adminSecret", true, `We are away, ${t}`);
+  ok(r.ok, `une heure (« ${t} ») n'est pas un montant`);
+}
+r = await regler("adminSecret", true, TEXTE);
+// 3. Plage de nuit.
+r = await regler("adminSecret", true, TEXTE, "08:00", "20:00");
+ok(!r.ok && /plage_de_jour/.test(r.err), "08:00 à 20:00 (12 heures de jour) refusé");
+r = await regler("adminSecret", true, TEXTE, "12:00", "17:00");
+ok(!r.ok && /plage_de_jour/.test(r.err), "12:00 à 17:00 refusé");
+for (const [d, f] of [["19:00", "23:30"], ["01:00", "05:00"], ["22:00", "06:00"], ["18:00", "06:00"]]) {
+  r = await regler("adminSecret", true, TEXTE, d, f);
+  ok(r.ok, `${d} à ${f} accepté`);
+}
+// 4. Rattrapage : le dernier vrai message, pas une réaction ni un message supprimé. « Maintenant » redevient la nuit (harnais).
+await db.query("update whatsapp_reglages set nuit_debut = $2::time, nuit_fin = $3::time where organisation_id = $1", [ORG, debut, fin]);
+const rt = await client("+66811110070", { envoye_le: iso(Date.now() - 90_000) });
+await client("+66811110070", { type: "reaction", texte: "👍", envoye_le: iso(Date.now() - 60_000) });
+const rtSup = await client("+66811110070", { envoye_le: iso(Date.now() - 30_000) });
+await db.query("update whatsapp_messages set supprime_le = now() where id = $1", [rtSup.message_id]);
+let repris = [];
+for (let i = 0; i < 8; i++) {
+  const lot = (await db.query("select * from whatsapp_reprendre_nuit($1)", [ORG])).rows;
+  if (!lot.length) break;
+  for (const x of lot) await un("select whatsapp_nuit_resultat($1, 'envoye', $2) r", [x.id, `tx-r2-${x.id}`]);
+  repris.push(...lot);
+}
+const ligneRt = (await lignes(rt.conversation_id))[0];
+ok(ligneRt && ligneRt.declencheur_id === rt.message_id, "le rattrapage passe la réaction et le message supprimé, et réserve le vrai message du client");
+const ordre = (await db.query("select pg_get_functiondef('whatsapp_reprendre_nuit(uuid)'::regprocedure) d")).rows[0].d;
+ok(/order by d\.recu_le asc/.test(ordre), "les conversations sont prises de la plus ancienne à la plus récente");
+// 5. Contraintes recréées sur une base où une version de travail de la 132 a tourné (contrainte plus faible).
+await db.query("update whatsapp_reglages set nuit_debut = '22:00', nuit_fin = '06:00' where organisation_id = $1", [ORG]);
+await db.exec("alter table whatsapp_reglages add constraint whatsapp_reglages_nuit_heures_check check (nuit_debut <> nuit_fin)");
+await db.exec(lire("migration-132-whatsapp-message-nuit.sql"));
+const def = (await un("select pg_get_constraintdef(oid) d from pg_constraint where conname = 'whatsapp_reglages_nuit_heures_check'")).d;
+ok(/whatsapp_nuit_plage_valide/.test(def), "la contrainte des heures d'une version de travail est remplacée");
+let contrainte = null;
+try { await db.query("update whatsapp_reglages set nuit_debut = '08:00', nuit_fin = '20:00' where organisation_id = $1", [ORG]); } catch (e) { contrainte = e.message; }
+ok(contrainte && /nuit_heures_check/.test(contrainte), "la contrainte refuse aussi une plage de jour écrite directement");
+ok((await un("select nuit_texte = whatsapp_nuit_texte_defaut() e from whatsapp_reglages where organisation_id = $1", [ORG])).e, "le texte enregistré est le texte par défaut, inchangé par le rejeu");
 
 // ---- Retour en arrière ------------------------------------------------------------------------------------------------------------
 await db.exec(lire("retour-132-whatsapp-message-nuit.sql"));

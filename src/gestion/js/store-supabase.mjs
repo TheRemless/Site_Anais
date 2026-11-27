@@ -644,6 +644,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         if (/texte_vide/.test(m)) throw new Error(tr("Le message ne peut pas être vide."));
         if (/texte_trop_long/.test(m)) throw new Error(tr("Le message est trop long pour WhatsApp (4 096 octets au plus)."));
         if (/heures_invalides/.test(m)) throw new Error(tr("L'heure de début et l'heure de fin doivent être différentes."));
+        if (/plage_de_jour/.test(m)) throw new Error(tr("La plage doit être la nuit : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard."));
         if (/plage_trop_longue/.test(m)) throw new Error(tr("La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin."));
         if (/nom_partenaire/.test(m)) throw new Error(tr("Le texte cite un partenaire : retirez son nom, ce message part chez tous les clients."));
         if (/montant_net/.test(m)) throw new Error(tr("Le texte contient un montant égal à un net du catalogue : retirez-le."));
