@@ -5,6 +5,15 @@ import { N_ } from "./i18n.mjs";
 import { ERREURS_ENVOI, envoiIncertain } from "./whatsapp-calc.mjs";
 
 export const LEGENDE_MAX_OCTETS = 1024;
+
+// L'envoi direct du voucher depuis Gestion ne passe que si le client a écrit le dernier, il y a moins de 24 h (fenêtre WhatsApp).
+// Sinon le bouton s'ouvrirait sur un « Envoyer » grisé : on ne le met pas en avant (relecture de la PR 362).
+const FENETRE_24H = 24 * 60 * 60 * 1000;
+export function envoiDirectOuvert(conv, maintenant = Date.now()) {
+  if (!conv || conv.dernier_sens !== "entrant") return false;
+  const t = Date.parse(conv.dernier_message_le || "");
+  return Number.isFinite(t) && t + FENETRE_24H > maintenant;
+}
 export const octets = (t) => new TextEncoder().encode(String(t || "")).length;
 export const legendeValide = (t) => octets(String(t || "").trim()) <= LEGENDE_MAX_OCTETS;
 
