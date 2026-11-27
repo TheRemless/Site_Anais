@@ -228,3 +228,19 @@ test("modal() suit l'historique : une entrée par fenêtre, fantôme à la ferme
   assert.match(ui, /quitterEcran: \(\) => \(modifie\(\) \? \(garderBrouillon\(\), fermer\(true\)\) : fermer\(\)\)/);
   assert.ok(ui.indexOf("if (cache) return fermer;") < ui.indexOf("const ecran = entrerHistorique(n);"));
 });
+
+test("sc18 P1 : une fenêtre au-dessus d'une photo se ferme seule au premier retour, la photo au deuxième", async () => {
+  const { photoFermeeAuRetour } = await load();
+  const photo = { ecran: "R", rang: 20, pos: 3, visionneuse: true };
+  // Retour 1 : la fenêtre (rang 21) se ferme, on arrive sur l'entrée de la photo : elle reste.
+  assert.equal(photoFermeeAuRetour(photo, photo), false);
+  // Retour 2 : sous l'entrée de la photo, elle se ferme.
+  assert.equal(photoFermeeAuRetour(photo, { ecran: "R", rang: 5, pos: 2 }), true);
+  assert.equal(photoFermeeAuRetour(photo, { ecran: "R", pos: 2 }), true);
+  // Sans repère (entrée d'avant ce code), la photo se ferme comme avant.
+  assert.equal(photoFermeeAuRetour(photo, null), true);
+  assert.equal(photoFermeeAuRetour(null, photo), true);
+  const v = source("visionneuse.mjs");
+  assert.match(v, /if \(!photoFermeeAuRetour\(entreePhoto, e\.state\)\) return;/);
+  assert.match(v, /entreePhoto = history\.state;/);
+});
