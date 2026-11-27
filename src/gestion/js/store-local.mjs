@@ -6,7 +6,8 @@ import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
-import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { calculerNets, suiviDeclencheur, lignesOptionChangees } from "./nets-base-local.mjs";
+import { imputationDossier } from "./operations-calc.mjs";
 import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
 import { corrigerLocal } from "./encaisser-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
@@ -287,7 +288,11 @@ export function creer() {
     const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
     if (!finances) return base;
     const doc = docs.filter((x) => x.type === "facture").pop() || devis;
-    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)), sur_place: doc ? montantSurPlace(doc.contenu) : 0 };
+    const total = totalDossier(docs);
+    const recu = sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id));
+    // Comme recalculer_dossier (migration 131) : la part du reçu imputée à chaque service payé sur place, et ce qui dépasse.
+    const imp = imputationDossier({ total, recu, reservations: data.reservations.filter((x) => x.dossier_id === d.id), annule: !!d.annule });
+    return { ...base, total, devise: (doc && doc.contenu.devise) || null, recu, sur_place: doc ? montantSurPlace(doc.contenu) : 0, parts: imp.parts, a_rembourser: imp.a_rembourser, trop_percu: imp.trop_percu };
   };
   const dossiersVisibles = () => {
     const ctx = contexte();
@@ -1594,9 +1599,24 @@ export function creer() {
         details[k] = court(ligne[k]) && court(v) ? { avant: ligne[k] ?? null, apres: v } : "modifié";
       }
       const copie = table === "reservations" ? structuredClone(ligne) : null;
+      const contenuAvant = table === "documents" && "contenu" in patch ? structuredClone(ligne.contenu) : null;
       Object.assign(ligne, patch);
       if (Object.keys(details).length) journaliser(table, "update", ligne, details);
       if (copie) remplirNets(ligne, copie);
+      // Comme suivre_nets_options_document (migration 130) : une ligne d'option changée sur la facture ou le devis fait suivre le net.
+      if (contenuAvant && ["facture", "devis"].includes(ligne.type)) {
+        const ids = lignesOptionChangees(contenuAvant, ligne.contenu);
+        if (ids.size)
+          for (const r of data.reservations.filter((x) => x.dossier_id === ligne.dossier_id && x.statut !== "annule" && [x.ligne_id, ...((x.details && x.details.lignes_ids) || [])].some((id) => ids.has(id)))) {
+            const n = data.reservations_nets.find((y) => y.reservation_id === r.id) || null;
+            const excursions = (entiteId) => ((data.reglages || {})[entiteId] || {}).fonctionnement === "excursions";
+            const valeurs = calculerNets(r, n, { ...data, excursions }, { suivreNet: true });
+            if (!valeurs) continue;
+            if (n) Object.assign(n, valeurs);
+            // Pas encore de ligne de nets : créée, comme calculer_nets_reservation (migration 32).
+            else data.reservations_nets.push({ id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, commission_recue_moyen: null, commission_partielle_le: null, commission_ecart_motif: null, commission_ecart_note: null, ...valeurs });
+          }
+      }
       sauve();
       return structuredClone(ligne);
     },

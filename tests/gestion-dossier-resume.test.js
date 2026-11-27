@@ -140,8 +140,21 @@ test("envoi des documents : « Envoyer » ouvre la fenêtre d'envoi sur tous les
   assert.doesNotMatch(dossier, /sansImpression/);
   // Lot C1 : un document modifié depuis l'envoi part comme un renvoi (montant reçu proposé à la mise à jour avant).
   assert.match(dossier, /const envoyerDoc = async \(doc\) => \{[\s\S]*?envoyerDocument\(doc, \{\s*renvoi,/);
-  // L'éditeur : « Envoyer » appelle envoyerDocument sans condition ; « Imprimer » est un lien, sur ordinateur seulement.
+  // L'éditeur : « Envoyer » appelle envoyerDocument sans condition ; « Imprimer » est dans la feuille « … », sur ordinateur seulement (relecture de la PR #360).
   assert.match(editeur, /const envoyer = \(\) => \(etatEnvoi\(doc\)\.modifie \? renvoyer\(\) : envoyerDocument\(/);
   assert.match(editeur, /h\("button", \{ class: "principal", type: "button", onclick: envoyer \}, tr\("Envoyer"\)\)/);
-  assert.match(editeur, /sansImpression\(\) \? null : h\("button", \{ class: "lien", type: "button", title: tr\("Imprimer \(Ctrl\+P\)"\), onclick: imprimer \}, tr\("Imprimer"\)\)/);
+  assert.match(editeur, /sansImpression\(\) \? null : \[tr\("Imprimer"\), imprimer, tr\("Imprimer \(Ctrl\+P\)"\)\]/);
+  // « Déjà envoyé autrement » n'est plus un bouton de l'en-tête à côté d'« Envoyer » : il passe par le menu.
+  assert.match(editeur, /boutonEnvoi\.disabled \? null : \[boutonEnvoi\.textContent, \(\) => boutonEnvoi\.click\(\)/);
+  // Sous 720 px, l'« Envoyer » du haut laisse la place à celui de la barre du bas, sauf en lecture seule où il n'y a pas de barre.
+  assert.match(editeur, /statut, btnAnnuler, btnRetablir, boutonMenu, h\("button", \{ class: lectureSeule \? "principal" : "principal seulement-bureau"/);
+});
+
+test("datesResume : les dates du dossier d'abord, sinon la plage des services datés non annulés (audit mobile n° 2)", async () => {
+  const { datesResume } = await load();
+  assert.deepEqual(datesResume({ date_depart: "2026-12-02", date_retour: "2026-12-12" }, [res({ date_service: "2026-11-27" })]), { debut: "2026-12-02", fin: "2026-12-12" });
+  assert.deepEqual(datesResume({ date_depart: "2026-12-02" }, []), { debut: "2026-12-02", fin: "2026-12-02" });
+  assert.deepEqual(datesResume({}, [res({ id: "a", date_service: "2026-11-29" }), res({ id: "b", date_service: "2026-11-27" }), res({ id: "c", date_service: "2026-11-20", statut: "annule" }), res({ id: "d", date_service: null })]), { debut: "2026-11-27", fin: "2026-11-29" });
+  assert.equal(datesResume({}, [res({ date_service: null })]), null);
+  assert.equal(datesResume({}, []), null);
 });

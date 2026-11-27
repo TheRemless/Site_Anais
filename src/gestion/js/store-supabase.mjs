@@ -45,7 +45,8 @@ function verifie({ data, error }) {
 // Le résumé tenu par la base est fusionné dans le dossier : ses colonnes sont COLONNES_RESUME (sauvegarde.mjs), que la sauvegarde retire avant d'écrire le fichier.
 // Les montants à confirmer d'un refus « montant_a_confirmer » de whatsapp-envoi (nombres seulement).
 const montantsLus = (lu) => (lu && Array.isArray(lu.a_confirmer) ? lu.a_confirmer.map(Number).filter((x) => Number.isFinite(x) && x > 0) : []);
-const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0 } : dossier);
+// `parts`, `a_rembourser`, `trop_percu` (migration 131) : la part du reçu imputée à chaque service payé sur place, calculée par la base.
+const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0, parts: r.parts || {}, a_rembourser: Number(r.a_rembourser) || 0, trop_percu: Number(r.trop_percu) || 0 } : dossier);
 
 // Le catalogue (partenaires, tarifs, trajets et leurs nets) pèse l'essentiel de la lecture et ne change presque jamais : à la synchronisation de chaque minute on ne le relit
 // que s'il a changé (nombre de lignes, ou dernière modification des tables qui en ont une), ou au plus tard après un quart d'heure (les nets n'ont pas de date de modification).

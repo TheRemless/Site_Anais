@@ -589,7 +589,7 @@ test("PR 307 contre-vérification, point 3 : details.prix_origine gardé à l'é
   // La copie d'une réservation garde l'origine du prix.
   assert.match(vue, /details: \{ \.\.\.\(r\.details && r\.details\.prix_origine \? \{ prix_origine: r\.details\.prix_origine \} : \{\}\),/);
   // L'alignement sur la facture repart des details d'avant (suivi-facture.mjs).
-  assert.match(lire("src/gestion/js/views/suivi-facture.mjs"), /valeurs\.details = \{ \.\.\.\(valeurs\.details \|\| r\.details \|\| \{\}\), lignes_ids: ids \};/);
+  assert.match(lire("src/gestion/js/views/suivi-facture.mjs"), /valeurs\.details = \{ \.\.\.\(valeurs\.details \|\| r\.details \|\| \{\}\), lignes_ids: actuels\.filter\(\(id\) => !s\.retirees\.includes\(id\)\) \};/);
   // Les autres écritures de details d'une réservation repartent des details d'avant.
   for (const f of ["annulation-dossier.mjs", "taxi-hier.mjs", "dashboard.mjs"]) assert.match(lire(`src/gestion/js/views/${f}`), /details: \{ \.\.\.\((?:x|actuelle)\.details \|\| \{\}\)/, f);
 });

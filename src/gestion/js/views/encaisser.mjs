@@ -20,6 +20,9 @@ export function vueEncaisser() {
   // ---- Les clients ----
   const dus = voitClients ? resumes().filter((r) => (r.statut === "accepte" || r.statut === "acompte") && r.reste > 0).sort((a, b) => (a.dossier.date_depart || "9999").localeCompare(b.dossier.date_depart || "9999") || b.reste - a.reste) : [];
   const devise = reglages().devise;
+  // Remboursements à traiter (migration 131) : ce que la base a compté au-delà de ce qui reste dû après une annulation
+  // (dossiers_resume.a_rembourser), pour tous les dossiers, ouverts ou non. Chacun dans la devise de son dossier.
+  const aRembourser = voitClients ? resumes().filter((r) => Number(r.dossier.a_rembourser) > 0).map((r) => ({ dossier: r.dossier, client: r.client, montant: Number(r.dossier.a_rembourser), devise: r.devise || devise })) : [];
 
   // ---- Les commissions : par partenaire puis par dossier, voir encaisser-commissions.mjs ----
   const commissions = voitCommissions ? sectionCommissions({ rafraichir, ecrit }) : null;
@@ -42,7 +45,7 @@ export function vueEncaisser() {
     }).noeud;
 
   const chiffre = (libelle, valeur, detail) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail || " "));
-  const rienADire = !dus.length && (!commissions || commissions.rien);
+  const rienADire = !dus.length && !aRembourser.length && (!commissions || commissions.rien);
 
   return h(
     "div",
@@ -58,6 +61,9 @@ export function vueEncaisser() {
     voitCommissions && ecrit && !modeTaxi() ? bandeauRecalcul(rafraichir) : null,
     rienADire ? vide(tr("Rien à encaisser"), modeTaxi() ? tr("Aucune commission n'est en attente.") : modeExcursions() ? tr("Les clients ont tout payé et aucune commission n'est en attente.") : tr("Les clients ont tout payé.")) : null,
     dus.length ? h("section", null, h("h2", null, tr("Les clients doivent")), listeClients()) : null,
+    aRembourser.length
+      ? h("section", null, h("h2", null, tr("Remboursements à traiter")), h("p", { class: "aide" }, tr("Reçu au-delà de ce qui reste dû après une annulation : à rembourser au client, puis à enregistrer comme remboursement dans le dossier.")), h("ul", { class: "liste-simple" }, aRembourser.map((x) => h("li", null, h("a", { href: `#/dossier/${x.dossier.id}` }, `${x.dossier.ref} · ${nomClient(x.client)}`), " · ", h("strong", null, formatMontant(x.montant, x.devise))))))
+      : null,
     commissions ? commissions.noeud : null
   );
 }

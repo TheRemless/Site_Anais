@@ -4,7 +4,7 @@
 // partenaire_saisir_commission) : la démonstration rejoue ici les mêmes règles (coursesLocales, saisieLocale).
 
 import { RETOUR_DEPART } from "./trajet-calc.mjs";
-import { separerChambreLigne } from "./operations-calc.mjs";
+import { separerChambreLigne, imputationDossier } from "./operations-calc.mjs";
 import { siegesLus } from "./sieges-calc.mjs";
 
 // La personne à qui la commission est due, nommée comme les Thaïs l'appellent (voir la mémoire « Anaïs = Nani en Thaïlande »).
@@ -365,20 +365,25 @@ function detailLocal(data, r, d, c, acces) {
   const doc = docs.sort((a, b) => rang(b).localeCompare(rang(a)))[0] || null;
   const lignes = (((doc && doc.contenu) || {}).lignes || []).filter((l) => idsLignes.has(l.id) && (l.par || (p && p.unite) || "") === "veh");
   const vehicules = lignes.length ? lignes.reduce((s, l) => s + (l.qte === null || l.qte === undefined || l.qte === "" ? 1 : Number(l.qte)), 0) : 1;
-  const recu = (data.paiements || []).filter((x) => x.dossier_id === d.id).reduce((s, x) => s + Number(x.montant || 0), 0);
   const prix = r.montant_vente ?? null;
-  // Comme la base : le total du dossier (ses courses actives), la part payée sur place, et les courses réglées d'avance entre qui l'acompte se partage.
-  const actives = (data.reservations || []).filter((y) => y.dossier_id === d.id && y.statut !== "annule");
-  const total = actives.reduce((s, y) => s + Number(y.montant_vente || 0), 0);
-  const surPlace = actives.filter((y) => y.paye_sur_place).reduce((s, y) => s + Number(y.montant_vente || 0), 0);
+  // Comme la base (migration 131) : le reçu du dossier couvre d'abord les courses réglées d'avance, le reste s'impute aux courses payées sur
+  // place par date (imputationDossier) ; chaque course sur place ne retire que SA part.
+  const recu = (data.paiements || []).filter((x) => x.dossier_id === d.id).reduce((s, x) => s + Number(x.montant || 0), 0);
+  const duDossier = (data.reservations || []).filter((y) => y.dossier_id === d.id);
+  const actives = duDossier.filter((y) => y.statut !== "annule");
+  const total = actives.filter((y) => !y.paye_sur_place).reduce((s, y) => s + Number(y.montant_vente || 0), 0);
   const avance = actives.filter((y) => !y.paye_sur_place).length;
-  const paiement = r.paye_sur_place ? "sur_place" : total > 0 && recu >= total ? "paye" : recu > 0 && avance > 1 ? "acompte_partage" : recu > 0 ? "acompte" : "en_attente";
+  const part = imputationDossier({ total, recu, reservations: duDossier }).parts[r.id] || null;
+  const verse = r.paye_sur_place && part ? part.verse : 0;
+  const paiement = r.paye_sur_place
+    ? verse > 0 ? (part.reste > 0 ? "acompte" : "paye") : "sur_place"
+    : total > 0 && recu >= total ? "paye" : recu > 0 && avance > 1 ? "acompte_partage" : recu > 0 ? "acompte" : "en_attente";
   return {
     ref: d.ref || "", reference_partenaire: r.partenaire_id === acces.partenaire.id ? r.reference_partenaire || "" : "",
     libelle: r.libelle || "", service: (p && p.groupe) || "", vehicules,
     adresse_client: c.entite_id === r.entite_id ? String(c.adresse || "").split("\n")[0] : "",
     details: Object.fromEntries(Object.entries(dt).filter(([k]) => CHAMPS_COURSE.includes(k)).map(([k, v]) => [k, k === "pickup_zone" ? nomZone(v) || null : v]).filter(([, v]) => v !== null && v !== undefined)),
-    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, total - surPlace - recu) : null,
+    paiement, a_encaisser: paiement === "sur_place" ? prix : paiement === "paye" ? 0 : paiement === "acompte" ? Math.max(0, r.paye_sur_place ? part.reste : total - recu) : null,
   };
 }
 

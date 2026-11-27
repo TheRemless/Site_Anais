@@ -300,6 +300,8 @@ legend { padding: 0 6px; font-weight: 700; }
 .carte-ligne-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; }
 .carte-ligne-tete .calc { margin-left: auto; font-variant-numeric: lining-nums tabular-nums; color: var(--texte-2); font-size: 0.9rem; }
 .outils { display: flex; gap: 2px; }
+/* Téléphone : Monter, Descendre, Supprimer d'une ligne de devis en vrais boutons espacés, plus en liens collés (audit mobile n° 41). */
+@media (max-width: 719px) { .carte-ligne-tete .outils { gap: 6px; flex-wrap: wrap; } .carte-ligne-tete .outils .lien { min-height: 44px; padding: 0 10px; border: 1px solid var(--bord-fort); border-radius: 8px; text-decoration: none; } }
 .ajouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .total-edition { margin: 8px 0 12px; font-weight: 700; }
 
@@ -546,6 +548,73 @@ input.couleur { width: 72px; padding: 2px; }
 .choix-libre > .aide { margin: 0 0 14px; }
 .choix-mode-prix { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 0 0 8px; }
 .modal.large .choix-prestation .choix-libre .grille-form { grid-template-columns: repeat(2, minmax(0, 220px)); }
+/* Ajout d'un service (26.11.2026) : la recherche, la date et les onglets restent en haut, la liste défile seule, « Terminé » reste en bas.
+   Téléphone : feuille plein écran au-dessus du clavier (--vv), rien n'est caché par lui. Cibles de 44 px. */
+.modal.plein { height: min(86dvh, 820px); }
+.modal.plein .modal-defile { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.modal.plein .choix-prestation { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.cp-haut { flex: none; display: grid; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--bord); }
+.cp-haut .champ { margin: 0; }
+.cp-haut input { min-height: 44px; }
+.cp-recherche input { font-size: 1rem; }
+.cp-haut .onglets { margin: 0; }
+.cp-haut .onglets button { min-height: 44px; }
+.cp-corps { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin: 0 -20px; padding: 8px 20px 12px; }
+.modal.plein .choix-liste { max-height: none; overflow: visible; }
+.modal.plein .barre-modal { flex: none; margin: 0 -20px; padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bord); background: var(--surface); }
+.choix.deplie { background: var(--surface-2); }
+.choix-tete { all: unset; box-sizing: border-box; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 44px; cursor: pointer; border-radius: 6px; }
+.choix-tete:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.choix-tete .choix-options-nb { font-size: 0.8rem; color: var(--teal-700); font-weight: 600; }
+.choix-detail { grid-column: 1 / -1; display: grid; gap: 10px; padding-top: 4px; }
+.choix-detail .choix-qte input, .choix-actions .choix-qte input { min-height: 44px; }
+.cp-options { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.cp-options legend { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--texte-2); padding: 0; margin-bottom: 2px; }
+.cp-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 12px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); cursor: pointer; }
+.cp-option input[type="checkbox"] { width: 22px; height: 22px; margin: 0; }
+.cp-option .cp-option-nom { display: flex; flex-direction: column; min-width: 0; }
+.cp-option .cp-option-nom span { font-size: 0.82rem; color: var(--texte-2); }
+.cp-option .cp-option-prix-bloc { grid-column: 2; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--texte-2); }
+.cp-option input.cp-option-prix { width: 120px; min-height: 44px; text-align: right; }
+@media (min-width: 720px) { .cp-option { grid-template-columns: auto minmax(0, 1fr) auto; } .cp-option .cp-option-prix-bloc { grid-column: auto; } .cp-option .cp-option-prix-bloc > span { min-width: 92px; } }
+.choix-detail .principal, .modal.plein .choix-actions .principal { min-height: 44px; }
+/* Options d'une réservation (26.11.2026) : nom, prix modifiable, « Retirer » ; « Ajouter l'option » en dessous. Cibles de 44 px. */
+.options-resa-liste { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.options-resa-liste li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.options-resa-liste input { min-height: 44px; width: 96px; text-align: right; }
+.options-resa-liste button, .options-resa-ajout button { min-height: 44px; }
+.options-resa-nom { overflow-wrap: anywhere; }
+.options-resa-prix { display: flex; align-items: center; gap: 6px; }
+.options-resa-prix small { color: var(--texte-2); white-space: nowrap; }
+.options-resa-prix .options-resa-qte { width: 4.5em; min-height: 44px; }
+/* Dans une fenêtre, les champs prennent toute la largeur : ici le prix et la quantité gardent la leur, sur une ligne. */
+.options-resa-liste .options-resa-prix input { flex: 0 0 auto; width: 96px; }
+.options-resa-liste .options-resa-prix input.options-resa-qte { width: 4.5em; }
+.agent-option-qte-champ { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.agent-option-qte { width: 4em; min-height: 44px; }
+.options-resa-ajout { display: flex; flex-wrap: wrap; gap: 8px; }
+.options-resa-ajout select { flex: 1 1 200px; min-height: 44px; }
+/* Téléphone : le nom et « Retirer » sur une ligne, le prix et la quantité sur la suivante (le nom n'est plus écrasé par les champs). */
+@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-nom { grid-column: 1; grid-row: 1; } .options-resa-liste li button { grid-column: 2; grid-row: 1; } .options-resa-liste li .options-resa-prix { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; } }
+/* Clavier ouvert (html.clavier, ui.mjs) : l'en-tête fixe se réduit à la recherche et aux onglets, pour que la liste garde au moins
+   quatre rangées visibles au-dessus du clavier d'un iPhone (relecture de la PR 359). */
+html.clavier .modal.plein .cp-haut .grille-form > .champ:not(.cp-recherche),
+html.clavier .modal.plein .cp-haut label,
+html.clavier .modal.plein .cp-corps > .aide { display: none; }
+html.clavier .modal.plein .cp-haut { gap: 6px; padding-bottom: 6px; }
+html.clavier .modal.plein .modal-tete { margin-bottom: 4px; }
+html.clavier .modal.plein .barre-modal { padding-top: 6px; padding-bottom: 6px; }
+/* Clavier ouvert : une rangée repliée tient sur une ligne (nom et prix), pour garder au moins quatre rangées visibles. Dépliée, elle garde tout. */
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > span,
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-prix > span { display: none; }
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.clavier .modal.plein .cp-corps li.choix { padding-top: 0; padding-bottom: 0; }
+@media (max-width: 719px) {
+  .modal.plein { height: var(--vv, 100dvh); max-height: none; border-radius: 0; padding-top: env(safe-area-inset-top); }
+  .modal.plein .modal-poignee { display: none; }
+  .modal.plein .choix-detail .principal { width: 100%; }
+  .modal.plein .cp-haut .grille-form { grid-template-columns: 1fr; }
+}
 
 /* Recherche globale */
 .palette-fond { align-items: flex-start; padding: 8vh 16px; }
@@ -727,6 +796,7 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 
 /* Barre d'action collante : Enregistrer, Annuler. Fixée au-dessus des onglets, au-dessus du clavier quand il est ouvert. */
 .barre-action-espace { height: 76px; }
+.barre-action .bouton-icone-seul { min-width: 48px; padding: 0 12px; }
 .barre-action { position: fixed; z-index: 29; left: 0; right: 0; bottom: var(--barre-basse); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; padding: 10px 16px; background: rgba(255, 255, 255, 0.96); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); }
 .barre-action > .principal, .barre-action > .secondaire { flex: 1 1 auto; }
 html.clavier .barre-action { bottom: var(--clavier); padding-bottom: 10px; }
@@ -790,6 +860,10 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande-wa span { overflow-wrap: anywhere; }
 .demande-wa button { min-height: 44px; }
 .demande-offres { max-height: none; margin-bottom: 12px; }
+/* Options d'un service dans « Vérifier avant » (relecture de la PR 359) : visibles, avec leur prix et « Retirer » (44 px). */
+.dsv-options { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; flex-basis: 100%; }
+.dsv-options li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; font-size: 0.9rem; }
+.dsv-options button { min-height: 44px; }
 .demande-offres li { border-bottom: 1px solid var(--bord); }
 .demande-offres li:last-child { border-bottom: 0; }
 .demande-offre { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 56px; padding: 10px 12px 10px 14px; text-align: left; font-weight: 400; background: var(--surface); border: 0; border-radius: 0; color: var(--texte); }
@@ -1035,6 +1109,12 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .barre-dossier .barre-action > * { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
 .barre-dossier .barre-action > .principal { flex: 1.5 1 0; }
 .barre-dossier .barre-action svg { display: none; }
+/* WhatsApp en icône seule (le logo suffit) : largeur fixe, le libellé de l'étape suivante garde la place et passe sur deux lignes au besoin (audit mobile n° 11). */
+.barre-dossier .barre-action > .bouton-icone-seul { flex: none; width: 52px; padding: 0; }
+.barre-dossier .barre-action > .bouton-icone-seul svg { display: block; }
+.barre-dossier .barre-action > .avec-icone { gap: 4px; }
+.barre-dossier .barre-action > .avec-icone svg { display: inline-block; flex: none; }
+.barre-dossier .barre-action > .principal { flex: 2 1 0; white-space: normal; line-height: 1.15; }
 
 /* Filtres secondaires repliés derrière une ligne (Trajets) : départ et arrivée restent toujours visibles */
 .filtres-plus { flex: 1 1 100%; }
@@ -1322,6 +1402,11 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-libelle { margin: 0 0 4px; font-size: 0.82rem; font-weight: 600; color: var(--texte-2); }
 .resume-titre { display: block; margin: -8px 0 0; padding: 8px 0; color: var(--texte); font-size: 1.05rem; font-weight: 700; text-decoration: none; }
 .resume-contact { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; color: var(--teal-700); font-weight: 500; overflow-wrap: anywhere; }
+/* Un numéro ne se coupe jamais en deux lignes (« +41 79 000 00 / 01 », audit mobile n° 29). Limité au résumé du dossier
+   (relecture de la PR #360) : ailleurs un double numéro doit pouvoir passer à la ligne à 375 px. */
+.resume-contact[href^="tel:"] { overflow-wrap: normal; white-space: nowrap; }
+.resume-contact svg { flex: none; }
+.resume-contact[href^="tel:"] { gap: 6px; font-size: 0.94rem; letter-spacing: -0.01em; }
 .resume-valeur { margin: 0; font-weight: 700; }
 .resume-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .resume-lien { display: flex; flex-direction: column; gap: 6px; min-height: 44px; margin: -6px 0; padding: 6px 0; color: var(--texte); text-decoration: none; }
@@ -2797,3 +2882,28 @@ html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
 /* Les deux remarques d'un service sur une carte de l'Assistant : « Sur le voucher » et « Interne » (22.11.2026). */
 .agent-remarques { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 2px 12px; margin-top: 4px; font-size: 0.85rem; }
 .agent-remarques p { margin: 0; }
+
+/* ---- Relecture de la PR #360 (fiche dossier et éditeur sur téléphone, 26.11.2026) ---------------------------------- */
+/* Toast avec un bouton (« Ligne supprimée. Annuler ») : le bouton reste lisible sur le fond sombre et fait 44 px de haut. */
+.toast.avec-action { display: flex; align-items: center; gap: 12px; padding-block: 0; padding-right: 6px; }
+.toast.avec-action > span { padding-block: 12px; }
+.toast-action { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #9fe3dc; font: inherit; font-weight: 700; cursor: pointer; }
+.toast-action:hover { background: rgba(255, 255, 255, 0.1); }
+/* Barre du bas de la fiche : « Envoyer la confirmation du 29/11 » tient en deux lignes à 375 px, pas trois. */
+.barre-dossier .barre-action > .principal { padding: 0 6px; font-size: 0.92rem; }
+/* Éditeur : la barre « Envoyer » du bas s'efface quand le clavier est ouvert, comme la barre d'onglets. */
+html.clavier .barre-editeur-bas { display: none; }
+/* Éditeur sur téléphone : l'en-tête de l'application ne colle plus, seule la barre Éditer / Aperçu reste en haut. */
+@media (max-width: 719px) {
+  html:has(#principal.plein .editeur) .barre-haut { position: relative; }
+  .editeur-barre { top: 0; padding-top: max(4px, env(safe-area-inset-top)); }
+}
+/* Carte de réservation sans geste principal : le « … » sur la ligne du titre, à droite de la date. */
+.carte-lien.menu-en-haut { grid-template-columns: minmax(0, 1fr) auto auto; }
+.carte-lien.menu-en-haut .carte-menu-haut { grid-column: 3; grid-row: 1 / span 2; align-self: start; flex: none; width: 44px; min-height: 44px; margin: -6px -8px 0 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.carte-lien.menu-en-haut .carte-menu-haut svg { stroke-width: 3; }
+/* Liens texte de la fiche dossier (Facture, Devis, Dossier lié) : 44 px de zone de toucher sans changer l'aspect (audit mobile n° 13). */
+@media (pointer: coarse) {
+  .lien-doc { display: inline-block; padding-block: 10px; margin-block: -10px; }
+  .dossier-lie a { display: inline-block; padding-block: 11px; margin-block: -11px; }
+}

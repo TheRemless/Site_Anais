@@ -430,10 +430,12 @@ Deno.serve(async (req) => {
     return p.includes("partenaires.lire") && p.includes("partenaires.nets");
   };
   const NETS_RES_AVANT_57 = "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le";
+  const PRESTATIONS_AVANT_130 = "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id";
   const COLONNES: Record<string, string> = {
     // entite_id : l'entreprise de chaque ligne, pour l'espace unifié (outils.js : entreprise du service, droits de la ligne). Les outils
     // ne le renvoient jamais tel quel.
-    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id",
+    // option_de (migration 130) : les services qu'une option complète. Sans la migration, repli sur les colonnes d'avant (PRESTATIONS_AVANT_130).
+    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id, option_de",
     trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id, entite_id",
     // regles : le mode de règlement du partenaire (« sur place » ou chez nous), lu par les outils, jamais renvoyé tel quel.
     partenaires: "id, nom, actif, regles, entite_id",
@@ -454,7 +456,11 @@ Deno.serve(async (req) => {
   const charger = (nom: string): Promise<unknown[]> => {
     // En mode unifié, les deux entreprises (catalogue, partenaires, nets, hôtels, temps de trajet, ferries) : la RLS ne rend que ce que la
     // personne peut lire, les nets seulement avec le droit.
-    if (!cache.has(nom)) cache.set(nom, paginer(nom, COLONNES[nom], (q) => dans(q)));
+    if (!cache.has(nom)) {
+      const lu = paginer(nom, COLONNES[nom], (q) => dans(q));
+      // Migration 130 pas encore appliquée : le catalogue se relit sans option_de (aucune option, comme avant).
+      cache.set(nom, nom === "prestations" ? lu.catch((err) => (/option_de/.test(String(err && err.message)) ? paginer(nom, PRESTATIONS_AVANT_130, (q) => dans(q)) : Promise.reject(err))) : lu);
+    }
     return cache.get(nom)!;
   };
   const lire = async (requete: any, table: string) => {
