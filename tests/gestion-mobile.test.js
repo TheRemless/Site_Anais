@@ -7,7 +7,17 @@ test("hauteurClavier : mesure ce que le clavier a pris, ignore le zoom et la bar
   const { hauteurClavier } = await load();
   assert.equal(hauteurClavier(812, { height: 812, offsetTop: 0, scale: 1 }), 0);
   assert.equal(hauteurClavier(812, { height: 520, offsetTop: 0, scale: 1 }), 292);
-  assert.equal(hauteurClavier(812, { height: 480, offsetTop: 40, scale: 1 }), 292, "la page décalée par iOS compte dans le calcul");
+  // Le décalage du viewport visuel (offsetTop) est une position, pas une perte : la hauteur du clavier n'en dépend pas. Sinon, sur une page
+  // courte (nouvelle discussion de l'Assistant), iOS décale la page, la hauteur change, la page change de hauteur, iOS redécale : boucle
+  // relevée sur simulateur le 26.11.2026 (714 / 377, décalage 337 puis 125, --clavier 0 puis 212 px, des centaines de fois par seconde).
+  assert.equal(hauteurClavier(812, { height: 480, offsetTop: 40, scale: 1 }), 332, "le décalage d'iOS ne change pas la hauteur du clavier");
+  assert.equal(hauteurClavier(714, { height: 377, offsetTop: 337, scale: 1 }), 337);
+  assert.equal(hauteurClavier(714, { height: 377, offsetTop: 125, scale: 1 }), 337);
+  // App installée (PWA) : iOS réduit parfois aussi la fenêtre (innerHeight 409 = la hauteur visible). La référence est la plus grande
+  // hauteur vue pour cette largeur (relevé du simulateur, 26.11.2026 : 812 puis 409).
+  assert.equal(hauteurClavier(409, { height: 409, offsetTop: 0, scale: 1 }, 812), 403);
+  assert.equal(hauteurClavier(812, { height: 812, offsetTop: 0, scale: 1 }, 812), 0);
+  assert.equal(hauteurClavier(760, { height: 760, offsetTop: 0, scale: 1 }, 812), 0, "barre d'adresse : pas un clavier");
   assert.equal(hauteurClavier(812, { height: 760, offsetTop: 0, scale: 1 }), 0, "barre d'adresse : pas un clavier");
   assert.equal(hauteurClavier(812, { height: 400, offsetTop: 0, scale: 2 }), 0, "pincement : pas un clavier");
   assert.equal(hauteurClavier(812, null), 0);
@@ -73,4 +83,121 @@ test("saisies : le bon clavier iOS pour chaque sens de champ", async () => {
   assert.equal(SAISIES.recherche.enterkeyhint, "search");
   assert.equal(SAISIES.email.autocapitalize, "none");
   for (const [nom, r] of Object.entries(SAISIES)) assert.ok(r.type, `${nom} a un type`);
+});
+
+test("basVisible : distance au bas visible pour placer les barres, 0 sans clavier ou quand iOS a décalé la page", async () => {
+  const { basVisible } = await load();
+  // Relevés du simulateur (iPhone 17, iOS 26.5) : page courte décalée de 337 px, page qui défile encore, sans clavier, zoom.
+  assert.equal(basVisible(714, { height: 377, offsetTop: 337, scale: 1 }), 0);
+  assert.equal(basVisible(714, { height: 377, offsetTop: 125, scale: 1 }), 212);
+  assert.equal(basVisible(714, { height: 377, offsetTop: 0, scale: 1 }), 337);
+  assert.equal(basVisible(714, { height: 714, offsetTop: 0, scale: 1 }), 0);
+  assert.equal(basVisible(714, { height: 300, offsetTop: 0, scale: 2 }), 0);
+  assert.equal(basVisible(714, null), 0);
+  // App installée : fenêtre réduite à 619 et vue décalée de 305 pour 409 visibles (référence 812) : -95, les barres descendent d'autant.
+  assert.equal(basVisible(619, { height: 409, offsetTop: 305, scale: 1 }, 812), -95);
+});
+
+test("clavier ouvert : la barre des Réglages et les en-têtes de discussion suivent la partie visible (app installée, 26.11.2026)", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const css = fs.readFileSync(path.join(__dirname, "../src/gestion/css/app.css"), "utf8");
+  assert.match(css, /html\.clavier \.barre-fixe \{ bottom: calc\(var\(--clavier\) \+ 8px\); \}/);
+  // Jamais sous la barre du haut collée (relecture de la PR 355).
+  assert.match(css, /html\.clavier \.agent-fil-tete, html\.clavier \.wa-fil-tete \{ top: max\(var\(--haut-barre\), var\(--haut-visible, 0px\)\); \}/);
+  const ui = fs.readFileSync(path.join(__dirname, "../src/gestion/js/ui.mjs"), "utf8");
+  assert.match(ui, /--haut-visible/);
+  assert.doesNotMatch(ui, /DEBUG-CLAVIER/);
+});
+
+test("etatClavier (relecture de la PR 355) : tactile et champ actif seulement, une référence par largeur, rebond, barre de raccourcis", async () => {
+  const { etatClavier, basVisible, hauteurClavier } = await load();
+  const vv = (height, offsetTop = 0) => ({ height, offsetTop, scale: 1 });
+  // 4. Ordinateur : fenêtre réduite de 300 px (moitié d'écran, outils de développement) à largeur égale : jamais un clavier.
+  let e = etatClavier({ largeur: 1280, innerHeight: 900, vv: vv(900), tactile: false, saisie: true });
+  e = etatClavier({ largeur: 1280, innerHeight: 600, vv: vv(600), references: e.references, tactile: false, saisie: true });
+  assert.deepEqual([e.clavier, e.bas, e.haut], [0, 0, 0]);
+  // iPad en Split View : tactile, mais aucun champ actif : pas de clavier non plus.
+  e = etatClavier({ largeur: 768, innerHeight: 1024, vv: vv(1024), tactile: true, saisie: false });
+  e = etatClavier({ largeur: 768, innerHeight: 700, vv: vv(700), references: e.references, tactile: true, saisie: false });
+  assert.equal(e.clavier, 0);
+  // iPhone, champ actif : le clavier compte.
+  e = etatClavier({ largeur: 402, innerHeight: 812, vv: vv(812), tactile: true, saisie: true });
+  e = etatClavier({ largeur: 402, innerHeight: 812, vv: vv(409), references: e.references, tactile: true, saisie: true });
+  assert.equal(e.clavier, 403);
+  // 5. App installée : rotation clavier ouvert, puis retour en portrait avec la fenêtre réduite : la référence du portrait est gardée.
+  e = etatClavier({ largeur: 874, innerHeight: 402, vv: vv(402), references: e.references, tactile: true, saisie: true });
+  e = etatClavier({ largeur: 874, innerHeight: 210, vv: vv(210), references: e.references, tactile: true, saisie: true });
+  assert.ok(e.clavier > 0, "paysage : clavier");
+  e = etatClavier({ largeur: 402, innerHeight: 409, vv: vv(409), references: e.references, tactile: true, saisie: true });
+  assert.equal(e.clavier, 403, "retour en portrait : la classe clavier reste");
+  assert.equal(e.references.get(402), 812);
+  // 11. Rebond élastique dans Safari : offsetTop au-delà de ce que le clavier prend : la distance reste à 0.
+  assert.equal(basVisible(714, vv(377, 400)), 0);
+  // App installée : la fenêtre a perdu 193 px, la distance peut descendre jusque-là (-95 relevé), pas au-delà.
+  assert.equal(basVisible(619, vv(409, 305), 812), -95);
+  assert.equal(basVisible(619, vv(409, 600), 812), -193);
+  // 13. Barre de raccourcis d'un clavier matériel (55 px), champ actif sur tactile : comptée.
+  e = etatClavier({ largeur: 402, innerHeight: 812, vv: vv(757), tactile: true, saisie: true });
+  assert.equal(e.clavier, 55);
+  // Sans champ actif, ou mesurée hors focus, elle reste sous le grand seuil.
+  assert.equal(hauteurClavier(812, vv(757)), 0);
+  // Barre d'adresse qui se replie : la fenêtre et la partie visible changent ensemble, rien ne compte.
+  assert.equal(etatClavier({ largeur: 402, innerHeight: 760, vv: vv(760), references: new Map([[402, 812]]), tactile: true, saisie: true }).clavier, 0);
+});
+
+test("ouvreClavier : seuls les champs de texte ouvrent le clavier", async () => {
+  const { ouvreClavier } = await load();
+  assert.equal(ouvreClavier({ tagName: "TEXTAREA" }), true);
+  assert.equal(ouvreClavier({ tagName: "INPUT", type: "search" }), true);
+  assert.equal(ouvreClavier({ tagName: "INPUT", type: "checkbox" }), false);
+  assert.equal(ouvreClavier({ tagName: "INPUT", type: "text", readOnly: true }), false);
+  assert.equal(ouvreClavier({ tagName: "DIV", isContentEditable: true }), true);
+  assert.equal(ouvreClavier({ tagName: "BUTTON" }), false);
+  assert.equal(ouvreClavier(null), false);
+});
+
+test("etatClavier, contre-relecture de la PR 355 : iPad en Split View ou Stage Manager avec un champ actif, jamais un faux clavier", async () => {
+  const { etatClavier } = await load();
+  const vv = (height, offsetTop = 0) => ({ height, offsetTop, scale: 1 });
+  // Split View : la largeur change, la hauteur aussi ; champ actif, aucun clavier.
+  let e = etatClavier({ largeur: 1024, innerHeight: 1366, vv: vv(1366), tactile: true, saisie: true, telephone: false });
+  e = etatClavier({ largeur: 507, innerHeight: 1366, vv: vv(1366), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.equal(e.clavier, 0);
+  // Stage Manager : même largeur, fenêtre réduite de 400 px, champ actif : la fenêtre a rétréci, ce n'est pas un clavier.
+  e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(1000), tactile: true, saisie: true, telephone: false });
+  e = etatClavier({ largeur: 900, innerHeight: 600, vv: vv(600), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.deepEqual([e.clavier, e.bas, e.haut], [0, 0, 0]);
+  // Le vrai clavier de l'iPad (la partie visible rétrécit, pas la fenêtre) compte toujours.
+  e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(620), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.equal(e.clavier, 380);
+});
+
+test("etatClavier, 2e contre-relecture de la PR 355 : iPad mini, app installée plein écran, la fenêtre qui rétrécit au clavier compte", async () => {
+  const { etatClavier } = await load();
+  const vv = (height, offsetTop = 0) => ({ height, offsetTop, scale: 1 });
+  // Relevé du simulateur (iPad mini A17 Pro, portrait, nouvelle discussion) : 1101 px de fenêtre au repos, puis 761 px visibles décalés de 340.
+  let e = etatClavier({ largeur: 744, innerHeight: 1101, vv: vv(1101), tactile: true, saisie: false, telephone: false, pleineLargeur: true });
+  e = etatClavier({ largeur: 744, innerHeight: 761, vv: vv(761, 340), references: e.references, tactile: true, saisie: true, telephone: false, pleineLargeur: true });
+  assert.equal(e.clavier, 340, "clavier détecté : la barre d'onglets se cache");
+  assert.equal(e.bas, -340, "la saisie suit le bas visible, collée au clavier");
+  // Avant : la même mesure sans tenir compte de la pleine largeur ne voyait aucun clavier (barre d'onglets au-dessus du clavier).
+  e = etatClavier({ largeur: 744, innerHeight: 1101, vv: vv(1101), tactile: true, saisie: false, telephone: false });
+  e = etatClavier({ largeur: 744, innerHeight: 761, vv: vv(761, 340), references: e.references, tactile: true, saisie: true, telephone: false });
+  assert.equal(e.clavier, 0);
+  // Quand la fenêtre ne rétrécit pas (page longue, Réglages), le clavier se mesure comme avant.
+  e = etatClavier({ largeur: 744, innerHeight: 1101, vv: vv(761), tactile: true, saisie: true, telephone: false, pleineLargeur: true });
+  assert.equal(e.clavier, 340);
+  // Une fenêtre plus étroite que l'écran (Stage Manager) reste exclue : la règle de la contre-relecture précédente tient.
+  e = etatClavier({ largeur: 900, innerHeight: 1000, vv: vv(1000), tactile: true, saisie: true, telephone: false, pleineLargeur: false });
+  e = etatClavier({ largeur: 900, innerHeight: 600, vv: vv(600), references: e.references, tactile: true, saisie: true, telephone: false, pleineLargeur: false });
+  assert.equal(e.clavier, 0);
+});
+
+test("suivreClavier passe la pleine largeur, mesurée sur les deux côtés de l'écran (portrait et paysage)", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const ui = fs.readFileSync(path.join(__dirname, "../src/gestion/js/ui.mjs"), "utf8");
+  assert.match(ui, /\[screen\.width, screen\.height\]\.some\(\(cote\) => Math\.abs\(window\.innerWidth - cote\) <= 1\)/);
+  assert.match(ui, /pleineLargeur: pleineLargeur\(\)/);
 });

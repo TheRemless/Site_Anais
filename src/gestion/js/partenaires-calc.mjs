@@ -429,9 +429,23 @@ function ajouter(iso, n) {
 // Une seule normalisation des numéros, pour les liens d'appel et WhatsApp. Renvoie { numero: "+41791234567" | "", raison: "" | "vide" | "trop_court" | "sans_indicatif" }.
 // Un numéro commençant par 0 n'a pas d'indicatif : il n'est jamais deviné pour un client (« sans_indicatif »). Seuls les numéros de partenaires thaïs au
 // format local (« 081-9789025 » devient +66819789025) passent avec `{ thaiLocal: true }`.
+// Un numéro copié depuis un iPhone ou WhatsApp porte des caractères invisibles ou typographiques : « +1 (555) 010-4477 (trait d’union insécable) » entouré de U+202A et U+202C (marques de sens
+// U+202A et U+202C, trait d'union insécable U+2011). Avant le 26.11.2026, la lecture s'arrêtait au U+2011 et gardait « +1555010 » sans rien
+// dire. Ils deviennent des espaces ou des tirets ordinaires ; les chiffres et le plus pleine chasse deviennent des chiffres.
+export function nettoyerTelephone(brut) {
+  return String(brut || "")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ")
+    .replace(/[\uFF10-\uFF19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xff10 + 48))
+    .replace(/\uFF0B/g, "+")
+    // « +41 (0)79 123 45 67 » : le 0 entre parenthèses ne se compose pas depuis l'étranger.
+    .replace(/(\+\d{1,3})\s*\(\s*0\s*\)/g, "$1 ");
+}
 export function normaliserTelephone(brut, { thaiLocal = false } = {}) {
-  const texte = String(brut || "");
-  const m = texte.match(/\+?\d[\d\s\-()]{6,}\d/);
+  const texte = nettoyerTelephone(brut);
+  // « / » reste une coupure : « 081-978-9025 / 089-123-4567 » donne le premier numéro, jamais les deux collés (liens d'appel et wa.me).
+  const m = texte.match(/\+?\d[\d\s\-().]{6,}\d/);
   if (!m) return { numero: "", raison: /\d/.test(texte) ? "trop_court" : "vide" };
   const d = m[0].replace(/[^\d+]/g, "");
   if (d[0] === "+") return { numero: d, raison: "" };

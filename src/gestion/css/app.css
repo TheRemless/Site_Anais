@@ -80,6 +80,8 @@ img { max-width: 100%; }
 .onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.72rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
 .onglet-icone { position: relative; display: flex; align-items: center; justify-content: center; width: 60px; height: 32px; border-radius: 999px; transition: background-color var(--duree) var(--courbe); }
 .onglet:active .onglet-icone { background: var(--surface-2); }
+/* iOS garde :hover sur le dernier lien touché : un onglet quitté restait teinté comme l'onglet actif (26.11.2026). */
+@media (hover: none) { a.onglet:not([aria-current]):hover { color: var(--texte-2); } }
 .onglet[aria-current] { color: var(--teal-700); }
 .onglet[aria-current] .onglet-icone { background: var(--teal-100); box-shadow: inset 0 0 0 1.5px var(--teal-600); }
 .badge { position: absolute; top: -3px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; line-height: 18px; text-align: center; }
@@ -784,6 +786,9 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 @media (min-width: 720px) { .demande-champs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .demande-champs .champ:first-child, .demande-champs .champ:nth-child(2) { grid-column: span 2; } .demande-champs .champ:last-child { grid-column: 1 / -1; } }
 .demande-client { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); }
 .demande-client.connu { background: var(--teal-100); border-color: var(--teal-600); }
+/* Conversation WhatsApp au nom du client : le numéro se lit en entier, le bouton fait 44 px. */
+.demande-wa span { overflow-wrap: anywhere; }
+.demande-wa button { min-height: 44px; }
 .demande-offres { max-height: none; margin-bottom: 12px; }
 .demande-offres li { border-bottom: 1px solid var(--bord); }
 .demande-offres li:last-child { border-bottom: 0; }
@@ -2409,6 +2414,24 @@ button.agent-joint { cursor: pointer; }
 .wa-ouvrir[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
 .wa-copier { flex: 1 1 0; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; border-radius: 12px; }
 .wa-copier.fait { background: var(--teal-100); color: var(--teal-700); border-color: var(--teal-600); }
+/* Audit mobile n° 3 (26.11.2026) : « Ouvrir dans WhatsApp » ne rétrécissait pas (nowrap, largeur minimale du contenu) et poussait « Copier »
+   12 px hors de l'écran à 375 px, la page glissait de côté. Les deux boutons rétrécissent ; le libellé long passe à la ligne s'il le faut. */
+.wa-prop-actions > * { min-width: 0; }
+.wa-ouvrir { flex: 1 1 auto; }
+.wa-copier { flex: 0 1 auto; padding: 0 16px; }
+.wa-ouvrir svg, .wa-copier svg { flex: none; }
+@media (max-width: 379px) { .wa-copier { flex: none; width: 54px; padding: 0; } .wa-copier-texte { display: none; } }
+/* Audit mobile n° 4 (26.11.2026) : sur téléphone, la réponse préparée est repliée sur deux lignes (« Voir la réponse ») ; dépliée, le champ
+   grandit avec le texte (hauteur posée par whatsapp.mjs) au lieu de défiler dans la page. Ordinateur : inchangé. */
+.wa-apercu, .wa-replier { display: none; }
+@media (max-width: 899px) {
+  .wa-prop.repliee textarea, .wa-prop.repliee .wa-morceaux:not([hidden]) { display: none; }
+  .wa-prop.repliee .wa-apercu { display: grid; gap: 4px; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px; text-align: left; background: var(--surface-2); border: 1px solid var(--bord-champ); border-radius: 10px; color: var(--texte); font: inherit; font-weight: 400; cursor: pointer; }
+  .wa-apercu-texte { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+  .wa-apercu-voir { font-weight: 700; color: var(--teal-700); }
+  .wa-prop:not(.repliee) .wa-replier { display: inline-flex; align-items: center; min-height: 44px; margin-left: auto; padding: 0; font-size: 0.9rem; font-weight: 600; }
+  .wa-prop textarea { min-height: 4.5em; resize: none; overflow: hidden; }
+}
 .wa-morceaux { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin: 6px 0 0; }
 .wa-morceaux[hidden] { display: none; }
 .wa-morceaux .lien { min-height: 40px; padding: 0; }
@@ -2526,6 +2549,10 @@ button.agent-badge-entreprise { cursor: pointer; }
 .wa-conv-nom strong { min-width: 0; }
 .wa-conv-apercu { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; color: var(--texte-2); }
 .wa-conv.non-lue .wa-conv-apercu { color: var(--texte); }
+/* Audit mobile n° 31 (26.11.2026) : « Message supprimé » n'est pas un message à lire, en italique gris même non lu ; le nom garde sa place,
+   les pastilles passent dessous quand la ligne est trop étroite. */
+.wa-conv-apercu.supprime, .wa-conv.non-lue .wa-conv-apercu.supprime { font-style: italic; color: var(--texte-2); }
+.wa-conv-nom { flex-wrap: wrap; row-gap: 4px; }
 /* Messages manquants (migration 100) : repère discret sur la carte et dans la conversation, ligne « non transmis » à la place d'une bulle. */
 .wa-conv-manque { display: block; margin-top: 2px; font-size: 0.8125rem; color: var(--texte-2); font-style: italic; }
 .wa-conv-vous { color: var(--texte-2); }
@@ -2539,6 +2566,10 @@ button.agent-badge-entreprise { cursor: pointer; }
 .wa-liste .puce-nombre { min-width: 20px; padding: 0 5px; }
 .wa-jamais { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
 .wa-menu { flex: none; width: 44px; height: 44px; }
+/* L'Assistant depuis la conversation (26.11.2026) : toujours visible dans l'en-tête collé, 44 px, l'icône seule sous 360 px. */
+.wa-assistant { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 0.9rem; border-radius: 22px; }
+.wa-assistant svg { color: var(--teal-700); }
+@media (max-width: 359px) { .wa-assistant { padding: 0; justify-content: center; } .wa-assistant span { display: none; } }
 /* Faits du client : le dossier, les dates, l'hôtel, le prochain pickup, les prix donnés, le reste à payer. Un tap copie le fait. */
 .wa-faits { margin: 0 -16px; padding: 8px 16px 12px; background: var(--surface); border-bottom: 1px solid var(--bord); }
 .wa-faits > summary { display: flex; align-items: baseline; gap: 8px; min-height: 36px; cursor: pointer; font-weight: 700; }
@@ -2559,11 +2590,17 @@ section.wa-faits .wa-faits-tete { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .wa-fait { transition: none; } }
 /* Le clavier de l'iPhone ne cache ni la saisie de l'Assistant ni les boutons de la réponse (design n° 10). */
 html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans-reponse.avec-bouton { bottom: var(--clavier); }
+/* La barre collée des Réglages (« Enregistrer les réglages ») suit aussi le bas visible : sinon elle passait sous le clavier (26.11.2026). */
+html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
+/* Clavier ouvert : iOS fait descendre la partie visible ; l'en-tête de la discussion (Assistant, WhatsApp) reste collé à son haut au lieu
+   de rester hors de l'écran avec la barre du haut (26.11.2026). Un décalage d'en-tête collé ne change pas la hauteur de la page. */
+/* Jamais sous la barre du haut (collée, z-index 30) quand on remonte le fil clavier ouvert : le plus bas des deux (relecture de la PR 355). */
+@media (max-width: 899px) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: max(var(--haut-barre), var(--haut-visible, 0px)); } }
 @media (max-width: 899px) {
   /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
   .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }
   .agent.avec-fil .agent-fil, .wa.avec-fil .wa-fil { min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 16px); margin-bottom: 0; }
-  html.clavier .contenu:has(.agent.avec-fil), html.clavier .contenu:has(.wa.avec-fil) { padding-bottom: var(--clavier); }
+  /* Clavier ouvert : aucune marge qui suit le clavier (26.11.2026). La hauteur de la page ne dépend plus de --clavier : iOS ne boucle plus. */
 }
 @media (min-width: 900px) {
   /* Les messages gardent au moins la moitié de la colonne (design n° 6) : faits et résumé défilent dans leur propre hauteur. */
@@ -2583,6 +2620,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-fil-liens { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 0; }
 .agent-fil-liens a { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
 .agent-fil-liens svg { color: #128c4a; }
+.agent-wa-numero { display: inline-flex; align-items: center; min-height: 28px; font-size: 0.85rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
 .agent-bulle.agent-whatsapp { align-self: flex-start; max-width: min(92%, 34rem); padding: 8px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 16px 16px 16px 4px; }
 .agent-whatsapp summary { display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; font-weight: 600; }
 .agent-whatsapp summary svg { flex: none; color: #128c4a; }

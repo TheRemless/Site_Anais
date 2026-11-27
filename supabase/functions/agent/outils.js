@@ -1922,6 +1922,10 @@ export async function proposer(nom, e, ctx, memo) {
     if (!t) return { erreur: "confirmation_introuvable" };
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { course: { texte: t.slice(0, 4000) } } };
   }
+  // La conversation WhatsApp liée est passée dans une autre entreprise (contre-relecture de la PR 355) : sa consigne (apporteur, numéro du
+  // client) ne vaut plus ici. Aucune carte de dossier ou de réservation (le modèle pourrait reprendre l'apporteur comme client), ni de
+  // réponse au client préparée avec le contexte de cette entreprise. Calculé par index.ts (cartesRefuseesAutreEntreprise).
+  if (ctx && ctx.conversationAutreEntreprise && CARTES_REFUSEES_AUTRE_ENTREPRISE.includes(nom)) return { erreur: "conversation_autre_entreprise", conseil: CONSEIL_AUTRE_ENTREPRISE };
   // Plus de 10 sièges enfant ou bébé : refusé avec un motif, jamais ramené à 10 en silence (relecture de la PR 315).
   if (["proposer_dossier", "proposer_reservation"].includes(nom) && [...(e.services || []), ...(e.service ? [e.service] : [])].some((x) => x && (Number(x.sieges) || 0) + (Number(x.sieges_bebe) || 0) > SIEGES_MAX)) return { erreur: "sieges_trop_nombreux" };
   if (nom === "proposer_dossier") {
@@ -1941,7 +1945,8 @@ export async function proposer(nom, e, ctx, memo) {
     if (app.avertissement) avert.push(app.avertissement);
     // Un enfant ou un bébé sur un transfert sans choix des sièges : la carte ne se valide pas, la question est à poser au client.
     if (siegesAChoisirServices(services, { enfants: entier(e.enfants), bebes: entier(e.bebes, 10) })) avert.push("sieges_a_choisir");
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
+    // Préparée depuis une conversation WhatsApp d'un client (ctx.telephoneWa, index.ts) : le numéro complet de la conversation (telephoneDeCarte).
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: ctx.telephoneWa ? telephoneDeCarte(texte(e.client_telephone, 30), ctx.telephoneWa) : texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
@@ -2205,3 +2210,32 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
 }
 
 export { tempsSimule };
+
+// Le numéro du client sur une carte « dossier » préparée depuis une conversation WhatsApp (26.11.2026) : le numéro complet de la conversation
+// (E.164), jamais une forme raccourcie. `saisi` : ce que le modèle a écrit ; `telWa` : le numéro de la conversation liée, donné seulement
+// quand le contact n'est pas un apporteur (le numéro d'un apporteur n'est jamais celui d'un client). Vide, le même numéro ou sa forme locale
+// (« 081… », les derniers chiffres) : le numéro de la conversation. Un autre numéro écrit par le client (celui d'un proche) est gardé.
+export function telephoneDeCarte(saisi, telWa) {
+  const s = String(saisi || "").trim();
+  const wa = String(telWa || "").trim();
+  const chiffresWa = wa.replace(/\D/g, "");
+  if (chiffresWa.length < 6 || chiffresWa.length > 15) return s;
+  const complet = `+${chiffresWa}`;
+  const chiffres = s.replace(/\D/g, "").replace(/^0+/, "");
+  if (!chiffres) return complet;
+  if (chiffres === chiffresWa || (chiffres.length >= 6 && chiffresWa.endsWith(chiffres))) return complet;
+  return s;
+}
+
+// Le numéro d'une conversation WhatsApp qui peut aller sur la carte « dossier » comme celui du client (relecture de la PR 355) : seulement un
+// contact de client, comme whatsapp-calc.mjs (ficheAMettreAJour) : type vide ou « client », aucune fiche partenaire reliée, jamais un contact
+// personnel. Partenaire, chauffeur, hôtel, apporteur ou contact personnel : "" (sinon le voucher partirait chez eux).
+export function telephoneDeConversation(conv) {
+  if (!conv || typeof conv.telephone !== "string" || !conv.telephone.trim()) return "";
+  if (conv.reponses === "jamais" || conv.partenaire_id) return "";
+  if (conv.type_contact && conv.type_contact !== "client") return "";
+  return conv.telephone;
+}
+
+export const CARTES_REFUSEES_AUTRE_ENTREPRISE = ["proposer_dossier", "proposer_reservation", "proposer_reponse"];
+export const CONSEIL_AUTRE_ENTREPRISE = "La conversation WhatsApp liée à cette discussion est maintenant rangée dans une autre entreprise. Ne propose aucune carte ici : dis-le à la personne et invite-la à ouvrir l'Assistant depuis la conversation WhatsApp, dans l'entreprise où elle est rangée.";

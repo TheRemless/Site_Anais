@@ -255,7 +255,7 @@ test("conversation WhatsApp d'un apporteur : jamais reliée au client ni au doss
   assert.deepEqual(liaisonApresDossier({ id: "w", entite_id: null, client_id: null, dossier_id: null, type_contact: "apporteur" }, dossier, SECRET.id), { action: "ecrire", patch: { entite_id: SECRET.id } }, "à trier : rangée seulement");
   // Un client : comme avant.
   assert.deepEqual(liaisonApresDossier({ id: "w", entite_id: SECRET.id, client_id: null, dossier_id: null }, dossier, SECRET.id), { action: "ecrire", patch: { client_id: "emma", dossier_id: "d1" } });
-  assert.match(source("src/gestion/js/store-supabase.mjs"), /lire\("id, entite_id, client_id, dossier_id, type_contact"\)/);
+  assert.match(source("src/gestion/js/store-supabase.mjs"), /lire\("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact"\)/);
 });
 
 test("réponse à l'apporteur lui-même : « Hi Jade » passe vers Jade ; vers Emma, ou un autre partenaire vers Jade, reste bloqué", async () => {
@@ -462,7 +462,7 @@ test("revue 298, point 5 : repli de la conversation liée seulement sans demande
   const ts = source("supabase/functions/agent/index.ts");
   assert.match(ts, /if \(!waLiee && !waId && typeof lieeId === "string" && UUID\.test\(lieeId\)\)/);
   assert.match(ts, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: lieeId \}\)/);
-  assert.match(ts, /if \(!w\.error && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data \|\| null;/);
+  assert.match(ts, /if \(!w\.error && dansEntreprise && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data;/);
 });
 
 test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l'écran le dit clairement", async () => {

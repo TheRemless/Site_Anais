@@ -541,8 +541,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // type_contact (migration 68) : la conversation d'un apporteur ne se relie pas au client ; sans la colonne, la lecture d'avant.
     async whatsappConversation(id) {
       const lire = (cols) => sb.from("whatsapp_conversations").select(cols).eq("id", id).maybeSingle();
-      let { data, error } = await lire("id, entite_id, client_id, dossier_id, type_contact");
-      if (error && colonneAbsente(error, "type_contact")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id"));
+      // telephone et nom (26.11.2026) : le numéro complet de la conversation reprend un téléphone vide ou coupé sur la carte.
+      // reponses (« jamais » : contact personnel) et type_contact : le filtre des contacts personnels et l'exclusion des apporteurs s'appliquent.
+      let { data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact, reponses");
+      if (error && colonneAbsente(error, "reponses")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact"));
+      if (error && ["type_contact", "partenaire_id"].some((c) => colonneAbsente(error, c))) ({ data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom"));
       if (error) throw new Error(error.message);
       return data || null;
     },

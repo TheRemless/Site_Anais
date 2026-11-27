@@ -77,7 +77,7 @@ const MOTIFS_UNIFIE = (libelleEntreprise) => ({
   aucun_service: () => tr("Aucun service à créer."),
 });
 // `donnees` : la carte avec ses corrections d'un tap et son devis (donneesCarte de l'écran) ; `libelleEntreprise(id)` : « Secret » ou « Taxi ».
-export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise = (id) => id } = {}) {
+export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise = (id) => id, whatsappLie = null } = {}) {
   const motifs = MOTIFS_UNIFIE(libelleEntreprise);
   const plan = planCreation({ services: donnees.services || [], activeId: etat.entiteId, permissionsDe, nouveauClient: false, partagePermis: (a, b) => partageClientsPermis(a, b) });
   if (!plan.ok) {
@@ -99,8 +99,9 @@ export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise 
   const r = await creerDossiersLies({
     etapes: plan.etapes,
     // Passe à blanc : préparation et contrôles de chaque dossier (prix à fixer, service introuvable, numéro), rien n'est écrit.
-    essayer: (e, i) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre })),
-    creer: (e, i, clientId) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId })),
+    // `whatsappLie` : la conversation WhatsApp de la carte, dont le numéro complète celui du premier client créé (les suivants reprennent sa fiche).
+    essayer: (e, i) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre, whatsappLie })),
+    creer: (e, i, clientId) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId, whatsappLie })),
     // Un dossier ne passe pas : ceux déjà créés vont à la corbeille (la suppression habituelle), dans leur entreprise.
     defaire: async (crees) => {
       for (const d of crees) await dans(d.entite_id, () => supprimerLigne("dossiers", d.id));

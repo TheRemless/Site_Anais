@@ -246,7 +246,9 @@ export function vueVoucherRapide() {
         else renvoyer(fait, { essayer: true, titre: cible ? TH.modifie : TH.cree });
       } catch (err) {
         console.error(err);
-        etat_.replaceChildren(h("p", { class: "vr-erreur" }, `${TH.echec} (${err.message})`));
+        // Le refus de la base pour un téléphone (migration 129, en français) : le message de l'écran, dans sa langue.
+        const detail = /Téléphone du client/.test(String(err && err.message)) ? TH.e_tel : err.message;
+        etat_.replaceChildren(h("p", { class: "vr-erreur" }, `${TH.echec} (${detail})`));
         bouton.disabled = false;
         bouton.textContent = cible ? TH.enregistrer : TH.creer;
       }

@@ -86,7 +86,7 @@ test("Assistant seule entrée : validation d'un geste par le code habituel, Tout
   // La validation des cartes est dans views/agent-valider.mjs depuis la relecture de la PR 332.
   const agent = lire("views/agent.mjs") + lire("views/agent-valider.mjs");
   // Le devis calculé sur la carte passe par donneesCarte (« Calculer le devis », 22.11.2026).
-  assert.match(agent, /ouvrirDemande\(null, await preparationComplete\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\} \}\)/, "dossier : la fiche de création, cachée");
+  assert.match(agent, /ouvrirDemande\(null, await preparationComplete\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\}, whatsappLie: await conversationWaLiee\(\) \}\)/, "dossier : la fiche de création, cachée");
   assert.match(agent, /formulaireReservation\(valeurs, /, "service et modification : le formulaire de réservation habituel");
   assert.match(agent, /function toutValider\(btn\)/);
   assert.match(agent, /envoyerVoucher\(x\)/, "voucher et WhatsApp après validation");
