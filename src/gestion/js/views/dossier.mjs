@@ -19,7 +19,7 @@ import { MOTIFS_ECART } from "../encaisser-calc.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { envoyerDocument } from "./document-envoi.mjs";
-import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers, surPlaceApresAcompte } from "../operations-calc.mjs";
+import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers, surPlaceApresAcompte, surPlaceAnnule } from "../operations-calc.mjs";
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { agentActif } from "../agent-calc.mjs";
@@ -639,7 +639,8 @@ function ficheDossierVue(id) {
   const bloc = (classe, libelle, ...contenu) => h("div", { class: `resume-bloc ${classe}` }, h("p", { class: "resume-libelle" }, libelle), ...contenu);
   const ligne = (libelle, valeur, classe) => h("div", { class: ["resume-ligne", classe].filter(Boolean).join(" ") }, h("dt", null, libelle), h("dd", null, valeur));
   const etats = etatsServices(rsDossier);
-  const sp = surPlaceApresAcompte(r);
+  // Le prix sur place se lit sur la facture (sinon le devis), comme r.surPlace ; ses services annulés n'y comptent plus.
+  const sp = surPlaceApresAcompte(r, { annule: surPlaceAnnule(((facture || devis) || {}).contenu, rsDossier) });
   const effectif = personnesDossier(rsDossier);
   const commission = nets ? commissionDossier(rsDossier, netReservation) : null;
   const dates = d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Le {date}", { date: formatDate(d.date_depart) })) : tr("Dates à fixer");
