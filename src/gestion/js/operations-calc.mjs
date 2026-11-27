@@ -3,7 +3,7 @@
 
 import { langueActive, N_ } from "./i18n.mjs";
 import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient, libelleUnite, quantiteParDefaut } from "./partenaires-calc.mjs";
-import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
+import { SUR_PLACE, CHEZ_NOUS, modeReglement, montantLigne } from "./calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { estRetourDepart, trajetPourChauffeur, DROPOFF_RETOUR } from "./trajet-calc.mjs";
 import { siegesLus, siegesAnglais } from "./sieges-calc.mjs";
@@ -774,6 +774,41 @@ export function paiementDuService(r, { resume = null } = {}) {
   const reste = arr2(Math.max(0, Number(part.reste) || 0));
   return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true } : { statut: "paye", verse, reste: 0, surPlace: false };
 }
+// Le prix sur place des services annulés encore écrits sur le document : r.surPlace les compte, la base non. Une ligne (et ses options)
+// portée seulement par des réservations annulées part en entier. Portée aussi par une réservation active (service dupliqué, deux réservations
+// sur la même ligne), seule la part de chaque réservation annulée part : son montant_vente (au plus ses lignes), sinon chacune de ses lignes
+// divisée par le nombre de réservations qui la portent. `contenu` : le document dont r.surPlace est lu ; `reservations` : celles du dossier.
+export function surPlaceAnnule(contenu, reservations = []) {
+  const resas = (reservations || []).filter(Boolean);
+  const annulees = resas.filter((r) => statutReservation(r.statut) === "annule");
+  if (!annulees.length) return 0;
+  const idsDe = new Map(resas.map((r) => [r, new Set([r.ligne_id, ...(((r.details || {}).lignes_ids) || [])].filter(Boolean))]));
+  const lignes = ((contenu && contenu.lignes) || []).filter((l) => l && l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte");
+  // Une option est portée par les réservations de sa ligne parente.
+  const porteurs = new Map(lignes.map((l) => [l, resas.filter((r) => idsDe.get(r).has(l.id) || (l.option_de && idsDe.get(r).has(l.option_de)))]));
+  const entieres = new Set(lignes.filter((l) => porteurs.get(l).length && porteurs.get(l).every((r) => statutReservation(r.statut) === "annule")));
+  let retire = [...entieres].reduce((s, l) => s + montantLigne(l), 0);
+  for (const r of annulees) {
+    const siennes = lignes.filter((l) => !entieres.has(l) && porteurs.get(l).includes(r));
+    if (!siennes.length) continue;
+    const auProrata = siennes.reduce((s, l) => s + montantLigne(l) / porteurs.get(l).length, 0);
+    const mv = Number(r.montant_vente);
+    retire += r.montant_vente !== null && r.montant_vente !== undefined && r.montant_vente !== "" && Number.isFinite(mv) && mv >= 0 ? Math.min(mv, siennes.reduce((s, l) => s + montantLigne(l), 0)) : auProrata;
+  }
+  return arr2(Math.min(retire, lignes.reduce((s, l) => s + montantLigne(l), 0)));
+}
+// Ce qui reste à payer sur place pour tout le dossier, une fois l'acompte imputé par la base (parts de dossiers_resume, la source des
+// vouchers). Les parts ne connaissent que les services sur place avec une réservation et un montant_vente : le prix sur place du document
+// (moins les services annulés, `annule`) reste le plancher, d'où reste = max(somme des restes, prix sur place − somme des versés).
+// Sans parts (résumé pas encore recalculé) : le prix sur place, sans acompte. Rend { reste, verse } (verse : déjà déduit du reste).
+export function surPlaceApresAcompte(resume, { annule = 0 } = {}) {
+  const prix = arr2(Math.max(0, (Number(resume && resume.surPlace) || 0) - Math.max(0, Number(annule) || 0)));
+  const parts = Object.values((resume && ((resume.dossier && resume.dossier.parts) || resume.parts)) || {}).filter((p) => p && typeof p === "object");
+  if (!parts.length) return { reste: prix, verse: 0 };
+  const somme = (k) => arr2(parts.reduce((s, p) => s + Math.max(0, Number(p[k]) || 0), 0));
+  const verse = somme("verse");
+  return { reste: arr2(Math.max(somme("reste"), prix - verse, 0)), verse };
+}
 // Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand ils sont imprimés (lus dans le résumé).
 export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
 
@@ -911,11 +946,16 @@ export function fraisDeParc(prestation) {
   return { inclus, texte: inclus ? "" : texteParcEn(texte) };
 }
 
-// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day ».
+// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB); cash on the day ».
 export function texteParcEn(texte) {
   let s = String(texte || "").replace(/\s*\n\s*/g, " ").trim();
   s = s.replace(/^(?:Selon destination|Depending on destination)\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
+  // « 100 ฿ à 200 ฿ » (texte français) : « 100 to 200 THB », la devise une seule fois.
+  s = s.replace(/(\d+)\s*฿\s*à\s*(\d+)\s*฿/g, "$1 to $2 ฿");
   s = s.replace(/(\d+)\s*à\s*(\d+)/g, "$1 to $2");
+  // Le voucher écrit déjà « Not included: » devant ce texte : « Not included (as on the other trips). » ou « Not included, paid separately. »
+  // en tête ne se répète pas.
+  s = s.replace(/^(?:Not included|Non inclus|Pas inclus)\b(?:\s*\([^)]*\))?(?:\s*,?\s*(?:paid separately|payé à part))?\s*[.,:;]?\s*/i, "");
   // Le texte de la base est en français (anciennes lignes) ou en anglais (depuis le 12.11.2026) : les deux donnent la même phrase.
   s = s.replace(/\(\s*([\d\s\/฿]+?)\s*(?:thaï|Thai)\s*\)/gi, "(Thai nationals $1)");
   s = s.replace(/\(\s*(?:Thaï|Thai)\s*:\s*/gi, "(Thai nationals ");
@@ -926,7 +966,11 @@ export function texteParcEn(texte) {
   s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*(?:À régler en espèces sur place|To be paid in cash on site)/i, "");
   s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").trim();
   s = s.charAt(0).toUpperCase() + s.slice(1);
-  return /cash/i.test(s) ? s : `${s}, cash on the day`;
+  // La mention de paiement suit le texte du frais sans enchaîner deux ponctuations (« paid on site., cash… ») et avec un séparateur net : une
+  // virgule la ferait lire comme un élément de la liste (« 20 THB per child aged 4 to 11, cash on the day »). Un texte qui dit déjà comment
+  // ou quand payer (espèces, sur place, le jour même) ne reçoit rien de plus.
+  s = s.replace(/[\s.,;:]+$/, "");
+  return /cash|on site|on the day|sur place|en espèces/i.test(s) ? s : `${s}; cash on the day`;
 }
 
 // Capacité du bateau quand la base en donne une en personnes (« 1 à 2 personnes »), rien pour « Par personne ».

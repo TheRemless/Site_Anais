@@ -201,3 +201,47 @@ test("textes réglables : les lignes d'acompte sont dans les réglages des vouch
   for (const k of ["montant_verse", "reste_sur_place"]) assert.ok(cles(GROUPES_VOUCHER).includes(k), k);
   for (const k of ["b_verse", "b_reste", "b_paiement_paye"]) assert.ok(cles(GROUPES_BOOKING).includes(k), k);
 });
+
+test("fiche du dossier : « À payer sur place » donne le reste après l'acompte imputé, la part imputée déjà déduite en dessous", async () => {
+  // Services chez nous 2 400, une excursion sur place 7 450 (option comprise), 3 000 reçus : 600 imputés, 6 850 à payer au départ.
+  const resume = { total: 2400, recu: 3000, surPlace: 7450, dossier: { parts: { "resa-1": { verse: 600, reste: 6850 } } } };
+  assert.deepEqual(O.surPlaceApresAcompte(resume), { reste: 6850, verse: 600 });
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: { parts: { "resa-1": { verse: 0, reste: 7450 } } } }), { reste: 7450, verse: 0 }, "sans acompte imputé : le prix sur place entier");
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: {} }), { reste: 7450, verse: 0 }, "résumé sans parts (pas encore recalculé) : le prix sur place du résumé");
+  // La même source que la base : les parts calculées par imputationDossier (la règle de recalculer_dossier).
+  const resas = [
+    { id: "resa-1", paye_sur_place: true, statut: "confirme", montant_vente: 7450, date_service: "2026-12-10" },
+    // Un service sur place annulé dont la ligne reste sur la facture : r.surPlace (lu sur la facture) le compte encore, les parts non.
+    { id: "resa-2", paye_sur_place: true, statut: "annule", montant_vente: 2000, date_service: "2026-12-11" },
+  ];
+  const { parts } = O.imputationDossier({ total: 2400, recu: 3000, reservations: resas });
+  // Le service annulé reste sur la facture (r.surPlace = 9 450) : surPlaceAnnule le retire du prix lu sur le document.
+  const contenu = { lignes: [{ id: "L1", paye_sur_place: true, unite: 7450, qte: 1 }, { id: "L2", paye_sur_place: true, unite: 2000, qte: 1 }, { id: "L3", unite: 2400, qte: 1 }] };
+  const resasLiees = [{ ...resas[0], ligne_id: "L1" }, { ...resas[1], ligne_id: "L2" }];
+  assert.equal(O.surPlaceAnnule(contenu, resasLiees), 2000);
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 9450, dossier: { parts } }, { annule: O.surPlaceAnnule(contenu, resasLiees) }), { reste: 6850, verse: 600 }, "le service annulé ne compte pas");
+  // Deux réservations sur la même ligne (service dupliqué) : une seule annulée ne retire que sa part, avec ses options.
+  const partagee = { lignes: [{ id: "S", paye_sur_place: true, unite: 4000, qte: 1 }, { id: "S-opt", option_de: "S", paye_sur_place: true, unite: 600, qte: 1 }] };
+  const r1 = { id: "r1", ligne_id: "S", statut: "confirme", paye_sur_place: true, montant_vente: 2300 };
+  const r2 = { id: "r2", ligne_id: "S", statut: "annule", paye_sur_place: true, montant_vente: 2300 };
+  assert.equal(O.surPlaceAnnule(partagee, [r1, r2]), 2300, "montant_vente de la réservation annulée");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: null }]), 2300, "sans montant_vente : (4 000 + 600) / 2 réservations");
+  assert.equal(O.surPlaceAnnule(partagee, [{ ...r1, statut: "annule" }, r2]), 4600, "toutes annulées : la ligne entière et son option");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: 9999 }]), 4600, "jamais plus que les lignes");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, statut: "confirme" }]), 0, "aucune annulée : rien");
+  // Relecture finale : un service sur place absent des parts (sans réservation, ou montant_vente vide) ne disparaît pas du reste.
+  // Facture : 5 000 sur place (2 000 + 3 000, le second sans montant_vente), 1 500 reçus pour 1 000 dus chez nous : 500 imputés, 4 500 à payer.
+  const resasB = [{ id: "a", paye_sur_place: true, statut: "confirme", montant_vente: 2000, date_service: "2026-12-10" }, { id: "b", paye_sur_place: true, statut: "confirme", montant_vente: null, date_service: "2026-12-11" }];
+  const partsB = O.imputationDossier({ total: 1000, recu: 1500, reservations: resasB }).parts;
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 5000, dossier: { parts: partsB } }), { reste: 4500, verse: 500 });
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 5000, dossier: { parts: { a: { verse: 0, reste: 2000 } } } }), { reste: 5000, verse: 0 }, "sans acompte : tout le prix sur place de la facture");
+  // La fiche lit cette aide, pas r.surPlace brut ; la phrase dit que l'acompte est déjà déduit (jamais « dont », qui ferait soustraire deux fois).
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../src/gestion/js/views/dossier.mjs", import.meta.url), "utf8");
+  assert.match(src, /surPlaceApresAcompte\(r, \{ annule: surPlaceAnnule\(/);
+  assert.match(src, /ligne\(tr\("À payer sur place"\), sp\.verse > 0/);
+  assert.match(src, /tr\("acompte de \{montant\} déjà déduit"/);
+  assert.doesNotMatch(src, /dont \{montant\} d'acompte/);
+  const en = fs.readFileSync(new URL("../src/gestion/js/i18n-en.mjs", import.meta.url), "utf8");
+  assert.ok(en.includes('"acompte de {montant} déjà déduit": "{montant} deposit already deducted"'));
+});
