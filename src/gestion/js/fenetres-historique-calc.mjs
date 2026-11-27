@@ -45,13 +45,23 @@ export function fermeturesAuRetour(pile, atteint) {
 // du déplacement. Renvoie "retour", "avance" ou null. `sens` : sens du pas automatique précédent, gardé jusqu'au bout (sinon deux
 // entrées de même rang, une ancienne entrée de la visionneuse par exemple, renverraient d'un sens à l'autre).
 // Jamais de premier pas en quittant l'entrée de la visionneuse : fermer une photo (retour ou bouton) laisse l'écran tel quel, même
-// posée sur un fantôme ; un pas déjà en cours (`sens`) traverse en revanche une ancienne entrée de photo. Jamais de pas en arrière
-// depuis la première entrée de Gestion : l'app installée se fermerait.
+// posée sur un fantôme ; un pas déjà en cours (`sens`) traverse en revanche une ancienne entrée de photo. Un pas en arrière seulement
+// quand une entrée de Gestion existe derrière, prouvé par la position connue de l'entrée atteinte (`pos` > 0) : sinon l'app installée
+// pourrait se fermer (Android).
+// Position d'une entrée depuis le lancement de Gestion (0 : l'entrée de départ). Inconnue si l'état a été remplacé par un état vide.
+export const aUneEntreeDerriere = (etat) => Boolean(etat) && typeof etat.pos === "number" && etat.pos > 0;
+const posApres = (etat) => (etat && typeof etat.pos === "number" ? etat.pos + 1 : undefined);
+const avecPos = (e, pos) => {
+  delete e.pos;
+  if (pos !== undefined) e.pos = pos;
+  return e;
+};
+
 export function pasSuivant(quitte, atteint, ouvertes, sens = null, visionneuseOuverte = false) {
   if (!memeEcran(quitte, atteint) || (!sens && quitte && quitte.visionneuse)) return null;
   if (!entreeVide(quitte, ouvertes, visionneuseOuverte) && !entreeVide(atteint, ouvertes, visionneuseOuverte)) return null;
   const pas = sens || ((atteint.rang || 0) < (quitte.rang || 0) ? "retour" : "avance");
-  return pas === "retour" && atteint.premiere ? null : pas;
+  return pas === "retour" && !aUneEntreeDerriere(atteint) ? null : pas;
 }
 // Garde-fou : au plus ce nombre de pas automatiques d'affilée.
 export const PAS_MAX = 12;
@@ -63,14 +73,15 @@ export function adresseApresDeplacement(quitte, atteint, adresseQuittee, adresse
 }
 
 // Ouverture d'une fenêtre n : reprendre une entrée vide (fenêtre enchaînée, fantôme), sinon en ajouter une au-dessus.
-// `etiquette` : étiquette neuve si l'entrée de l'écran n'en a pas encore.
-export function entreePourOuverture(etat, n, ouvertes, rang, etiquette) {
+// `etiquette` : étiquette neuve si l'entrée de l'écran n'en a pas encore. L'entrée d'une photo encore affichée (`visionneuseOuverte`)
+// n'est jamais reprise : un seul retour fermerait sinon la photo et la fenêtre d'un coup.
+export function entreePourOuverture(etat, n, ouvertes, rang, etiquette, visionneuseOuverte = false) {
   const base = { ...(etat || {}) };
   delete base.fantome;
   delete base.visionneuse;
-  delete base.premiere;
   const ecran = base.ecran || etiquette;
-  return { etiquetterEcran: !base.ecran, remplacer: entreeVide(etat, ouvertes), etat: { ...base, ecran, feuille: n, rang } };
+  const remplacer = entreeVide(etat, ouvertes, visionneuseOuverte);
+  return { etiquetterEcran: !base.ecran, remplacer, etat: avecPos({ ...base, ecran, feuille: n, rang }, remplacer ? base.pos : posApres(etat)) };
 }
 
 // Fermeture d'une fenêtre n autrement que par le retour : son entrée, si elle est l'entrée courante, devient un fantôme.
@@ -81,21 +92,29 @@ export function entreeApresFermeture(etat, n) {
   return e;
 }
 
-// Entrée ajoutée par un autre module (visionneuse) : jamais un fantôme ni une première entrée, même recopiée de l'entrée du dessous
-// (sinon fermer une photo posée sur un fantôme faisait quitter l'écran) ; rang neuf. Les fantômes ne s'empilent donc jamais.
-export function entreeAjoutee(etat, rang) {
+// Entrée ajoutée par un autre module (visionneuse) : jamais un fantôme, même recopiée de l'entrée du dessous (sinon fermer une photo
+// posée sur un fantôme faisait quitter l'écran) ; rang neuf, position suivante. Les fantômes ne s'empilent donc jamais.
+// `courant` : état de l'entrée courante, pour la position.
+export function entreeAjoutee(etat, rang, courant = etat) {
   if (!etat || typeof etat !== "object") return etat;
   const e = { ...etat, rang };
   delete e.fantome;
-  delete e.premiere;
-  return e;
+  return avecPos(e, posApres(courant));
+}
+
+// Lien ou location.replace : un remplacement ne change jamais la longueur de l'historique, une entrée ajoutée la change (plus longue,
+// ou plus courte quand elle écrase les entrées « suivantes »). Longueur égale : remplacement, ou lien qui écrase exactement une entrée ;
+// on garde alors la position, l'erreur ne va que dans le sens sûr (un pas automatique en moins, jamais un de trop).
+export function posApresChangementDAdresse(avant, longueurAvant, longueurApres) {
+  if (!avant || typeof avant.pos !== "number") return undefined;
+  return longueurApres !== longueurAvant ? avant.pos + 1 : avant.pos;
 }
 
 // Démarrage. Rechargement avec une fenêtre ouverte : l'entrée garde { feuille } sans fenêtre, elle devient un fantôme.
-// Lancement (app installée, nouvel onglet) : l'entrée est la première de Gestion, aucun pas automatique ne repart en arrière d'ici.
-export function entreeAuDemarrage(etat, premiere = false) {
+// Lancement (app installée, lien, nouvel onglet) : l'entrée est la position 0, aucun pas automatique ne repart en arrière d'ici.
+export function entreeAuDemarrage(etat, lancement = false) {
   let e = etat && etat.feuille && !etat.visionneuse ? entreeApresFermeture(etat, etat.feuille) : null;
-  if (premiere && !(etat && etat.premiere)) e = { ...(e || etat || {}), premiere: true };
+  if (lancement && !(etat && etat.pos === 0)) e = { ...(e || etat || {}), pos: 0 };
   return e;
 }
 
