@@ -133,6 +133,18 @@ export function aChange(depart, actuel) {
   return false;
 }
 
+// Bouton « + » qui s'efface quand on descend dans une liste (audit mobile n° 5). Seul un défilement venu de la personne (doigt, molette,
+// touche : `geste`) décide : au retour sur une liste, la page remise à sa position faisait croire à une descente et le « + » restait caché
+// (relecture de la PR 363). Un défilement programmé ne change rien mais devient le nouveau point de départ. En haut de page, toujours visible.
+// Rend { replie, yAvant }.
+export const SEUIL_PLUS = 80;
+export function etatBoutonPlus({ y, yAvant, replie = false, geste = false }) {
+  if (y <= SEUIL_PLUS) return { replie: false, yAvant: y };
+  if (!geste) return { replie, yAvant: y };
+  if (Math.abs(y - yAvant) < 8) return { replie, yAvant };
+  return { replie: y > yAvant, yAvant: y };
+}
+
 // Réglages d'un champ de saisie selon son sens : le bon clavier sur téléphone, la bonne saisie automatique.
 export const SAISIES = {
   texte: { type: "text", autocomplete: "off", enterkeyhint: "next" },

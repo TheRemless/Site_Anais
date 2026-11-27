@@ -77,7 +77,7 @@ img { max-width: 100%; }
 .barre-haut .bouton-icone { width: 44px; height: 44px; color: var(--texte); }
 .barre-onglets { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); padding-bottom: env(safe-area-inset-bottom); }
 .barre-onglets ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0 4px; list-style: none; }
-.onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.72rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
+.onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.75rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
 .onglet-icone { position: relative; display: flex; align-items: center; justify-content: center; width: 60px; height: 32px; border-radius: 999px; transition: background-color var(--duree) var(--courbe); }
 .onglet:active .onglet-icone { background: var(--surface-2); }
 /* iOS garde :hover sur le dernier lien touché : un onglet quitté restait teinté comme l'onglet actif (26.11.2026). */
@@ -93,7 +93,7 @@ img { max-width: 100%; }
 /* Entrées de menu communes à la barre latérale et à la feuille « Plus ». */
 .menu-section { margin-bottom: 12px; }
 .menu-section ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.menu-section-titre { margin: 0 0 4px; padding: 0 12px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); }
+.menu-section-titre { margin: 0 0 4px; padding: 0 12px; font-size: 0.82rem; font-weight: 700; color: var(--texte-2); }
 .lien-ecran { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--rayon); color: var(--texte); text-decoration: none; font-weight: 500; font-size: 0.95rem; -webkit-tap-highlight-color: transparent; transition: background-color var(--duree); }
 .lien-ecran svg { flex: none; color: var(--texte-2); }
 .lien-ecran:hover, .lien-ecran:active { background: var(--surface-2); color: var(--texte); }
@@ -105,20 +105,29 @@ img { max-width: 100%; }
 .compte-texte { display: flex; flex-direction: column; min-width: 0; font-size: 0.85rem; line-height: 1.3; }
 .compte-texte strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compte-texte span { color: var(--texte-2); }
-.menu-outils { display: flex; gap: 6px; }
+.menu-outils { display: flex; flex-wrap: wrap; gap: 6px; }
+.outil-libelle { display: inline-flex; align-items: center; gap: 8px; }
+/* Sans aucun pointeur qui survole (téléphone, iPad au doigt), pas de raccourcis clavier ; un iPad avec clavier et pavé tactile garde le bouton
+   (relecture de la PR 363 : « pointer: coarse » le cachait sur tout iPad). */
+@media (any-hover: none) { .seulement-clavier { display: none !important; } }
 /* Choix de la langue : deux boutons côte à côte, celui de la langue active est teinté. */
 .langues { display: flex; width: 100%; padding: 3px; background: var(--fond); border: 1px solid var(--bord); border-radius: 999px; }
 .langues .langue { flex: 1; min-height: 44px; padding: 0 12px; background: transparent; border: 0; border-radius: 999px; color: var(--texte-2); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background var(--duree) var(--courbe), color var(--duree) var(--courbe); }
 .langues .langue:hover { background: var(--surface-2); color: var(--texte); }
 .langues .langue[aria-pressed="true"] { background: var(--surface); color: var(--teal-700); font-weight: 700; box-shadow: var(--ombre); }
 .langues .langue:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
-.connexion > .langues { width: auto; margin: 0 0 24px auto; max-width: 240px; }
+.connexion > .langues { width: auto; margin: 24px auto 0 0; max-width: 240px; }
 .feuille-pied { flex-wrap: wrap; }
 .feuille-pied .langues { flex: 1 0 100%; }
 .feuille-menu .menu-section-titre { padding-left: 4px; }
 .feuille-menu .lien-ecran { padding: 0 8px; }
 .feuille-pied { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--bord); }
 .feuille-pied .compte { flex: 1; }
+/* Avec leur libellé en clair (audit mobile n° 26), « Rappels » et « Se déconnecter » ne tiennent plus à côté du compte :
+   le nom tombait à 22 px de large et passait sous les boutons. Les outils prennent leur propre ligne, à parts égales. */
+.feuille-pied .compte { justify-content: flex-start; }
+.feuille-pied .menu-outils { flex: 1 0 100%; }
+.feuille-pied .menu-outils > button { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 
 @media (min-width: 900px) {
   .barre-fixe { bottom: 0; }
@@ -176,6 +185,9 @@ button:active:not(:disabled), .bouton:active { filter: brightness(0.94); }
 .champ label, label.etiquette { display: block; margin-bottom: 4px; font-size: 0.88rem; font-weight: 600; }
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--texte); background: var(--surface); border: 1px solid var(--bord-champ); border-radius: var(--rayon); }
 textarea { resize: vertical; line-height: 1.45; }
+/* Safari iOS dessine date et heure à sa façon : plus hautes, centrées, plus larges que le cadre. Même gabarit que les autres champs (audit mobile n° 6). */
+input[type="date"], input[type="time"], input[type="datetime-local"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; height: 44px; text-align: start; }
+input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value { text-align: start; margin: 0; }
 /* Cases à cocher et boutons radio : leur taille normale, jamais celle des champs de saisie ci-dessus (largeur 100 %, 44 px de haut, bordure).
    Une seule règle pour tout Gestion (18.11.2026 : les radios « Utiliser ce client » de « Coller une confirmation » s'étiraient sur la ligne).
    La cible tactile de 44 px vient du libellé (`.case`), pas du rond. */
@@ -318,7 +330,8 @@ legend { padding: 0 6px; font-weight: 700; }
 @keyframes apparaitre { from { opacity: 0; } }
 @keyframes surgir { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
 @keyframes monter { from { transform: translateY(100%); } }
-html.modal-ouverte, html.modal-ouverte body { overflow: hidden; }
+/* Seulement html : overflow sur body en ferait le conteneur de défilement et la barre collante du haut sortait de l'écran sous une feuille (audit mobile n° 8). */
+html.modal-ouverte { overflow: hidden; }
 @media (max-width: 719px) {
   .modal-fond { align-items: flex-end; padding: 0; bottom: var(--clavier, 0px); }
   .modal { max-width: none; max-height: min(92dvh, calc(var(--vv, 100dvh) - 8px)); border-radius: 18px 18px 0 0; padding: 0 20px 0; animation: monter 0.26s var(--courbe); touch-action: pan-y; }
@@ -372,6 +385,19 @@ ul.avertissements-voucher { list-style: none; margin: 0 0 14px; padding: 10px 14
 .bandeau-alerte .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .etat-synchro { position: fixed; z-index: 150; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); padding: 10px 14px; border-radius: var(--rayon); background: #fff4d6; border: 1px solid #e8d49a; color: #5a4300; font-size: 0.88rem; font-weight: 500; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
 @media (min-width: 900px) { .etat-synchro { right: auto; left: 24px; bottom: 24px; max-width: 420px; } }
+/* Téléphone : le bandeau hors connexion est une bande posée sur la barre d'onglets (ou sur la barre d'action), sous les feuilles (z-index
+   inférieur à 100) : collé en haut, il couvrait la recherche et « Filtrer », et passait sur le titre d'une feuille haute (audit mobile n° 21,
+   relecture de la PR 363). Le « + » remonte d'autant. */
+@media (max-width: 899px) {
+  .etat-synchro { z-index: 29; left: 0; right: 0; bottom: calc(var(--barre-basse) + var(--clavier, 0px)); padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); border-width: 1px 0 0; border-radius: 0; box-shadow: none; font-size: 0.82rem; line-height: 1.3; }
+  html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + var(--haut-barre-action, 64px) + var(--clavier, 0px)); }
+  html.synchro-visible .bouton-plus { bottom: calc(var(--barre-basse) + 16px + var(--haut-synchro, 32px)); }
+}
+/* Hors connexion, rien ne s'enregistre : les actions d'écriture sont grisées (et marquées aria-disabled avec la raison en infobulle par
+   app.mjs). Elles restent cliquables : le serveur refuse déjà, et le message d'erreur dit pourquoi (relecture de la PR 363).
+   Seuls les boutons sont visés : un lien (« Ouvrir WhatsApp », « Répondre sur WhatsApp ») n'écrit rien et reste normal. Un bouton qui ne fait
+   que lire ou ouvrir porte data-lecture (passe finale de la PR 363). */
+html.hors-ligne button.principal:not([data-lecture]), html.hors-ligne .bouton-plus, html.hors-ligne .barre-action button:not([data-lecture]) { opacity: 0.45; filter: grayscale(1); }
 
 /* Entreprises, utilisateurs, réglages */
 .entite-choix, .entite-nom { margin: 0 0 14px; padding: 0 8px; }
@@ -534,7 +560,7 @@ input.couleur { width: 72px; padding: 2px; }
 
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }
-.choix-groupe { padding: 10px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); background: #fafcfc; }
+.choix-groupe { padding: 10px 12px 4px; font-size: 0.82rem; font-weight: 700; color: var(--texte-2); background: #fafcfc; }
 .choix { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--bord); }
 .choix:last-child { border-bottom: 0; }
 .choix-texte { display: flex; flex-direction: column; min-width: 0; }
@@ -631,7 +657,7 @@ html.clavier .modal.plein .cp-corps li.choix { padding-top: 0; padding-bottom: 0
 .palette-champ input::-webkit-search-cancel-button { display: none; }
 .palette-champ .bouton-icone { color: var(--texte-2); }
 .palette-liste { max-height: min(60vh, 460px); margin: 0; padding: 6px; overflow-y: auto; list-style: none; }
-.palette-groupe { padding: 10px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); }
+.palette-groupe { padding: 10px 12px 4px; font-size: 0.82rem; font-weight: 700; color: var(--texte-2); }
 .palette-liste [role="option"] { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 12px; border-radius: var(--rayon); cursor: pointer; }
 .palette-liste [role="option"] svg { flex: none; color: var(--texte-2); }
 .palette-liste [aria-selected="true"] { background: var(--teal-100); }
@@ -774,7 +800,7 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .version-choix .version-nb { color: var(--teal-700); font-weight: 600; }
 /* Lot C1 : version identique à un envoi, ligne sans prix, bandeau d'un document envoyé. */
 .version-choix .version-envoi { font-size: 0.85em; color: #5a4300; }
-.carte-ligne.ligne-sans-prix { border-left: 3px solid var(--danger); }
+.carte-ligne.ligne-sans-prix { border-color: var(--danger); }
 .carte-ligne.ligne-sans-prix .calc { color: var(--danger); font-weight: 600; }
 .bandeau-envoi p { margin: 0 0 0.25rem; }
 .bandeau-envoi .actions { margin-top: 0.5rem; }
@@ -813,8 +839,8 @@ html.clavier { --barre-basse: 0px; }
   .barre-action { position: sticky; left: auto; right: auto; bottom: 0; z-index: 5; margin: 0 -8px; padding: 12px 8px; background: var(--fond); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .barre-action > .principal, .barre-action > .secondaire { flex: 0 0 auto; }
 }
-html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
-@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: 24px; } }
+html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
+@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: 24px; } }
 
 /* Puces de filtre défilantes */
 .puces { display: flex; gap: 8px; margin: 0 -16px; padding: 2px 16px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch; }
@@ -1049,7 +1075,10 @@ div.enc-case { cursor: default; }
 /* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */
 .bouton-plus { display: none; position: fixed; z-index: 28; right: 16px; bottom: calc(var(--barre-basse) + 16px); width: 56px; height: 56px; min-height: 0; padding: 0; border-radius: 50%; background: var(--teal-600); color: #fff; box-shadow: 0 4px 14px rgba(8, 107, 107, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2); }
 .bouton-plus:active { background: var(--teal-700); transform: scale(0.96); }
-.coque.avec-plus .bouton-plus { display: inline-flex; }
+.coque.avec-plus .bouton-plus { display: inline-flex; transition: opacity 0.2s ease, visibility 0s linear 0s; }
+/* Effacé pour de bon (relecture de la PR 363) : il glissait sous la barre d'onglets, qui le laissait voir par transparence. */
+html.plus-replie .coque.avec-plus .bouton-plus { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.2s ease, visibility 0s linear 0.2s; }
+@media (prefers-reduced-motion: reduce) { .coque.avec-plus .bouton-plus { transition: none; } }
 .coque.avec-plus .contenu { padding-bottom: calc(var(--barre-basse) + 96px); }
 html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none !important; }
 @media (min-width: 900px) { .bouton-plus, .coque.avec-plus .bouton-plus { display: none; } .coque.avec-plus .contenu { padding-bottom: 48px; } }
@@ -1060,10 +1089,10 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 
 /* Services du jour : l'heure de pickup à gauche, le détail, puis appeler et écrire d'un geste */
 .services { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.service { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 0 12px; padding: 14px 16px 14px 12px; background: var(--surface); border: 1px solid var(--bord); border-left: 4px solid var(--teal-600); border-radius: 12px; box-shadow: var(--ombre); }
+.service { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 0 12px; padding: 14px 16px 14px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
 .service-heure { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; font-variant-numeric: lining-nums tabular-nums; }
 .service-heure strong { font-size: 1.35rem; font-weight: 700; }
-.service-heure span { font-size: 0.78rem; color: var(--texte-2); }
+.service-heure span { font-size: 0.82rem; color: var(--texte-2); }
 .service-corps { min-width: 0; }
 .service-titre { display: block; min-height: 24px; font-weight: 700; color: var(--texte); text-decoration: none; }
 .service-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
@@ -1159,6 +1188,9 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
   .onglet { flex-direction: row; gap: 8px; min-height: 48px; padding: 4px 6px; font-size: 0.8rem; }
   .onglet-icone { width: 40px; height: 28px; }
   .modal { max-height: 96dvh; }
+  /* Paysage : la barre du haut et la recherche défilent avec la page, les puces tiennent sur une rangée (audit mobile n° 7). */
+  .barre-haut, .barre-filtres { position: static; }
+  .puces, .wa-liste .puces { flex-wrap: nowrap; overflow-x: auto; }
 }
 /* Lecture à contraste élevé : bordures et textes secondaires renforcés */
 @media (prefers-contrast: more) {
@@ -1253,6 +1285,10 @@ a.st-tuile-lien:active { background: var(--surface-2); }
 .st-graphe-corps { display: flex; align-items: flex-start; }
 .st-graphe-axe { flex: none; }
 .st-graphe-defile { flex: 1; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+/* Une rangée qui déborde (puces, onglets, graphique) s'estompe du côté où il reste à voir (classes posées par app.mjs, audit mobile n° 16). */
+.suite-droite { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+.suite-gauche { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px); mask-image: linear-gradient(to right, transparent, #000 44px); }
+.suite-gauche.suite-droite { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
 .st-svg { display: block; max-width: none; }
 .st-grille { stroke: var(--bord); stroke-width: 1; }
 .st-zero { stroke: var(--texte-2); stroke-width: 1; }
@@ -1424,6 +1460,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .titre-lien:active { background: var(--surface-2); }
 .service-titre { font-weight: 700; margin: 0; }
 .tache-texte .titre-lien { margin: -8px 0 -2px; }
+/* Lien de dossier dans une ligne de texte (tâches, accueil) : zone de toucher agrandie sans changer la ligne (audit mobile n° 13). Placée
+   après les règles du lien, sinon elles l'écrasaient (relecture de la PR 363). */
+@media (pointer: coarse) { .titre-lien, .tache-texte .titre-lien { padding-block: 12px; margin-block: -12px; } }
 .repli { scroll-margin-top: calc(var(--haut-barre) + 8px); }
 
 /* Résumé en tête de fiche : une carte sur téléphone, deux colonnes sur ordinateur */
@@ -2953,4 +2992,19 @@ html.clavier .barre-editeur-bas { display: none; }
 @media (pointer: coarse) {
   .lien-doc { display: inline-block; padding-block: 10px; margin-block: -10px; }
   .dossier-lie a { display: inline-block; padding-block: 11px; margin-block: -11px; }
+}
+
+/* Paysage sur téléphone, suite du bloc plus haut : la barre du haut y défile avec la page, les en-têtes collés sous elle (fil WhatsApp,
+   Assistant, onglets des Statistiques) remontent donc au bord de l'écran au lieu de garder un vide de la hauteur de la barre. Placé en fin
+   de fichier pour passer après leurs propres règles (relecture de la PR 363). */
+@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px) {
+  .wa-fil-tete, .agent-fil-tete { top: 0; }
+  .st-nav { top: 0; }
+  html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: var(--haut-visible, 0px); }
+}
+
+/* Date vide sur iPhone et iPad : Safari n'affiche ni le format ni le placeholder d'un champ date, qui reste une case blanche. app.mjs pose
+   la classe « vide » et le format attendu (data-vide) ; seulement sur iOS (-webkit-touch-callout), les autres navigateurs l'écrivent déjà. */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"].vide::before { content: attr(data-vide); color: var(--texte-2); opacity: 0.8; }
 }

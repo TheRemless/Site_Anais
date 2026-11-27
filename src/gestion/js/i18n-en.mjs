@@ -642,7 +642,7 @@ export const EN = {
   "Hors connexion : actualisation impossible.": "Offline: cannot refresh.",
   "Actualisation impossible : {message}": "Cannot refresh: {message}",
   "Une actualisation est déjà en cours.": "A refresh is already in progress.",
-  "Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.": "Offline: the screen shows the data as it was, and nothing is saved until the network is back.",
+  "Hors connexion : rien ne s'enregistre pour l'instant.": "Offline: nothing is saved for now.",
   // Session C (mobile) : listes et fiche dossier
   "Compagnie, date, recherche": "Company, date, search",
   "Voir {n} étape faite": "Show {n} completed step",
@@ -1816,6 +1816,7 @@ export const EN = {
   "Qui réalise le service, si ce n'est pas vous": "Who carries out the service, if it is not you",
   "Raccourcis clavier": "Keyboard shortcuts",
   "Raccourcis clavier (?)": "Keyboard shortcuts (?)",
+  "jj.mm.aaaa": "dd.mm.yyyy",
   "Réactiver le dossier": "Reactivate the file",
   "Recherche": "Search",
   "Rechercher": "Search",
