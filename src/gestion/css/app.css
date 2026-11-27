@@ -827,6 +827,17 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .barre-filtres { position: sticky; top: var(--haut-barre); z-index: 12; margin: 0 -16px 12px; padding: 8px 16px 4px; background: var(--fond); border-bottom: 1px solid transparent; }
 .barre-filtres-haut { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .barre-filtres .champ.recherche { flex: 1; min-width: 0; margin: 0; }
+/* Croix « Effacer la recherche » (barreFiltres, audit mobile n° 1) : 44 px au bout du champ, la croix native masquée. */
+.recherche-zone { position: relative; }
+.recherche-zone > input[type="search"] { width: 100%; }
+.recherche-zone:has(> .effacer-recherche:not([hidden])) > input[type="search"] { padding-right: 48px; }
+.recherche-zone > input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.effacer-recherche { position: absolute; top: 50%; right: 2px; width: 44px; height: 44px; transform: translateY(-50%); background: none; border: 0; color: var(--texte-2); }
+.effacer-recherche[hidden] { display: none; }
+/* Pendant une recherche, les puces ne filtrent plus : gris contrasté (texte-2 sur surface-2, 6,2:1), sans opacité (relecture de la PR #357). */
+.puces[aria-disabled="true"] .puce { background: var(--surface-2); border-color: var(--bord); color: var(--texte-2); box-shadow: none; }
+.puces[aria-disabled="true"] .puce[aria-pressed="true"] { border-style: dashed; border-color: var(--texte-2); }
+.puces[aria-disabled="true"] .puce-nombre { background: var(--surface); color: var(--texte-2); }
 .bouton-filtrer { flex: none; gap: 6px; }
 .filtres-ligne { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 8px; }
 .filtres-ligne .champ { min-width: 180px; flex: 1; margin-bottom: 10px; }
@@ -1201,6 +1212,8 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
 
 /* Tuiles : chiffre, écart, mini graphique. La tuile entière est un lien vers la liste derrière le chiffre. */
 .st-tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: dense; gap: 10px; margin-bottom: 28px; }
+/* Téléphone : la petite tuile restée seule sur sa ligne (marquée par grilleTuiles, analyses-widgets.mjs) prend toute la largeur. */
+@media (max-width: 719px) { .st-tuile.seule { grid-column: 1 / -1; } }
 @media (min-width: 720px) { .st-tuiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } }
 @media (min-width: 1100px) { .st-tuiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .st-tuile { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; }
@@ -1241,19 +1254,21 @@ a.st-tuile-lien:active { background: var(--surface-2); }
 .st-svg { display: block; max-width: none; }
 .st-grille { stroke: var(--bord); stroke-width: 1; }
 .st-zero { stroke: var(--texte-2); stroke-width: 1; }
-.st-axe { fill: var(--texte-2); font-size: 11px; font-family: inherit; pointer-events: none; }
+.st-axe { fill: var(--texte-2); font-size: 12px; font-family: inherit; pointer-events: none; }
 .st-valeur { fill: var(--texte); font-size: 10.5px; font-weight: 700; font-family: inherit; pointer-events: none; font-variant-numeric: tabular-nums; }
 .st-barre.s1 { fill: #0b9999; }
 .st-barre.s2 { fill: #c77d00; }
 .st-barre.ref { fill: #7b9090; }
 .st-fond { fill: transparent; }
 .st-fond.actif { fill: var(--teal-100); }
-.st-zone { fill: transparent; cursor: pointer; }
+.st-svg.st-touchable { cursor: pointer; }
 .st-colonne { outline: none; -webkit-tap-highlight-color: transparent; }
 .st-colonne:hover .st-fond:not(.actif) { fill: var(--surface-2); }
 .st-colonne:focus-visible .st-fond { stroke: var(--teal-600); stroke-width: 2; }
 .st-lecture { display: flex; flex-direction: column; justify-content: center; gap: 8px; min-height: 104px; margin-top: 8px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; }
 .st-lecture .aide, .st-lecture p { margin: 0; }
+/* Sans colonne choisie, la consigne tient sur une ligne, sans grand cadre vide (audit mobile, n° 18). */
+.st-lecture:has(> .aide:only-child) { min-height: 0; padding: 0; background: none; border: 0; }
 .st-lecture-corps ul { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
 .st-lecture-corps li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .st-lecture-titre { font-weight: 700; }
@@ -1364,17 +1379,32 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 /* ==== Session F : cibles tactiles de 44 px (restes de l'audit mobile) ========================================== */
 /* Pastilles de référence cliquables : la zone tactile dépasse la pastille sans changer la mise en page. */
 @media (pointer: coarse) { a.tag { padding-block: 11px; } }
+/* Fiche partenaire et À encaisser : numéro, e-mail et nom du partenaire touchables sur 44 px sans changer la mise en page (audit mobile, n° 13).
+   Numéro et e-mail d'un guichet sont des éléments de flex (rembourrage et marge négative) ; l'e-mail d'une fiche et le nom restent en ligne,
+   où le rembourrage vertical ne décale rien. */
+@media (pointer: coarse) {
+  .tel > a[href^="tel:"] { padding-block: 10px; margin-block: -10px; }
+  .guichet > a[href^="mailto:"] { padding-block: 13px; margin-block: -13px; }
+  .ligne-info a[href^="mailto:"] { padding-block: 13px; }
+  .enc-tete h3 a { padding-block: 12px; }
+}
 .service-titre { display: flex; align-items: center; min-height: 44px; }
 details > summary { padding-block: 11px; margin: 0; }
 .bloc-tarifs h2 a, .carte-regle h3 a, .regles-trajets .aide a, .st-lien-groupe a { display: inline-flex; align-items: center; min-height: 44px; }
-@media (pointer: coarse), (max-width: 719px) { .bouton-icone { width: 44px; height: 44px; } }
+@media (pointer: coarse), (max-width: 719px) { .bouton-icone, .tel .bouton-icone { width: 44px; height: 44px; } }
 /* Réglages : groupes repliables (légende = bouton) et recherche */
 .recherche-reglages { width: 100%; max-width: 520px; min-height: 48px; margin: 4px 0 12px; }
-.repli-groupe-fs > legend { float: none; width: 100%; padding: 0; }
+/* Téléphone : la légende flotte dans le cadre (pas à cheval sur la bordure), un groupe fermé se lit comme une ligne d'accordéon et plus comme un champ vide (audit mobile, n° 14). */
+.repli-groupe-fs > legend { float: left; width: 100%; padding: 0; }
 .repli-groupe-fs > legend .repli-groupe { border-top: 0; font-size: 1rem; min-height: 48px; padding: 0 4px; }
-.repli-groupe-fs > .repli-corps { padding-top: 0; }
+.repli-groupe-fs > .repli-corps { clear: both; padding-top: 0; }
+/* Un groupe fermé ne contient plus que la légende flottante : ce dégagement le fait tenir autour d'elle sans compter sur le contexte
+   de formatage propre du fieldset, qui n'est pas le même d'un moteur à l'autre (relecture de la PR #357, Safari iOS). */
+.repli-groupe-fs::after { content: ""; display: block; clear: both; }
+.repli-groupe-fs:has(> .repli-corps[hidden]) { padding-block: 8px; }
 @media (min-width: 720px) {
-  .repli-groupe-fs > legend { width: auto; padding: 0 6px; }
+  .repli-groupe-fs > legend { float: none; width: auto; padding: 0 6px; }
+  .repli-groupe-fs::after { content: none; }
   .repli-groupe-fs > legend .repli-groupe { min-height: 0; padding: 0; margin: 0; font-size: inherit; }
 }
 /* Journal, tarifs : filtres pleine largeur sur téléphone, un peu d'air sous le texte d'aide */
@@ -1759,7 +1789,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .fid-envoi.fait { color: #25653d; }
 .fid-filtres { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; }
 .fid-filtre { display: grid; gap: 4px; font-size: 0.88rem; font-weight: 600; }
-.fid-filtre select { min-height: 44px; }
+.fid-filtre select { min-height: 44px; font-size: 1rem; }
 .fid-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; }
 .calcul-fiduciaire { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; margin: 12px 0; }
 .calcul-fiduciaire dt { color: var(--texte-2); }
@@ -1807,6 +1837,7 @@ p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
 .editeur-grille .entete-grille .champ { flex: 1; margin: 0; }
 .ordre-tarif { display: inline-flex; gap: 2px; }
 .ordre-tarif .bouton-icone { width: 36px; height: 36px; }
+@media (pointer: coarse), (max-width: 719px) { .ordre-tarif .bouton-icone { width: 44px; height: 44px; } }
 @media (max-width: 600px) {
   .ligne-saisie { grid-template-columns: minmax(0, 1fr) auto; }
   .ligne-saisie > :first-child { grid-column: 1 / -1; }

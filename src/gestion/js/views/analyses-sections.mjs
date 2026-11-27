@@ -7,7 +7,7 @@ import * as S from "../stats-calc.mjs";
 import { MOYENS_DEFAUT } from "../defauts.mjs";
 import { STATUTS_RESERVATION, statutReservation } from "../operations-calc.mjs";
 import { nomFamille } from "../partenaires-calc.mjs";
-import { tuile, graphiqueColonnes, legende, classement, tableauTrie, blocDefinitions } from "./analyses-widgets.mjs";
+import { tuile, grilleTuiles, graphiqueColonnes, legende, classement, tableauTrie, blocDefinitions } from "./analyses-widgets.mjs";
 import { parApporteur } from "../apporteurs-calc.mjs";
 
 const SPECIAUX = [N_("Non renseigné"), N_("Sans responsable"), N_("Sans partenaire"), N_("Non précisé")];
@@ -62,7 +62,7 @@ function rang(X, id, dim, { max = 7, tri } = {}) {
 
 const titre = (texte, ...suite) => h("h2", { class: "st-titre" }, tr(texte), ...suite);
 const bloc = (...enfants) => h("section", { class: "st-bloc" }, enfants);
-const tuiles = (...t) => h("div", { class: "st-tuiles" }, t.filter(Boolean));
+const tuiles = (...t) => grilleTuiles(t);
 
 const puces = (X) => h("div", { class: "st-gran", role: "group", "aria-label": tr("Découpage du graphique") }, [["jour", N_("Jour")], ["semaine", N_("Semaine")], ["mois", N_("Mois")]].map(([g, l]) => h("a", { class: "st-puce petite", href: X.param({ g }), "aria-current": X.gran === g ? "true" : null }, tr(l))));
 
@@ -99,7 +99,7 @@ function graphe(X, defs, nom) {
   return bloc(
     h("div", { class: "st-entete-graphe" }, titre(nom), puces(X)),
     legende(series),
-    graphiqueColonnes({ cases, series, devise: X.devise, titre: tr(nom), lecture, lien: defs.length === 1 ? (i) => X.href(defs[0].id, `${X.gran}:${cases[i].cle}`) : null }),
+    graphiqueColonnes({ cases, series, devise: X.devise, titre: tr(nom), ajuster: X.gran === "jour", lecture, lien: defs.length === 1 ? (i) => X.href(defs[0].id, `${X.gran}:${cases[i].cle}`) : null }),
     alternative
   );
 }
@@ -140,7 +140,7 @@ export function apercu(X) {
   const ar = S.valeur("a_encaisser", f, X.c);
   const cr = X.nets ? S.valeur("commission_a_recevoir", f, X.c) : null;
   const ind = S.indicateursDossiers(f, X.c);
-  const panier = tuile({ libelle: tr("Panier moyen"), valeur: ind.panierMoyen === null ? "—" : m$(X, ind.panierMoyen), detail: tr("volume vendu par dossier"), href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] });
+  const panier = tuile({ libelle: tr("Panier moyen"), valeur: ind.panierMoyen === null ? "—" : m$(X, Math.round(ind.panierMoyen)), detail: tr("volume vendu par dossier"), href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] });
   const dossiers = tuile({ libelle: tr("Dossiers vendus"), valeur: String(ind.dossiers), detail: pluriel(ind.clients, N_("client"), N_("clients")), href: X.href("vendu"), aide: S.DEFINITIONS.vendu });
   return [
     tuiles(
@@ -184,7 +184,7 @@ export function ventes(X) {
   return [
     tuiles(
       T(X, "vendu", { grande: true }),
-      tuile({ libelle: tr("Panier moyen"), valeur: ind.panierMoyen === null ? "—" : m$(X, ind.panierMoyen), detail: tr("volume vendu par dossier"), ecart: panierEcart, precedent: prec ? prec.panierMoyen : null, devise: X.devise, href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] }),
+      tuile({ libelle: tr("Panier moyen"), valeur: ind.panierMoyen === null ? "—" : m$(X, Math.round(ind.panierMoyen)), detail: tr("volume vendu par dossier"), ecart: panierEcart, precedent: prec && prec.panierMoyen !== null ? Math.round(prec.panierMoyen) : null, devise: X.devise, href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] }),
       tuile({ libelle: tr("Dossiers vendus"), valeur: String(ind.dossiers), detail: pluriel(ind.clients, N_("client"), N_("clients")), ecart: prec ? S.variation(ind.dossiers, prec.dossiers) : null, precedent: prec ? prec.dossiers : null, monnaie: false, href: X.href("vendu"), aide: S.DEFINITIONS.vendu }),
       tuile({ libelle: tr("Taux d'annulation"), valeur: ind.tauxAnnulation === null ? "—" : `${ind.tauxAnnulation} %`, detail: tr("{n} annulés sur {total} ouverts", { n: ind.annules, total: ind.ouverts }), href: X.href("annules"), aide: S.DEFINITIONS.annules }),
       !X.excursions && ind.sejourMoyen !== null ? tuile({ libelle: tr("Durée de séjour moyenne"), valeur: tr("{n} jours", { n: String(ind.sejourMoyen).replace(".", tr(",")) }), detail: tr("sur {n} dossiers avec dates", { n: ind.sejourN }), href: null, aide: [N_("Durée de séjour moyenne"), N_("Du jour du départ au jour du retour, sur les dossiers vendus dont les deux dates sont notées.")] }) : null
@@ -300,7 +300,7 @@ export function clients(X) {
       tuile({ libelle: tr("Clients actifs"), valeur: String(ind.clients), detail: tr("avec au moins un dossier vendu"), href: X.href("vendu", null, { tri: "client" }), aide: [N_("Clients actifs"), N_("Clients qui ont au moins un dossier vendu sur la période, hors dossiers annulés.")] }),
       tuile({ libelle: tr("Nouveaux clients"), valeur: String(ind.nouveaux), detail: tr("premier achat dans la période"), href: X.href("vendu", "nouveaute:nouveau"), aide: [N_("Nouveaux clients"), N_("Clients dont le premier dossier vendu tombe dans la période.")] }),
       tuile({ libelle: tr("Clients récurrents"), valeur: String(ind.recurrents), detail: tr("déjà clients avant la période"), href: X.href("vendu", "nouveaute:recurrent"), aide: [N_("Clients récurrents"), N_("Clients qui avaient déjà un dossier vendu avant le début de la période.")] }),
-      tuile({ libelle: tr("Panier moyen"), valeur: dos.panierMoyen === null ? "—" : m$(X, dos.panierMoyen), detail: tr("volume vendu par dossier"), href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] })
+      tuile({ libelle: tr("Panier moyen"), valeur: dos.panierMoyen === null ? "—" : m$(X, Math.round(dos.panierMoyen)), detail: tr("volume vendu par dossier"), href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] })
     ),
     bloc(titre(N_("Meilleurs clients")), classement({ lignes: parClient.map((g) => ({ libelle: g.libelle, valeur: g.montant, texte: m$(X, g.montant), detail: pluriel(g.nombre, N_("dossier"), N_("dossiers")), href: X.href("vendu", `client:${g.cle}`) })), max: 8, total: (v) => m$(X, v) })),
     bloc(titre(N_("Nouveaux et récurrents")), rang(X, "vendu", "nouveaute")),
