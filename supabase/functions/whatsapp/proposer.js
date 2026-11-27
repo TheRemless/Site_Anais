@@ -293,7 +293,8 @@ export const triGarde = (d, maintenant = new Date().toISOString()) => ({ prepare
 
 // Faut-il préparer une réponse ? Le dernier message de la conversation doit être celui du client, et lisible (texte ou média).
 export function aRepondre(messages = [], messageId) {
-  const vivants = messages.filter((m) => !m.supprime_le);
+  // Le message automatique de nuit (migration 132) n'est pas une réponse : le client attend toujours.
+  const vivants = messages.filter((m) => !m.supprime_le && !m.automatique);
   const dernier = vivants.reduce((a, m) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
   if (!dernier || dernier.sens !== "entrant") return false;
   // Un message plus récent du client est arrivé : c'est son traitement qui préparera la réponse.

@@ -1335,7 +1335,7 @@ export const vetoDeNani = (texte) => {
 export const accordExplicite = (texte) => ACCORD.test(platAccord(texte));
 // Compatibilité de lecture : un message seul qui vaut accord.
 export const accordDeNani = (texte) => !!String(texte || "").trim() && !vetoDeNani(texte) && accordExplicite(texte);
-const texteDeNani = (x) => x && x.sens === "sortant" && ["app", "gestion"].includes(x.origine) && !x.supprime_le && typeof x.texte === "string" && x.texte.trim() && !(Array.isArray(x.medias) && x.medias.length) && !["image", "document", "video", "audio", "sticker"].includes(x.type);
+const texteDeNani = (x) => x && x.sens === "sortant" && !x.automatique && ["app", "gestion"].includes(x.origine) && !x.supprime_le && typeof x.texte === "string" && x.texte.trim() && !(Array.isArray(x.medias) && x.medias.length) && !["image", "document", "video", "audio", "sticker"].includes(x.type);
 export function montantsClientValides(messages = []) {
   const out = new Set();
   const liste = (messages || []).filter(Boolean);

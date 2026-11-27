@@ -315,7 +315,8 @@ export function lireConversation(e = {}, d = {}, { qui = "Nani" } = {}) {
       message: m.id,
       lien: lienDe(conv, m.id),
       le: m.envoye_le || null,
-      de: m.sens === "entrant" ? "client" : qui,
+      // Message automatique de nuit (migration 132) : jamais présenté comme une réponse de Nani.
+      de: m.sens === "entrant" ? "client" : m.automatique ? "message automatique de nuit" : qui,
       type: neutre(m.type || "text", 20),
       texte: m.texte ? neutre(m.texte, 2000) : "",
       ...(medias.length ? { medias } : {}),

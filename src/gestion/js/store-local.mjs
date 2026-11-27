@@ -992,12 +992,15 @@ export function creer() {
     // Message de nuit (migration 132) : mêmes contrôles que whatsapp_regler_nuit.
     async whatsappMessageNuit(organisationId, valeurs) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
-      if (!r || organisationId !== monOrg() || !litWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      // Le droit d'écrire dans la boîte (whatsapp_ecrit), comme la base.
+      if (!r || organisationId !== monOrg() || !ecritWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
       const lu = lireReglageNuit(valeurs);
       if (lu.erreur) throw new Error(tr(lu.erreur));
-      Object.assign(r, { nuit_active: lu.valeurs.active, nuit_texte: lu.valeurs.texte, nuit_debut: lu.valeurs.debut, nuit_fin: lu.valeurs.fin, updated_at: new Date().toISOString() });
+      if ((r.nuit_modifie_le || null) !== ((valeurs && valeurs.luLe) || null)) throw new Error(tr("Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version."));
+      const maintenant = new Date().toISOString();
+      Object.assign(r, { nuit_active: lu.valeurs.active, nuit_texte: lu.valeurs.texte, nuit_debut: lu.valeurs.debut, nuit_fin: lu.valeurs.fin, nuit_modifie_le: maintenant, updated_at: maintenant });
       sauve();
-      return { organisation_id: r.organisation_id, nuit_active: r.nuit_active, nuit_texte: r.nuit_texte, nuit_debut: r.nuit_debut, nuit_fin: r.nuit_fin };
+      return { organisation_id: r.organisation_id, nuit_active: r.nuit_active, nuit_texte: r.nuit_texte, nuit_debut: r.nuit_debut, nuit_fin: r.nuit_fin, nuit_modifie_le: r.nuit_modifie_le };
     },
     async whatsappReception(organisationId, actif) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);

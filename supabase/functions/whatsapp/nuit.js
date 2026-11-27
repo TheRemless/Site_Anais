@@ -7,6 +7,8 @@ export const TEXTE_NUIT = "🌴 Hello and thank you for contacting us !\n\nOur t
 export const DEBUT_NUIT = "22:00";
 export const FIN_NUIT = "06:00";
 export const TEXTE_NUIT_MAX_OCTETS = 4096;
+// Une nuit dure 12 heures au plus (whatsapp_nuit_minutes, migration 132) : 06:00 à 22:00 répondrait toute la journée.
+export const NUIT_MAX_MINUTES = 720;
 export const ZONE = "Asia/Bangkok";
 
 // « HH:MM » en minutes depuis minuit, ou null.
@@ -59,6 +61,7 @@ export function lireReglageNuit({ active, texte, debut, fin } = {}) {
   const f = minutes(fin);
   if (d === null || f === null) return { erreur: "Indiquez les heures au format 22:00." };
   if (d === f) return { erreur: "L'heure de début et l'heure de fin doivent être différentes." };
+  if ((f - d + 1440) % 1440 > NUIT_MAX_MINUTES) return { erreur: "La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin." };
   return { ok: true, valeurs: { active: active !== false, texte: t, debut: String(debut).slice(0, 5), fin: String(fin).slice(0, 5) } };
 }
 
@@ -71,5 +74,7 @@ export function reglageNuit(r) {
     texte: r && typeof r.nuit_texte === "string" && r.nuit_texte ? r.nuit_texte : TEXTE_NUIT,
     debut: hh(r && r.nuit_debut, DEBUT_NUIT),
     fin: hh(r && r.nuit_fin, FIN_NUIT),
+    // Lu avec le réglage, renvoyé à l'enregistrement : changé ailleurs entre-temps, l'enregistrement est refusé.
+    modifieLe: (r && r.nuit_modifie_le) || null,
   };
 }

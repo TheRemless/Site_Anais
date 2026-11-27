@@ -183,6 +183,19 @@ const f = await client("+66811110030");
 const [fr] = await reserver(f.message_id);
 await un("select whatsapp_nuit_resultat($1, 'echec', null, 'telnyx_refuse') r", [fr.id]);
 ok((await un("select statut_envoi from whatsapp_messages where id = $1", [fr.message_id])).statut_envoi === "echec", "refus sûr : le message passe en échec");
+// Rattrapage du cron : les messages de nuit des 30 dernières minutes restés sans réservation (ici, ceux refusés plus haut quand le réglage
+// était coupé ou le numéro inconnu, rallumés depuis) sont réservés, 3 au plus par passage. On les vide d'abord.
+let rattrapes = [];
+for (let i = 0; i < 6; i++) {
+  const lot = (await db.query("select * from whatsapp_reprendre_nuit($1)", [ORG])).rows;
+  ok(lot.length <= 3, `passage ${i + 1} de la reprise : 3 envois au plus (${lot.length})`);
+  if (!lot.length) break;
+  for (const x of lot) await un("select whatsapp_nuit_resultat($1, 'envoye', $2) r", [x.id, `tx-rattrape-${x.id}`]);
+  rattrapes.push(...lot);
+}
+ok(rattrapes.length >= 2 && !rattrapes.some((x) => x.id === fr.id), "le cron rattrape les messages sans réservation (réglage rallumé, numéro connu), jamais un refus de moins d'une minute");
+const typesRattrapes = (await db.query("select c.telephone from whatsapp_messages_nuit n join whatsapp_conversations c on c.id = n.conversation_id where n.id = any($1::uuid[])", [rattrapes.map((x) => x.id)])).rows.map((x) => x.telephone);
+ok(!typesRattrapes.some((t) => ["+66811110014", "+66811110015", "+66811110016", "+66811110017", "+66811110019"].includes(t)), "… jamais un Contact personnel, un partenaire, un apporteur, une fiche partenaire ni une conversation où Nani a écrit");
 ok((await db.query("select * from whatsapp_reprendre_nuit($1)", [ORG])).rows.length === 0, "pas repris dans la minute");
 await db.query("update whatsapp_messages_nuit set pris_le = now() - interval '2 minutes' where id = $1", [fr.id]);
 let rep = (await db.query("select * from whatsapp_reprendre_nuit($1)", [ORG])).rows;
@@ -225,6 +238,33 @@ await db.query("update whatsapp_messages_nuit set pris_le = now() - interval '2 
 ok((await db.query("select * from whatsapp_reprendre_nuit($1)", [ORG])).rows.length === 0 && (await lignes(q.conversation_id))[0].statut === "abandonne", "réglage coupé avant la reprise : rien ne repart");
 await db.query("update whatsapp_reglages set nuit_active = true where organisation_id = $1", [ORG]);
 
+// ---- Relecture de la PR 364 : numéro d'une fiche partenaire (I2) ------------------------------------------------------------------
+await db.query("insert into partenaires (entite_id, nom, contact) values ($1, 'Fiche numéro', $2::jsonb)", [ent.taxi, JSON.stringify({ telephones: ["+66 81 111 0050"] })]);
+await db.query("insert into partenaires (entite_id, nom, contact) values ($1, 'Fiche texte', $2::jsonb)", [ent.secret, JSON.stringify({ telephones: "081-111-0051 / 02 000 0000" })]);
+const fp1 = await client("+66811110050");
+ok((await reserver(fp1.message_id)).length === 0, "un numéro sans type, présent sur une fiche partenaire (liste), ne reçoit rien");
+const fp2 = await client("+66811110051");
+ok((await reserver(fp2.message_id)).length === 0, "… ni présent dans le texte d'une fiche (0 national, tirets)");
+const fp3 = await client("+66811110052");
+ok((await reserver(fp3.message_id)).length === 1, "un autre numéro le reçoit");
+const fp4 = await client("+66811110050", { evenement_id: "ev-fp4" });
+await poser(fp4.conversation_id, "type_contact = 'client', type_source = 'nani'");
+const fp5 = await client("+66811110050");
+ok((await reserver(fp5.message_id)).length === 1, "Nani l'a typé client : il le reçoit");
+
+// ---- Relecture de la PR 364 : « C'est parti » et « Pas parti » ne touchent pas le message de nuit (I1) -------------------------------
+const cf = await client("+66811110060");
+const [cfr] = await reserver(cf.message_id);
+await un("select whatsapp_nuit_resultat($1, 'incertain', null, 'delai') r", [cfr.id]);
+await db.query("update whatsapp_messages set statut_envoi = 'echec', erreur_envoi = 'sans_confirmation' where id = $1", [cfr.message_id]);
+await db.query("update whatsapp_conversations set entite_id = $2, entite_source = 'manuel' where id = $1", [cf.conversation_id, ent.secret]);
+const propCf = (await un("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte) values ($1, $2, 'a_faire', 'Hi') returning id", [cf.conversation_id, ent.secret])).id;
+r = await essaie(u.adminSecret, "select whatsapp_confirmer_envoi($1, true) r", [cf.conversation_id]);
+ok(r.ok && r.rows[0].r.messages === 0, "« C'est parti » ne change pas le message de nuit");
+r = await essaie(u.adminSecret, "select whatsapp_confirmer_envoi($1, false) r", [cf.conversation_id]);
+ok(r.ok && r.rows[0].r.messages === 0 && (await un("select count(*)::int n from whatsapp_messages where id = $1", [cfr.message_id])).n === 1, "« Pas parti » ne le retire pas du fil");
+ok((await un("select statut from whatsapp_propositions where id = $1", [propCf])).statut === "a_faire", "… et la réponse préparée de la conversation reste à faire");
+
 // ---- Aperçu de la liste : le client attend toujours ------------------------------------------------------------------------------
 const conv = await un("select dernier_texte, attend_depuis, dernier_sens, non_lus from whatsapp_conversations where id = $1", [C]);
 ok(conv.dernier_texte === "Are you there?" && conv.attend_depuis && conv.dernier_sens === "entrant" && conv.non_lus === 2, "au matin, la liste montre le message du client, « attend une réponse », non-lus gardés");
@@ -252,7 +292,27 @@ r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Hi', '22
 ok(!r.ok && /heures_invalides/.test(r.err), "début égal à la fin refusé");
 r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Hi', '22:00:30', '06:00')", [ORG]);
 ok(!r.ok && /heures_invalides/.test(r.err), "secondes refusées");
-r = await essaie(u.adminTaxi, "select whatsapp_regler_nuit($1, false, 'Back at 7', '21:30', '06:30') r", [ORG]);
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Back soon', '06:00', '22:00')", [ORG]);
+ok(!r.ok && /plage_trop_longue/.test(r.err), "06:00 à 22:00 (toute la journée) refusé");
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Back soon', '18:00', '07:00')", [ORG]);
+ok(!r.ok && /plage_trop_longue/.test(r.err), "18:00 à 07:00 (13 heures) refusé");
+await db.query("insert into partenaires (entite_id, nom) values ($1, 'Blue Lagoon Travel Co., Ltd')", [ent.secret]);
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Our partner blue lagoon will answer', '22:00', '06:00')", [ORG]);
+ok(!r.ok && /nom_partenaire/.test(r.err), "un nom de partenaire (sans « Travel Co., Ltd ») est refusé");
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Ask the Fiche numéro team', '22:00', '06:00')", [ORG]);
+ok(!r.ok && /nom_partenaire/.test(r.err), "un nom de partenaire de Taxi est refusé aussi");
+const prest = (await un("insert into prestations (entite_id, famille, libelle, prix_vente) values ($1, 'excursion', 'Service test', 2500) returning id", [ent.secret])).id;
+await db.query("insert into prestations_nets (entite_id, prestation_id, net) values ($1, $2, 1800)", [ent.secret, prest]);
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Tours from 1,800 THB', '22:00', '06:00')", [ORG]);
+ok(!r.ok && /montant_net/.test(r.err), "un montant égal à un net (1,800) est refusé");
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, 'Tours from 2 500 THB, back at 18:00', '22:00', '06:00') r", [ORG]);
+ok(r.ok, "un prix de vente et une heure passent");
+r = await essaie(u.adminSecret, "select whatsapp_regler_nuit($1, true, $2, '22:00', '06:00', $3::timestamptz) r", [ORG, TEXTE, r.ok ? r.rows[0].r.nuit_modifie_le : null]);
+ok(r.ok && r.rows[0].r.nuit_texte === TEXTE, "le texte d'origine passe le contrôle, avec la date lue");
+const lu = r.rows[0].r.nuit_modifie_le;
+r = await essaie(u.adminTaxi, "select whatsapp_regler_nuit($1, true, 'Ancienne lecture', '22:00', '06:00', null) r", [ORG]);
+ok(!r.ok && /modifie_ailleurs/.test(r.err), "une lecture dépassée est refusée (le dernier qui enregistre ne gagne pas en silence)");
+r = await essaie(u.adminTaxi, "select whatsapp_regler_nuit($1, false, 'Back at 7', '21:30', '06:30', $2::timestamptz) r", [ORG, lu]);
 ok(r.ok && r.rows[0].r.nuit_active === false && r.rows[0].r.nuit_debut === "21:30" && r.rows[0].r.nuit_fin === "06:30" && r.rows[0].r.nuit_texte === "Back at 7", "un administrateur de Taxi change le réglage");
 r = await essaie(u.adminSecret, "select nuit_active, nuit_texte from whatsapp_reglages");
 ok(r.ok && r.rows[0].nuit_active === false, "les administrateurs lisent le réglage");

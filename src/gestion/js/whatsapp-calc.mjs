@@ -484,7 +484,8 @@ export function etatCompte(code) {
 // le déclencheur, pour la démonstration et les tests.
 export const APERCU_MAX = 140;
 export function apercuDepuisMessages(messages = []) {
-  const tries = [...messages].filter((m) => m && m.type !== "reaction").sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
+  // Le message automatique de nuit (migration 132) n'est ni le dernier message montré ni une réponse, comme dans whatsapp_apercu.
+  const tries = [...messages].filter((m) => m && m.type !== "reaction" && !m.automatique).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
   const dernier = tries[tries.length - 1] || null;
   let reponse = -Infinity;
   // Un envoi depuis Gestion en échec (migration 64) n'est pas une réponse.

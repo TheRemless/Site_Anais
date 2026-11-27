@@ -7,6 +7,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { TEXTE_NUIT, DEBUT_NUIT, FIN_NUIT, cleDeNuit, heureBangkok, minutes, resultatTelnyx, lireReglageNuit, reglageNuit } from "../supabase/functions/whatsapp/nuit.js";
+import { avecAutomatique, sansAutomatiques, estAutomatique } from "../supabase/functions/whatsapp/automatique.js";
+import { aRepondre } from "../supabase/functions/whatsapp/proposer.js";
+import { resumeAFaire } from "../supabase/functions/whatsapp/suivi.js";
+import { montantsClientValides } from "../supabase/functions/agent/outils.js";
+import { texteDepuisWhatsApp } from "../supabase/functions/agent/whatsapp.js";
+import { lireConversation as lireConversationAgent } from "../supabase/functions/agent/whatsapp-lecture.js";
+import { apercuDepuisMessages } from "../src/gestion/js/whatsapp-calc.mjs";
+import { envoiEnDoute, statutEnvoi } from "../src/gestion/js/whatsapp-fiabilite-calc.mjs";
 
 const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
@@ -112,11 +120,19 @@ test("formulaire de réglage : contrôles avant l'envoi au serveur", () => {
   assert.ok(lireReglageNuit({ texte: TEXTE_NUIT, debut: "22:00", fin: "06:00" }).ok, "le texte d'origine tient dans la limite");
   assert.equal(lireReglageNuit({ texte: "Hi", debut: "", fin: "06:00" }).erreur, "Indiquez les heures au format 22:00.");
   assert.equal(lireReglageNuit({ texte: "Hi", debut: "22:00", fin: "22:00" }).erreur, "L'heure de début et l'heure de fin doivent être différentes.");
+  // Relecture de la PR 364 (M1) : 12 heures au plus, sinon le message partirait le jour.
+  const trop = "La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin.";
+  assert.equal(lireReglageNuit({ texte: "Hi", debut: "06:00", fin: "22:00" }).erreur, trop);
+  assert.equal(lireReglageNuit({ texte: "Hi", debut: "18:00", fin: "07:00" }).erreur, trop);
+  assert.ok(lireReglageNuit({ texte: "Hi", debut: "18:00", fin: "06:00" }).ok, "12 heures pile");
+  assert.ok(lireReglageNuit({ texte: "Hi", debut: "01:00", fin: "05:00" }).ok);
+  assert.match(MIGRATION, /whatsapp_nuit_minutes\(p_debut, p_fin\) > 720 then raise exception 'plage_trop_longue'/);
+  assert.match(MIGRATION, /and whatsapp_nuit_minutes\(nuit_debut, nuit_fin\) <= 720\);/);
 });
 
 test("réglages lus : valeurs par défaut tant que la migration manque", () => {
-  assert.deepEqual(reglageNuit({ reception_active: true }), { disponible: false, active: true, texte: TEXTE_NUIT, debut: "22:00", fin: "06:00" });
-  assert.deepEqual(reglageNuit({ nuit_active: false, nuit_texte: "Back at 7", nuit_debut: "21:30:00", nuit_fin: "06:30:00" }), { disponible: true, active: false, texte: "Back at 7", debut: "21:30", fin: "06:30" });
+  assert.deepEqual(reglageNuit({ reception_active: true }), { disponible: false, active: true, texte: TEXTE_NUIT, debut: "22:00", fin: "06:00", modifieLe: null });
+  assert.deepEqual(reglageNuit({ nuit_active: false, nuit_texte: "Back at 7", nuit_debut: "21:30:00", nuit_fin: "06:30:00", nuit_modifie_le: "2026-11-27T10:00:00Z" }), { disponible: true, active: false, texte: "Back at 7", debut: "21:30", fin: "06:30", modifieLe: "2026-11-27T10:00:00Z" });
 });
 
 test("base : une seule fois par conversation et par nuit, réservée avant l'appel, en une transaction", () => {
@@ -155,9 +171,16 @@ test("droits : réglage contrôlé côté serveur, fonctions d'envoi fermées à
   const regler = MIGRATION.slice(MIGRATION.indexOf("create or replace function whatsapp_regler_nuit"), MIGRATION.indexOf("-- 8. Aperçu"));
   assert.match(regler, /auth\.uid\(\) is null or p_org is null or not whatsapp_ecrit\(null, p_org\)/);
   assert.match(regler, /octet_length\(p_texte\) > 4096/);
+  // Relecture de la PR 364 : noms de partenaires et nets refusés (I3), lecture dépassée refusée (M2).
+  assert.match(regler, /raise exception 'nom_partenaire'/);
+  assert.match(regler, /from prestations_nets x/);
+  assert.match(regler, /from trajets_nets x/);
+  assert.match(regler, /raise exception 'montant_net'/);
+  assert.match(regler, /nuit_modifie_le is not distinct from p_lu_le/);
+  assert.match(regler, /raise exception 'modifie_ailleurs'/);
   assert.match(MIGRATION, /revoke all on whatsapp_messages_nuit from public, anon, authenticated/);
   assert.match(MIGRATION, /whatsapp_reserver_nuit\(uuid\),\s+whatsapp_nuit_resultat\(uuid, text, text, text\), whatsapp_reprendre_nuit\(uuid\), whatsapp_apercu\(uuid\), whatsapp_recalculer_dernier\(uuid\)\s+from public, anon, authenticated/);
-  assert.match(MIGRATION, /grant execute on function whatsapp_regler_nuit\(uuid, boolean, text, time, time\) to authenticated/);
+  assert.match(MIGRATION, /grant execute on function whatsapp_regler_nuit\(uuid, boolean, text, time, time, timestamptz\) to authenticated/);
   // Aucune écriture directe : la colonne n'est pas ouverte à l'outil (seul reception_active l'est, migration 58).
   assert.doesNotMatch(MIGRATION, /grant update \(nuit_/);
 });
@@ -206,4 +229,98 @@ test("écran : réglage, traductions anglaises, cibles de 44 px, marque sur la b
   assert.match(store, /sb\.rpc\("whatsapp_regler_nuit"/);
   assert.match(store, /colonneAbsente\(r\.error, "nuit_active"\)/);
   assert.match(store, /colonneAbsente\(r\.error, "automatique"\)/);
+});
+
+// ---- Relecture de la PR 364, point B1 : le message de nuit ne coupe jamais l'Assistant ------------------------------------------------
+const nuit = [
+  { id: "c1", sens: "entrant", origine: "client", type: "text", texte: "Hello, a taxi tomorrow?", envoye_le: "2026-11-27T16:10:00Z" },
+  { id: "a1", sens: "sortant", origine: "gestion", type: "text", texte: TEXTE_NUIT, envoye_le: "2026-11-27T16:10:20Z", statut_envoi: "envoye", automatique: "nuit" },
+];
+
+test("B1 : un seul message du client la nuit, puis le message automatique : aRepondre reste vrai", () => {
+  assert.equal(aRepondre(nuit, "c1"), true, "tri et réponse préparée continuent");
+  assert.equal(aRepondre(sansAutomatiques(nuit), "c1"), true);
+  // Sans la colonne (avant la migration), un vrai envoi de Gestion reste une réponse.
+  assert.equal(aRepondre([nuit[0], { ...nuit[1], automatique: undefined }], "c1"), false);
+  assert.deepEqual(sansAutomatiques(nuit).map((m) => m.id), ["c1"]);
+  assert.equal(estAutomatique(nuit[1]), true);
+  assert.equal(estAutomatique(nuit[0]), false);
+});
+
+test("B1 : le bouton « Préparer une réponse » reste affiché au matin", () => {
+  const vue = lire("src/gestion/js/views/whatsapp.mjs");
+  // carteProposition (et ligneSansReponse qu'elle appelle) décide sur le dernier message : elle reçoit la liste sans le message de nuit.
+  assert.match(vue, /carteProposition\(c, prop, messages\.filter\(\(m\) => !m\.automatique\)\)/);
+  assert.equal((vue.match(/carteProposition\(c, prop, /g) || []).length, 1);
+  const decisifs = nuit.filter((m) => !m.automatique);
+  assert.equal(decisifs[decisifs.length - 1].sens, "entrant", "condition du bouton : le dernier message décisif est du client");
+  // L'aperçu de la liste attend toujours, comme whatsapp_apercu en base.
+  const ap = apercuDepuisMessages(nuit);
+  assert.equal(ap.attend_depuis, "2026-11-27T16:10:00Z");
+  assert.equal(ap.dernier_texte, "Hello, a taxi tomorrow?");
+});
+
+test("B1 : préparation à la demande, résumé, Prêt à réserver et ton de Nani lisent sans le message de nuit", async () => {
+  const reponse = lire("supabase/functions/whatsapp/reponse.ts");
+  // lireConversation sert au tri automatique (apresMessageClient) et à « Préparer une réponse » (preparerALaDemande, rien_a_repondre).
+  assert.match(reponse, /return \{ conv: conv as Conv, messages: \[\.\.\.sansAutomatiques\(msgs\)\]\.reverse\(\)/);
+  assert.match(reponse, /const tous = sansAutomatiques\(msgs\.data\);/);
+  assert.match(reponse, /return error \? null : \(sansAutomatiques\(data\) as Record/);
+  assert.match(lire("supabase/functions/whatsapp/suivi.ts"), /messages: \[\.\.\.sansAutomatiques\(msgs\)\]\.reverse\(\)/);
+  assert.match(lire("supabase/functions/whatsapp/pret.ts"), /const messages = \[\.\.\.sansAutomatiques\(msgs\)\]\.reverse\(\);/);
+  // Le résumé ne prend pas le message de nuit pour le dernier message.
+  const longue = [...["a", "b", "c", "d"].map((id, i) => ({ id, sens: "entrant", texte: `m${i}`, envoye_le: `2026-11-27T16:0${i}:00Z` })), { ...nuit[1], id: "a2" }];
+  assert.equal(resumeAFaire({}, longue, "d"), true);
+  // Repli : la colonne manque (migration 132 pas encore appliquée), la lecture se refait sans elle.
+  const appels = [];
+  const r = await avecAutomatique(async (cols) => (appels.push(cols), cols.includes("automatique") ? { data: null, error: { code: "42703", message: 'column whatsapp_messages.automatique does not exist' } } : { data: [{ id: 1 }], error: null }), "id, sens");
+  assert.deepEqual(appels, ["id, sens, automatique", "id, sens"]);
+  assert.deepEqual(r.data, [{ id: 1 }]);
+  const r2 = await avecAutomatique(async () => ({ data: null, error: { code: "57014", message: "timeout" } }), "id");
+  assert.equal(r2.error.code, "57014", "une autre erreur n'est pas cachée");
+});
+
+test("B1 : l'Assistant voit le message de nuit marqué comme tel, jamais comme une réponse de Nani", () => {
+  const index = lire("supabase/functions/agent/index.ts");
+  assert.equal((index.match(/avecAutomatique\(/g) || []).length, 3, "les trois lectures de la boîte par l'Assistant");
+  const bloc = texteDepuisWhatsApp({ mode: "creer", conv: { id: "x", telephone: "+447700900111" }, messages: nuit, qui: "Nani" });
+  assert.match(bloc, /\[Message automatique de nuit, pas une réponse de Nani /);
+  assert.doesNotMatch(bloc, /\[Nani [^\]]*\] 🌴/);
+  const conv = { id: "11111111-1111-4111-8111-111111111111", reponses: "auto" };
+  const lu = lireConversationAgent({ conversation: conv.id }, { conversation: conv, messages: nuit.map((m, i) => ({ ...m, id: `2222222${i}-2222-4222-8222-222222222222`, conversation_id: conv.id })) });
+  const auteurs = (lu.messages || []).map((m) => m.de);
+  assert.ok(auteurs.includes("message automatique de nuit") && !auteurs.includes("Nani"), JSON.stringify(auteurs));
+  assert.equal(lire("src/gestion/js/agent-whatsapp-lecture.mjs"), lire("supabase/functions/agent/whatsapp-lecture.js"));
+  // Le prix du client n'est jamais « validé par Nani » par le message de nuit.
+  const prix = [{ sens: "entrant", texte: "So 1500 THB ok?", envoye_le: "2026-11-27T16:00:00Z" }, { sens: "sortant", origine: "gestion", automatique: "nuit", type: "text", texte: "Thank you, ok !", envoye_le: "2026-11-27T16:00:10Z", medias: [] }];
+  assert.equal(montantsClientValides(prix).size, 0);
+});
+
+test("I1 : « Vérifiez dans WhatsApp » ne s'affiche jamais pour le message de nuit", () => {
+  const vieux = new Date(Date.now() - 10 * 60_000).toISOString();
+  const auto = { ...nuit[1], envoye_le: vieux, statut_envoi: "echec", erreur_envoi: "sans_confirmation" };
+  assert.equal(envoiEnDoute([nuit[0], auto]), null, "pas de carte « C'est parti / Pas parti »");
+  assert.equal(statutEnvoi(auto).libelle, "pas de confirmation", "la bulle dit seulement le statut");
+  assert.ok(envoiEnDoute([nuit[0], { ...auto, automatique: null }]), "un envoi ordinaire garde la carte");
+  const conf = MIGRATION.slice(MIGRATION.indexOf("create or replace function whatsapp_confirmer_envoi"), MIGRATION.indexOf("-- Droits."));
+  assert.equal((conf.match(/origine = 'gestion' and automatique is null/g) || []).length, 2);
+  assert.match(conf, /if n_msg > 0 or exists \(select 1 from whatsapp_propositions where conversation_id = p_conversation and statut = 'envoi'\) then/, "rien de confirmé : aucune réponse préparée soldée");
+  assert.match(RETOUR, /create or replace function whatsapp_confirmer_envoi/);
+});
+
+test("I2, M5 à M8 : fiche partenaire, rattrapage par le cron, reprise courte, search_path", () => {
+  assert.match(MIGRATION, /if c\.type_contact is null and whatsapp_numero_partenaire\(c\.organisation_id, c\.telephone\) then motif := 'pas_client'/);
+  assert.match(MIGRATION, /e\.organisation_id = p_org and e\.slug in \('secret', 'taxi'\)/);
+  const reprise = MIGRATION.slice(MIGRATION.indexOf("create or replace function whatsapp_reprendre_nuit"), MIGRATION.indexOf("create or replace function whatsapp_regler_nuit"));
+  assert.match(reprise, /m\.recu_le > now\(\) - interval '30 minutes'/);
+  assert.match(reprise, /from whatsapp_reserver_nuit\(n\.id\)/);
+  assert.match(reprise, /exit when envoyes >= 3;/);
+  assert.match(reprise, /limit 3 - envoyes/);
+  assert.match(reprise, /à l'heure de la reprise \(now\(\)\)/);
+  assert.match(MIGRATION, /function whatsapp_recalculer_dernier\(p_conversation uuid\) returns void language sql security definer set search_path = public, pg_temp/);
+  const nuitTs = lire("supabase/functions/whatsapp/nuit.ts");
+  assert.equal((nuitTs.match(/console\.error\("message de nuit : TELNYX_API_KEY absente/g) || []).length, 2);
+  assert.match(lire("src/gestion/js/store-local.mjs"), /!ecritWhatsApp\(null\)\) throw new Error/);
+  assert.match(lire("src/gestion/js/views/whatsapp-reglages.mjs"), /lu\.valeurs\.luLe = reglageNuit\(r\)\.modifieLe/);
+  assert.match(lire("src/gestion/js/store-supabase.mjs"), /p_lu_le: luLe/);
 });

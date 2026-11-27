@@ -66,6 +66,7 @@ N_("Le message ne peut pas être vide.");
 N_("Le message est trop long pour WhatsApp (4 096 octets au plus).");
 N_("Indiquez les heures au format 22:00.");
 N_("L'heure de début et l'heure de fin doivent être différentes.");
+N_("La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin.");
 
 // « Message de nuit » : rien tant que la migration 132 manque (les colonnes ne sont pas lues).
 function blocMessageNuit(r) {
@@ -84,6 +85,8 @@ function blocMessageNuit(r) {
   });
   enregistrer.addEventListener("click", async () => {
     const lu = lireReglageNuit({ active: caseNuit.checked, texte: texte.value, debut: debut.value, fin: fin.value });
+    // La date lue avec le réglage (ou celle du dernier enregistrement ici) : la base refuse si quelqu'un l'a changé entre-temps.
+    if (lu.ok) lu.valeurs.luLe = reglageNuit(r).modifieLe;
     erreur.hidden = !lu.erreur;
     if (lu.erreur) return void (erreur.textContent = tr(lu.erreur));
     enregistrer.disabled = true;
@@ -111,7 +114,7 @@ function blocMessageNuit(r) {
       h("label", { for: "wa-nuit-fin" }, tr("À"), fin)
     ),
     h("label", { for: "wa-nuit-texte" }, tr("Texte envoyé"), texte),
-    h("p", { class: "aide" }, tr("Envoyé tel quel, emojis compris. Il apparaît dans la conversation, marqué « Message automatique de nuit ».")),
+    h("p", { class: "aide" }, tr("Envoyé tel quel, emojis compris. Il apparaît dans la conversation, marqué « Message automatique de nuit ». Ni nom de partenaire ni net : il part chez tous les clients.")),
     erreur,
     h("div", { class: "wa-nuit-actions" }, enregistrer, reprendre)
   );

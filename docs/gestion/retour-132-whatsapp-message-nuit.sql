@@ -1,15 +1,17 @@
 -- Retour en arrière de la migration 132 (message automatique de nuit). Redéployer d'abord la fonction « whatsapp » d'avant la PR : l'actuelle
 -- appelle whatsapp_reserver_nuit et whatsapp_reprendre_nuit, et sans elles elle n'envoie simplement rien (erreur notée dans les journaux).
 -- Les messages automatiques déjà envoyés restent dans les conversations, comme des envois de Gestion ordinaires (la colonne automatique
--- disparaît). whatsapp_apercu et whatsapp_recalculer_dernier reprennent leur version des migrations 65 et 64.
+-- disparaît). whatsapp_apercu, whatsapp_recalculer_dernier et whatsapp_confirmer_envoi reprennent leur version des migrations 65 et 64.
 begin;
 
+drop function if exists whatsapp_regler_nuit(uuid, boolean, text, time, time, timestamptz);
 drop function if exists whatsapp_regler_nuit(uuid, boolean, text, time, time);
 drop function if exists whatsapp_reprendre_nuit(uuid);
 drop function if exists whatsapp_nuit_resultat(uuid, text, text, text);
 drop function if exists whatsapp_reserver_nuit(uuid);
 drop function if exists whatsapp_nuit_motif(uuid, timestamptz);
 drop function if exists whatsapp_nuit_cle(timestamptz, time, time);
+drop function if exists whatsapp_numero_partenaire(uuid, text);
 drop table if exists whatsapp_messages_nuit;
 
 -- Migration 65.
@@ -53,10 +55,43 @@ create or replace function whatsapp_recalculer_dernier(p_conversation uuid) retu
 $$;
 revoke all on function whatsapp_apercu(uuid), whatsapp_recalculer_dernier(uuid) from public, anon, authenticated;
 
+-- Migration 64.
+create or replace function whatsapp_confirmer_envoi(p_conversation uuid, p_parti boolean) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  n_msg integer;
+  n_prop integer;
+begin
+  if auth.uid() is null or p_parti is null or not whatsapp_peut_ecrire(p_conversation) then
+    raise exception 'droit_manquant' using errcode = '42501';
+  end if;
+  if p_parti then
+    update whatsapp_messages set statut_envoi = 'envoye', erreur_envoi = null, statut_le = now()
+    where conversation_id = p_conversation and origine = 'gestion'
+      and (statut_envoi = 'envoi' or (statut_envoi = 'echec' and erreur_envoi = 'sans_confirmation'));
+    get diagnostics n_msg = row_count;
+    update whatsapp_propositions set statut = 'traitee', traitee_le = now(), traitee_par = auth.uid(), traitee_par_quoi = 'gestion'
+    where conversation_id = p_conversation and statut in ('a_faire', 'en_cours', 'envoi');
+    get diagnostics n_prop = row_count;
+  else
+    delete from whatsapp_messages
+    where conversation_id = p_conversation and origine = 'gestion'
+      and (statut_envoi = 'envoi' or (statut_envoi = 'echec' and erreur_envoi = 'sans_confirmation'));
+    get diagnostics n_msg = row_count;
+    update whatsapp_propositions set statut = 'a_faire' where conversation_id = p_conversation and statut = 'envoi';
+    get diagnostics n_prop = row_count;
+    perform whatsapp_recalculer_dernier(p_conversation);
+  end if;
+  return jsonb_build_object('messages', n_msg, 'propositions', n_prop);
+end
+$$;
+
 alter table whatsapp_messages drop constraint if exists whatsapp_messages_automatique_check;
 alter table whatsapp_messages drop column if exists automatique;
 alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_texte_check;
 alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_heures_check;
-alter table whatsapp_reglages drop column if exists nuit_active, drop column if exists nuit_texte, drop column if exists nuit_debut, drop column if exists nuit_fin;
+alter table whatsapp_reglages drop column if exists nuit_active, drop column if exists nuit_texte, drop column if exists nuit_debut, drop column if exists nuit_fin,
+  drop column if exists nuit_modifie_le;
+drop function if exists whatsapp_nuit_minutes(time, time);
 
 commit;

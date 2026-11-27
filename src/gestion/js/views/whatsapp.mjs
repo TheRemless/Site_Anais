@@ -1154,8 +1154,9 @@ async function fil(c, prop) {
       cartePaiement(c),
       cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
+    // Le message automatique de nuit (migration 132) n'est pas une réponse : « Préparer une réponse » reste là au matin.
     doute ? carteVerifier(c, doute) : null,
-    carteProposition(c, prop, messages)
+    carteProposition(c, prop, messages.filter((m) => !m.automatique))
   );
   return { noeud, messages };
 }

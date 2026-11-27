@@ -13,17 +13,22 @@
 --      Telnyx. Rend la ligne à envoyer, ou rien. Clé de service seulement.
 --   5. Ne part pas : pour un message qui n'est pas un message du client (statut, réaction, ligne « non transmis », message supprimé, message
 --      de Nani), pour un Contact personnel (reponses = 'jamais'), un partenaire, un apporteur ou une fiche partenaire (type_contact autre que
---      client, partenaire_id posé), pour une conversation sans numéro, réglage coupé, numéro de l'entreprise inconnu, message de jour, message
---      d'une nuit déjà finie (rattrapage tardif), ou si l'équipe a déjà écrit dans la conversation depuis le début de cette nuit.
+--      client, partenaire_id posé, ou numéro d'un contact sans type trouvé dans les fiches partenaires de Secret ou de Taxi), pour une
+--      conversation sans numéro, réglage coupé, numéro de l'entreprise inconnu, message de jour, message d'une nuit déjà finie (rattrapage
+--      tardif), ou si l'équipe a déjà écrit dans la conversation depuis le début de cette nuit.
 --   6. whatsapp_nuit_resultat(ligne, résultat) : note le résultat de Telnyx sur la ligne et sur le message en une transaction.
 --      envoye : parti ; echec : refus sûr de Telnyx, repris par le cron (3 essais en tout, la même nuit seulement) ; incertain : délai dépassé
 --      ou 5xx, jamais renvoyé (il est peut-être parti), le message passe « à vérifier » après 5 minutes comme tout envoi de Gestion.
 --      whatsapp_reprendre_nuit(org) : appelé par la reprise (pg_cron « whatsapp-reprise », toutes les 5 minutes, déjà en place). Une réservation
---      restée « reserve » plus de 2 minutes (instance arrêtée en route) devient « incertain », jamais renvoyée.
---   7. whatsapp_regler_nuit(org, active, texte, debut, fin) : Réglages > WhatsApp. Administrateur de Secret ou de Taxi de l'organisation
---      (whatsapp_ecrit, comme les autres écritures WhatsApp), contrôlé ici et non dans l'écran.
---   8. whatsapp_apercu (migration 65) et whatsapp_recalculer_dernier (migration 64) ignorent le message automatique : au matin, la liste montre
---      toujours le message du client et « Le client attend une réponse ».
+--      restée « reserve » plus de 2 minutes (instance arrêtée en route) devient « incertain », jamais renvoyée. Un message du client des
+--      30 dernières minutes resté sans réservation (panne passagère de la fonction ou de la base) est réservé ici. 3 envois au plus par passage.
+--   7. whatsapp_regler_nuit(org, active, texte, debut, fin, lu_le) : Réglages > WhatsApp. Administrateur de Secret ou de Taxi de l'organisation
+--      (whatsapp_ecrit, comme les autres écritures WhatsApp), contrôlé ici et non dans l'écran. Refuse un texte qui cite un partenaire ou
+--      contient un montant égal à un net du catalogue de Secret ou de Taxi, une plage de plus de 12 heures, et un réglage changé ailleurs
+--      depuis sa lecture (nuit_modifie_le).
+--   8. whatsapp_apercu (migration 65), whatsapp_recalculer_dernier (migration 64) et whatsapp_confirmer_envoi (migration 64) ignorent le
+--      message automatique : au matin, la liste montre toujours le message du client et « Le client attend une réponse » ; « C'est parti » ou
+--      « Pas parti » sur un autre envoi ne le touchent pas.
 --
 -- À exécuter AVANT de déployer la fonction « whatsapp » de cette PR (l'ancienne fonction ignore tout cela). Ne modifie aucune donnée existante.
 -- Se rejoue sans effet (le texte et les heures déjà réglés restent).
@@ -45,6 +50,12 @@ begin
   end if;
 end $$;
 
+-- Durée d'une plage en minutes (22:00 à 06:00 : 480). Une nuit dure 12 heures au plus (relecture de la PR 364 : 06:00 à 22:00 aurait
+-- répondu toute la journée).
+create or replace function whatsapp_nuit_minutes(p_debut time, p_fin time) returns integer language sql immutable set search_path = public, pg_temp as $$
+  select ((extract(epoch from p_fin)::integer / 60 - extract(epoch from p_debut)::integer / 60) + 1440) % 1440
+$$;
+
 -- 1. Réglages.
 alter table whatsapp_reglages add column if not exists nuit_active boolean not null default true;
 alter table whatsapp_reglages add column if not exists nuit_texte text not null default $nuit$🌴 Hello and thank you for contacting us !
@@ -58,6 +69,8 @@ The more details you share, the more accurately we can assist you when we get ba
 Thank you for your patience. We look forward to helping you discover Thailand ! 🇹🇭🌴$nuit$;
 alter table whatsapp_reglages add column if not exists nuit_debut time not null default '22:00';
 alter table whatsapp_reglages add column if not exists nuit_fin time not null default '06:00';
+-- Dernier enregistrement du réglage depuis l'écran : l'enregistrement suivant doit l'avoir lu (deux personnes en même temps).
+alter table whatsapp_reglages add column if not exists nuit_modifie_le timestamptz;
 do $$
 begin
   if not exists (select 1 from pg_constraint where conrelid = 'public.whatsapp_reglages'::regclass and conname = 'whatsapp_reglages_nuit_texte_check') then
@@ -66,7 +79,8 @@ begin
   end if;
   if not exists (select 1 from pg_constraint where conrelid = 'public.whatsapp_reglages'::regclass and conname = 'whatsapp_reglages_nuit_heures_check') then
     alter table whatsapp_reglages add constraint whatsapp_reglages_nuit_heures_check
-      check (nuit_debut <> nuit_fin and date_trunc('minute', nuit_debut::interval) = nuit_debut::interval and date_trunc('minute', nuit_fin::interval) = nuit_fin::interval);
+      check (nuit_debut <> nuit_fin and date_trunc('minute', nuit_debut::interval) = nuit_debut::interval and date_trunc('minute', nuit_fin::interval) = nuit_fin::interval
+        and whatsapp_nuit_minutes(nuit_debut, nuit_fin) <= 720);
   end if;
 end $$;
 
@@ -112,6 +126,29 @@ language sql stable set search_path = public, pg_temp as $$
   from (select p_quand at time zone 'Asia/Bangkok' as l) x
 $$;
 
+-- Le numéro est-il celui d'une fiche partenaire de Secret ou de Taxi de l'organisation (apporteurs compris) ? Même lecture des numéros que
+-- whatsapp_partenaires_parmi (migration 67) : contact.telephones en liste (texte, ou objet numero / telephone / valeur) ou en texte coupé ;
+-- comparé sur les 9 derniers chiffres. Relecture de la PR 364 : un nouveau numéro d'un partenaire n'a pas encore de type.
+create or replace function whatsapp_numero_partenaire(p_org uuid, p_tel text) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+  with fiches as (
+    select p.contact->'telephones' as tel
+    from partenaires p join entites e on e.id = p.entite_id
+    where e.organisation_id = p_org and e.slug in ('secret', 'taxi')
+  ),
+  morceaux as (
+    select case jsonb_typeof(x) when 'string' then x #>> '{}' when 'object' then coalesce(nullif(x->>'numero', ''), nullif(x->>'telephone', ''), x->>'valeur', '') else '' end as v
+    from fiches f, jsonb_array_elements(case jsonb_typeof(f.tel) when 'array' then f.tel else '[]'::jsonb end) as x
+    union all
+    select v from fiches f, regexp_split_to_table(case jsonb_typeof(f.tel) when 'string' then f.tel #>> '{}' else '' end, '[,;/\n]|\s{2,}') as v
+  )
+  select length(regexp_replace(coalesce(p_tel, ''), '[^0-9]', '', 'g')) >= 8 and exists (
+    select 1 from morceaux, regexp_matches(coalesce(v, ''), '(\+?\d[\d\s.\-()]{6,}\d)', 'g') as m
+    where length(regexp_replace(m[1], '[^0-9]', '', 'g')) >= 8
+      and right(regexp_replace(m[1], '[^0-9]', '', 'g'), 9) = right(regexp_replace(p_tel, '[^0-9]', '', 'g'), 9)
+  )
+$$;
+
 -- 5. Pourquoi le message de nuit ne part pas vers cette conversation pour un message reçu à p_quand (null : il peut partir). Rend aussi la clé
 --    de la nuit. Relu à la réservation et à chaque reprise.
 create or replace function whatsapp_nuit_motif(p_conversation uuid, p_quand timestamptz, out motif text, out nuit date)
@@ -126,6 +163,7 @@ begin
   -- Contact personnel (reponses = 'jamais', migration 60), partenaire ou apporteur (migrations 68 et 110), fiche partenaire.
   if c.reponses = 'jamais' then motif := 'personnel'; return; end if;
   if coalesce(c.type_contact, 'client') <> 'client' or c.partenaire_id is not null then motif := 'pas_client'; return; end if;
+  if c.type_contact is null and whatsapp_numero_partenaire(c.organisation_id, c.telephone) then motif := 'pas_client'; return; end if;
   select x.nuit_active, x.nuit_debut, x.nuit_fin, x.numero into r from whatsapp_reglages x where x.organisation_id = c.organisation_id;
   if r.nuit_active is null or not r.nuit_active then motif := 'coupe'; return; end if;
   if r.numero is null then motif := 'numero_inconnu'; return; end if;
@@ -201,7 +239,8 @@ begin
 end
 $$;
 
--- Reprise (toutes les 5 minutes) : les refus sûrs se retentent, la même nuit seulement et si rien n'a changé (5) ; 3 essais en tout.
+-- Reprise (toutes les 5 minutes) : les messages restés sans réservation, puis les refus sûrs, la même nuit seulement et si rien n'a changé
+-- (5) ; 3 essais en tout par ligne, 3 envois au plus par passage (15 secondes chacun au plus : la reprise reste courte).
 create or replace function whatsapp_reprendre_nuit(p_org uuid)
 returns table (id uuid, message_id uuid, telephone text, numero text, texte text)
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -210,6 +249,7 @@ declare
   v record;
   r record;
   msg uuid;
+  envoyes integer := 0;
 begin
   -- Une réservation restée « reserve » : l'instance s'est arrêtée avant ou après l'appel, on ne sait pas. Jamais renvoyée.
   update whatsapp_messages_nuit x set statut = 'incertain', erreur = 'interrompu'
@@ -217,13 +257,36 @@ begin
   -- Les lignes de plus de 60 jours ne servent plus.
   delete from whatsapp_messages_nuit x where x.organisation_id = p_org and x.cree_le < now() - interval '60 days';
 
+  -- Rattrapage : un message du client des 30 dernières minutes sans réservation pour sa nuit (la fonction ou la base en panne au moment du
+  -- message). whatsapp_reserver_nuit refait tous les contrôles ; la contrainte unique empêche tout doublon avec un envoi en cours.
+  for n in
+    select distinct on (m.conversation_id) m.id
+    from whatsapp_messages m join whatsapp_conversations c on c.id = m.conversation_id
+    join whatsapp_reglages g on g.organisation_id = c.organisation_id
+    where c.organisation_id = p_org and m.sens = 'entrant' and m.origine = 'client' and m.automatique is null
+      and m.recu_le > now() - interval '30 minutes' and g.nuit_active
+      and whatsapp_nuit_cle(m.envoye_le, g.nuit_debut, g.nuit_fin) is not null
+      and not exists (select 1 from whatsapp_messages_nuit x where x.conversation_id = m.conversation_id
+        and x.nuit = whatsapp_nuit_cle(m.envoye_le, g.nuit_debut, g.nuit_fin))
+    order by m.conversation_id, m.envoye_le desc
+    limit 20
+  loop
+    exit when envoyes >= 3;
+    for v in select * from whatsapp_reserver_nuit(n.id) loop
+      id := v.id; message_id := v.message_id; telephone := v.telephone; numero := v.numero; texte := v.texte;
+      envoyes := envoyes + 1;
+      return next;
+    end loop;
+  end loop;
+  if envoyes >= 3 then return; end if;
+
   for n in
     select x.id, x.conversation_id, x.message_id, x.nuit, x.essais from whatsapp_messages_nuit x
     where x.organisation_id = p_org and x.statut = 'echec' and x.pris_le < now() - interval '1 minute'
-    order by x.pris_le limit 10
+    order by x.pris_le limit 3 - envoyes
     for update of x skip locked
   loop
-    -- Mêmes contrôles qu'à la réservation, à l'heure du message déclencheur (la nuit doit être la même, et pas encore finie).
+    -- Mêmes contrôles qu'à la réservation, à l'heure de la reprise (now()) : la nuit doit être celle de la ligne, et pas encore finie.
     select * into v from whatsapp_nuit_motif(n.conversation_id, now());
     if v.motif is not null or v.nuit is distinct from n.nuit then
       update whatsapp_messages_nuit x set statut = 'abandonne', erreur = left(coalesce(v.motif, 'autre_nuit'), 200) where x.id = n.id;
@@ -242,17 +305,25 @@ begin
     end if;
     update whatsapp_messages_nuit x set statut = 'reserve', essais = least(x.essais + 1, 10), pris_le = now(), message_id = msg, erreur = null where x.id = n.id;
     id := n.id; message_id := msg; telephone := r.telephone; numero := r.numero; texte := r.nuit_texte;
+    envoyes := envoyes + 1;
     return next;
     msg := null;
   end loop;
 end
 $$;
 
--- 7. Réglages > WhatsApp. Rend les quatre réglages enregistrés.
-create or replace function whatsapp_regler_nuit(p_org uuid, p_active boolean, p_texte text, p_debut time, p_fin time) returns jsonb
+-- 7. Réglages > WhatsApp. Rend les réglages enregistrés et leur nouvelle date. p_lu_le : nuit_modifie_le tel que l'écran l'a lu (null avant
+--    le premier enregistrement) ; changé depuis, l'enregistrement est refusé (modifie_ailleurs), personne n'écrase l'autre sans le voir.
+--    Le texte part chez tous les clients de la nuit : comme pour une réponse (garde-fou de la PR 278), il ne cite aucun partenaire de Secret
+--    ou de Taxi (nom entier, ou sans « co, ltd, company, tour, travel ») et ne contient aucun montant égal à un net de leur catalogue. Les
+--    heures (7:00, 22h00) ne sont pas des montants.
+-- Une signature plus ancienne de whatsapp_regler_nuit (sans p_lu_le), si une version de travail de la 132 a été jouée sur une base de test.
+drop function if exists whatsapp_regler_nuit(uuid, boolean, text, time, time);
+create or replace function whatsapp_regler_nuit(p_org uuid, p_active boolean, p_texte text, p_debut time, p_fin time, p_lu_le timestamptz default null) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   ligne record;
+  plat text;
 begin
   if auth.uid() is null or p_org is null or not whatsapp_ecrit(null, p_org) then
     raise exception 'droit_manquant' using errcode = '42501';
@@ -262,12 +333,43 @@ begin
   if p_debut is null or p_fin is null or p_debut = p_fin or date_trunc('minute', p_debut::interval) <> p_debut::interval or date_trunc('minute', p_fin::interval) <> p_fin::interval then
     raise exception 'heures_invalides' using errcode = '22023';
   end if;
-  update whatsapp_reglages set nuit_active = p_active, nuit_texte = p_texte, nuit_debut = p_debut, nuit_fin = p_fin
-  where organisation_id = p_org
-  returning organisation_id, nuit_active, nuit_texte, nuit_debut, nuit_fin into ligne;
-  if ligne.organisation_id is null then raise exception 'droit_manquant' using errcode = '42501'; end if;
+  if whatsapp_nuit_minutes(p_debut, p_fin) > 720 then raise exception 'plage_trop_longue' using errcode = '22023'; end if;
+  -- Noms de partenaires : comparés mot à mot, en minuscules, sans ponctuation.
+  plat := ' ' || btrim(regexp_replace(lower(p_texte), '[^[:alnum:]]+', ' ', 'g')) || ' ';
+  if exists (
+    select 1 from partenaires p join entites e on e.id = p.entite_id,
+      lateral (select btrim(regexp_replace(lower(p.nom), '[^[:alnum:]]+', ' ', 'g')) as entier) n,
+      lateral (select btrim(regexp_replace(regexp_replace(n.entier, '\m(co|ltd|company|tour|tours|travel|travels)\M', ' ', 'g'), '\s+', ' ', 'g')) as court) k
+    where e.organisation_id = p_org and e.slug in ('secret', 'taxi')
+      and ((length(n.entier) >= 3 and plat like '% ' || n.entier || ' %') or (length(k.court) >= 4 and plat like '% ' || k.court || ' %'))
+  ) then
+    raise exception 'nom_partenaire' using errcode = '22023';
+  end if;
+  -- Montants : chaque nombre du texte (séparateurs de milliers retirés), sans les heures.
+  if exists (
+    with nombres as (
+      select regexp_replace(m[1], '[^0-9]', '', 'g')::numeric as v
+      from regexp_matches(regexp_replace(p_texte, '\d{1,2}\s*[:h.]\s*\d{2}', ' ', 'gi'), '(\d{1,3}(?:[ ,.]\d{3})+|\d+)', 'g') as m
+    ),
+    nets as (
+      select x.net as v from prestations_nets x join entites e on e.id = x.entite_id where e.organisation_id = p_org and e.slug in ('secret', 'taxi')
+      union all select x.net_enfant from prestations_nets x join entites e on e.id = x.entite_id where e.organisation_id = p_org and e.slug in ('secret', 'taxi')
+      union all select x.net_adulte from trajets_nets x join entites e on e.id = x.entite_id where e.organisation_id = p_org and e.slug in ('secret', 'taxi')
+      union all select x.net_enfant from trajets_nets x join entites e on e.id = x.entite_id where e.organisation_id = p_org and e.slug in ('secret', 'taxi')
+    )
+    select 1 from nombres n join nets t on t.v = n.v where t.v > 0
+  ) then
+    raise exception 'montant_net' using errcode = '22023';
+  end if;
+  update whatsapp_reglages set nuit_active = p_active, nuit_texte = p_texte, nuit_debut = p_debut, nuit_fin = p_fin, nuit_modifie_le = clock_timestamp()
+  where organisation_id = p_org and nuit_modifie_le is not distinct from p_lu_le
+  returning organisation_id, nuit_active, nuit_texte, nuit_debut, nuit_fin, nuit_modifie_le into ligne;
+  if ligne.organisation_id is null then
+    if exists (select 1 from whatsapp_reglages where organisation_id = p_org) then raise exception 'modifie_ailleurs' using errcode = '40001'; end if;
+    raise exception 'droit_manquant' using errcode = '42501';
+  end if;
   return jsonb_build_object('organisation_id', ligne.organisation_id, 'nuit_active', ligne.nuit_active, 'nuit_texte', ligne.nuit_texte,
-    'nuit_debut', to_char(ligne.nuit_debut, 'HH24:MI'), 'nuit_fin', to_char(ligne.nuit_fin, 'HH24:MI'));
+    'nuit_debut', to_char(ligne.nuit_debut, 'HH24:MI'), 'nuit_fin', to_char(ligne.nuit_fin, 'HH24:MI'), 'nuit_modifie_le', ligne.nuit_modifie_le);
 end
 $$;
 
@@ -300,7 +402,7 @@ end
 $$;
 
 -- Dernier message recalculé (migration 64, après un envoi retiré) : sans le message de nuit, qui ne fait pas passer la conversation « répondue ».
-create or replace function whatsapp_recalculer_dernier(p_conversation uuid) returns void language sql security definer set search_path = public as $$
+create or replace function whatsapp_recalculer_dernier(p_conversation uuid) returns void language sql security definer set search_path = public, pg_temp as $$
   update whatsapp_conversations c set
     dernier_message_le = d.envoye_le,
     dernier_sens = coalesce(d.sens, c.dernier_sens),
@@ -312,12 +414,53 @@ create or replace function whatsapp_recalculer_dernier(p_conversation uuid) retu
   where c.id = p_conversation
 $$;
 
+-- « C'est parti » ou « Pas parti » (migration 64) : jamais le message automatique de nuit (relecture de la PR 364). Sinon « C'est parti »
+-- solderait les réponses préparées de la conversation et « Pas parti » le retirerait du fil. Changements : automatique is null, et les
+-- réponses préparées ne sont soldées que si un envoi a vraiment été confirmé.
+create or replace function whatsapp_confirmer_envoi(p_conversation uuid, p_parti boolean) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  n_msg integer;
+  n_prop integer;
+begin
+  if auth.uid() is null or p_parti is null or not whatsapp_peut_ecrire(p_conversation) then
+    raise exception 'droit_manquant' using errcode = '42501';
+  end if;
+  if p_parti then
+    update whatsapp_messages set statut_envoi = 'envoye', erreur_envoi = null, statut_le = now()
+    where conversation_id = p_conversation and origine = 'gestion' and automatique is null
+      and (statut_envoi = 'envoi' or (statut_envoi = 'echec' and erreur_envoi = 'sans_confirmation'));
+    get diagnostics n_msg = row_count;
+    -- Les réponses préparées ne sont soldées que si un envoi de l'équipe vient d'être confirmé, ou si une réponse est restée « envoi » (sans
+    -- message, avant la migration 64). Rien à confirmer : rien n'est soldé.
+    n_prop := 0;
+    if n_msg > 0 or exists (select 1 from whatsapp_propositions where conversation_id = p_conversation and statut = 'envoi') then
+      update whatsapp_propositions set statut = 'traitee', traitee_le = now(), traitee_par = auth.uid(), traitee_par_quoi = 'gestion'
+      where conversation_id = p_conversation and statut in ('a_faire', 'en_cours', 'envoi');
+      get diagnostics n_prop = row_count;
+    end if;
+  else
+    delete from whatsapp_messages
+    where conversation_id = p_conversation and origine = 'gestion' and automatique is null
+      and (statut_envoi = 'envoi' or (statut_envoi = 'echec' and erreur_envoi = 'sans_confirmation'));
+    get diagnostics n_msg = row_count;
+    update whatsapp_propositions set statut = 'a_faire' where conversation_id = p_conversation and statut = 'envoi';
+    get diagnostics n_prop = row_count;
+    perform whatsapp_recalculer_dernier(p_conversation);
+  end if;
+  return jsonb_build_object('messages', n_msg, 'propositions', n_prop);
+end
+$$;
+
 -- Droits.
+revoke all on function whatsapp_nuit_minutes(time, time), whatsapp_numero_partenaire(uuid, text) from public, anon, authenticated;
+revoke all on function whatsapp_confirmer_envoi(uuid, boolean) from public, anon;
+grant execute on function whatsapp_confirmer_envoi(uuid, boolean) to authenticated;
 revoke all on function whatsapp_nuit_cle(timestamptz, time, time), whatsapp_nuit_motif(uuid, timestamptz), whatsapp_reserver_nuit(uuid),
   whatsapp_nuit_resultat(uuid, text, text, text), whatsapp_reprendre_nuit(uuid), whatsapp_apercu(uuid), whatsapp_recalculer_dernier(uuid)
   from public, anon, authenticated;
-revoke all on function whatsapp_regler_nuit(uuid, boolean, text, time, time) from public, anon;
-grant execute on function whatsapp_regler_nuit(uuid, boolean, text, time, time) to authenticated;
+revoke all on function whatsapp_regler_nuit(uuid, boolean, text, time, time, timestamptz) from public, anon;
+grant execute on function whatsapp_regler_nuit(uuid, boolean, text, time, time, timestamptz) to authenticated;
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then

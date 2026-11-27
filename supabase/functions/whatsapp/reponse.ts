@@ -24,6 +24,7 @@ import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
 import { clientCommun, entrepriseReponse, refusDemande } from "./proposer.js";
 import { decisionPourBase, prixDeVentePermis, traiterEnPartenaire, typeADeduire } from "./type-contact.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, elementServices, entrepriseParDefaut, nomAEcrire, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { avecAutomatique, sansAutomatiques } from "./automatique.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 // Le contact est un partenaire (migration 68), posé par Nani ou déduit (migration 110, type-contact.js), ou relié à une fiche partenaire :
@@ -222,16 +223,19 @@ async function nommerConversation(db: SupabaseClient, conv: Conv, nom: string) {
 // Les vrais premiers messages d'une conversation (pour le tri, quand la conversation dépasse les 40 lus). Jamais une ligne « non transmis »,
 // un message supprimé ni une réaction (relecture finale du 22.11.2026).
 async function premiersMessages(db: SupabaseClient, conversationId: string) {
-  const { data, error } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").neq("type", "reaction").is("supprime_le", null).order("envoye_le", { ascending: true }).limit(4);
-  return error ? null : ((data || []) as Record<string, any>[]);
+  // Le message automatique de nuit (migration 132) n'est pas un message de la conversation pour le tri.
+  const { data, error } = await avecAutomatique((cols) => db.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId).neq("type", "non_transmis").neq("type", "reaction").is("supprime_le", null).order("envoye_le", { ascending: true }).limit(4), "id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le");
+  return error ? null : (sansAutomatiques(data) as Record<string, any>[]);
 }
 
 async function lireConversation(db: SupabaseClient, conversationId: string) {
   const { data: conv } = await db.from("whatsapp_conversations").select("*").eq("id", conversationId).maybeSingle();
   if (!conv) return null;
   // Ligne « non transmis » (migration 100) : jamais lue par l'IA, ni le tri ni la réponse.
-  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(40);
-  return { conv: conv as Conv, messages: [...(msgs || [])].reverse() as Record<string, any>[] };
+  // Message automatique de nuit (migration 132, relecture de la PR 364) : écarté, sinon il deviendrait « le dernier message » et la
+  // réponse ne se préparerait plus (aRepondre, preparerALaDemande).
+  const { data: msgs } = await avecAutomatique((cols) => db.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(40), "id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le");
+  return { conv: conv as Conv, messages: [...sansAutomatiques(msgs)].reverse() as Record<string, any>[] };
 }
 
 // Les limites avant tout appel à Claude. Une lecture impossible ferme le budget (jamais l'inverse).
@@ -402,10 +406,11 @@ async function tonDeNani(db: SupabaseClient, entiteId: string, conversationId: s
   const ids = (convs || []).map((c) => c.id);
   if (!ids.length) return "";
   const [msgs, props] = await Promise.all([
-    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(400),
+    // Le message automatique de nuit n'est pas un exemple du ton de Nani (migration 132).
+    avecAutomatique((cols) => db.from("whatsapp_messages").select(cols).in("conversation_id", ids).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(400), "conversation_id, sens, origine, texte, envoye_le, supprime_le"),
     db.from("whatsapp_propositions").select("conversation_id, cree_le, texte, statut").in("conversation_id", ids).not("texte", "is", null).order("cree_le", { ascending: false }).limit(60),
   ]);
-  const tous = msgs.data || [];
+  const tous = sansAutomatiques(msgs.data);
   const texteClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
   return blocTon({ paires: pairesReponses(tous, { exclure: conversationId }), corrections: pairesCorrections(props.data || [], tous), texteClient, signatures });
 }
