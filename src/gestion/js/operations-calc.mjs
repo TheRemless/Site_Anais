@@ -860,21 +860,24 @@ export function optionsVoucher(lignes = [], prestationDe = () => null) {
 }
 
 // Les options d'un service pour les écrans internes (carte du service sur la fiche du dossier, liste des réservations, feuille du jour) :
-// [{ libelle, libelle_en, qte, prix, offert }], jamais de net. Elles se lisent sur les lignes de facture du service (`option_de`), sinon,
-// pour un service ajouté par une carte sans ligne de facture, sur la réservation (details.options, prix total de l'option).
+// [{ libelle, libelle_en, qte, prix, offert, devise }], jamais de net. Elles se lisent sur les lignes de la facture du service (`option_de`),
+// sinon du devis : jamais sur la facture locale, dont les lignes copiées gardent leur `option_de` à un autre prix (relecture de la PR 359).
+// Sans ligne, pour un service ajouté par une carte : sur la réservation (details.options, prix total de l'option).
+// `libelle_en` : celui de la ligne ou de sa prestation, sinon le libellé passé par la traduction (inchangé quand rien ne s'y applique).
 export function optionsDuService(r, documents = [], prestationDe = () => null) {
   if (!r) return [];
   const dt = r.details || {};
   const ids = new Set([r.ligne_id, ...(Array.isArray(dt.lignes_ids) ? dt.lignes_ids : [])].filter(Boolean));
+  const duDossier = ids.size && r.dossier_id ? (documents || []).filter((d) => d && d.dossier_id === r.dossier_id) : [];
+  const factures = duDossier.filter((d) => d.type === "facture");
+  const sources = factures.length ? factures : duDossier.filter((d) => d.type === "devis");
   const vues = new Set();
-  const lignes = ids.size && r.dossier_id
-    ? (documents || []).filter((d) => d && d.dossier_id === r.dossier_id && d.type !== "devis").flatMap((d) => (d.contenu && d.contenu.lignes) || [])
-        .filter((l) => estLigneOption(l) && l.kind !== "texte" && l.kind !== "remise" && (ids.has(l.id) || ids.has(l.option_de)) && !vues.has(l.id) && vues.add(l.id))
-    : [];
+  const lignes = sources.flatMap((d) => ((d.contenu && d.contenu.lignes) || []).map((l) => ({ l, devise: (d.contenu && d.contenu.devise) || null })))
+    .filter(({ l }) => estLigneOption(l) && l.kind !== "texte" && l.kind !== "remise" && (ids.has(l.id) || ids.has(l.option_de)) && !vues.has(l.id) && vues.add(l.id));
   const qteDe = (q) => (q !== null && q !== undefined && q !== "" && Number(q) > 0 ? Number(q) : 1);
-  const noms = (p, brut) => ({ libelle: brut || (p && p.libelle) || "", libelle_en: (p && p.libelle_en) || libelleClient(brut || (p && p.libelle) || "") });
-  if (lignes.length) return lignes.map((l) => { const p = l.prestation_id ? prestationDe(l.prestation_id) : null; return { ...noms(p, l.titre || l.libelle), qte: qteDe(l.qte), prix: montantLigne(l), offert: !!l.offert }; }).filter((o) => o.libelle);
-  return (Array.isArray(dt.options) ? dt.options : []).map((o) => { const p = o && o.prestation_id ? prestationDe(o.prestation_id) : null; const prix = o && o.prix !== null && o.prix !== undefined && o.prix !== "" && Number.isFinite(Number(o.prix)) ? Number(o.prix) : null; return { ...noms(p, o && o.libelle), qte: qteDe(o && o.qte), prix, offert: false }; }).filter((o) => o.libelle);
+  const noms = (p, brut, en) => ({ libelle: brut || (p && p.libelle) || "", libelle_en: en || (p && p.libelle_en) || libelleClient(brut || (p && p.libelle) || "") });
+  if (lignes.length) return lignes.map(({ l, devise }) => { const p = l.prestation_id ? prestationDe(l.prestation_id) : null; return { ...noms(p, l.titre || l.libelle, l.libelle_en), qte: qteDe(l.qte), prix: montantLigne(l), offert: !!l.offert, devise }; }).filter((o) => o.libelle);
+  return (Array.isArray(dt.options) ? dt.options : []).map((o) => { const p = o && o.prestation_id ? prestationDe(o.prestation_id) : null; const prix = o && o.prix !== null && o.prix !== undefined && o.prix !== "" && Number.isFinite(Number(o.prix)) ? Number(o.prix) : null; return { ...noms(p, o && o.libelle, o && o.libelle_en), qte: qteDe(o && o.qte), prix, offert: false, devise: null }; }).filter((o) => o.libelle);
 }
 // La ligne courte d'une option sous son service : « + Koh Ha extension, 950 », « + Lunch box ×2, 300 ». `montant` met le prix en forme.
 export const texteOptionService = (o, montant = (n) => String(n), offert = "offert") =>
