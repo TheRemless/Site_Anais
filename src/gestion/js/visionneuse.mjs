@@ -53,7 +53,9 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
   document.documentElement.classList.add("modal-ouverte");
   document.addEventListener("keydown", surTouche, true);
   try {
-    history.pushState({ ...(history.state || {}), visionneuse: true }, "");
+    // Posée sur l'entrée d'une fenêtre fermée (fantôme), l'entrée de la photo n'en est pas un : la fermer ne quitte pas l'écran.
+    const { fantome, premiere, ...dessous } = history.state || {};
+    history.pushState({ ...dessous, visionneuse: true }, "");
     window.addEventListener("popstate", surRetour);
   } catch {
     // historique refusé (rare) : Fermer et Échap suffisent

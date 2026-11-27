@@ -77,14 +77,69 @@ test("point 2 : les pas automatiques gardent leur sens (pas d'aller-retour entre
   // Ancienne entrée de la visionneuse et entrée d'une fenêtre fermée, au même rang : sans le sens gardé, on repartait vers l'avant.
   const vis = { ecran: "R", feuille: 2, rang: 20, visionneuse: true };
   const vide = { ecran: "R", feuille: 2, rang: 20 };
+  assert.equal(pasSuivant(vide, vis, [], "retour"), "retour");
+  // Un pas déjà en cours traverse aussi une ancienne entrée de photo ; seul le premier pas, celui de la personne, s'arrête en la quittant.
   assert.equal(pasSuivant(vis, vide, [], "retour"), "retour");
+  assert.equal(pasSuivant(vis, vide, []), null);
   assert.equal(pasSuivant(vide, ECRAN, [], "retour"), "retour");
   // Arrivé sur un autre écran : on s'arrête.
   assert.equal(pasSuivant(ECRAN, { gestionEntree: 2 }, [], "retour"), null);
   assert.ok(PAS_MAX >= 4 && PAS_MAX <= 20);
   assert.match(source("ui.mjs"), /pasEnCours = pas && fait <= PAS_MAX \?/);
   // Toute entrée ajoutée prend un rang croissant (visionneuse comprise).
-  assert.match(source("ui.mjs"), /ajouterNatif\(etat && typeof etat === "object" \? \{ \.\.\.etat, rang: \+\+rangHist \} : etat, titre, url\)/);
+  assert.match(source("ui.mjs"), /ajouterNatif\(entreeAjoutee\(etat, \+\+rangHist\), titre, url\)/);
+});
+
+test("A : fermer une photo posée sur un fantôme ne quitte pas l'écran", async () => {
+  const { entreeAjoutee, pasSuivant } = await load();
+  const fantome = { gestionEntree: 3, ecran: "R", rang: 10, fantome: true };
+  // La visionneuse recopie l'entrée du dessous : la marque fantôme ne la suit plus.
+  const photo = entreeAjoutee({ ...fantome, visionneuse: true }, 11);
+  assert.deepEqual(photo, { gestionEntree: 3, ecran: "R", rang: 11, visionneuse: true });
+  // Retour ou bouton Fermer de la photo : on arrive sur le fantôme, aucun pas de plus (avant : #/clients → #/dossiers).
+  assert.equal(pasSuivant(photo, fantome, [], null, false), null);
+  assert.equal(pasSuivant({ ...photo, fantome: true }, fantome, [], null, false), null);
+  assert.match(source("visionneuse.mjs"), /const \{ fantome, premiere, \.\.\.dessous \} = history\.state \|\| \{\};\s*history\.pushState\(\{ \.\.\.dessous, visionneuse: true \}, ""\);/);
+});
+
+test("C : Avancer sur une ancienne entrée de la visionneuse (photo fermée) continue d'un pas", async () => {
+  const { entreeVide, pasSuivant } = await load();
+  const photo = { gestionEntree: 3, ecran: "R", rang: 11, visionneuse: true };
+  assert.equal(entreeVide(photo, [], false), true);
+  // Photo encore ouverte : son entrée est vivante.
+  assert.equal(entreeVide(photo, [], true), false);
+  assert.equal(pasSuivant(ECRAN, photo, [], null, false), "avance");
+  assert.equal(pasSuivant(ECRAN, photo, [], null, true), null);
+});
+
+test("D : les fantômes ne s'empilent pas (une entrée ajoutée n'en est jamais un, une fenêtre reprend le fantôme)", async () => {
+  const { entreeAjoutee, entreePourOuverture, entreeApresFermeture } = await load();
+  assert.equal(entreeAjoutee({ ecran: "R", fantome: true }, 5).fantome, undefined);
+  // Ouvrir puis fermer en boucle : la même entrée passe de fenêtre à fantôme, jamais une de plus.
+  let etat = ECRAN;
+  let ajoutees = 0;
+  for (let n = 1; n <= 20; n++) {
+    const o = entreePourOuverture(etat, n, [], 100 + n, "x");
+    if (!o.remplacer) ajoutees++;
+    etat = entreeApresFermeture(o.etat, n);
+  }
+  assert.equal(ajoutees, 1);
+  assert.equal(etat.fantome, true);
+});
+
+test("E : aucun pas automatique en arrière depuis la première entrée de Gestion (app installée)", async () => {
+  const { pasSuivant, entreeAuDemarrage, entreePourOuverture, entreeAjoutee } = await load();
+  const premiere = { ...ECRAN, premiere: true };
+  const fantome = { gestionEntree: 3, ecran: "R", rang: 10, fantome: true };
+  assert.equal(pasSuivant(fantome, premiere, []), null);
+  assert.equal(pasSuivant(fantome, ECRAN, []), "retour");
+  // Lancement : la première entrée est marquée ; un rechargement garde la marque, une fenêtre ou une photo ne la recopie pas.
+  assert.deepEqual(entreeAuDemarrage(null, true), { premiere: true });
+  assert.deepEqual(entreeAuDemarrage({ gestionEntree: 1 }, true), { gestionEntree: 1, premiere: true });
+  assert.equal(entreeAuDemarrage(premiere, true), null);
+  assert.equal(entreePourOuverture(premiere, 1, [], 2, "x").etat.premiere, undefined);
+  assert.equal(entreeAjoutee(premiere, 2).premiere, undefined);
+  assert.match(source("ui.mjs"), /const premiere = lancement && \(history\.length === 1 \|\| !document\.referrer\.startsWith\(location\.origin\)\);/);
 });
 
 test("point 2 : une fenêtre enchaînée reprend le fantôme, une confirmation s'ajoute au-dessus", async () => {
@@ -104,11 +159,12 @@ test("point 3 : rechargement avec une fenêtre ouverte, l'entrée devient un fan
   assert.equal(entreeAuDemarrage({ ...FEUILLE(2), visionneuse: true }), null);
   // Un seul retour quitte l'écran.
   assert.equal(pasSuivant(apres, ECRAN, []), "retour");
-  // Une entrée de fenêtre fermée (rechargement, ou fermée sous une autre) compte comme vide ; la visionneuse jamais.
+  // Une entrée de fenêtre fermée (rechargement, ou fermée sous une autre) compte comme vide.
   assert.equal(entreeVide(FEUILLE(2), []), true);
   assert.equal(entreeVide(FEUILLE(2), [2]), false);
-  assert.equal(entreeVide({ ...FEUILLE(2), visionneuse: true }, []), false);
-  assert.match(source("ui.mjs"), /const depart = entreeAuDemarrage\(history\.state\);/);
+  // Entrée de la visionneuse : vivante tant que la photo est ouverte, vide ensuite (point C de la relecture finale).
+  assert.equal(entreeVide({ ...FEUILLE(2), visionneuse: true }, [], true), false);
+  assert.match(source("ui.mjs"), /const depart = entreeAuDemarrage\(history\.state, premiere\);/);
 });
 
 test("point 4 : aucune navigation différée qui pourrait annuler celle de la personne", () => {
