@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { varsReponse } from "../src/gestion/js/demande-calc.mjs";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, texteParcEn, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
 import { BUNDHAYA, SATUN } from "./fixtures/regles-partenaires-anais.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
@@ -26,7 +26,20 @@ test("vouchers : modèle d'après la prestation, numéro, statut de paiement", (
 test("vouchers : privé ou join, frais de parc, type de transfert, hôtel et chambre", () => {
   assert.equal(estPrive({ groupe: "Privatisation", libelle: "Koh Rok" }, {}), true);
   assert.equal(estPrive({ groupe: "Excursions en groupe", libelle: "4 îles" }, {}), false);
-  assert.deepEqual(fraisDeParc({ details: { parc: "Adulte étranger: 400 ฿ | Enfant: 200 ฿\n(Thaï: 40 ฿ / 20 ฿)" } }), { inclus: false, texte: "Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day" });
+  assert.deepEqual(fraisDeParc({ details: { parc: "Adulte étranger: 400 ฿ | Enfant: 200 ฿\n(Thaï: 40 ฿ / 20 ฿)" } }), { inclus: false, texte: "Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB); cash on the day" });
+  // Ponctuation finale retirée, séparateur net, rien de plus quand le texte dit déjà comment payer.
+  assert.equal(texteParcEn("Park fee 200 ฿ per adult, paid on site."), "Park fee 200 THB per adult, paid on site");
+  assert.equal(texteParcEn("Tung Yee Peng village entrance, 40 ฿ per adult, 20 ฿ per child aged 4 to 11"), "Tung Yee Peng village entrance, 40 THB per adult, 20 THB per child aged 4 to 11; cash on the day");
+  assert.equal(texteParcEn("Entrance 300 ฿ per adult."), "Entrance 300 THB per adult; cash on the day");
+  assert.doesNotMatch(texteParcEn("Entrance 300 ฿ per adult."), /\.[,;]/);
+  // « à » d'un ancien texte français : « 100 to 200 THB », la devise une seule fois.
+  assert.equal(texteParcEn("Selon destination (100 ฿ à 200 ฿)"), "100 to 200 THB, depending on the destination; cash on the day");
+  // Le voucher écrit déjà « Not included: » : pas de redite en tête, et une majuscule à ce qui suit.
+  assert.equal(texteParcEn("Not included (as on the other trips).\nForeign adult: 400 ฿ | Child: 200 ฿"), "Adult 400 THB, child 200 THB; cash on the day");
+  assert.equal(texteParcEn("Not included. Foreign child: 200 ฿"), "Child 200 THB; cash on the day");
+  // Aucun mot français ne passe sur le voucher anglais, anciens textes compris.
+  for (const t of ["Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) | À régler en espèces sur place", "Selon destination (200 à 400 ฿ / adulte étranger, 100 à 200 ฿ / enfant)", "Enfant étranger: 100 ฿ | Enfant thaï: 20 ฿", "Non inclus. Adulte étranger: 300 ฿"])
+    assert.deepEqual(texteParcEn(t).toLowerCase().split(/[^\p{L}]+/u).filter((m) => ["à", "et", "enfant", "adulte", "étranger", "selon", "inclus", "non", "régler", "espèces", "sur", "place", "thaï"].includes(m)), [], t);
   assert.deepEqual(fraisDeParc({ details: { parc: "Compris dans la prestation" } }), { inclus: true, texte: "" });
   assert.equal(fraisDeParc({ details: { parc: "Park fees included" } }).inclus, true);
   assert.equal(fraisDeParc(null).inclus, null);

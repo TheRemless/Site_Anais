@@ -949,11 +949,16 @@ export function fraisDeParc(prestation) {
   return { inclus, texte: inclus ? "" : texteParcEn(texte) };
 }
 
-// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day ».
+// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB); cash on the day ».
 export function texteParcEn(texte) {
   let s = String(texte || "").replace(/\s*\n\s*/g, " ").trim();
   s = s.replace(/^(?:Selon destination|Depending on destination)\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
+  // « 100 ฿ à 200 ฿ » (texte français) : « 100 to 200 THB », la devise une seule fois.
+  s = s.replace(/(\d+)\s*฿\s*à\s*(\d+)\s*฿/g, "$1 to $2 ฿");
   s = s.replace(/(\d+)\s*à\s*(\d+)/g, "$1 to $2");
+  // Le voucher écrit déjà « Not included: » devant ce texte : « Not included (as on the other trips). » ou « Not included, paid separately. »
+  // en tête ne se répète pas.
+  s = s.replace(/^(?:Not included|Non inclus|Pas inclus)\b(?:\s*\([^)]*\))?(?:\s*,?\s*(?:paid separately|payé à part))?\s*[.,:;]?\s*/i, "");
   // Le texte de la base est en français (anciennes lignes) ou en anglais (depuis le 12.11.2026) : les deux donnent la même phrase.
   s = s.replace(/\(\s*([\d\s\/฿]+?)\s*(?:thaï|Thai)\s*\)/gi, "(Thai nationals $1)");
   s = s.replace(/\(\s*(?:Thaï|Thai)\s*:\s*/gi, "(Thai nationals ");
@@ -964,7 +969,11 @@ export function texteParcEn(texte) {
   s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*(?:À régler en espèces sur place|To be paid in cash on site)/i, "");
   s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").trim();
   s = s.charAt(0).toUpperCase() + s.slice(1);
-  return /cash/i.test(s) ? s : `${s}, cash on the day`;
+  // La mention de paiement suit le texte du frais sans enchaîner deux ponctuations (« paid on site., cash… ») et avec un séparateur net : une
+  // virgule la ferait lire comme un élément de la liste (« 20 THB per child aged 4 to 11, cash on the day »). Un texte qui dit déjà comment
+  // ou quand payer (espèces, sur place, le jour même) ne reçoit rien de plus.
+  s = s.replace(/[\s.,;:]+$/, "");
+  return /cash|on site|on the day|sur place|en espèces/i.test(s) ? s : `${s}; cash on the day`;
 }
 
 // Capacité du bateau quand la base en donne une en personnes (« 1 à 2 personnes »), rien pour « Par personne ».
