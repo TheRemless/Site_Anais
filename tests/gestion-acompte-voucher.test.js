@@ -226,6 +226,8 @@ test("fiche du dossier : « À payer sur place » donne le reste après l'acompt
   const r2 = { id: "r2", ligne_id: "S", statut: "annule", paye_sur_place: true, montant_vente: 2300 };
   assert.equal(O.surPlaceAnnule(partagee, [r1, r2]), 2300, "montant_vente de la réservation annulée");
   assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: null }]), 2300, "sans montant_vente : (4 000 + 600) / 2 réservations");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: 0 }]), 2300, "montant_vente à 0 : pas un prix (comme imputationDossier), prorata");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: "" }]), 2300, "montant_vente vide : prorata");
   assert.equal(O.surPlaceAnnule(partagee, [{ ...r1, statut: "annule" }, r2]), 4600, "toutes annulées : la ligne entière et son option");
   assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: 9999 }]), 4600, "jamais plus que les lignes");
   assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, statut: "confirme" }]), 0, "aucune annulée : rien");

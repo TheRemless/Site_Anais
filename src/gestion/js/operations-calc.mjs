@@ -798,7 +798,7 @@ export function paiementDuService(r, { resume = null } = {}) {
 // Le prix sur place des services annulés encore écrits sur le document : r.surPlace les compte, la base non. Une ligne (et ses options)
 // portée seulement par des réservations annulées part en entier. Portée aussi par une réservation active (service dupliqué, deux réservations
 // sur la même ligne), seule la part de chaque réservation annulée part : son montant_vente (au plus ses lignes), sinon chacune de ses lignes
-// divisée par le nombre de réservations qui la portent. `contenu` : le document dont r.surPlace est lu ; `reservations` : celles du dossier.
+// divisée par le nombre de réservations qui la portent (montant_vente à 0 ou vide, comme imputationDossier). `contenu` : le document dont r.surPlace est lu ; `reservations` : celles du dossier.
 export function surPlaceAnnule(contenu, reservations = []) {
   const resas = (reservations || []).filter(Boolean);
   const annulees = resas.filter((r) => statutReservation(r.statut) === "annule");
@@ -813,8 +813,9 @@ export function surPlaceAnnule(contenu, reservations = []) {
     const siennes = lignes.filter((l) => !entieres.has(l) && porteurs.get(l).includes(r));
     if (!siennes.length) continue;
     const auProrata = siennes.reduce((s, l) => s + montantLigne(l) / porteurs.get(l).length, 0);
+    // Comme imputationDossier : un montant_vente à 0 ou vide n'est pas un prix, la part passe au prorata.
     const mv = Number(r.montant_vente);
-    retire += r.montant_vente !== null && r.montant_vente !== undefined && r.montant_vente !== "" && Number.isFinite(mv) && mv >= 0 ? Math.min(mv, siennes.reduce((s, l) => s + montantLigne(l), 0)) : auProrata;
+    retire += Number.isFinite(mv) && mv > 0 ? Math.min(mv, siennes.reduce((s, l) => s + montantLigne(l), 0)) : auProrata;
   }
   return arr2(Math.min(retire, lignes.reduce((s, l) => s + montantLigne(l), 0)));
 }
