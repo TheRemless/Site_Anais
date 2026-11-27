@@ -712,7 +712,7 @@ function ficheDossierVue(id) {
             // « Tout sur place » : rien à encaisser chez nous, ni reste ni couleur d'alerte.
             r.statut === "sur_place" ? ligne(tr("Reste à payer"), tr("Rien chez nous"), "resume-ok") : ligne(tr("Reste à payer"), fm(r.reste), r.reste > 0 ? "resume-reste" : null),
             // Le reste réel sur place : l'acompte déjà imputé par la base à ces services (parts du résumé) n'est plus à payer au départ.
-            r.surPlace > 0 ? ligne(tr("À payer sur place"), sp.verse > 0 ? [fm(sp.reste), h("span", { class: "resume-sous-valeur" }, tr("dont {montant} d'acompte déjà reçu", { montant: fm(sp.verse) }))] : fm(sp.reste)) : null,
+            sp.reste > 0 || sp.verse > 0 ? ligne(tr("À payer sur place"), sp.verse > 0 ? [fm(sp.reste), h("span", { class: "resume-sous-valeur" }, tr("acompte de {montant} déjà déduit", { montant: fm(sp.verse) }))] : fm(sp.reste)) : null,
             // Solde dû dès l'envoi du carnet (seulement quand il reste quelque chose à régler).
             d.carnet_envoye_le && r.reste > 0 && !d.annule && r.statut !== "sur_place" ? ligne(tr("Solde dû dès le"), formatDate(d.carnet_envoye_le)) : null,
             ...ligneMarge.map(([l, v, det]) => ligne(l, det ? `${v} · ${det}` : v))

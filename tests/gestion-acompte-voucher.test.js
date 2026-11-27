@@ -202,22 +202,27 @@ test("textes réglables : les lignes d'acompte sont dans les réglages des vouch
   for (const k of ["b_verse", "b_reste", "b_paiement_paye"]) assert.ok(cles(GROUPES_BOOKING).includes(k), k);
 });
 
-test("fiche du dossier : « À payer sur place » donne le reste après l'acompte imputé, la part imputée en dessous", async () => {
+test("fiche du dossier : « À payer sur place » donne le reste après l'acompte imputé, la part imputée déjà déduite en dessous", async () => {
   // Services chez nous 2 400, une excursion sur place 7 450 (option comprise), 3 000 reçus : 600 imputés, 6 850 à payer au départ.
   const resume = { total: 2400, recu: 3000, surPlace: 7450, dossier: { parts: { "resa-1": { verse: 600, reste: 6850 } } } };
   assert.deepEqual(O.surPlaceApresAcompte(resume), { reste: 6850, verse: 600 });
-  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: { parts: {} } }), { reste: 7450, verse: 0 }, "sans acompte imputé : le prix sur place entier");
-  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: {} }), { reste: 7450, verse: 0 }, "résumé sans parts (base pas encore migrée)");
-  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 1000, dossier: { parts: { a: { verse: 400 }, b: { verse: 800 } } } }), { reste: 0, verse: 1000 }, "jamais négatif");
-  // La même règle que la base : les parts calculées par imputationDossier donnent le même reste.
-  const resas = [{ id: "resa-1", paye_sur_place: true, statut: "confirme", montant_vente: 7450, date_service: "2026-12-10" }];
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: { parts: { "resa-1": { verse: 0, reste: 7450 } } } }), { reste: 7450, verse: 0 }, "sans acompte imputé : le prix sur place entier");
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: {} }), { reste: 7450, verse: 0 }, "résumé sans parts (pas encore recalculé) : le prix sur place du résumé");
+  // La même source que la base : les parts calculées par imputationDossier (la règle de recalculer_dossier).
+  const resas = [
+    { id: "resa-1", paye_sur_place: true, statut: "confirme", montant_vente: 7450, date_service: "2026-12-10" },
+    // Un service sur place annulé dont la ligne reste sur la facture : r.surPlace (lu sur la facture) le compte encore, les parts non.
+    { id: "resa-2", paye_sur_place: true, statut: "annule", montant_vente: 2000, date_service: "2026-12-11" },
+  ];
   const { parts } = O.imputationDossier({ total: 2400, recu: 3000, reservations: resas });
-  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 7450, dossier: { parts } }), { reste: 6850, verse: 600 });
-  // La fiche lit cette aide, pas r.surPlace brut, et la phrase est traduite.
+  assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 9450, dossier: { parts } }), { reste: 6850, verse: 600 }, "le service annulé ne compte pas");
+  // La fiche lit cette aide, pas r.surPlace brut ; la phrase dit que l'acompte est déjà déduit (jamais « dont », qui ferait soustraire deux fois).
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("../src/gestion/js/views/dossier.mjs", import.meta.url), "utf8");
   assert.match(src, /surPlaceApresAcompte\(r\)/);
   assert.match(src, /ligne\(tr\("À payer sur place"\), sp\.verse > 0/);
+  assert.match(src, /tr\("acompte de \{montant\} déjà déduit"/);
+  assert.doesNotMatch(src, /dont \{montant\} d'acompte/);
   const en = fs.readFileSync(new URL("../src/gestion/js/i18n-en.mjs", import.meta.url), "utf8");
-  assert.ok(en.includes("\"dont {montant} d'acompte déjà reçu\""));
+  assert.ok(en.includes('"acompte de {montant} déjà déduit": "{montant} deposit already deducted"'));
 });
