@@ -795,14 +795,24 @@ export function paiementDuService(r, { resume = null } = {}) {
   const reste = arr2(Math.max(0, Number(part.reste) || 0));
   return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true } : { statut: "paye", verse, reste: 0, surPlace: false };
 }
-// Ce qui reste à payer sur place pour tout le dossier, une fois l'acompte imputé par la base : la même source que les vouchers (parts de
-// dossiers_resume, une entrée par service payé sur place non annulé, d'après son montant_vente). Sans parts (résumé pas encore recalculé),
-// le prix sur place du résumé, sans acompte. Rend { reste, verse } (verse : la part d'acompte imputée, déjà déduite du reste).
-export function surPlaceApresAcompte(resume) {
+// Le prix sur place des services annulés encore écrits sur le document (leur ligne et ses options) : r.surPlace les compte, la base non.
+// `contenu` : le document dont r.surPlace est lu (la facture, sinon le devis) ; `reservations` : celles du dossier.
+export function surPlaceAnnule(contenu, reservations = []) {
+  const ids = new Set((reservations || []).filter((r) => r && statutReservation(r.statut) === "annule").flatMap((r) => [r.ligne_id, ...(((r.details || {}).lignes_ids) || [])]).filter(Boolean));
+  if (!ids.size) return 0;
+  return arr2(((contenu && contenu.lignes) || []).filter((l) => l && l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte" && (ids.has(l.id) || ids.has(l.option_de))).reduce((s, l) => s + montantLigne(l), 0));
+}
+// Ce qui reste à payer sur place pour tout le dossier, une fois l'acompte imputé par la base (parts de dossiers_resume, la source des
+// vouchers). Les parts ne connaissent que les services sur place avec une réservation et un montant_vente : le prix sur place du document
+// (moins les services annulés, `annule`) reste le plancher, d'où reste = max(somme des restes, prix sur place − somme des versés).
+// Sans parts (résumé pas encore recalculé) : le prix sur place, sans acompte. Rend { reste, verse } (verse : déjà déduit du reste).
+export function surPlaceApresAcompte(resume, { annule = 0 } = {}) {
+  const prix = arr2(Math.max(0, (Number(resume && resume.surPlace) || 0) - Math.max(0, Number(annule) || 0)));
   const parts = Object.values((resume && ((resume.dossier && resume.dossier.parts) || resume.parts)) || {}).filter((p) => p && typeof p === "object");
-  if (!parts.length) return { reste: arr2(Math.max(0, Number(resume && resume.surPlace) || 0)), verse: 0 };
+  if (!parts.length) return { reste: prix, verse: 0 };
   const somme = (k) => arr2(parts.reduce((s, p) => s + Math.max(0, Number(p[k]) || 0), 0));
-  return { reste: somme("reste"), verse: somme("verse") };
+  const verse = somme("verse");
+  return { reste: arr2(Math.max(somme("reste"), prix - verse, 0)), verse };
 }
 // Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand ils sont imprimés (lus dans le résumé).
 export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
