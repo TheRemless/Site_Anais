@@ -530,6 +530,20 @@ test("fiche, liste et feuille du jour : l'option s'affiche sous son service, ave
   assert.deepEqual(O.optionsDuService(carte, docs, prestationDe).map((o) => O.texteOptionService(o)), ["+ Extension Koh Ha ×2, 1900"]);
   assert.equal(O.texteOptionService({ libelle: "Snorkel", qte: 1, prix: 200, offert: true }, String, "offert"), "+ Snorkel, offert");
   assert.deepEqual(O.optionsDuService({ id: "r3", dossier_id: "d1", details: {} }, docs, prestationDe), [], "sans option : rien");
+  // Facture locale : ses lignes copiées gardent leur option_de, à un autre prix. Elles ne comptent pas (sinon l'option sort deux fois).
+  const avecLocale = [...docs, { dossier_id: "d1", type: "facture_locale", contenu: { devise: "CHF", lignes: [
+    { id: "z1", libelle: "Private Koh Rok trip", unite: 650, qte: 1 },
+    { id: "z2", option_de: "l1", prestation_id: "opt-1", libelle: "Koh Ha extension on the private Koh Rok trip", unite: 95, qte: 1 },
+  ] } }];
+  assert.deepEqual(O.optionsDuService(r, avecLocale, prestationDe).map((o) => O.texteOptionService(o)), ["+ Koh Ha extension on the private Koh Rok trip, 950", "+ Lunch box ×2, 300"], "facture locale ignorée");
+  // Sans facture : le devis.
+  const devisSeul = [{ dossier_id: "d1", type: "devis", contenu: { devise: "THB", lignes: [{ id: "l1", libelle: "Trip" }, { id: "x9", option_de: "l1", libelle: "Snorkel", unite: 100, qte: 1 }] } }];
+  assert.deepEqual(O.optionsDuService(r, devisSeul, prestationDe).map((o) => [o.libelle, o.prix, o.devise]), [["Snorkel", 100, "THB"]]);
+  // La devise du document suit l'option (la carte l'affiche) ; une option sans prestation garde son libelle_en, sinon son texte.
+  const fr = [{ dossier_id: "d1", type: "facture", contenu: { devise: "THB", lignes: [{ id: "l1", libelle: "Trip" }, { id: "y1", option_de: "l1", libelle: "Déjeuner sur la plage", libelle_en: "Beach lunch", unite: 200, qte: 1 }, { id: "y2", option_de: "l1", libelle: "Masque perso", unite: 50, qte: 1 }] } }];
+  const ofr = O.optionsDuService(r, fr, prestationDe);
+  assert.deepEqual(ofr.map((o) => [o.libelle_en, o.devise]), [["Beach lunch", "THB"], ["Masque perso", "THB"]]);
+  assert.equal(O.texteOptionService(ofr[0], (n) => `THB ${n}`), "+ Déjeuner sur la plage, THB 200");
   // Feuille du jour : le nom anglais et le nombre, sans prix (elle part chez le prestataire).
   const F = await import("../src/gestion/js/feuille-calc.mjs");
   const texte = F.texteFeuillePartage({ nom: "Boat partner", adultes: 2, enfants: 0, lignes: [{ sorte: "pickup", heure: "08:00", libelle: "Private Koh Rok trip", client: "Client Test", hotel: "Hotel Test", personnes: { adultes: 2 }, options: opts }] }, "2026-12-10");
@@ -537,7 +551,7 @@ test("fiche, liste et feuille du jour : l'option s'affiche sous son service, ave
   assert.doesNotMatch(texte, /950|300|600/);
   // Les écrans branchent bien l'aide : la carte de réservation (fiche du dossier et liste) et la feuille du jour.
   const src = (f) => fs.readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
-  assert.match(src("views/reservations.mjs"), /optionsDuService\(r, etat\.db\.documents[\s\S]{0,200}carte-option/);
+  assert.match(src("views/reservations.mjs"), /optionsDuService\(r, etat\.db\.documents[\s\S]{0,200}carte-option[\s\S]{0,120}formatMontant\(n, o\.devise/);
   assert.match(src("views/feuille-jour.mjs"), /options: \(r\) => optionsDuService\(r, etat\.db\.documents/);
   assert.match(src("feuille-calc.mjs"), /contexte\.options/);
 });

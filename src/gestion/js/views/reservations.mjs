@@ -230,7 +230,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive()), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
     // Les options du service (Koh Ha extension…) : leur nom, le nombre et le prix client, jamais le net.
-    ...optionsDuService(r, etat.db.documents, (id) => etat.db.prestations.find((x) => x.id === id) || null).map((o) => h("span", { class: "carte-sous carte-option" }, texteOptionService(o, prix, tr("offert")))),
+    ...optionsDuService(r, etat.db.documents, (id) => etat.db.prestations.find((x) => x.id === id) || null).map((o) => h("span", { class: "carte-sous carte-option" }, texteOptionService(o, (n) => formatMontant(n, o.devise || reglages().devise || ""), tr("offert")))),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
     // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
     enCours ? h("div", { class: "etat-en-cours", role: "status" }, dateFinService(r) === aujourdhui() ? tr("Location en cours, retour aujourd'hui") : tr("Location en cours jusqu'au {date}", { date: formatDate(dateFinService(r)) })) : null,
