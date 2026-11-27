@@ -1492,6 +1492,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; font-variant-numeric: lining-nums tabular-nums; }
 .resume-ligne dt { color: var(--texte-2); font-size: 0.92rem; }
 .resume-ligne dd { margin: 0; font-weight: 700; text-align: right; }
+.resume-sous-valeur { display: block; font-weight: 400; font-size: 0.85rem; color: var(--texte-2); }
 .resume-reste dd { color: #8a5200; }
 .resume-ok dd { color: #25653d; }
 .resume-lien-bas { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-bottom: -10px; font-weight: 600; }

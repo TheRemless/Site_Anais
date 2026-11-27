@@ -795,6 +795,14 @@ export function paiementDuService(r, { resume = null } = {}) {
   const reste = arr2(Math.max(0, Number(part.reste) || 0));
   return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true } : { statut: "paye", verse, reste: 0, surPlace: false };
 }
+// Ce qui reste à payer sur place pour tout le dossier, une fois l'acompte imputé par la base (parts de dossiers_resume) : la même source
+// que les vouchers, pour que la fiche dise ce que le client paiera vraiment au départ. Rend { reste, verse } (verse : la part d'acompte imputée).
+export function surPlaceApresAcompte(resume) {
+  const surPlace = arr2(Math.max(0, Number(resume && resume.surPlace) || 0));
+  const parts = (resume && ((resume.dossier && resume.dossier.parts) || resume.parts)) || {};
+  const verse = arr2(Math.min(surPlace, Object.values(parts).reduce((s, p) => s + Math.max(0, Number(p && p.verse) || 0), 0)));
+  return { reste: arr2(surPlace - verse), verse };
+}
 // Ce que l'empreinte d'un voucher envoyé retient du paiement : le statut, et les montants quand ils sont imprimés (lus dans le résumé).
 export const statutEmpreinte = (p) => (p && p.verse !== null && p.verse !== undefined ? `${p.statut}|${p.verse}|${p.reste ?? ""}` : (p && p.statut) || "");
 
