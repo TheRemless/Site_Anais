@@ -507,3 +507,37 @@ test("Taxi : la fenêtre de réservation n'ouvre pas les options (la course suit
   const f = formulaireReservation(r, () => {});
   assert.equal(f.querySelector(".options-resa"), null);
 });
+
+test("fiche, liste et feuille du jour : l'option s'affiche sous son service, avec le nombre au-delà de 1, sans le net", async () => {
+  const prestations = [{ id: "opt-1", libelle: "Extension Koh Ha", libelle_en: "Koh Ha extension", net: 600 }];
+  const prestationDe = (id) => prestations.find((x) => x.id === id) || null;
+  const docs = [
+    { dossier_id: "d1", type: "devis", contenu: { lignes: [{ id: "x9", option_de: "l1", libelle: "Devis seulement", unite: 1, qte: 1 }] } },
+    { dossier_id: "d1", type: "facture", contenu: { lignes: [
+      { id: "l1", libelle: "Private Koh Rok trip", unite: 6500, qte: 1 },
+      { id: "l2", option_de: "l1", prestation_id: "opt-1", libelle: "Koh Ha extension on the private Koh Rok trip", unite: 950, qte: 1, net: 600 },
+      { id: "l3", option_de: "l1", libelle: "Lunch box", unite: 150, qte: 2 },
+      { id: "l4", option_de: "autre", libelle: "Option d'un autre service", unite: 99, qte: 1 },
+    ] } },
+  ];
+  const r = { id: "r1", dossier_id: "d1", ligne_id: "l1", details: {} };
+  const opts = O.optionsDuService(r, docs, prestationDe);
+  assert.deepEqual(opts.map((o) => [o.libelle, o.qte, o.prix]), [["Koh Ha extension on the private Koh Rok trip", 1, 950], ["Lunch box", 2, 300]], "les options de CE service, pas celles du devis ni d'un autre service");
+  assert.deepEqual(opts.map((o) => O.texteOptionService(o)), ["+ Koh Ha extension on the private Koh Rok trip, 950", "+ Lunch box ×2, 300"]);
+  assert.ok(!opts.some((o) => "net" in o), "jamais de net");
+  // Service ajouté par une carte, sans ligne de facture : details.options.
+  const carte = { id: "r2", dossier_id: "d2", details: { options: [{ prestation_id: "opt-1", libelle: "Extension Koh Ha", prix: 1900, qte: 2 }] } };
+  assert.deepEqual(O.optionsDuService(carte, docs, prestationDe).map((o) => O.texteOptionService(o)), ["+ Extension Koh Ha ×2, 1900"]);
+  assert.equal(O.texteOptionService({ libelle: "Snorkel", qte: 1, prix: 200, offert: true }, String, "offert"), "+ Snorkel, offert");
+  assert.deepEqual(O.optionsDuService({ id: "r3", dossier_id: "d1", details: {} }, docs, prestationDe), [], "sans option : rien");
+  // Feuille du jour : le nom anglais et le nombre, sans prix (elle part chez le prestataire).
+  const F = await import("../src/gestion/js/feuille-calc.mjs");
+  const texte = F.texteFeuillePartage({ nom: "Boat partner", adultes: 2, enfants: 0, lignes: [{ sorte: "pickup", heure: "08:00", libelle: "Private Koh Rok trip", client: "Client Test", hotel: "Hotel Test", personnes: { adultes: 2 }, options: opts }] }, "2026-12-10");
+  assert.match(texte, /Private Koh Rok trip · \+ Koh Ha extension · \+ Lunch box ×2 · Client Test/);
+  assert.doesNotMatch(texte, /950|300|600/);
+  // Les écrans branchent bien l'aide : la carte de réservation (fiche du dossier et liste) et la feuille du jour.
+  const src = (f) => fs.readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
+  assert.match(src("views/reservations.mjs"), /optionsDuService\(r, etat\.db\.documents[\s\S]{0,200}carte-option/);
+  assert.match(src("views/feuille-jour.mjs"), /options: \(r\) => optionsDuService\(r, etat\.db\.documents/);
+  assert.match(src("feuille-calc.mjs"), /contexte\.options/);
+});
