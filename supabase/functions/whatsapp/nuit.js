@@ -3,7 +3,7 @@
 // Tests : tests/gestion-whatsapp-nuit.test.js.
 
 // Le texte de Jérémy du 27.11.2026, mot pour mot (emojis, espaces avant « ! », apostrophe typographique). Le même que le défaut de la migration 132.
-export const TEXTE_NUIT = "🌴 Hello and thank you for contacting us !\n\nOur team is currently away, but we’ll get back to you as soon as possible around 7:00 AM (Thailand time).\n\nIn the meantime, please feel free to send us all the details of your request so we can assist you more efficiently:\n\nThe more details you share, the more accurately we can assist you when we get back to you !\n\nThank you for your patience. We look forward to helping you discover Thailand ! 🇹🇭🌴";
+export const TEXTE_NUIT = "🌴 Hello and thank you for contacting us !\n\nOur team is currently away, but we’ll get back to you as soon as possible around 7:00 AM (Thailand time).\n\nIn the meantime, please feel free to send us all the details of your request so we can assist you more efficiently.\n\nThe more details you share, the more accurately we can assist you when we get back to you !\n\nThank you for your patience. We look forward to helping you discover Thailand ! 🇹🇭🌴";
 export const DEBUT_NUIT = "22:00";
 export const FIN_NUIT = "06:00";
 export const TEXTE_NUIT_MAX_OCTETS = 4096;

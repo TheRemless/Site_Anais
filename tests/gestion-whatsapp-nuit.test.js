@@ -19,7 +19,7 @@ const DEMANDE = [
   "",
   "Our team is currently away, but we’ll get back to you as soon as possible around 7:00 AM (Thailand time).",
   "",
-  "In the meantime, please feel free to send us all the details of your request so we can assist you more efficiently:",
+  "In the meantime, please feel free to send us all the details of your request so we can assist you more efficiently.",
   "",
   "The more details you share, the more accurately we can assist you when we get back to you !",
   "",
@@ -30,6 +30,8 @@ test("le texte est celui de Jérémy, mot pour mot, dans le code et dans la migr
   assert.equal(TEXTE_NUIT, DEMANDE);
   assert.ok(TEXTE_NUIT.includes("we’ll"), "apostrophe typographique");
   assert.equal((TEXTE_NUIT.match(/ !/g) || []).length, 3, "trois espaces avant « ! »");
+  // Correction de Jérémy du 27.11.2026 : un point, pas un deux-points, après « efficiently ».
+  assert.ok(TEXTE_NUIT.includes("assist you more efficiently.\n") && !TEXTE_NUIT.includes("efficiently:"));
   const sql = /nuit_texte text not null default \$nuit\$([\s\S]*?)\$nuit\$/.exec(MIGRATION);
   assert.ok(sql, "défaut du texte dans la migration");
   assert.equal(sql[1], DEMANDE);

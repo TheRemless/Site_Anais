@@ -51,7 +51,7 @@ alter table whatsapp_reglages add column if not exists nuit_texte text not null 
 
 Our team is currently away, but we’ll get back to you as soon as possible around 7:00 AM (Thailand time).
 
-In the meantime, please feel free to send us all the details of your request so we can assist you more efficiently:
+In the meantime, please feel free to send us all the details of your request so we can assist you more efficiently.
 
 The more details you share, the more accurately we can assist you when we get back to you !
 

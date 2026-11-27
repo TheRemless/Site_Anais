@@ -24,7 +24,7 @@ alter default privileges in schema public grant all on tables to anon, authentic
 alter default privileges in schema public grant execute on functions to anon, authenticated;
 `;
 const lire = (f) => fs.readFileSync(W + f, "utf8").replace("create extension if not exists pgcrypto;", "");
-const TEXTE = "🌴 Hello and thank you for contacting us !\n\nOur team is currently away, but we’ll get back to you as soon as possible around 7:00 AM (Thailand time).\n\nIn the meantime, please feel free to send us all the details of your request so we can assist you more efficiently:\n\nThe more details you share, the more accurately we can assist you when we get back to you !\n\nThank you for your patience. We look forward to helping you discover Thailand ! 🇹🇭🌴";
+const TEXTE = "🌴 Hello and thank you for contacting us !\n\nOur team is currently away, but we’ll get back to you as soon as possible around 7:00 AM (Thailand time).\n\nIn the meantime, please feel free to send us all the details of your request so we can assist you more efficiently.\n\nThe more details you share, the more accurately we can assist you when we get back to you !\n\nThank you for your patience. We look forward to helping you discover Thailand ! 🇹🇭🌴";
 
 const db = new PGlite();
 await db.exec(harnais);
