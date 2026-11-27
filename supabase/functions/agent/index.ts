@@ -47,10 +47,10 @@ import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
-import { lirePrise, proprietaireSuite } from "./equipe.js";
 import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
+import { lirePrise, proprietaireSuite } from "./equipe.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
 
