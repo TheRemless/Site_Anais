@@ -2580,6 +2580,15 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-conv-marques { display: flex; flex-wrap: wrap; gap: 6px; }
 .agent-conv-wa { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
 .agent-conv-wa svg { color: #128c4a; }
+/* L'Assistant en équipe (migration 133) : filtre « Les miennes / Toute l'équipe », prénom de la propriétaire, auteur réel d'un message. */
+.agent-filtre-equipe { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 10px; padding: 3px; border-radius: 12px; background: var(--surface-2); }
+.agent-filtre-bouton { min-height: 44px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--texte-2); font-weight: 600; }
+.agent-filtre-bouton[aria-pressed="true"] { background: var(--surface); color: var(--texte); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.agent-conv-proprio { display: inline-flex; align-items: center; padding: 0 8px; border: 1px solid var(--bord); border-radius: 999px; background: var(--surface); color: var(--texte); font-size: 0.8125rem; font-weight: 600; }
+.agent-auteur { display: block; margin-top: 4px; color: var(--texte-2); font-size: 0.8125rem; text-align: right; }
+.agent-fil-proprio { margin: 2px 0 0; color: var(--texte-2); font-size: 0.86rem; }
+.agent-occupe { margin: 0; padding: 6px 12px; color: var(--texte-2); font-size: 0.9rem; }
+.agent-carte-par { font-weight: 400; color: var(--texte-2); }
 .agent-fil-liens { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 0; }
 .agent-fil-liens a { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
 .agent-fil-liens svg { color: #128c4a; }

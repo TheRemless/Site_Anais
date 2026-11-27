@@ -97,7 +97,8 @@ const dossier = (await un(`select id from dossiers where entite_id = '${ent.secr
 if (dossier) {
   ok((await comme("nani", `update agent_conversations set dossier_id = '${dossier.id}' where id = '${conv}' returning id`)).rows.length === 1, "la conversation se relie au dossier");
   ok((await comme("nani", `select id from agent_conversations where dossier_id = '${dossier.id}'`)).rows.length === 1, "la fiche du dossier retrouve la conversation");
-  ok((await comme("anais", `select id from agent_conversations where dossier_id = '${dossier.id}'`)).rows.length === 0, "une autre personne ne voit pas la conversation de Nani");
+  // Migration 133 : l'administration de l'entreprise voit les conversations de l'équipe ; un lecteur, jamais.
+  ok((await comme("lecteur", `select id from agent_conversations where dossier_id = '${dossier.id}'`)).rows.length === 0, "un lecteur ne voit pas la conversation de Nani");
 } else ok(true, "aucun dossier de départ chez Secret : relier un dossier est vérifié par la migration 52");
 ok(!!(await un("select 1 x from pg_indexes where indexname = 'agent_conversations_dossier'")), "index sur le dossier relié");
 

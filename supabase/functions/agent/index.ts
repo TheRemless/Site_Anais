@@ -47,6 +47,7 @@ import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
+import { lirePrise, proprietaireSuite } from "./equipe.js";
 import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
@@ -277,11 +278,13 @@ Deno.serve(async (req) => {
     if (waEcrit) waLiee = wc.data;
   }
 
-  // La conversation : nouvelle, ou une des miennes (RLS : une conversation d'une autre personne n'est pas lisible).
-  let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string; whatsapp_conversation_id?: string | null } | null = null;
+  // La conversation : nouvelle, ou une des miennes, ou (migration 133) une de l'équipe pour l'administration de l'entreprise (RLS : une
+  // conversation d'une autre personne n'est pas lisible pour les autres rôles). Elle reste à sa propriétaire (user_id) ; les messages portent
+  // leur auteur réel (posé par la base), le journal et la limite du jour comptent la personne qui écrit.
+  let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string; whatsapp_conversation_id?: string | null; user_id?: string } | null = null;
   if (conversationId) {
     // whatsapp_conversation_id : la migration 67 ; sans elle, la lecture d'avant.
-    const COL_CONV_AGENT = "id, titre, dossier_id, entite_id, cree_le";
+    const COL_CONV_AGENT = "id, titre, dossier_id, entite_id, cree_le, user_id";
     let c: any = await sb.from("agent_conversations").select(`${COL_CONV_AGENT}, whatsapp_conversation_id`).eq("id", conversationId).maybeSingle();
     if (c.error && c.error.code === "42703") c = await sb.from("agent_conversations").select(COL_CONV_AGENT).eq("id", conversationId).maybeSingle();
     if (c.error) return json({ erreur: "base" }, 500);
@@ -306,6 +309,28 @@ Deno.serve(async (req) => {
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
   }
+  // Une seule réponse à la fois (migration 133) : la conversation est prise en base (verrou lu avec « for update ») avant toute écriture, et
+  // rendue à la fin de l'échange ou à son refus. Une seconde demande, de la même personne ou d'une autre, reçoit « conversation_occupee » et
+  // le nom de qui l'occupe ; rien n'est écrit. Une prise de plus de 3 minutes (fonction arrêtée) se reprend. Sans la migration : comme avant.
+  let verrou: { id: string; jeton: string } | null = null;
+  const prise: { jeton?: string; libre?: boolean; refus?: { corps: Record<string, unknown>; status: number } } = lirePrise(await sb.rpc("prendre_agent_conversation", { p_conversation: conv!.id }));
+  if (prise.refus) {
+    // Une conversation neuve ne peut pas être occupée ; un refus la retire, comme les autres refus.
+    if (!conversationId) await sb.from("agent_conversations").delete().eq("id", conv!.id);
+    return json(prise.refus.corps, prise.refus.status);
+  }
+  if (prise.jeton) verrou = { id: conv!.id, jeton: prise.jeton };
+  const liberer = async () => {
+    if (!verrou) return;
+    const v = verrou;
+    verrou = null;
+    const r = await sb.rpc("rendre_agent_conversation", { p_conversation: v.id, p_jeton: v.jeton });
+    if (r.error) console.error("agent : rendre la conversation", r.error.message);
+  };
+  const repondre = async (corps: Record<string, unknown>, status: number) => {
+    await liberer();
+    return json(corps, status);
+  };
   // Une discussion liée qui se remplit (relecture de la PR 318, discussion-pleine.js) : 20 pièces ou 30 Mo, ou un historique qui perdrait son
   // début. Elle est archivée et une nouvelle, liée à la même conversation WhatsApp, la remplace, ouverte par un court résumé (client,
   // dossiers, dernier prix de vente accepté). Dès que la personne lit encore cette conversation WhatsApp (waLue), même sans le droit d'y
@@ -329,11 +354,12 @@ Deno.serve(async (req) => {
       ]);
       const ancien = conv;
       const arch = await sb.from("agent_conversations").update({ statut: "archivee" }).eq("id", ancien.id);
-      if (arch.error) return json({ erreur: "base" }, 500);
-      const neuve = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: ancien.titre, dossier_id: ancien.dossier_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id }).select("id, titre, dossier_id, cree_le").single();
+      if (arch.error) return repondre({ erreur: "base" }, 500);
+      // La suite garde la propriétaire de l'ancienne quand l'administration écrit pour elle (migration 133).
+      const neuve = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: ancien.titre, dossier_id: ancien.dossier_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id, ...proprietaireSuite(ancien, userId) }).select("id, titre, dossier_id, cree_le, user_id").single();
       if (neuve.error) {
         await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", ancien.id);
-        return json({ erreur: "base" }, 500);
+        return repondre({ erreur: "base" }, 500);
       }
       remplace = ancien.id;
       conv = { ...neuve.data, whatsapp_conversation_id: ancien.whatsapp_conversation_id };
@@ -356,7 +382,7 @@ Deno.serve(async (req) => {
     apporteur = infoApporteur({ conv: waLiee, reliee: rel.error ? null : rel.data, candidats: cand.error ? [] : cand.data || [], entites: entitesApp });
   }
   const anciens = await sb.from("agent_messages").select("role, contenu").eq("conversation_id", conv!.id).order("id", { ascending: false }).limit(400);
-  if (anciens.error) return json({ erreur: "base" }, 500);
+  if (anciens.error) return repondre({ erreur: "base" }, 500);
   // Les pièces jointes de la conversation (migration 55) : leurs métadonnées, puis les données de celles qui partent à cet appel. Sans la
   // table (migration pas encore passée), une conversation sans fichier marche comme avant ; un envoi de fichier est refusé.
   // Un refus après la création d'une nouvelle conversation la retire : pas de conversation vide dans la liste.
@@ -364,7 +390,7 @@ Deno.serve(async (req) => {
     if (!conversationId || remplace) await sb.from("agent_conversations").delete().eq("id", conv!.id);
     // La discussion pleine remplacée redevient celle de la conversation WhatsApp : rien n'a été fait dans la nouvelle.
     if (remplace) await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", remplace);
-    return json(corps, status);
+    return repondre(corps, status);
   };
   const meta = await sb.from("agent_fichiers").select("id, nom, media_type, taille, cree_le").eq("conversation_id", conv!.id).order("cree_le", { ascending: true }).limit(100);
   if (meta.error && (avecFichiers || meta.error.code !== "42P01")) return abandonner({ erreur: meta.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
@@ -390,7 +416,7 @@ Deno.serve(async (req) => {
   const aLire = [...retenus].filter((id) => !donnees.has(id));
   if (aLire.length) {
     const d = await sb.from("agent_fichiers").select("id, media_type, data").in("id", aLire);
-    if (d.error) return json({ erreur: "base" }, 500);
+    if (d.error) return repondre({ erreur: "base" }, 500);
     for (const f of d.data || []) donnees.set(f.id, { media_type: f.media_type, data: f.data });
   }
   // Conservation : mes conversations sans message depuis 90 jours partent (sans attendre, une erreur ne bloque rien).
@@ -1060,6 +1086,8 @@ Deno.serve(async (req) => {
     }
     // Après une panne, l'aperçu de la conversation dit son motif (le prochain échange réussi le remplace).
     await sb.from("agent_conversations").update({ maj_le: new Date().toISOString(), apercu: (motifErreur ? `Erreur : ${motifErreur}` : dernierTexte || message).replace(/\s+/g, " ").slice(0, 200) }).eq("id", conv!.id);
+    // La conversation est rendue (migration 133) : l'autre écran, prévenu en temps réel, peut y écrire.
+    await liberer();
     const ligne = ligneJournal({ userId, entiteId, statut, appels, dureeMs: Date.now() - debut });
     const { error: errJ } = await admin.from("assistant_journal").insert(ligne);
     if (errJ) console.error("journal de l'agent non écrit :", errJ.message);

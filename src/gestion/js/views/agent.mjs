@@ -33,6 +33,7 @@ import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
 import { preparation, preparationComplete, optionsCarte, enregistrerReservation, ajouterParCarte, validerUnifie } from "./agent-valider.mjs";
 import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
 import { suivreFil } from "../fil-defilement.mjs";
+import { voitEquipe, CLE_FILTRE_EQUIPE, filtreLu, conversationsFiltrees, aMoi, prenomEquipe, proprietaireAffichee, auteurAffiche, reponseEnCours } from "../agent-equipe-calc.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
 const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
 
@@ -56,6 +57,8 @@ const ERREURS = {
   coupure: N_("La connexion a coupé pendant la réponse : rouvrez la conversation."),
   migration_manquante: N_("Les conversations ne sont pas encore installées dans la base."),
   conversation_introuvable: N_("Cette conversation n'existe plus."),
+  // Migration 133 : une réponse est déjà en cours dans cette conversation (autre personne, autre onglet). Rien n'est parti.
+  conversation_occupee: N_("L'assistant répond déjà dans cette conversation. Votre message n'est pas parti : il reste dans la zone de saisie, renvoyez-le dans un instant."),
   message_invalide: N_("Le message est vide ou trop long."),
 };
 // Le plafond du mois atteint : la fonction dit combien a été dépensé et quand l'assistant reprend.
@@ -180,7 +183,10 @@ const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && p
 
 // Le suivi du défilement du fil affiché (fil-defilement.mjs) : un seul à la fois, arrêté quand l'écran est refait.
 let suiviAgent = null;
+// L'Assistant en équipe en direct (migration 133) : un seul abonnement à la fois, arrêté quand l'écran est refait ou quitté.
+let arretDirectAgent = null;
 export async function vueAgent(idOuvert = "") {
+  if (arretDirectAgent) (arretDirectAgent(), (arretDirectAgent = null));
   if (!disponible()) {
     const racine = h("div", { "data-titre": tr("Assistant") });
     racine.append(
@@ -194,9 +200,25 @@ export async function vueAgent(idOuvert = "") {
   // Conversations et demandes d'amélioration (administratrices) lues ensemble.
   // Espace unifié (migration 63) : pour qui travaille dans Secret et Taxi, les conversations des deux entreprises, chacune avec son badge.
   const unifie = espaceUnifie({ entites: entitesAccessibles(), activeId: etat.entiteId, permissionsDe, agentActif: (id) => agentActif(reglagesDe(id)) });
-  const [convLues, ameliorationsLues, convAutre] = await Promise.all([etat.store.agentConversations(etat.entiteId), estAdmin() ? etat.store.ameliorations(etat.entiteId) : null, unifie ? etat.store.agentConversations(unifie.autre.id).catch(() => null) : null]);
+  // L'Assistant en équipe (migration 133) : l'administration de l'entreprise voit les conversations de toute l'équipe (la base les rend,
+  // l'écran les filtre) et y écrit comme la propriétaire. « Les miennes » reste la liste d'avant ; le choix est gardé dans le navigateur.
+  const moi = (etat.moi && etat.moi.user_id) || "";
+  const equipeDans = (id) => voitEquipe(permissionsDe(id));
+  const avecEquipe = equipeDans(etat.entiteId) || (!!unifie && equipeDans(unifie.autre.id));
+  let filtreEquipe = "miennes";
+  try {
+    filtreEquipe = filtreLu(localStorage.getItem(CLE_FILTRE_EQUIPE));
+  } catch {
+    // stockage refusé : « Les miennes »
+  }
+  // Les prénoms se lisent pour tout le monde (equipe_de, ouverte à chaque membre) : Nani voit « écrit par Jérémy » dans sa conversation.
+  const lireEquipe = (id) => (etat.store.equipe ? etat.store.equipe(id).catch(() => []) : Promise.resolve([]));
+  const [convLues, ameliorationsLues, convAutre, equipeLue, equipeAutreLue] = await Promise.all([etat.store.agentConversations(etat.entiteId), estAdmin() ? etat.store.ameliorations(etat.entiteId) : null, unifie ? etat.store.agentConversations(unifie.autre.id).catch(() => null) : null, lireEquipe(etat.entiteId), unifie ? lireEquipe(unifie.autre.id) : []]);
   let conversations = convLues ?? null;
-  const conversationsAutre = convAutre || [];
+  let conversationsAutre = convAutre || [];
+  // Les prénoms de l'équipe (equipe_de), des deux entreprises en espace unifié : la propriétaire d'une conversation, l'auteur d'un message.
+  const equipe = [...(equipeLue || []), ...(equipeAutreLue || [])];
+  const optsEquipe = { moi, equipe };
   let attente = new Map();
   let archives = false;
   const rafraichirAttente = async () => {
@@ -227,8 +249,9 @@ export async function vueAgent(idOuvert = "") {
 
   // ---- Liste ----------------------------------------------------------------------------------------------------------------------
   function listeDessinee() {
-    const propres = conversations ? listeConversations(conversations, { enAttente: attente, archives }) : [];
-    const toutes = unifie ? conversationsDesDeux([{ entite: unifie.active, conversations: propres }, { entite: unifie.autre, conversations: listeConversations(conversationsAutre, { archives }) }]) : propres;
+    const vues = (liste, id) => conversationsFiltrees(liste, { moi, filtre: filtreEquipe, equipe: equipeDans(id) });
+    const propres = conversations ? listeConversations(vues(conversations, etat.entiteId), { enAttente: attente, archives }) : [];
+    const toutes = unifie ? conversationsDesDeux([{ entite: unifie.active, conversations: propres }, { entite: unifie.autre, conversations: listeConversations(vues(conversationsAutre, unifie.autre.id), { archives }) }]) : propres;
     const liste = chercherConversations(toutes, recherche, (c) => `${titreDe(c)} ${c.titre || ""} ${c.apercu || ""} ${refDe(c)}`);
     // Une conversation de l'autre entreprise : on y passe (entreprise active), puis elle s'ouvre. La ligne touchée se marque tout de suite.
     const allerA = (c) => (e) => {
@@ -240,7 +263,7 @@ export async function vueAgent(idOuvert = "") {
       naviguer(`#/agent/${c.id}`);
     };
     if (conversations === null) return h("p", { class: "aide agent-liste-vide" }, erreurTexte("migration_manquante"));
-    if (!liste.length) return h("p", { class: "aide agent-liste-vide" }, recherche.trim() ? tr("Aucune conversation pour « {q} ».", { q: recherche.trim() }) : archives ? tr("Aucune conversation archivée.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre."));
+    if (!liste.length) return h("p", { class: "aide agent-liste-vide" }, recherche.trim() ? tr("Aucune conversation pour « {q} ».", { q: recherche.trim() }) : archives ? tr("Aucune conversation archivée.") : filtreEquipe === "equipe" && avecEquipe ? tr("Aucune conversation dans l'équipe.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre."));
     return h(
       "ul",
       { class: "agent-conversations" },
@@ -252,11 +275,13 @@ export async function vueAgent(idOuvert = "") {
             "a",
             { href: `#/agent/${c.id}`, class: "agent-conv", "aria-current": c.id === idOuvert ? "page" : null, onclick: allerA(c) },
             h("span", { class: "agent-conv-ligne" }, h("strong", null, titreDe(c) || tr("Nouvelle conversation")), h("time", { datetime: c.maj_le }, quand(c.maj_le, { langue: langueActive() }))),
-            unifie || c.whatsapp_conversation_id
+            unifie || c.whatsapp_conversation_id || !aMoi(c, moi)
               ? h(
                   "span",
                   { class: "agent-conv-marques" },
                   unifie ? h("span", { class: `agent-conv-entreprise ${marqueUnifiee(entitesAccessibles().find((x) => x.id === c.entite_id)) || ""}` }, c.entreprise) : null,
+                  // « Toute l'équipe » : le prénom de la propriétaire (migration 133).
+                  !aMoi(c, moi) ? h("span", { class: "agent-conv-proprio", title: tr("Conversation de {prenom}", { prenom: proprietaireAffichee(c, optsEquipe) }) }, proprietaireAffichee(c, optsEquipe)) : null,
                   c.whatsapp_conversation_id ? h("span", { class: "agent-conv-wa" }, icone("whatsapp", 14), tr("WhatsApp")) : null
                 )
               : null,
@@ -272,11 +297,29 @@ export async function vueAgent(idOuvert = "") {
     const avecRecherche = !!conversations && conversations.length + conversationsAutre.length > 1;
     ajouter(colonneListe, [
       h("div", { class: "agent-liste-tete" }, h("h1", null, tr("Assistant")), h("button", { class: "principal", type: "button", onclick: () => ouvrir("") }, icone("ajouter", 18), tr("Nouvelle"))),
+      filtreEquipeDessine(),
       avecRecherche ? champRecherche : null,
       listeDessinee(),
       conversations && conversations.some((c) => c.statut === "archivee") ? h("button", { class: "lien agent-archives", type: "button", onclick: () => ((archives = !archives), dessinerListe()) }, archives ? tr("Conversations ouvertes") : tr("Conversations archivées")) : null,
       blocAmeliorations(),
     ]);
+  }
+
+  // « Les miennes / Toute l'équipe » (migration 133), seulement pour l'administration. Deux boutons de 44 px, l'état gardé au retour.
+  function filtreEquipeDessine() {
+    if (!avecEquipe) return null;
+    const choisir = (f) => {
+      if (f === filtreEquipe) return;
+      filtreEquipe = f;
+      try {
+        localStorage.setItem(CLE_FILTRE_EQUIPE, f);
+      } catch {
+        // stockage refusé : le choix vaut pour cette visite
+      }
+      dessinerListe();
+    };
+    const bouton = (f, libelle) => h("button", { type: "button", class: "agent-filtre-bouton", "aria-pressed": filtreEquipe === f ? "true" : "false", onclick: () => choisir(f) }, libelle);
+    return h("div", { class: "agent-filtre-equipe", role: "group", "aria-label": tr("Conversations à montrer") }, bouton("miennes", tr("Les miennes")), bouton("equipe", tr("Toute l'équipe")));
   }
 
   // Demandes d'amélioration de l'outil (administratrices) : leur statut, suivi sur GitHub par la fonction « rappels ».
@@ -344,6 +387,9 @@ export async function vueAgent(idOuvert = "") {
     }
     racine.classList.add("avec-fil");
     conv = id && conversations ? conversations.find((c) => c.id === id) || null : null;
+    // Une conversation de l'équipe ouverte par un lien (#/agent/<id>, WhatsApp, fiche du dossier) : la liste passe sur « Toute l'équipe »
+    // pour la montrer, sans changer le choix gardé.
+    if (conv && !aMoi(conv, moi) && filtreEquipe !== "equipe") filtreEquipe = "equipe";
     fil = { messages: [], cartes: [] };
     if (id && !conv) {
       dessinerFil({ forcer: true });
@@ -433,6 +479,7 @@ export async function vueAgent(idOuvert = "") {
         "div",
         { class: "agent-fil-titre" },
         h("h2", null, conv ? titreDe(conv) : questionWa ? nomWaLiee() || tr("Nouvelle conversation") : tr("Nouvelle conversation")),
+        conv && !aMoi(conv, moi) ? h("p", { class: "agent-fil-proprio" }, tr("Conversation de {prenom} : vous écrivez à sa place, chaque message garde votre nom.", { prenom: proprietaireAffichee(conv, optsEquipe) })) : null,
         dossier || lienWa
           ? h(
               "p",
@@ -544,6 +591,7 @@ export async function vueAgent(idOuvert = "") {
     zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map((it, i) => element(it, i)) : questionWa ? [] : [suggestions()]), questionsRapides()].filter(Boolean));
     majToutValider();
     colonneFil.replaceChildren(enTete(), zoneFil, barreTout, formulaire);
+    majOccupation();
     if (lisaitPlusHaut === null) return descendre({ forcer: true });
     zoneFil.append(boutonNouveaux);
     suiviFil().observer();
@@ -590,7 +638,7 @@ export async function vueAgent(idOuvert = "") {
       // « Demander à l'assistant » (PR B) : l'échange replié, puis la question de la personne, à droite comme ses messages.
       if (echange && echange.question) return h("div", { class: "agent-question-wa" }, bulleWhatsApp(echange), h("div", { class: "agent-bulle de-personne" }, paragraphes(echange.question)));
       if (echange) return bulleWhatsApp(echange);
-      return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
+      return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte), mentionAuteur(it.auteur));
     }
     // « Pas bien » : la raison et un extrait sans montant (la réponse à l'équipe peut citer des nets, des marges ou des gains), jamais la
     // question tapée (elle peut contenir le message d'un client collé). Relu par l'Assistant seulement, pas par la boîte WhatsApp.
@@ -600,6 +648,12 @@ export async function vueAgent(idOuvert = "") {
     // Les vouchers trouvés (trouver_vouchers) : une carte par dossier, avec l'aperçu et le bouton d'envoi.
     if (it.genre === "vouchers") return cartesVouchers(it.vouchers);
     return carte(it.carte);
+  }
+  // « écrit par Jérémy » (migration 133) : sous un message tapé par quelqu'un d'autre que la propriétaire de la conversation, discret.
+  function mentionAuteur(auteurId) {
+    const a = auteurAffiche(auteurId, conv, optsEquipe);
+    if (!a) return null;
+    return h("small", { class: "agent-auteur" }, a.moi ? tr("écrit par vous") : tr("écrit par {prenom}", { prenom: a.prenom }));
   }
   // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
   // Avec le nom de la conversation citée quand elle est chargée (migration 70).
@@ -659,7 +713,7 @@ export async function vueAgent(idOuvert = "") {
     }
     if (!zoneFil.querySelector(".agent-bulle, .agent-frise, .agent-carte")) zoneFil.replaceChildren();
     if (joints.length) zoneFil.append(bullePieces(joints));
-    if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
+    if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte), mentionAuteur(moi)));
     if (whatsapp) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), whatsapp.whatsapp_mode === "maj" ? tr("Mise à jour du dossier d'après la conversation WhatsApp") : tr("Dossier d'après la conversation WhatsApp")));
     if (question) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), tr("Avec les derniers messages de la conversation WhatsApp")));
     // Les fichiers choisis restent en mémoire : si l'envoi échoue, ils reviennent dans la zone de saisie.
@@ -734,6 +788,7 @@ export async function vueAgent(idOuvert = "") {
     if (r && r.erreur) {
       // Plafond ou crédit : l'assistant le dit dans le fil, comme une réponse, pour que ce soit clair et non une panne obscure.
       if (r.erreur === "plafond_du_mois" || r.erreur === "credit_epuise") zoneFil.append(h("div", { class: "agent-bulle de-agent agent-arret", role: "alert" }, h("p", null, erreurTexte(r.erreur, r))));
+      else if (r.erreur === "conversation_occupee" && r.par && r.par !== moi && prenomEquipe(equipe, r.par)) zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, tr("L'assistant répond déjà à {prenom} dans cette conversation. Votre message n'est pas parti : il reste dans la zone de saisie, renvoyez-le dans un instant.", { prenom: prenomEquipe(equipe, r.par) })));
       else zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
       // Le texte revient dans la zone, sauf après une coupure en cours de réponse : le serveur l'a déjà gardé, la relecture le montre.
       if ((!conv || r.erreur !== "coupure") && !champ.value.trim()) champ.value = texte;
@@ -758,7 +813,67 @@ export async function vueAgent(idOuvert = "") {
       dessinerListe();
       dessinerFil();
     }
+    // Un changement arrivé d'ailleurs pendant la réponse : relu maintenant.
+    if (relectureEnAttente) planifierRelecture();
   }
+
+  // ---- En direct (migration 133) ---------------------------------------------------------------------------------------------------
+  // Une conversation ou une carte a changé (l'autre personne écrit, valide, renomme) : la liste et le fil ouvert se relisent avec la
+  // session, une demi-seconde après le dernier signal. Jamais pendant un échange ni une validation de cet écran : la relecture attend.
+  let minuteurRelecture = null;
+  let relectureEnAttente = false;
+  const empreinte = (f) => JSON.stringify([f.messages.length, f.messages.length ? f.messages[f.messages.length - 1].id : 0, f.cartes.map((c) => `${c.id}:${c.statut}`)]);
+  function planifierRelecture() {
+    clearTimeout(minuteurRelecture);
+    minuteurRelecture = setTimeout(relire, 500);
+  }
+  async function relire() {
+    if (!racine.isConnected) {
+      if (arretDirectAgent) (arretDirectAgent(), (arretDirectAgent = null));
+      return;
+    }
+    if (enCours || enValidation.size || document.querySelector(".modal-fond, dialog[open]")) {
+      relectureEnAttente = true;
+      return void (minuteurRelecture = setTimeout(relire, 2000));
+    }
+    relectureEnAttente = false;
+    const [lues, autre] = await Promise.all([etat.store.agentConversations(etat.entiteId).catch(() => null), unifie ? etat.store.agentConversations(unifie.autre.id).catch(() => null) : null]);
+    if (!racine.isConnected || enCours) return;
+    if (lues) conversations = lues;
+    if (autre) conversationsAutre = autre;
+    await rafraichirAttente().catch(() => {});
+    // La recherche en cours de frappe n'est pas coupée : seule la liste se refait.
+    if (document.activeElement === champRecherche) {
+      const liste = colonneListe.querySelector(".agent-conversations, .agent-liste-vide");
+      if (liste) liste.replaceWith(listeDessinee());
+    } else dessinerListe();
+    if (!conv) return;
+    const neuve = (conversations || []).find((c) => c.id === conv.id);
+    if (!neuve) {
+      // Supprimée ailleurs.
+      conv = null;
+      zoneFil.replaceChildren(h("p", { class: "aide" }, erreurTexte("conversation_introuvable")));
+      return;
+    }
+    conv = neuve;
+    const lu = await etat.store.agentFil(conv.id).catch(() => null);
+    if (!lu || !racine.isConnected || enCours || enValidation.size) return;
+    const change = empreinte(lu) !== empreinte(fil);
+    fil = lu;
+    if (change) dessinerFil();
+    else colonneFil.querySelector(".agent-fil-tete")?.replaceWith(enTete());
+    majOccupation();
+  }
+  // « L'assistant répond à Nani… » au-dessus de la saisie, tant qu'une réponse demandée ailleurs est en cours (verrou de la base).
+  const bandeauOccupe = h("p", { class: "agent-occupe", role: "status", hidden: true });
+  function majOccupation() {
+    const r = conv && !enCours ? reponseEnCours(conv) : null;
+    const ailleurs = r && r.par !== moi ? prenomEquipe(equipe, r.par) : "";
+    bandeauOccupe.hidden = !r;
+    bandeauOccupe.textContent = !r ? "" : ailleurs ? tr("L'assistant répond à {prenom}…", { prenom: ailleurs }) : tr("L'assistant répond dans un autre onglet…");
+    if (r && !bandeauOccupe.isConnected) formulaire.before(bandeauOccupe);
+  }
+  if (etat.store.ecouterAgent) arretDirectAgent = etat.store.ecouterAgent(() => planifierRelecture());
 
   // ---- Frise d'une course -------------------------------------------------------------------------------------------------------
   function frise(plan) {
@@ -967,6 +1082,11 @@ export async function vueAgent(idOuvert = "") {
   const VALIDABLES = ["dossier", "reservation", "modification", "temps"];
   const enAttente = () => fil.cartes.filter((c) => c.statut === "proposee" && VALIDABLES.includes(c.genre));
 
+  // « par Nani » après « Validée » : la carte a été décidée par une autre personne que moi (migration 133, decide_par posé par la base).
+  const decidePar = (c) => {
+    const p = c.decide_par && c.decide_par !== moi ? prenomEquipe(equipe, c.decide_par) : "";
+    return p ? h("span", { class: "agent-carte-par" }, ` ${tr("par {prenom}", { prenom: p })}`) : null;
+  };
   function carte(c) {
     const d = c.donnees || {};
     const corps = [];
@@ -1079,7 +1199,7 @@ export async function vueAgent(idOuvert = "") {
       ...corps,
       avert,
       decidee
-        ? h("div", { class: "agent-carte-fin" }, h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée")), c.statut === "validee" ? suite(c) : null)
+        ? h("div", { class: "agent-carte-fin" }, h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée"), decidePar(c)), c.statut === "validee" ? suite(c) : null)
         : h(
             "div",
             { class: "actions gauche" },

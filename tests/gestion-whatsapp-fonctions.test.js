@@ -175,5 +175,6 @@ test("branchement : boutons de l'en-tête, Assistant, voucher, paiement, résum�
   assert.match(source("views/dossier.mjs"), /\[\?&\]paiement=1\(&\|\$\)/, "le dossier ouvre le formulaire de paiement");
   const sb = source("store-supabase.mjs");
   assert.match(sb, /resume, resume_le, paiement_signale, promesse_le/);
-  assert.match(sb, /whatsapp_conversation_id"\);\n\s+if \(error && colonneAbsente\(error, "whatsapp_conversation_id"\)\)/, "relu sans la colonne avant la migration 61");
+  // Migration 133 : relue d'abord avec le verrou de réponse, puis sans lui, puis sans la colonne de la migration 61.
+  assert.match(sb, /whatsapp_conversation_id, reponse_par, reponse_le`\);\n\s+if \(error && colonneAbsente\(error, "reponse_par"\)\)[^\n]+\n\s+if \(error && colonneAbsente\(error, "whatsapp_conversation_id"\)\)/, "relu sans la colonne avant la migration 61");
 });

@@ -398,6 +398,8 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   // Boîte WhatsApp en direct : un canal à part, pour ne pas toucher à celui des demandes du site. Même règle, seul le nom de la table remonte.
   // `surEtat` : l'état du canal (« connexion », « abonne », « coupe »), pour le repli et la pastille « Direct coupé ».
   let canalWhatsApp = null;
+  // L'Assistant en équipe (migration 133) : son propre canal, ouvert tant que l'écran Assistant est affiché.
+  let canalAgent = null;
   function ecouterWhatsApp(tables, rappel, { surEtat = () => {} } = {}) {
     if (canalWhatsApp) canalWhatsApp.arreter();
     const moi = canalFiable("gestion-whatsapp", tables, rappel, surEtat);
@@ -412,12 +414,23 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     mode: "supabase",
     ecouter,
     ecouterWhatsApp,
+    // L'Assistant en équipe (migration 133) : les conversations et les cartes de l'équipe en direct, sur un canal à part. Seul le nom de la
+    // table remonte ; l'écran relit avec sa session (RLS). Sans la migration, le canal ne reçoit rien : l'écran relit à chaque échange.
+    ecouterAgent(rappel) {
+      if (canalAgent) canalAgent.arreter();
+      const moi = canalFiable("gestion-agent", ["agent_conversations", "agent_cartes"], rappel);
+      canalAgent = moi;
+      return () => {
+        moi.arreter();
+        if (canalAgent === moi) canalAgent = null;
+      };
+    },
     // L'état des deux canaux, pour le repli et la pastille « Direct coupé » de l'écran WhatsApp.
     etatDirect: () => ({ direct: canal ? canal.etat() : "ferme", whatsapp: canalWhatsApp ? canalWhatsApp.etat() : "ferme" }),
     // Retour sur l'onglet, réseau revenu, page restaurée : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined ».
     // forcer : après une longue absence, les canaux sont refaits même s'ils se disent « joined » (socket mort au réveil).
     async reveillerDirect({ forcer = false } = {}) {
-      await Promise.all([canal ? canal.verifier({ forcer }) : null, canalWhatsApp ? canalWhatsApp.verifier({ forcer }) : null]);
+      await Promise.all([canal ? canal.verifier({ forcer }) : null, canalWhatsApp ? canalWhatsApp.verifier({ forcer }) : null, canalAgent ? canalAgent.verifier({ forcer }) : null]);
     },
     // Relecture ciblée de la boîte WhatsApp (conversations, propositions, réglage), sans les dossiers ni les clients. Les messages de la
     // conversation ouverte sont relus par l'écran à son redessin (whatsappMessages).
@@ -675,23 +688,30 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return data;
     },
     // ---- Agent de l'onglet « Assistant » (migration 52, fonction « agent ») ---------------------------------------------------------------
-    // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : seulement les siennes). null avant la migration.
+    // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : les siennes, et celles de l'équipe pour
+    // l'administration de l'entreprise, migration 133). null avant la migration 52.
     async agentConversations(entiteId) {
-      // whatsapp_conversation_id (migration 61) : relue sans elle tant que la migration n'est pas appliquée.
-      const requete = (colonnes) => sb.from("agent_conversations").select(colonnes).eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
-      let { data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le, whatsapp_conversation_id");
-      if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le"));
+      // whatsapp_conversation_id (migration 61), user_id et le verrou de réponse (migration 133) : relues sans elles tant que la migration
+      // n'est pas appliquée. 600 lignes : l'équipe entière tient dans la liste.
+      const requete = (colonnes) => sb.from("agent_conversations").select(colonnes).eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(600);
+      const base = "id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le, user_id";
+      let { data, error } = await requete(`${base}, whatsapp_conversation_id, reponse_par, reponse_le`);
+      if (error && colonneAbsente(error, "reponse_par")) ({ data, error } = await requete(`${base}, whatsapp_conversation_id`));
+      if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete(base));
       return error ? null : data || [];
     },
     async agentAttente(entiteId) {
       const { data, error } = await sb.from("agent_cartes").select("conversation_id, agent_conversations!inner(entite_id)").eq("statut", "proposee").eq("agent_conversations.entite_id", entiteId).limit(1000);
       return error ? [] : (data || []).map((c) => ({ conversation_id: c.conversation_id }));
     },
+    // auteur_id et decide_par (migration 133) : qui a écrit, qui a validé. Relus sans eux tant que la migration n'est pas appliquée.
     async agentFil(id) {
-      const [m, c] = await Promise.all([
-        sb.from("agent_messages").select("id, role, contenu, cree_le").eq("conversation_id", id).order("id", { ascending: true }).limit(400),
-        sb.from("agent_cartes").select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").eq("conversation_id", id).order("cree_le", { ascending: true }),
-      ]);
+      const messages = (cols) => sb.from("agent_messages").select(cols).eq("conversation_id", id).order("id", { ascending: true }).limit(400);
+      const cartes = (cols) => sb.from("agent_cartes").select(cols).eq("conversation_id", id).order("cree_le", { ascending: true });
+      const COL_CARTE = "id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le";
+      let [m, c] = await Promise.all([messages("id, role, contenu, cree_le, auteur_id"), cartes(`${COL_CARTE}, decide_par`)]);
+      if (colonneAbsente(m.error, "auteur_id")) m = await messages("id, role, contenu, cree_le");
+      if (colonneAbsente(c.error, "decide_par")) c = await cartes(COL_CARTE);
       if (m.error || c.error) throw new Error((m.error || c.error).message);
       return { messages: m.data || [], cartes: c.data || [] };
     },
@@ -725,7 +745,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (error && !(error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || ""))) console.error("rendre_agent_carte", error.message);
     },
     async agentCarte(id, statut) {
-      return verifie(await sb.from("agent_cartes").update({ statut }).eq("id", id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single());
+      const COL_CARTE = "id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le";
+      let r = await sb.from("agent_cartes").update({ statut }).eq("id", id).select(`${COL_CARTE}, decide_par`).single();
+      if (colonneAbsente(r.error, "decide_par")) r = await sb.from("agent_cartes").update({ statut }).eq("id", id).select(COL_CARTE).single();
+      return verifie(r);
     },
     // Mes conversations reliées à un dossier (fiche du dossier) : la plus récente d'abord. Vide avant la migration 52.
     async agentConversationsDuDossier(dossierId) {

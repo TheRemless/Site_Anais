@@ -47,9 +47,11 @@ export function filDepuis(messages = [], cartes = []) {
     } else {
       // Les pièces jointes d'un message (migration 55) : une bulle de vignettes avant son texte.
       const pieces = blocs.filter((b) => b.type === "fichier").map((b) => ({ id: b.id, nom: b.nom || "", media_type: b.media_type || "", taille: Number(b.taille) || 0 }));
-      if (pieces.length) items.push({ genre: "pieces", fichiers: pieces, t });
+      // L'auteur réel du message (migration 133) : la personne qui l'a envoyé, montré quand ce n'est pas la propriétaire de la conversation.
+      const auteur = m.auteur_id || null;
+      if (pieces.length) items.push({ genre: "pieces", fichiers: pieces, t, auteur });
       for (const b of blocs) {
-        if (b.type === "text" && b.text.trim()) items.push({ genre: "personne", texte: b.text.trim(), t });
+        if (b.type === "text" && b.text.trim()) items.push({ genre: "personne", texte: b.text.trim(), t, auteur });
         if (b.type === "tool_result" && outils.get(b.tool_use_id) === "planifier_course" && !b.is_error) {
           try {
             const plan = JSON.parse(typeof b.content === "string" ? b.content : (b.content || []).map((c) => c.text || "").join(""));
