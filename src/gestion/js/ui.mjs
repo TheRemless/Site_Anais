@@ -3,7 +3,7 @@
 import { tr } from "./i18n.mjs";
 import { confirmation } from "./confirmation.mjs";
 import { etatClavier, ouvreClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
-import { fermeturesAuRetour, pasSuivant, PAS_MAX, adresseApresDeplacement, entreePourOuverture, entreeApresFermeture, entreeAuDemarrage, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
+import { fermeturesAuRetour, pasSuivant, PAS_MAX, entreeAjoutee, adresseApresDeplacement, entreePourOuverture, entreeApresFermeture, entreeAuDemarrage, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -131,9 +131,12 @@ if (navigateur) {
     marquerVu();
   };
   // Toute entrée ajoutée (visionneuse comprise) prend un rang croissant : le sens d'un déplacement se lit toujours.
-  history.pushState = (etat, titre, url) => (ajouterNatif(etat && typeof etat === "object" ? { ...etat, rang: ++rangHist } : etat, titre, url), marquerVu());
+  history.pushState = (etat, titre, url) => (ajouterNatif(entreeAjoutee(etat, ++rangHist), titre, url), marquerVu());
   // Rechargement avec une fenêtre ouverte (mise à jour automatique) : son entrée devient un fantôme, un seul retour quitte l'écran.
-  const depart = entreeAuDemarrage(history.state);
+  // Lancement (app installée, nouvel onglet) : l'entrée est marquée première, aucun pas automatique ne repart en arrière d'ici.
+  const lancement = (performance.getEntriesByType?.("navigation")[0] || {}).type === "navigate";
+  const premiere = lancement && (history.length === 1 || !document.referrer.startsWith(location.origin));
+  const depart = entreeAuDemarrage(history.state, premiere);
   if (depart) (remplacerNatif(depart, ""), marquerVu());
 }
 const etiquetteEcran = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -184,7 +187,7 @@ if (navigateur) {
     }
     if (quitter.length || fermer.length) return;
     // Rien n'a changé à l'écran (fantôme d'une fenêtre fermée) : un pas de plus, dans le sens du premier déplacement.
-    const pas = pasSuivant(quitte, atteint, ouvertesHist(), suite && suite.sens);
+    const pas = pasSuivant(quitte, atteint, ouvertesHist(), suite && suite.sens, Boolean(document.querySelector(".modal-fond.visionneuse")));
     const fait = suite ? suite.fait + 1 : 1;
     pasEnCours = pas && fait <= PAS_MAX ? { sens: pas, fait, le: Date.now() } : null;
     if (!pasEnCours) return;

@@ -10,10 +10,11 @@
 // se mêlait aux navigations (Avancer cassé, navigation annulée). Un retour ou un Avancer qui tombe sur un fantôme sans rien changer
 // à l'écran continue d'un pas dans le même sens (relecture de la PR 363, preview groupée PR 365).
 
-// Entrée sans fenêtre vivante : fantôme d'une fenêtre fermée, ou entrée d'une fenêtre qui n'est plus ouverte (rechargement de la page).
-// L'entrée de la visionneuse de photos a sa propre gestion (visionneuse.mjs).
-export function entreeVide(etat, ouvertes) {
-  if (!etat || etat.visionneuse) return false;
+// Entrée sans fenêtre vivante : fantôme d'une fenêtre fermée, entrée d'une fenêtre qui n'est plus ouverte (rechargement de la page),
+// ou ancienne entrée de la visionneuse quand aucune photo n'est ouverte (Avancer qui y arrive ne changerait rien à l'écran).
+export function entreeVide(etat, ouvertes, visionneuseOuverte = false) {
+  if (!etat) return false;
+  if (etat.visionneuse) return !visionneuseOuverte;
   if (etat.fantome) return true;
   return Boolean(etat.feuille) && !ouvertes.includes(etat.feuille);
 }
@@ -43,10 +44,14 @@ export function fermeturesAuRetour(pile, atteint) {
 // Rien n'a bougé à l'écran (même écran, aucune fenêtre fermée) et l'une des deux entrées est vide : on continue d'un pas, dans le sens
 // du déplacement. Renvoie "retour", "avance" ou null. `sens` : sens du pas automatique précédent, gardé jusqu'au bout (sinon deux
 // entrées de même rang, une ancienne entrée de la visionneuse par exemple, renverraient d'un sens à l'autre).
-export function pasSuivant(quitte, atteint, ouvertes, sens = null) {
-  if (!memeEcran(quitte, atteint)) return null;
-  if (!entreeVide(quitte, ouvertes) && !entreeVide(atteint, ouvertes)) return null;
-  return sens || ((atteint.rang || 0) < (quitte.rang || 0) ? "retour" : "avance");
+// Jamais de premier pas en quittant l'entrée de la visionneuse : fermer une photo (retour ou bouton) laisse l'écran tel quel, même
+// posée sur un fantôme ; un pas déjà en cours (`sens`) traverse en revanche une ancienne entrée de photo. Jamais de pas en arrière
+// depuis la première entrée de Gestion : l'app installée se fermerait.
+export function pasSuivant(quitte, atteint, ouvertes, sens = null, visionneuseOuverte = false) {
+  if (!memeEcran(quitte, atteint) || (!sens && quitte && quitte.visionneuse)) return null;
+  if (!entreeVide(quitte, ouvertes, visionneuseOuverte) && !entreeVide(atteint, ouvertes, visionneuseOuverte)) return null;
+  const pas = sens || ((atteint.rang || 0) < (quitte.rang || 0) ? "retour" : "avance");
+  return pas === "retour" && atteint.premiere ? null : pas;
 }
 // Garde-fou : au plus ce nombre de pas automatiques d'affilée.
 export const PAS_MAX = 12;
@@ -63,6 +68,7 @@ export function entreePourOuverture(etat, n, ouvertes, rang, etiquette) {
   const base = { ...(etat || {}) };
   delete base.fantome;
   delete base.visionneuse;
+  delete base.premiere;
   const ecran = base.ecran || etiquette;
   return { etiquetterEcran: !base.ecran, remplacer: entreeVide(etat, ouvertes), etat: { ...base, ecran, feuille: n, rang } };
 }
@@ -75,10 +81,22 @@ export function entreeApresFermeture(etat, n) {
   return e;
 }
 
-// Rechargement avec une fenêtre ouverte : l'entrée garde { feuille } sans fenêtre ; elle devient un fantôme.
-export function entreeAuDemarrage(etat) {
-  if (!etat || !etat.feuille || etat.visionneuse) return null;
-  return entreeApresFermeture(etat, etat.feuille);
+// Entrée ajoutée par un autre module (visionneuse) : jamais un fantôme ni une première entrée, même recopiée de l'entrée du dessous
+// (sinon fermer une photo posée sur un fantôme faisait quitter l'écran) ; rang neuf. Les fantômes ne s'empilent donc jamais.
+export function entreeAjoutee(etat, rang) {
+  if (!etat || typeof etat !== "object") return etat;
+  const e = { ...etat, rang };
+  delete e.fantome;
+  delete e.premiere;
+  return e;
+}
+
+// Démarrage. Rechargement avec une fenêtre ouverte : l'entrée garde { feuille } sans fenêtre, elle devient un fantôme.
+// Lancement (app installée, nouvel onglet) : l'entrée est la première de Gestion, aucun pas automatique ne repart en arrière d'ici.
+export function entreeAuDemarrage(etat, premiere = false) {
+  let e = etat && etat.feuille && !etat.visionneuse ? entreeApresFermeture(etat, etat.feuille) : null;
+  if (premiere && !(etat && etat.premiere)) e = { ...(e || etat || {}), premiere: true };
+  return e;
 }
 
 // Changement d'écran par un lien ou une adresse : les fenêtres ouvertes sur une autre adresse se ferment (celle du dessus d'abord).
