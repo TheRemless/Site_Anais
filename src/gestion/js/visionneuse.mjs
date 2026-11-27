@@ -54,7 +54,7 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
   document.addEventListener("keydown", surTouche, true);
   try {
     // Posée sur l'entrée d'une fenêtre fermée (fantôme), l'entrée de la photo n'en est pas un : la fermer ne quitte pas l'écran.
-    const { fantome, premiere, ...dessous } = history.state || {};
+    const { fantome, ...dessous } = history.state || {};
     history.pushState({ ...dessous, visionneuse: true }, "");
     window.addEventListener("popstate", surRetour);
   } catch {

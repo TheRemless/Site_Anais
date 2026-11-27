@@ -3,7 +3,7 @@
 import { tr } from "./i18n.mjs";
 import { confirmation } from "./confirmation.mjs";
 import { etatClavier, ouvreClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
-import { fermeturesAuRetour, pasSuivant, PAS_MAX, entreeAjoutee, adresseApresDeplacement, entreePourOuverture, entreeApresFermeture, entreeAuDemarrage, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
+import { fermeturesAuRetour, pasSuivant, PAS_MAX, entreeAjoutee, posApresChangementDAdresse, adresseApresDeplacement, entreePourOuverture, entreeApresFermeture, entreeAuDemarrage, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -123,29 +123,32 @@ const remplacerNatif = navigateur ? history.replaceState.bind(history) : () => {
 const ajouterNatif = navigateur ? history.pushState.bind(history) : () => {};
 let etatVu = etatHist();
 let adresseVue = navigateur ? location.href : "";
-const marquerVu = () => ((etatVu = etatHist()), (adresseVue = location.href));
+let longueurVue = navigateur ? history.length : 0;
+let deplacementEnCours = false;
+const marquerVu = () => ((etatVu = etatHist()), (adresseVue = location.href), (longueurVue = history.length));
 if (navigateur) {
   // Un écran réécrit son adresse (filtre, Assistant #/agent/nouvelle puis #/agent/<id>) pendant qu'une fenêtre est ouverte : ses
   // fenêtres suivent, un hashchange simulé (rafraîchir) ne les ferme pas. app.mjs enveloppe ensuite replaceState (numéro d'entrée).
   history.replaceState = (etat, titre, url) => {
     const avant = location.hash;
-    remplacerNatif(etat, titre, url);
+    // Un état vide (store-supabase.mjs, réécritures d'adresse) garde celui de l'entrée : sa position et son étiquette ne se perdent pas.
+    remplacerNatif(etat ?? history.state, titre, url);
     if (location.hash !== avant) for (const f of pileFenetres) if (f.hash === avant) f.hash = location.hash;
     marquerVu();
   };
   // Toute entrée ajoutée (visionneuse comprise) prend un rang croissant : le sens d'un déplacement se lit toujours.
-  history.pushState = (etat, titre, url) => (ajouterNatif(entreeAjoutee(etat, ++rangHist), titre, url), marquerVu());
+  history.pushState = (etat, titre, url) => (ajouterNatif(entreeAjoutee(etat, ++rangHist, etatHist()), titre, url), marquerVu());
   // Rechargement avec une fenêtre ouverte (mise à jour automatique) : son entrée devient un fantôme, un seul retour quitte l'écran.
-  // Lancement (app installée, nouvel onglet) : l'entrée est marquée première, aucun pas automatique ne repart en arrière d'ici.
+  // Lancement (app installée, lien, nouvel onglet) : l'entrée est la position 0 de Gestion, aucun pas automatique ne repart en arrière
+  // d'ici. Un rechargement garde les positions déjà posées.
   const lancement = (performance.getEntriesByType?.("navigation")[0] || {}).type === "navigate";
-  const premiere = lancement && (history.length === 1 || !document.referrer.startsWith(location.origin));
-  const depart = entreeAuDemarrage(history.state, premiere);
+  const depart = entreeAuDemarrage(history.state, lancement);
   if (depart) (remplacerNatif(depart, ""), marquerVu());
 }
 const etiquetteEcran = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 function entrerHistorique(n) {
   try {
-    const { etiquetterEcran, remplacer, etat } = entreePourOuverture(etatHist(), n, ouvertesHist(), ++rangHist, etiquetteEcran());
+    const { etiquetterEcran, remplacer, etat } = entreePourOuverture(etatHist(), n, ouvertesHist(), ++rangHist, etiquetteEcran(), photoOuverte());
     if (etiquetterEcran && !remplacer) remplacerNatif({ ...etatHist(), ecran: etat.ecran }, "");
     if (remplacer) remplacerNatif(etat, "");
     else ajouterNatif(etat, "");
@@ -165,13 +168,23 @@ function sortirHistorique(n) {
   }
 }
 const fenetreNumero = (n) => pileFenetres.find((x) => x.n === n);
+const photoOuverte = () => Boolean(document.querySelector(".modal-fond.visionneuse"));
 if (navigateur) {
   window.addEventListener("popstate", (e) => {
     const quitte = etatVu;
-    const atteint = e.state || {};
+    // Chrome et Safari envoient aussi popstate pour un lien (location.hash) ou un location.replace : l'entrée neuve, à l'état vide,
+    // reçoit ici sa position. Un vrai retour ou Avancer arrive toujours sur une entrée qui a un état (app.mjs y pose gestionEntree).
+    const neuve = e.state === null || e.state === undefined;
+    if (neuve) {
+      const pos = posApresChangementDAdresse(etatVu, longueurVue, history.length);
+      if (pos !== undefined) remplacerNatif({ pos }, "");
+    }
+    const atteint = etatHist();
     // Pas automatique en cours (fantôme traversé) : son sens est gardé ; toute autre issue l'arrête.
     const suite = pasEnCours && Date.now() - pasEnCours.le < 1000 ? pasEnCours : null;
     pasEnCours = null;
+    // Un hashchange qui suit un déplacement dans l'historique : l'entrée atteinte a déjà sa position.
+    deplacementEnCours = !neuve && location.hash !== new URL(adresseVue || location.href).hash;
     const adresse = adresseApresDeplacement(quitte, atteint, adresseVue, location.href);
     if (adresse !== location.href) {
       // Même écran : l'adresse réécrite par un filtre reste ; le hashchange qui suit n'est pas un changement d'écran.
@@ -190,7 +203,7 @@ if (navigateur) {
     }
     if (quitter.length || fermer.length) return;
     // Rien n'a changé à l'écran (fantôme d'une fenêtre fermée) : un pas de plus, dans le sens du premier déplacement.
-    const pas = pasSuivant(quitte, atteint, ouvertesHist(), suite && suite.sens, Boolean(document.querySelector(".modal-fond.visionneuse")));
+    const pas = pasSuivant(quitte, atteint, ouvertesHist(), suite && suite.sens, photoOuverte());
     const fait = suite ? suite.fait + 1 : 1;
     pasEnCours = pas && fait <= PAS_MAX ? { sens: pas, fait, le: Date.now() } : null;
     if (!pasEnCours) return;
@@ -201,9 +214,22 @@ if (navigateur) {
   window.addEventListener("hashchange", (e) => {
     if (avalerHashchange && e.newURL) {
       avalerHashchange = false;
+      deplacementEnCours = false;
       e.stopImmediatePropagation();
       return;
     }
+    // Lien ou location.replace (Réglages non enregistrés) : l'entrée reçoit sa position, même remplacée par un état vide.
+    if (e.newURL && !deplacementEnCours) {
+      const pos = posApresChangementDAdresse(etatVu, longueurVue, history.length);
+      const courant = etatHist();
+      if (courant.pos !== pos) {
+        const neuf = { ...courant };
+        if (pos === undefined) delete neuf.pos;
+        else neuf.pos = pos;
+        remplacerNatif(neuf, "");
+      }
+    }
+    deplacementEnCours = false;
     marquerVu();
     if (!e.newURL) return; // hashchange simulé (rafraîchir l'écran) : on reste sur le même écran
     for (const n of fermeturesAuChangementDEcran(pileFenetres, location.hash)) fenetreNumero(n)?.quitterEcran();
