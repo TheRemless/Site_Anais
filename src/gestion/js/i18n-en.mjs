@@ -1810,6 +1810,7 @@ export const EN = {
   "Reste à encaisser": "Still to collect",
   "reste à payer": "remaining to pay",
   "Reste à payer": "Remaining to pay",
+  "dont {montant} d'acompte déjà reçu": "incl. {montant} deposit already received",
   "Rétablir": "Redo",
   "Rétablir (Ctrl+Maj+Z ou Ctrl+Y)": "Redo (Ctrl+Shift+Z or Ctrl+Y)",
   "Rétablir (ou Ctrl+Y)": "Redo (or Ctrl+Y)",
