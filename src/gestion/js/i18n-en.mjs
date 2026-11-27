@@ -2358,6 +2358,7 @@ export const EN = {
   "Ce document est déjà parti chez le client avec le numéro {numero}. Changer le numéro donne au client deux documents différents pour le même service. Le changer quand même ?": "This document has already gone to the client with number {numero}. Changing the number gives the client two different documents for the same service. Change it anyway?",
   "Prix à saisir": "Price to enter",
   "Offert": "Complimentary",
+  "offert": "complimentary",
   "{n} ligne sans prix ({lignes}) : indiquez un prix ou cochez « Offert ». La facture ne peut pas être envoyée avant.": "{n} line without a price ({lignes}): enter a price or tick “Complimentary”. The invoice cannot be sent before that.",
   "{n} lignes sans prix ({lignes}) : indiquez un prix ou cochez « Offert ». La facture ne peut pas être envoyée avant.": "{n} lines without a price ({lignes}): enter a price or tick “Complimentary”. The invoice cannot be sent before that.",
   "{n} ligne sans prix ({lignes}) : elle compte 0 dans le total.": "{n} line without a price ({lignes}): it counts as 0 in the total.",

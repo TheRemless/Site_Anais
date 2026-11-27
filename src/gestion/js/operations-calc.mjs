@@ -3,7 +3,7 @@
 
 import { langueActive, N_ } from "./i18n.mjs";
 import { chiffres, estLigneSupplement, estLigneOption, ligneOption, prefixeProgramme, libelleClient, libelleUnite, quantiteParDefaut } from "./partenaires-calc.mjs";
-import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
+import { SUR_PLACE, CHEZ_NOUS, modeReglement, montantLigne } from "./calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { estRetourDepart, trajetPourChauffeur, DROPOFF_RETOUR } from "./trajet-calc.mjs";
 import { siegesLus, siegesAnglais } from "./sieges-calc.mjs";
@@ -766,6 +766,27 @@ export function optionsVoucher(lignes = [], prestationDe = () => null) {
     })
     .filter(Boolean);
 }
+
+// Les options d'un service pour les écrans internes (carte du service sur la fiche du dossier, liste des réservations, feuille du jour) :
+// [{ libelle, libelle_en, qte, prix, offert }], jamais de net. Elles se lisent sur les lignes de facture du service (`option_de`), sinon,
+// pour un service ajouté par une carte sans ligne de facture, sur la réservation (details.options, prix total de l'option).
+export function optionsDuService(r, documents = [], prestationDe = () => null) {
+  if (!r) return [];
+  const dt = r.details || {};
+  const ids = new Set([r.ligne_id, ...(Array.isArray(dt.lignes_ids) ? dt.lignes_ids : [])].filter(Boolean));
+  const vues = new Set();
+  const lignes = ids.size && r.dossier_id
+    ? (documents || []).filter((d) => d && d.dossier_id === r.dossier_id && d.type !== "devis").flatMap((d) => (d.contenu && d.contenu.lignes) || [])
+        .filter((l) => estLigneOption(l) && l.kind !== "texte" && l.kind !== "remise" && (ids.has(l.id) || ids.has(l.option_de)) && !vues.has(l.id) && vues.add(l.id))
+    : [];
+  const qteDe = (q) => (q !== null && q !== undefined && q !== "" && Number(q) > 0 ? Number(q) : 1);
+  const noms = (p, brut) => ({ libelle: brut || (p && p.libelle) || "", libelle_en: (p && p.libelle_en) || libelleClient(brut || (p && p.libelle) || "") });
+  if (lignes.length) return lignes.map((l) => { const p = l.prestation_id ? prestationDe(l.prestation_id) : null; return { ...noms(p, l.titre || l.libelle), qte: qteDe(l.qte), prix: montantLigne(l), offert: !!l.offert }; }).filter((o) => o.libelle);
+  return (Array.isArray(dt.options) ? dt.options : []).map((o) => { const p = o && o.prestation_id ? prestationDe(o.prestation_id) : null; const prix = o && o.prix !== null && o.prix !== undefined && o.prix !== "" && Number.isFinite(Number(o.prix)) ? Number(o.prix) : null; return { ...noms(p, o && o.libelle), qte: qteDe(o && o.qte), prix, offert: false }; }).filter((o) => o.libelle);
+}
+// La ligne courte d'une option sous son service : « + Koh Ha extension, 950 », « + Lunch box ×2, 300 ». `montant` met le prix en forme.
+export const texteOptionService = (o, montant = (n) => String(n), offert = "offert") =>
+  `+ ${o.libelle}${o.qte > 1 ? ` ×${o.qte}` : ""}${o.offert ? `, ${offert}` : o.prix !== null && o.prix !== undefined ? `, ${montant(o.prix)}` : ""}`;
 
 // Prix par personne imprimé sur le voucher d'activité : seulement quand il n'y a qu'un tarif connu (audit n° 27). Une moyenne
 // vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.

@@ -3,6 +3,7 @@
 import { etat, nomPartenaire, dossiersAnnules, peut } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
+import { optionsDuService } from "../operations-calc.mjs";
 import { alertesFeuille, texteFeuillePartage, joursProposes, feuilleJour } from "../feuille-calc.mjs";
 import { changerReservation } from "./prestataire.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
@@ -24,6 +25,8 @@ export function ouvrirFeuilleDuJour() {
       return d ? etat.db.clients.find((c) => c.id === d.client_id) || null : null;
     },
     partenaire: (id) => nomPartenaire(id),
+    // Les options du service (Koh Ha extension…) : le prestataire doit savoir ce qu'il fournit.
+    options: (r) => optionsDuService(r, etat.db.documents, (id) => etat.db.prestations.find((p) => p.id === id) || null),
   };
 
   function choisir(valeur) {
