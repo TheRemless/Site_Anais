@@ -361,7 +361,7 @@ ok(!r.ok && /plage_de_jour/.test(r.err), "08:00 à 20:00 (12 heures de jour) ref
 r = await regler("adminSecret", true, TEXTE, "12:00", "17:00");
 ok(!r.ok && /plage_de_jour/.test(r.err), "12:00 à 17:00 refusé");
 // Relecture n° 3 : chaque borne la nuit.
-for (const [d, f] of [["12:00", "00:00"], ["13:00", "01:00"], ["23:00", "11:00"]]) {
+for (const [d, f] of [["12:00", "00:00"], ["13:00", "01:00"], ["23:00", "11:00"], ["07:00", "19:00"], ["07:59", "19:59"], ["06:00", "18:00"], ["08:00", "20:00"]]) {
   r = await regler("adminSecret", true, TEXTE, d, f);
   ok(!r.ok && /plage_de_jour/.test(r.err), `${d} à ${f} refusé (une borne de jour)`);
 }

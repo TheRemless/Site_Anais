@@ -71,7 +71,8 @@ $$;
 
 -- Une plage de nuit (relectures de la PR 364) : 12 heures au plus, et chaque borne la nuit : début à 18:00 ou après, ou avant 08:00 (une nuit
 -- ne commence pas à 08:00, sinon 08:00 à 20:00 passerait), fin à 18:00 ou après, ou à 08:00 au plus tard. Acceptées : 22:00 à 06:00,
--- 20:00 à 08:00, 01:00 à 05:00, 06:00 à 08:00. Refusées : 08:00 à 20:00, 12:00 à 00:00, 13:00 à 01:00, 23:00 à 11:00.
+-- 20:00 à 08:00, 01:00 à 05:00, 06:00 à 08:00. Refusées : 08:00 à 20:00, 12:00 à 00:00, 13:00 à 01:00, 23:00 à 11:00, 07:00 à 19:00,
+-- 06:00 à 18:00.
 -- Fonctions pures, ouvertes à tous (relecture n° 3) : la contrainte des heures les appelle avec le rôle de celui qui écrit dans
 -- whatsapp_reglages, et un administrateur qui coupe la réception ne doit jamais être refusé.
 create or replace function whatsapp_nuit_plage_valide(p_debut time, p_fin time) returns boolean language sql immutable set search_path = public, pg_temp as $$
@@ -79,6 +80,8 @@ create or replace function whatsapp_nuit_plage_valide(p_debut time, p_fin time) 
     and date_trunc('minute', p_debut::interval) = p_debut::interval and date_trunc('minute', p_fin::interval) = p_fin::interval
     and whatsapp_nuit_minutes(p_debut, p_fin) <= 720
     and (p_debut >= time '18:00' or p_debut < time '08:00') and (p_fin >= time '18:00' or p_fin <= time '08:00')
+    -- Relecture n° 4 : une plage qui ne passe pas minuit commence le soir ou finit le matin (07:00 à 19:00 est une journée).
+    and (p_debut > p_fin or p_debut >= time '18:00' or p_fin <= time '08:00')
 $$;
 
 -- 1. Réglages.

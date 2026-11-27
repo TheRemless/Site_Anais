@@ -55,7 +55,8 @@ export function resultatTelnyx(statut, corps, { exception = false } = {}) {
 // Une plage de nuit (en minutes) : chaque borne entre 18:00 et 08:00 (avec la limite de 12 heures). Même règle que
 // whatsapp_nuit_plage_valide (migration 132) : 12:00 à 00:00 ou 23:00 à 11:00 ne sont pas des nuits.
 // Le début est strict (avant 08:00) : une nuit ne commence pas à 08:00, sinon 08:00 à 20:00 (12 heures pile) passerait.
-export const plageDeNuit = (d, f) => (d >= 18 * 60 || d < 8 * 60) && (f >= 18 * 60 || f <= 8 * 60);
+// Relecture n° 4 : sans passer minuit, la plage commence le soir ou finit le matin (07:00 à 19:00 est une journée).
+export const plageDeNuit = (d, f) => (d >= 18 * 60 || d < 8 * 60) && (f >= 18 * 60 || f <= 8 * 60) && (d > f || d >= 1080 || f <= 480);
 
 // Formulaire de Réglages > WhatsApp : { ok, valeurs } ou { erreur } (texte français, traduit par l'écran). Le serveur refait ces contrôles.
 export function lireReglageNuit({ active, texte, debut, fin } = {}) {
