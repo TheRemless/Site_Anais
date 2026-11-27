@@ -3,7 +3,7 @@
 import { tr } from "./i18n.mjs";
 import { confirmation } from "./confirmation.mjs";
 import { etatClavier, ouvreClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
-import { fermeturesAuRetour, entreeOrpheline, entreePourOuverture, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
+import { fermeturesAuRetour, pasSuivant, PAS_MAX, adresseApresDeplacement, entreePourOuverture, entreeApresFermeture, entreeAuDemarrage, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -112,85 +112,100 @@ export function purgerBrouillons() {
 // Avant (preview groupée, PR 365) : la feuille restait affichée par-dessus l'écran suivant.
 const pileFenetres = [];
 let numeroFenetre = 0;
-let retoursInternes = 0;
-let adresseAttendue = null;
-let avalerHashchange = 0;
-let nettoyagePrevu = false;
-const etatHist = () => history.state || {};
+let rangHist = Date.now();
+let avalerHashchange = false;
+let pasEnCours = null;
+// Sans navigateur (tests node qui importent ce module) : ni historique ni écouteurs.
+const navigateur = typeof window !== "undefined" && typeof history !== "undefined";
+const etatHist = () => (navigateur && history.state) || {};
 const ouvertesHist = () => pileFenetres.map((f) => f.n);
+const remplacerNatif = navigateur ? history.replaceState.bind(history) : () => {};
+const ajouterNatif = navigateur ? history.pushState.bind(history) : () => {};
+let etatVu = etatHist();
+let adresseVue = navigateur ? location.href : "";
+const marquerVu = () => ((etatVu = etatHist()), (adresseVue = location.href));
+if (navigateur) {
+  // Un écran réécrit son adresse (filtre, Assistant #/agent/nouvelle puis #/agent/<id>) pendant qu'une fenêtre est ouverte : ses
+  // fenêtres suivent, un hashchange simulé (rafraîchir) ne les ferme pas. app.mjs enveloppe ensuite replaceState (numéro d'entrée).
+  history.replaceState = (etat, titre, url) => {
+    const avant = location.hash;
+    remplacerNatif(etat, titre, url);
+    if (location.hash !== avant) for (const f of pileFenetres) if (f.hash === avant) f.hash = location.hash;
+    marquerVu();
+  };
+  // Toute entrée ajoutée (visionneuse comprise) prend un rang croissant : le sens d'un déplacement se lit toujours.
+  history.pushState = (etat, titre, url) => (ajouterNatif(etat && typeof etat === "object" ? { ...etat, rang: ++rangHist } : etat, titre, url), marquerVu());
+  // Rechargement avec une fenêtre ouverte (mise à jour automatique) : son entrée devient un fantôme, un seul retour quitte l'écran.
+  const depart = entreeAuDemarrage(history.state);
+  if (depart) (remplacerNatif(depart, ""), marquerVu());
+}
+const etiquetteEcran = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 function entrerHistorique(n) {
   try {
-    const { remplacer, etat } = entreePourOuverture(etatHist(), n, ouvertesHist());
-    if (remplacer) history.replaceState(etat, "");
-    else history.pushState(etat, "");
+    const { etiquetterEcran, remplacer, etat } = entreePourOuverture(etatHist(), n, ouvertesHist(), ++rangHist, etiquetteEcran());
+    if (etiquetterEcran && !remplacer) remplacerNatif({ ...etatHist(), ecran: etat.ecran }, "");
+    if (remplacer) remplacerNatif(etat, "");
+    else ajouterNatif(etat, "");
+    marquerVu();
+    return etat.ecran;
   } catch {
-    // historique refusé (rare) : Fermer, Échap et le glissement suffisent
+    return null; // historique refusé (rare) : Fermer, Échap et le glissement suffisent
   }
 }
-// Entrée d'une fenêtre fermée autrement que par le retour : libérée tout de suite (une fenêtre enchaînée la reprend), retirée au tour suivant.
-function nettoyerHistorique() {
-  if (nettoyagePrevu || !entreeOrpheline(etatHist(), ouvertesHist())) return;
+// Fermée autrement que par le retour : l'entrée de la fenêtre devient un fantôme, sans history.back() (qui se mêlait aux navigations).
+function sortirHistorique(n) {
   try {
-    history.replaceState({ ...etatHist(), feuilleLibre: true }, "");
+    const e = entreeApresFermeture(etatHist(), n);
+    if (e) (remplacerNatif(e, ""), marquerVu());
   } catch {
-    return;
+    // idem
   }
-  nettoyagePrevu = true;
-  setTimeout(() => {
-    nettoyagePrevu = false;
-    if (!entreeOrpheline(etatHist(), ouvertesHist())) return;
-    // Un filtre changé pendant que la feuille était ouverte a réécrit l'adresse de cette entrée : on la garde en revenant.
-    adresseAttendue = location.href;
-    retoursInternes++;
-    history.back();
-  }, 0);
 }
-// Sans navigateur (tests node qui importent ce module) : pas d'écouteurs.
-const navigateur = typeof window !== "undefined";
-if (navigateur) window.addEventListener("popstate", (e) => {
-  if (retoursInternes) {
-    retoursInternes--;
-    if (adresseAttendue && location.href !== adresseAttendue) {
-      if (new URL(adresseAttendue).hash !== location.hash) avalerHashchange = Date.now();
-      try {
-        history.replaceState(etatHist(), "", adresseAttendue);
-      } catch {}
+const fenetreNumero = (n) => pileFenetres.find((x) => x.n === n);
+if (navigateur) {
+  window.addEventListener("popstate", (e) => {
+    const quitte = etatVu;
+    const atteint = e.state || {};
+    // Pas automatique en cours (fantôme traversé) : son sens est gardé ; toute autre issue l'arrête.
+    const suite = pasEnCours && Date.now() - pasEnCours.le < 1000 ? pasEnCours : null;
+    pasEnCours = null;
+    const adresse = adresseApresDeplacement(quitte, atteint, adresseVue, location.href);
+    if (adresse !== location.href) {
+      // Même écran : l'adresse réécrite par un filtre reste ; le hashchange qui suit n'est pas un changement d'écran.
+      if (new URL(adresse).hash !== location.hash) avalerHashchange = true;
+      remplacerNatif(history.state, "", adresse);
     }
-    adresseAttendue = null;
-    const haut = pileFenetres[pileFenetres.length - 1];
-    // Une fenêtre gardée ouverte (« Continuer la saisie ») retrouve son entrée ; sinon on continue de retirer les orphelines.
-    if (haut && etatHist().feuille !== haut.n) entrerHistorique(haut.n);
-    else nettoyerHistorique();
-    return;
-  }
-  // Retour qui change d'écran (entrée d'une fenêtre déjà retirée) : le changement d'écran ferme ses fenêtres, saisie gardée en brouillon.
-  if (pileFenetres.some((f) => f.hash !== location.hash)) return;
-  const { fermer, demander } = fermeturesAuRetour(pileFenetres.map((f) => ({ n: f.n, modifie: f.modifie() })), e.state);
-  for (const n of fermer) {
-    const f = pileFenetres.find((x) => x.n === n);
-    if (f) f.fermer();
-  }
-  if (demander) {
-    const f = pileFenetres.find((x) => x.n === demander);
-    // La feuille reprend son entrée avant la confirmation : le retour suivant ne ferme que la confirmation (« Continuer la saisie »).
-    if (f) (entrerHistorique(f.n), f.demander());
-    return;
-  }
-  if (!fermer.length) nettoyerHistorique();
-});
-// Avant le routeur (ui.mjs est chargé avant app.mjs) : un retour interne qui a remis l'adresse n'est pas un changement d'écran.
-if (navigateur) window.addEventListener("hashchange", (e) => {
-  if (avalerHashchange && Date.now() - avalerHashchange < 1000) {
-    avalerHashchange = 0;
-    e.stopImmediatePropagation();
-    return;
-  }
-  avalerHashchange = 0;
-  for (const n of fermeturesAuChangementDEcran(pileFenetres, location.hash)) {
-    const f = pileFenetres.find((x) => x.n === n);
-    if (f) f.quitterEcran();
-  }
-});
+    marquerVu();
+    const { quitter, fermer, demander } = fermeturesAuRetour(pileFenetres.map((f) => ({ n: f.n, ecran: f.ecran, modifie: f.modifie() })), atteint);
+    for (const n of quitter) fenetreNumero(n)?.quitterEcran();
+    for (const n of fermer) fenetreNumero(n)?.fermer();
+    if (demander) {
+      const f = fenetreNumero(demander);
+      // La feuille reprend une entrée avant la confirmation : le retour suivant ne ferme que la confirmation (« Continuer la saisie »).
+      if (f) (entrerHistorique(f.n), f.demander());
+      return;
+    }
+    if (quitter.length || fermer.length) return;
+    // Rien n'a changé à l'écran (fantôme d'une fenêtre fermée) : un pas de plus, dans le sens du premier déplacement.
+    const pas = pasSuivant(quitte, atteint, ouvertesHist(), suite && suite.sens);
+    const fait = suite ? suite.fait + 1 : 1;
+    pasEnCours = pas && fait <= PAS_MAX ? { sens: pas, fait, le: Date.now() } : null;
+    if (!pasEnCours) return;
+    if (pas === "retour") history.back();
+    else history.forward();
+  });
+  // Avant le routeur (ui.mjs est chargé avant app.mjs).
+  window.addEventListener("hashchange", (e) => {
+    if (avalerHashchange && e.newURL) {
+      avalerHashchange = false;
+      e.stopImmediatePropagation();
+      return;
+    }
+    marquerVu();
+    if (!e.newURL) return; // hashchange simulé (rafraîchir l'écran) : on reste sur le même écran
+    for (const n of fermeturesAuChangementDEcran(pileFenetres, location.hash)) fenetreNumero(n)?.quitterEcran();
+  });
+}
 
 const valeurDe = (c) => (c.type === "checkbox" || c.type === "radio" ? (c.checked ? "1" : "0") : c.value);
 const CHAMPS = "input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]):not([type=search]), textarea, select";
@@ -211,7 +226,7 @@ export function modal(titre, contenu, { large = false, feuille = false, plein = 
     if (brouillon && !garder) effacer();
     fond.remove();
     const i = pileFenetres.indexOf(placeDansPile);
-    if (i >= 0) (pileFenetres.splice(i, 1), nettoyerHistorique());
+    if (i >= 0) (pileFenetres.splice(i, 1), sortirHistorique(placeDansPile.n));
     document.removeEventListener("keydown", surTouche);
     ouvertes = Math.max(0, ouvertes - 1);
     if (!ouvertes) document.documentElement.classList.remove("modal-ouverte");
@@ -325,8 +340,8 @@ export function modal(titre, contenu, { large = false, feuille = false, plein = 
   // Une entrée d'historique par fenêtre : le retour arrière la ferme (avec confirmation si une saisie est en cours) ; un changement
   // d'écran la ferme en gardant la saisie en brouillon quand la fenêtre en a un.
   const n = ++numeroFenetre;
-  entrerHistorique(n);
-  placeDansPile = { n, hash: location.hash, modifie, demander: demanderFermeture, fermer: () => fermer(), quitterEcran: () => (modifie() ? (garderBrouillon(), fermer(true)) : fermer()) };
+  const ecran = entrerHistorique(n);
+  placeDansPile = { n, ecran, hash: location.hash, modifie, demander: demanderFermeture, fermer: () => fermer(), quitterEcran: () => (modifie() ? (garderBrouillon(), fermer(true)) : fermer()) };
   pileFenetres.push(placeDansPile);
   // Au doigt, ouvrir le clavier tout de suite cacherait la feuille : on ne met le focus que sur un bouton, sauf champ marqué data-autofocus.
   const tactile = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
