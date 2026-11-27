@@ -66,7 +66,7 @@ N_("Le message ne peut pas être vide.");
 N_("Le message est trop long pour WhatsApp (4 096 octets au plus).");
 N_("Indiquez les heures au format 22:00.");
 N_("L'heure de début et l'heure de fin doivent être différentes.");
-N_("La plage doit être la nuit : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard.");
+N_("La plage doit être la nuit : le début et la fin entre 18:00 et 08:00.");
 N_("La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin.");
 
 // « Message de nuit » : rien tant que la migration 132 manque (les colonnes ne sont pas lues).

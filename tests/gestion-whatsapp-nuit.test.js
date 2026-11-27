@@ -128,13 +128,24 @@ test("formulaire de réglage : contrôles avant l'envoi au serveur", () => {
   assert.ok(lireReglageNuit({ texte: "Hi", debut: "18:00", fin: "06:00" }).ok, "12 heures pile");
   assert.ok(lireReglageNuit({ texte: "Hi", debut: "01:00", fin: "05:00" }).ok);
   assert.match(MIGRATION, /whatsapp_nuit_minutes\(p_debut, p_fin\) > 720 then raise exception 'plage_trop_longue'/);
-  assert.match(MIGRATION, /check \(whatsapp_nuit_plage_valide\(nuit_debut, nuit_fin\)\);/);
+  assert.match(MIGRATION, /check \(whatsapp_nuit_plage_valide\(nuit_debut, nuit_fin\)\) not valid;/);
   // Relecture n° 2 : la nuit, pas seulement 12 heures (08:00 à 20:00 refusé), même règle à l'écran et en base.
-  const nuitPlage = "La plage doit être la nuit : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard.";
+  const nuitPlage = "La plage doit être la nuit : le début et la fin entre 18:00 et 08:00.";
   assert.equal(lireReglageNuit({ texte: "Hi", debut: "08:00", fin: "20:00" }).erreur, nuitPlage);
   assert.equal(lireReglageNuit({ texte: "Hi", debut: "12:00", fin: "17:00" }).erreur, nuitPlage);
-  for (const [d, f] of [["19:00", "23:30"], ["01:00", "05:00"], ["22:00", "06:00"], ["18:00", "06:00"]]) assert.ok(lireReglageNuit({ texte: "Hi", debut: d, fin: f }).ok, `${d} à ${f}`);
-  assert.match(MIGRATION, /and \(p_debut > p_fin or p_debut >= time '18:00' or p_fin <= time '08:00'\)/);
+  // Relecture n° 3 : chaque borne la nuit.
+  for (const [d, f] of [["12:00", "00:00"], ["13:00", "01:00"], ["23:00", "11:00"], ["08:30", "18:00"]]) assert.equal(lireReglageNuit({ texte: "Hi", debut: d, fin: f }).erreur, nuitPlage, `${d} à ${f}`);
+  for (const [d, f] of [["22:00", "06:00"], ["20:00", "08:00"], ["01:00", "05:00"], ["06:00", "08:00"], ["19:00", "23:30"], ["18:00", "06:00"]]) assert.ok(lireReglageNuit({ texte: "Hi", debut: d, fin: f }).ok, `${d} à ${f}`);
+  assert.match(MIGRATION, /and \(p_debut >= time '18:00' or p_debut < time '08:00'\) and \(p_fin >= time '18:00' or p_fin <= time '08:00'\)/);
+  // Fonctions pures de la contrainte ouvertes à tous les rôles qui écrivent les réglages (relecture n° 3, coupure d'urgence).
+  assert.match(MIGRATION, /grant execute on function whatsapp_nuit_minutes\(time, time\), whatsapp_nuit_plage_valide\(time, time\), whatsapp_nuit_texte_defaut\(\) to public;/);
+  assert.doesNotMatch(MIGRATION, /revoke all on function [^;]*whatsapp_nuit_plage_valide/);
+  // NOT VALID dans la transaction, VALIDATE après le commit.
+  const apres = MIGRATION.slice(MIGRATION.lastIndexOf("commit;"));
+  for (const c of ["whatsapp_reglages_nuit_texte_check", "whatsapp_reglages_nuit_heures_check", "whatsapp_messages_automatique_check"]) {
+    assert.match(MIGRATION, new RegExp(`add constraint ${c} check \\([^\\n]*\\) not valid;`), c);
+    assert.match(apres, new RegExp(`validate constraint ${c};`), c);
+  }
   // Contraintes recréées à chaque passage.
   assert.match(MIGRATION, /alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_heures_check;\nalter table whatsapp_reglages add constraint/);
 });

@@ -360,7 +360,12 @@ r = await regler("adminSecret", true, TEXTE, "08:00", "20:00");
 ok(!r.ok && /plage_de_jour/.test(r.err), "08:00 à 20:00 (12 heures de jour) refusé");
 r = await regler("adminSecret", true, TEXTE, "12:00", "17:00");
 ok(!r.ok && /plage_de_jour/.test(r.err), "12:00 à 17:00 refusé");
-for (const [d, f] of [["19:00", "23:30"], ["01:00", "05:00"], ["22:00", "06:00"], ["18:00", "06:00"]]) {
+// Relecture n° 3 : chaque borne la nuit.
+for (const [d, f] of [["12:00", "00:00"], ["13:00", "01:00"], ["23:00", "11:00"]]) {
+  r = await regler("adminSecret", true, TEXTE, d, f);
+  ok(!r.ok && /plage_de_jour/.test(r.err), `${d} à ${f} refusé (une borne de jour)`);
+}
+for (const [d, f] of [["19:00", "23:30"], ["01:00", "05:00"], ["22:00", "06:00"], ["18:00", "06:00"], ["20:00", "08:00"], ["06:00", "08:00"]]) {
   r = await regler("adminSecret", true, TEXTE, d, f);
   ok(r.ok, `${d} à ${f} accepté`);
 }
@@ -391,6 +396,19 @@ let contrainte = null;
 try { await db.query("update whatsapp_reglages set nuit_debut = '08:00', nuit_fin = '20:00' where organisation_id = $1", [ORG]); } catch (e) { contrainte = e.message; }
 ok(contrainte && /nuit_heures_check/.test(contrainte), "la contrainte refuse aussi une plage de jour écrite directement");
 ok((await un("select nuit_texte = whatsapp_nuit_texte_defaut() e from whatsapp_reglages where organisation_id = $1", [ORG])).e, "le texte enregistré est le texte par défaut, inchangé par le rejeu");
+
+// ---- Relecture n° 3 : la contrainte des heures n'empêche aucune écriture permise ---------------------------------------------------
+r = await essaie(u.adminSecret, "update whatsapp_reglages set reception_active = false where organisation_id = $1", [ORG]);
+ok(r.ok && r.n === 1, `un administrateur coupe la réception (coupure d'urgence) malgré la contrainte : ${r.ok ? r.n : r.err}`);
+r = await essaie(u.adminSecret, "update whatsapp_reglages set reception_active = true where organisation_id = $1", [ORG]);
+ok(r.ok && r.n === 1, `… et la rallume : ${r.ok ? r.n : r.err}`);
+await db.exec("set role service_role");
+let ecriture = null;
+try { await db.query("update whatsapp_reglages set dernier_evenement_le = now(), numero = '+66900000000' where organisation_id = $1", [ORG]); } catch (e) { ecriture = e.message; }
+await db.exec("reset role");
+ok(!ecriture, `la fonction « whatsapp » (clé de service) écrit toujours dans les réglages : ${ecriture || "ok"}`);
+r = await essaie(u.adminTaxi, "select whatsapp_regler_nuit($1, true, $2, '22:00', '06:00', $3::timestamptz) r", [ORG, TEXTE, await luLe()]);
+ok(r.ok, `whatsapp_regler_nuit passe la contrainte : ${r.ok ? "ok" : r.err}`);
 
 // ---- Retour en arrière ------------------------------------------------------------------------------------------------------------
 await db.exec(lire("retour-132-whatsapp-message-nuit.sql"));

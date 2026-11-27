@@ -7,7 +7,7 @@ export const EN_NUIT = {
   "Texte envoyé": "Message sent",
   "Envoyé tel quel, emojis compris. Il apparaît dans la conversation, marqué « Message automatique de nuit ». Ni nom de partenaire ni net : il part chez tous les clients.": "Sent exactly as written, emojis included. It shows in the conversation, marked “Automatic night message”. No partner name and no net price: it goes to every client.",
   "La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin.": "The time range is longer than 12 hours: the message would also go out during the day. Check the start and end times.",
-  "La plage doit être la nuit : elle passe minuit, commence à 18:00 ou plus tard, ou finit à 08:00 au plus tard.": "The time range must be at night: it crosses midnight, starts at 18:00 or later, or ends at 08:00 at the latest.",
+  "La plage doit être la nuit : le début et la fin entre 18:00 et 08:00.": "The time range must be at night: start and end between 18:00 and 08:00.",
   "Le texte cite un partenaire : retirez son nom, ce message part chez tous les clients.": "The text names a partner: remove the name, this message goes to every client.",
   "Le texte contient un montant égal à un net du catalogue : retirez-le.": "The text contains an amount equal to a net price in the catalogue: remove it.",
   "Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version.": "The night message was changed on another device in the meantime. Reload the page to see the latest version.",

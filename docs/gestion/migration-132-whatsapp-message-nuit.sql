@@ -25,7 +25,7 @@
 --   7. whatsapp_regler_nuit(org, active, texte, debut, fin, lu_le) : Réglages > WhatsApp. Administrateur de Secret ou de Taxi de l'organisation
 --      (whatsapp_ecrit, comme les autres écritures WhatsApp), contrôlé ici et non dans l'écran. Refuse un texte qui cite un partenaire ou
 --      contient un montant égal à un net du catalogue de Secret ou de Taxi (seulement quand le texte change et que le message reste actif),
---      une plage qui n'est pas la nuit ou dure plus de 12 heures, et un réglage changé ailleurs depuis sa lecture (nuit_modifie_le).
+--      une plage dont une borne n'est pas la nuit (entre 18:00 et 08:00) ou qui dure plus de 12 heures, et un réglage changé ailleurs depuis sa lecture (nuit_modifie_le).
 --   8. whatsapp_apercu (migration 65), whatsapp_recalculer_dernier (migration 64) et whatsapp_confirmer_envoi (migration 64) ignorent le
 --      message automatique : au matin, la liste montre toujours le message du client et « Le client attend une réponse » ; « C'est parti » ou
 --      « Pas parti » sur un autre envoi ne le touchent pas.
@@ -69,13 +69,16 @@ create or replace function whatsapp_nuit_minutes(p_debut time, p_fin time) retur
   select ((extract(epoch from p_fin)::integer / 60 - extract(epoch from p_debut)::integer / 60) + 1440) % 1440
 $$;
 
--- Une plage de nuit (relectures de la PR 364) : 12 heures au plus, et la nuit, c'est-à-dire qu'elle passe minuit (22:00 à 06:00), commence à
--- 18:00 ou plus tard (19:00 à 23:30), ou finit à 08:00 au plus tôt du matin (01:00 à 05:00). 06:00 à 22:00 ou 08:00 à 20:00 sont refusées.
+-- Une plage de nuit (relectures de la PR 364) : 12 heures au plus, et chaque borne la nuit : début à 18:00 ou après, ou avant 08:00 (une nuit
+-- ne commence pas à 08:00, sinon 08:00 à 20:00 passerait), fin à 18:00 ou après, ou à 08:00 au plus tard. Acceptées : 22:00 à 06:00,
+-- 20:00 à 08:00, 01:00 à 05:00, 06:00 à 08:00. Refusées : 08:00 à 20:00, 12:00 à 00:00, 13:00 à 01:00, 23:00 à 11:00.
+-- Fonctions pures, ouvertes à tous (relecture n° 3) : la contrainte des heures les appelle avec le rôle de celui qui écrit dans
+-- whatsapp_reglages, et un administrateur qui coupe la réception ne doit jamais être refusé.
 create or replace function whatsapp_nuit_plage_valide(p_debut time, p_fin time) returns boolean language sql immutable set search_path = public, pg_temp as $$
   select p_debut is not null and p_fin is not null and p_debut <> p_fin
     and date_trunc('minute', p_debut::interval) = p_debut::interval and date_trunc('minute', p_fin::interval) = p_fin::interval
     and whatsapp_nuit_minutes(p_debut, p_fin) <= 720
-    and (p_debut > p_fin or p_debut >= time '18:00' or p_fin <= time '08:00')
+    and (p_debut >= time '18:00' or p_debut < time '08:00') and (p_fin >= time '18:00' or p_fin <= time '08:00')
 $$;
 
 -- 1. Réglages.
@@ -89,14 +92,15 @@ alter table whatsapp_reglages add column if not exists nuit_modifie_le timestamp
 -- Recréées à chaque passage (relecture n° 2 de la PR 364) : une version de travail de la 132 jouée sur une base de test prend aussi les
 -- règles de cette version. 4 096 octets : la limite de Telnyx pour un texte WhatsApp (whatsapp-envoi/calc.js, TEXTE_MAX_OCTETS).
 alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_texte_check;
-alter table whatsapp_reglages add constraint whatsapp_reglages_nuit_texte_check check (length(btrim(nuit_texte)) > 0 and octet_length(nuit_texte) <= 4096);
+alter table whatsapp_reglages add constraint whatsapp_reglages_nuit_texte_check check (length(btrim(nuit_texte)) > 0 and octet_length(nuit_texte) <= 4096) not valid;
 alter table whatsapp_reglages drop constraint if exists whatsapp_reglages_nuit_heures_check;
-alter table whatsapp_reglages add constraint whatsapp_reglages_nuit_heures_check check (whatsapp_nuit_plage_valide(nuit_debut, nuit_fin));
+alter table whatsapp_reglages add constraint whatsapp_reglages_nuit_heures_check check (whatsapp_nuit_plage_valide(nuit_debut, nuit_fin)) not valid;
 
 -- 2. Le message automatique dans la conversation.
 alter table whatsapp_messages add column if not exists automatique text;
 alter table whatsapp_messages drop constraint if exists whatsapp_messages_automatique_check;
-alter table whatsapp_messages add constraint whatsapp_messages_automatique_check check (automatique is null or automatique = 'nuit');
+-- NOT VALID ici, validée après le commit (fin du fichier) : la validation ne garde pas whatsapp_messages verrouillée (relecture n° 3).
+alter table whatsapp_messages add constraint whatsapp_messages_automatique_check check (automatique is null or automatique = 'nuit') not valid;
 
 -- 3. Une nuit par conversation.
 create table if not exists whatsapp_messages_nuit (
@@ -480,7 +484,10 @@ end
 $$;
 
 -- Droits.
-revoke all on function whatsapp_nuit_minutes(time, time), whatsapp_nuit_plage_valide(time, time), whatsapp_nuit_texte_defaut(), whatsapp_numero_partenaire(uuid, text) from public, anon, authenticated;
+revoke all on function whatsapp_numero_partenaire(uuid, text) from public, anon, authenticated;
+-- Fonctions pures appelées par les contraintes et le défaut de whatsapp_reglages : chaque rôle qui écrit les réglages doit pouvoir les exécuter
+-- (relecture n° 3 : sinon, décocher « Recevoir les messages » échouait en « permission denied »).
+grant execute on function whatsapp_nuit_minutes(time, time), whatsapp_nuit_plage_valide(time, time), whatsapp_nuit_texte_defaut() to public;
 revoke all on function whatsapp_confirmer_envoi(uuid, boolean) from public, anon;
 grant execute on function whatsapp_confirmer_envoi(uuid, boolean) to authenticated;
 revoke all on function whatsapp_nuit_cle(timestamptz, time, time), whatsapp_nuit_motif(uuid, timestamptz), whatsapp_reserver_nuit(uuid),
@@ -498,3 +505,9 @@ begin
 end $$;
 
 commit;
+
+-- Validation des contraintes ajoutées NOT VALID, hors de la transaction : chaque VALIDATE ne prend qu'un verrou qui laisse lire et écrire.
+-- Rejouable : une contrainte déjà valide n'est pas relue.
+alter table whatsapp_reglages validate constraint whatsapp_reglages_nuit_texte_check;
+alter table whatsapp_reglages validate constraint whatsapp_reglages_nuit_heures_check;
+alter table whatsapp_messages validate constraint whatsapp_messages_automatique_check;
