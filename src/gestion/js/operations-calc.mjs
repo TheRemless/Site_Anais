@@ -774,12 +774,28 @@ export function paiementDuService(r, { resume = null } = {}) {
   const reste = arr2(Math.max(0, Number(part.reste) || 0));
   return reste > 0 ? { statut: "acompte", verse, reste, surPlace: true } : { statut: "paye", verse, reste: 0, surPlace: false };
 }
-// Le prix sur place des services annulés encore écrits sur le document (leur ligne et ses options) : r.surPlace les compte, la base non.
-// `contenu` : le document dont r.surPlace est lu (la facture, sinon le devis) ; `reservations` : celles du dossier.
+// Le prix sur place des services annulés encore écrits sur le document : r.surPlace les compte, la base non. Une ligne (et ses options)
+// portée seulement par des réservations annulées part en entier. Portée aussi par une réservation active (service dupliqué, deux réservations
+// sur la même ligne), seule la part de chaque réservation annulée part : son montant_vente (au plus ses lignes), sinon chacune de ses lignes
+// divisée par le nombre de réservations qui la portent. `contenu` : le document dont r.surPlace est lu ; `reservations` : celles du dossier.
 export function surPlaceAnnule(contenu, reservations = []) {
-  const ids = new Set((reservations || []).filter((r) => r && statutReservation(r.statut) === "annule").flatMap((r) => [r.ligne_id, ...(((r.details || {}).lignes_ids) || [])]).filter(Boolean));
-  if (!ids.size) return 0;
-  return arr2(((contenu && contenu.lignes) || []).filter((l) => l && l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte" && (ids.has(l.id) || ids.has(l.option_de))).reduce((s, l) => s + montantLigne(l), 0));
+  const resas = (reservations || []).filter(Boolean);
+  const annulees = resas.filter((r) => statutReservation(r.statut) === "annule");
+  if (!annulees.length) return 0;
+  const idsDe = new Map(resas.map((r) => [r, new Set([r.ligne_id, ...(((r.details || {}).lignes_ids) || [])].filter(Boolean))]));
+  const lignes = ((contenu && contenu.lignes) || []).filter((l) => l && l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte");
+  // Une option est portée par les réservations de sa ligne parente.
+  const porteurs = new Map(lignes.map((l) => [l, resas.filter((r) => idsDe.get(r).has(l.id) || (l.option_de && idsDe.get(r).has(l.option_de)))]));
+  const entieres = new Set(lignes.filter((l) => porteurs.get(l).length && porteurs.get(l).every((r) => statutReservation(r.statut) === "annule")));
+  let retire = [...entieres].reduce((s, l) => s + montantLigne(l), 0);
+  for (const r of annulees) {
+    const siennes = lignes.filter((l) => !entieres.has(l) && porteurs.get(l).includes(r));
+    if (!siennes.length) continue;
+    const auProrata = siennes.reduce((s, l) => s + montantLigne(l) / porteurs.get(l).length, 0);
+    const mv = Number(r.montant_vente);
+    retire += r.montant_vente !== null && r.montant_vente !== undefined && r.montant_vente !== "" && Number.isFinite(mv) && mv >= 0 ? Math.min(mv, siennes.reduce((s, l) => s + montantLigne(l), 0)) : auProrata;
+  }
+  return arr2(Math.min(retire, lignes.reduce((s, l) => s + montantLigne(l), 0)));
 }
 // Ce qui reste à payer sur place pour tout le dossier, une fois l'acompte imputé par la base (parts de dossiers_resume, la source des
 // vouchers). Les parts ne connaissent que les services sur place avec une réservation et un montant_vente : le prix sur place du document

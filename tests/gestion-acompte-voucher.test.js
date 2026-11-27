@@ -220,6 +220,15 @@ test("fiche du dossier : « À payer sur place » donne le reste après l'acompt
   const resasLiees = [{ ...resas[0], ligne_id: "L1" }, { ...resas[1], ligne_id: "L2" }];
   assert.equal(O.surPlaceAnnule(contenu, resasLiees), 2000);
   assert.deepEqual(O.surPlaceApresAcompte({ surPlace: 9450, dossier: { parts } }, { annule: O.surPlaceAnnule(contenu, resasLiees) }), { reste: 6850, verse: 600 }, "le service annulé ne compte pas");
+  // Deux réservations sur la même ligne (service dupliqué) : une seule annulée ne retire que sa part, avec ses options.
+  const partagee = { lignes: [{ id: "S", paye_sur_place: true, unite: 4000, qte: 1 }, { id: "S-opt", option_de: "S", paye_sur_place: true, unite: 600, qte: 1 }] };
+  const r1 = { id: "r1", ligne_id: "S", statut: "confirme", paye_sur_place: true, montant_vente: 2300 };
+  const r2 = { id: "r2", ligne_id: "S", statut: "annule", paye_sur_place: true, montant_vente: 2300 };
+  assert.equal(O.surPlaceAnnule(partagee, [r1, r2]), 2300, "montant_vente de la réservation annulée");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: null }]), 2300, "sans montant_vente : (4 000 + 600) / 2 réservations");
+  assert.equal(O.surPlaceAnnule(partagee, [{ ...r1, statut: "annule" }, r2]), 4600, "toutes annulées : la ligne entière et son option");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, montant_vente: 9999 }]), 4600, "jamais plus que les lignes");
+  assert.equal(O.surPlaceAnnule(partagee, [r1, { ...r2, statut: "confirme" }]), 0, "aucune annulée : rien");
   // Relecture finale : un service sur place absent des parts (sans réservation, ou montant_vente vide) ne disparaît pas du reste.
   // Facture : 5 000 sur place (2 000 + 3 000, le second sans montant_vente), 1 500 reçus pour 1 000 dus chez nous : 500 imputés, 4 500 à payer.
   const resasB = [{ id: "a", paye_sur_place: true, statut: "confirme", montant_vente: 2000, date_service: "2026-12-10" }, { id: "b", paye_sur_place: true, statut: "confirme", montant_vente: null, date_service: "2026-12-11" }];
