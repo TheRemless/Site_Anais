@@ -651,7 +651,6 @@ export const EN = {
   "Nouveau": "New",
   "Un client, un voyage, un devis": "A client, a trip, a quote",
   "Récents": "Recent",
-  "pickup": "pickup",
   "Appeler {nom}": "Call {nom}",
   "Appeler": "Call",
   "WhatsApp à {nom}": "WhatsApp {nom}",
@@ -1752,7 +1751,6 @@ export const EN = {
   "Personne": "Person",
   "Personnes": "People",
   "Phrase sur les conditions générales": "Sentence about the general terms",
-  "pickup {heure_pickup}": "pickup {heure_pickup}",
   "Pièces jointes": "Attachments",
   "Pied de page": "Footer",
   "Plus": "More",
@@ -2446,7 +2444,6 @@ export const EN = {
   "L'autorisation n'a pas été donnée.": "Permission was not granted.",
   "Rappels activés": "Reminders on",
   "Vous recevrez ici les services de demain et les clients à recontacter.": "You will get tomorrow's services and the clients to contact here.",
-  "Hier : à recontacter pour avoir leur avis": "Yesterday: contact for their feedback",
   "Commission prévue": "Expected commission",
   "{n} sans commission": "{n} without commission",
   "Reçue": "Received",
@@ -3903,7 +3900,6 @@ export const EN = {
   "Chaque service qui a une heure : un tap ouvre la réservation et son rappel.": "Each service that has a time: one tap opens the booking and its reminder.",
   "Notification sur téléphone une heure avant chaque réservation qui a une heure": "Phone notification one hour before each booking that has a time",
   "le {quand}": "on {quand}",
-  "Rappel": "Reminder",
   "Pas d'heure de pickup : pas de notification une heure avant. Le service reste dans le rappel de 18h la veille.": "No pickup time: no notification one hour before. The service stays in the 6 pm reminder the day before.",
   "Rappel en anglais, à copier dans sa conversation": "Reminder in English, to copy into their chat",
   "Rappel à copier dans sa conversation": "Reminder to copy into their chat",
@@ -4771,6 +4767,10 @@ for (const [k, v] of Object.entries(EN_TYPE)) if (!(k in EN)) EN[k] = v;
 // Commission saisie par le partenaire chauffeur (migration 115) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_PARTENAIRE } from "./i18n-en-partenaire.mjs";
 for (const [k, v] of Object.entries(EN_PARTENAIRE)) if (!(k in EN)) EN[k] = v;
+
+// Audit mobile de l'accueil, des réservations et des commissions Taxi (PR 361) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_ACCUEIL } from "./i18n-en-accueil.mjs";
+for (const [k, v] of Object.entries(EN_ACCUEIL)) if (!(k in EN)) EN[k] = v;
 
 // Demandes venues d'une page du carnet de ZTP : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_CARNET } from "./i18n-en-carnet.mjs";

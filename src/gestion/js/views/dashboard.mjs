@@ -43,7 +43,9 @@ function carteService(r, { demain = false } = {}) {
   return h(
     "li",
     { class: "service" },
-    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("pickup")) : null),
+    // « départ » en français, « pickup » en anglais : une clé à part (« départ » seul se traduit « departure »), la précision entre
+    // parenthèses ne s'affiche pas (relecture de la PR 361).
+    h("div", { class: "service-heure" }, h("strong", null, r.heure_pickup || "—"), r.heure_pickup ? h("span", null, tr("départ (heure de prise en charge)").replace(/ \(.*\)$/, "")) : null),
     h(
       "div",
       { class: "service-corps" },
@@ -136,7 +138,7 @@ export async function tableauDeBord() {
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), tr("Encaissé en {mois}", { mois: nomMois(ajd) }), pluriel(ceMois.length, N_("paiement"), N_("paiements"))),
       modeExcursions() ? null : chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
     ) : null,
-    moduleActif("reservations") && ag.hier.length ? sectionAvis(tr("Hier : à recontacter pour avoir leur avis"), ag.hier) : null,
+    moduleActif("reservations") && ag.hier.length ? sectionAvis(tr("Avis à demander (hier)"), ag.hier) : null,
     // Taxi : la commission de chaque course d'hier se demande à Mr. Brown puis se saisit (aucune par défaut).
     moduleActif("commissions") ? sectionCommissionsHier(rafraichir) : null,
     mesTaches().length

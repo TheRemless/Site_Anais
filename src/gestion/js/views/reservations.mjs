@@ -30,7 +30,7 @@ import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire } from "./prestataire.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
-import { gestePrincipal, entreesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
+import { gestePrincipal, entreesMenu, groupesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 import { saisieRapideNet } from "./saisie-net.mjs";
 import { texteCorrection } from "../encaisser-calc.mjs";
@@ -121,9 +121,18 @@ function ouvrirModification(r, apres) {
 
 // Menu « … » d'une carte : les gestes qui ne sont pas le geste principal.
 function ouvrirMenu(r, entrees) {
+  const bouton = ([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle);
   const fermer = modal(
     r.libelle,
-    h("div", { class: "modal-corps menu-gestes" }, entrees.map(([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle))),
+    h(
+      "div",
+      { class: "modal-corps menu-gestes" },
+      // `entrees` : un objet indexé par clé de geste (une liste ouvrirait un menu vide, relecture de la PR 361).
+      groupesMenu(Object.keys(entrees)).map(([titre, cles]) => {
+        const liste = cles.map((k) => bouton(entrees[k]));
+        return titre ? h("div", { class: "menu-groupe", role: "group", "aria-label": tr(titre) }, h("p", { class: "menu-groupe-titre", "aria-hidden": "true" }, tr(titre)), liste) : liste;
+      })
+    ),
     { feuille: true, protege: false }
   );
 }
@@ -183,7 +192,7 @@ async function aligner(r, ecart, apres) {
   }
 }
 
-export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null } = {}) {
+export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null, jourEnTitre = false } = {}) {
   const c = clientDe(r);
   const d = dossierDe(r);
   const n = voitNets() ? netReservation(r) : null;
@@ -205,7 +214,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye, modifie: voucherModifie } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
-    rappel: [tr("Rappel"), () => naviguer(`#/reservation/${r.id}`)],
+    rappel: [tr("Rappels avant le départ"), () => naviguer(`#/reservation/${r.id}`)],
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
@@ -215,7 +224,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   };
   const principal = gestePrincipal(ctx);
   const menu = entreesMenu(ctx);
-  const boutonMenu = menu.length ? h("button", { class: principal ? "secondaire bouton-menu" : "secondaire bouton-menu carte-menu-haut", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null;
+  const boutonMenu = menu.length ? h("button", { class: principal ? "secondaire bouton-menu" : "secondaire bouton-menu carte-menu-haut", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, Object.fromEntries(menu.map((k) => [k, GESTES[k]]))) }, icone("ellipsis", 22)) : null;
   // Sans geste principal (frais de parc par exemple), le « … » monte sur la ligne du titre plutôt que de rester seul en bas de la carte (relecture de la PR #360).
   const barre = principal
     ? h(
@@ -230,7 +239,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     "div",
     { class: !principal && boutonMenu ? "carte-lien statique menu-en-haut" : "carte-lien statique" },
     h("span", { class: "carte-titre" }, avecDossier ? lienDossier(r.libelle, r.dossier_id) : r.libelle),
-    h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
+    // Groupée sous le titre de son jour, la carte ne répète pas la date (audit mobile n° 19).
+    h("span", { class: "carte-droite" }, jourEnTitre ? null : h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("à {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
     principal ? null : boutonMenu,
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive()), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
@@ -900,6 +910,12 @@ export function sectionReservationsDossier(d, doc) {
 }
 
 // ---- Écran Réservations -------------------------------------------------------------------------------------
+// Le menu « … » de l'en-tête sur téléphone.
+function menuEntete() {
+  const geste = (libelle, fait) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle);
+  const fermer = modal(tr("Réservations"), h("div", { class: "modal-corps menu-gestes" }, geste(tr("Feuille du jour"), ouvrirFeuilleDuJour), geste(tr("Messages types"), () => naviguer("#/messages"))), { feuille: true, protege: false });
+}
+
 export function vueReservations() {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const ajd = aujourdhui();
@@ -940,14 +956,22 @@ export function vueReservations() {
     for (const jour of jours) {
       const du = rs.filter((r) => (r.date_service || "") === jour);
       const titre = jour === "" ? tr("Sans date") : jour === ajd ? tr("Aujourd'hui, {dateTexte}", { dateTexte: dateTexte(jour) }) : jour === ajouter(ajd, 1) ? tr("Demain, {dateTexte}", { dateTexte: dateTexte(jour) }) : dateTexte(jour);
-      corps.append(h("section", { class: "jour" }, h("h2", { class: "jour-titre" }, titre, h("span", { class: "tag" }, du.length)), listeReservations(du, { apres: rafraichir })));
+      corps.append(h("section", { class: "jour" }, h("h2", { class: "jour-titre" }, titre, h("span", { class: "tag" }, du.length)), listeReservations(du, { apres: rafraichir, jourEnTitre: true })));
     }
   }
   dessiner();
   return h(
     "div",
     { "data-titre": tr("Réservations") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")), h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous seulement-bureau" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h(
+        "div",
+        { class: "entete-actions" },
+        h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")),
+        h("a", { class: "bouton secondaire seulement-bureau", href: "#/messages" }, tr("Messages types")),
+        // Sur téléphone, les deux passent dans le menu « … » : la liste des jours commence plus haut (audit mobile n° 19, relecture de la PR 361).
+        h("button", { class: "secondaire bouton-menu seulement-mobile", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions"), title: tr("Plus d'actions"), onclick: menuEntete }, icone("ellipsis", 22))
+      )
+    ),
     barre.noeud,
     corps
   );
