@@ -22,7 +22,8 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
     h("div", { class: "visionneuse-cadre" }, image)
   );
   const surTouche = (e) => {
-    if (e.key === "Escape") (e.preventDefault(), fermer());
+    // Échap ferme la photo seulement : la fenêtre du dessous (écoute en phase de bouillonnement) ne la reçoit pas (relecture de la PR 363).
+    if (e.key === "Escape") return void (e.preventDefault(), e.stopPropagation(), fermer());
     // Le focus reste dans la fenêtre.
     if (e.key === "Tab") {
       const f = [...fond.querySelectorAll("a, button")];
