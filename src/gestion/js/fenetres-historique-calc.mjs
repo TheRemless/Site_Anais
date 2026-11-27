@@ -123,3 +123,13 @@ export function entreeAuDemarrage(etat, lancement = false) {
 export function fermeturesAuChangementDEcran(pile, hash) {
   return pile.filter((f) => f.hash !== hash).map((f) => f.n).reverse();
 }
+
+// Retour arrière pendant qu'une photo est affichée : elle ne se ferme que si l'entrée atteinte est sous la sienne. Un retour qui ferme
+// une fenêtre posée au-dessus de la photo arrive sur l'entrée de la photo : la photo reste (sinon le retour suivant tombait sur son
+// entrée morte et ne faisait rien). Comparaison par rang, ou par position à défaut ; sans repère, la photo se ferme comme avant.
+export function photoFermeeAuRetour(photo, atteint) {
+  if (!photo || !atteint) return true;
+  if (typeof photo.rang === "number" && typeof atteint.rang === "number") return atteint.rang < photo.rang;
+  if (typeof photo.pos === "number" && typeof atteint.pos === "number") return atteint.pos < photo.pos;
+  return true;
+}

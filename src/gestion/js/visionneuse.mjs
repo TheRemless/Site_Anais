@@ -3,6 +3,7 @@
 // Échap, un toucher sur le fond ou le bouton retour du téléphone referment. La conversation derrière ne bouge pas.
 import { h, icone } from "./ui.mjs";
 import { tr } from "./i18n.mjs";
+import { photoFermeeAuRetour } from "./fenetres-historique-calc.mjs";
 
 let ouverte = null;
 
@@ -34,8 +35,14 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
   };
   // Le bouton retour (Android, geste du bord) ferme la photo au lieu de quitter la conversation : une entrée d'historique sans changer
   // l'adresse. Fermée autrement, l'entrée est retirée.
+  // Une fenêtre ouverte par-dessus la photo se ferme d'abord : la photo ne se ferme que sur un retour sous sa propre entrée.
   let parRetour = false;
-  const surRetour = () => ((parRetour = true), fermer());
+  let entreePhoto = null;
+  const surRetour = (e) => {
+    if (!photoFermeeAuRetour(entreePhoto, e.state)) return;
+    parRetour = true;
+    fermer();
+  };
   function fermer() {
     if (ouverte !== api) return;
     ouverte = null;
@@ -56,6 +63,7 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
     // Posée sur l'entrée d'une fenêtre fermée (fantôme), l'entrée de la photo n'en est pas un : la fermer ne quitte pas l'écran.
     const { fantome, ...dessous } = history.state || {};
     history.pushState({ ...dessous, visionneuse: true }, "");
+    entreePhoto = history.state;
     window.addEventListener("popstate", surRetour);
   } catch {
     // historique refusé (rare) : Fermer et Échap suffisent
