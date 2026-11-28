@@ -1155,6 +1155,8 @@ export function creer() {
       if (!c) return { ok: false, raison: "introuvable" };
       if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
       if (priseRecente(c) && c.prise_par !== utilisateur.user_id) return { ok: false, raison: "prise", par: c.prise_par || null };
+      // Comme agent_carte_envoyee : une demande d'amélioration partie sur GitHub ne s'écarte plus.
+      if ((data.ameliorations || []).some((a) => a.carte_id === c.id && a.issue_numero)) return { ok: false, raison: "envoyee" };
       Object.assign(c, { statut: "ecartee", decide_le: new Date().toISOString(), decide_par: utilisateur.user_id, prise_le: null, prise_par: null });
       sauve();
       return { ok: true, statut: "ecartee" };

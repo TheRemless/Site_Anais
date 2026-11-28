@@ -353,6 +353,9 @@ const REPRISES = [
   "Je vous écris à la place d’Anaïs.",
   "Je vous réponds au nom de Nani.",
   "Hi, Jérémy here, taking over from Nani.",
+  // Relecture n° 5.
+  "I've taken over from Nani.",
+  "Jérémy took over from Nani this morning.",
   "Jérémy reprend la conversation.",
 ];
 const EQUIPE_REPRISE = ["Jérémy", "Nani", "Anaïs"];
@@ -464,4 +467,12 @@ test("relecture n° 2, mineurs : ancien nom sans reprise forcée, cartes rendues
   assert.match(f, /await sortie\.nettoyer\(\)\.catch\(\(\) => \{\}\);\n\s+await sortie\.liberer\(\)/);
   assert.match(f, /if \(!n\.error && !n\.count\) await sb\.from\("agent_conversations"\)\.delete\(\)\.eq\("id", neuve\);/);
   assert.equal(EN["Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe."], "This card was already approved by {qui}: it can no longer be dismissed, the file exists.");
+});
+
+test("relecture n° 5 : une amélioration partie sur GitHub ne s'écarte plus et rappels la valide", () => {
+  const sql = readFileSync(new URL("../docs/gestion/migration-133-assistant-equipe.sql", import.meta.url), "utf8");
+  assert.match(sql, /if new\.statut = 'ecartee' and agent_carte_envoyee\(old\.id\) then\n\s+raise exception 'carte_envoyee'/);
+  assert.match(sql, /if agent_carte_envoyee\(p_carte\) then\n\s+return jsonb_build_object\('ok', false, 'raison', 'envoyee'\);/);
+  assert.match(readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8"), /await db\.rpc\("valider_cartes_ameliorations_envoyees"\)/);
+  assert.match(vueSrc(), /if \(r\.raison === "envoyee"\) return tr\("Cette demande est déjà partie sur GitHub : elle ne s'écarte plus\."\);/);
 });

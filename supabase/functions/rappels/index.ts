@@ -538,6 +538,10 @@ async function suivreAmeliorations() {
   const jeton = Deno.env.get("GITHUB_ISSUES_TOKEN");
   if (!jeton) return json({ ignore: "GITHUB_ISSUES_TOKEN absent" });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  // Migration 133 (relecture n° 5 de la PR 366) : une carte partie sur GitHub mais restée « proposée » passe validée. Sans la migration :
+  // rien (la fonction manque), le suivi continue.
+  const cartes = await db.rpc("valider_cartes_ameliorations_envoyees");
+  if (cartes.error && !["PGRST202", "42883"].includes(cartes.error.code || "")) console.error("ameliorations : cartes envoyées", cartes.error.message);
   const lignes = await db.from("ameliorations").select("id, user_id, titre, statut, issue_numero, issue_url, pr_url, sensible").in("statut", STATUTS_SUIVIS).not("issue_numero", "is", null).order("maj_le", { ascending: true }).limit(30);
   // Avant la migration 56, la table manque : rien à suivre, sans erreur toutes les 10 minutes.
   if (lignes.error) return ["42P01", "PGRST205"].includes(lignes.error.code) ? json({ suivies: 0, note: "table ameliorations absente" }) : json({ erreur: lignes.error.message }, 500);

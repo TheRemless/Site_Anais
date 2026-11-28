@@ -42,4 +42,6 @@ export const EN_EQUIPE = {
   "Cette carte a été laissée en cours par une autre personne : rien n'est parti.": "This card was left in progress by someone else: nothing was sent.",
   "Envoyée, à confirmer : la demande est partie, mais la carte n'a pas pu être notée envoyée. Rien ne repartira en double.": "Sent, to be confirmed: the request went out, but the card could not be marked as sent. Nothing will be sent twice.",
   "Demande envoyée, carte à confirmer : rien ne repartira en double.": "Request sent, card to be confirmed: nothing will be sent twice.",
+  // Relecture n° 5 de la PR 366.
+  "Cette demande est déjà partie sur GitHub : elle ne s'écarte plus.": "This request has already gone to GitHub: it can no longer be dismissed.",
 };

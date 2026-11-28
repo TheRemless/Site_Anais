@@ -155,6 +155,14 @@ $$;
 drop trigger if exists noter_agent_message on agent_messages;
 create trigger noter_agent_message before insert on agent_messages for each row execute function noter_agent_message();
 
+-- Une carte « amelioration » dont la demande est partie sur GitHub (ligne ameliorations avec issue_numero, relecture n° 5 de la PR 366) :
+-- elle ne s'écarte plus, même si elle n'a pas encore pu être notée validée. Lu en definer : la table ne se lit que par l'administration.
+create or replace function agent_carte_envoyee(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from ameliorations a where a.carte_id = c and a.issue_numero is not null);
+$$;
+revoke all on function agent_carte_envoyee(uuid) from public, anon;
+grant execute on function agent_carte_envoyee(uuid) to authenticated;
+
 -- Le contenu d'une carte reste celui que l'agent a proposé. Une carte validée ou écartée ne change plus de statut ; une carte prise par une
 -- autre personne depuis moins de 2 minutes ne se décide pas. Qui décide est posé par la base. Hors des fonctions de prise (réglage local
 -- « gestion.agent_carte »), une prise de moins de 2 minutes d'une autre personne ne s'efface ni ne se remplace, et qui prend est posé par la
@@ -180,6 +188,9 @@ begin
   if new.statut <> old.statut then
     if old.statut <> 'proposee' then
       raise exception 'carte_decidee' using errcode = '55P03';
+    end if;
+    if new.statut = 'ecartee' and agent_carte_envoyee(old.id) then
+      raise exception 'carte_envoyee' using errcode = '55P03';
     end if;
     if auth.uid() is not null and old.prise_le is not null and old.prise_le >= now() - interval '2 minutes' and old.prise_par is distinct from auth.uid() then
       raise exception 'carte_prise' using errcode = '55P03';
@@ -332,6 +343,9 @@ begin
   if c.prise_le is not null and c.prise_le >= now() - interval '2 minutes' and c.prise_par is distinct from auth.uid() then
     return jsonb_build_object('ok', false, 'raison', 'prise', 'par', c.prise_par);
   end if;
+  if agent_carte_envoyee(p_carte) then
+    return jsonb_build_object('ok', false, 'raison', 'envoyee');
+  end if;
   perform set_config('gestion.agent_carte', '1', true);
   update agent_cartes set statut = 'ecartee', prise_le = null, prise_par = null where id = p_carte;
   perform set_config('gestion.agent_carte', '', true);
@@ -348,6 +362,20 @@ grant execute on function prendre_agent_carte_equipe(uuid, boolean) to authentic
 grant execute on function controler_agent_carte(uuid) to authenticated;
 grant execute on function rendre_agent_carte(uuid) to authenticated;
 grant execute on function ecarter_agent_carte(uuid) to authenticated;
+
+-- Les cartes « amelioration » parties sur GitHub mais restées proposées (validation échouée deux fois, envoyerAvecCarte) passent validées.
+-- Appelée par la fonction « rappels » (clé de service) à chaque suivi des améliorations. Rend le nombre de cartes passées.
+create or replace function valider_cartes_ameliorations_envoyees() returns integer language plpgsql security definer set search_path = public as $$
+declare
+  n integer;
+begin
+  update agent_cartes c set statut = 'validee'
+   where c.statut = 'proposee' and exists (select 1 from ameliorations a where a.carte_id = c.id and a.issue_numero is not null);
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+revoke all on function valider_cartes_ameliorations_envoyees() from public, anon, authenticated;
 
 -- Discussion pleine (agent/discussion-pleine.js) remplacée dans une seule transaction : l'ancienne est archivée et rendue, la nouvelle (même
 -- entreprise, titre, dossier, conversation WhatsApp et propriétaire) est créée et prise avec un nouveau jeton. Seulement avec le jeton de la

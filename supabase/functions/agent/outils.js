@@ -1901,7 +1901,7 @@ const selAleatoire = () => Array.from(globalThis.crypto.getRandomValues(new Uint
 // tournures les plus sûres, un prénom de l'équipe collé au mot : « remplace Nani », « stepping in for Nani », « on Nani's behalf », « on
 // behalf of Nani », « à la place de Nani », « au nom de Nani », « taking over from Nani », « Jérémy reprend la conversation ».
 // Rend l'extrait trouvé, ou "".
-const AVANT_NOM = String.raw`(?:remplace|remplacer|remplacons|je remplace|stepping in for|steps in for|step in for|stepped in for|a la place d'|a la place de|au nom d'|au nom de|on behalf of|taking over from|takes over from|took over from)`;
+const AVANT_NOM = String.raw`(?:remplace|remplacer|remplacons|je remplace|stepping in for|steps in for|step in for|stepped in for|a la place d'|a la place de|au nom d'|au nom de|on behalf of|taking over from|takes over from|took over from|taken over from)`;
 const echapper = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const pourReprise = (t) => sansAccents(String(t || "")).toLowerCase().replace(/[’`´]/g, "'");
 export function mentionReprise(message, { noms = [] } = {}) {

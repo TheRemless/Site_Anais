@@ -1385,6 +1385,7 @@ const remarquesCarte = (s) => {
     if (!r) return tr("Rien n'a été enregistré.");
     if (ecart && r.raison === "decidee") return r.statut === "ecartee" ? tr("Cette carte a déjà été écartée par {qui}.", { qui: quiEst(r.par) }) : tr("Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe.", { qui: quiEst(r.par) });
     if (ecart && r.raison === "prise") return tr("{qui} valide cette carte en ce moment : elle ne s'écarte pas.", { qui: quiEst(r.par) });
+    if (r.raison === "envoyee") return tr("Cette demande est déjà partie sur GitHub : elle ne s'écarte plus.");
     if (r.raison === "decidee") return r.statut === "ecartee" ? tr("Cette carte a déjà été écartée par {qui} : rien n'est créé.", { qui: quiEst(r.par) }) : tr("Cette carte a déjà été validée par {qui} : rien n'est créé une seconde fois.", { qui: quiEst(r.par) });
     if (r.raison === "prise" && r.par === moi) return tr("Cette carte est déjà en cours de validation dans un autre onglet : rien n'est créé deux fois.");
     if (r.raison === "prise") return tr("{qui} valide cette carte en ce moment : rien n'est créé deux fois.", { qui: quiEst(r.par) });
