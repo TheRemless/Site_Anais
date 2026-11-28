@@ -139,7 +139,7 @@ export function listeDossiers() {
       h(
         "table",
         { class: "tableau tableau-dossiers seulement-bureau" },
-        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("label", { class: "case-zone" }, h("input", { type: "checkbox", "aria-label": tr("Sélectionner les dossiers affichés"), checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } }))) : null, [tr("Client"), tr("Intitulé"), tr("Départ"), tr("Statut"), tr("Total"), tr("Reste")].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
+        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("label", { class: "case-zone" }, h("input", { type: "checkbox", "aria-label": tr("Sélectionner les dossiers affichés"), checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } }))) : null, [tr("Client"), tr("Intitulé"), tr("Départ"), tr("Statut"), tr("Total"), tr("Reste")].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : i === 1 ? "col-intitule" : null }, t)))),
         h(
           "tbody",
           null,
@@ -149,7 +149,7 @@ export function listeDossiers() {
               null,
               groupee ? h("td", { class: "case-cellule" }, cocher(r)) : null,
               h("td", { "data-label": tr("Client") }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client)), h("span", { class: "ref ref-sous" }, r.dossier.ref)),
-              h("td", { "data-label": tr("Intitulé") }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
+              h("td", { "data-label": tr("Intitulé"), class: "col-intitule" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
               h("td", { "data-label": tr("Départ") }, r.dossier.date_depart ? formatDate(r.dossier.date_depart) : "-"),
               h("td", { "data-label": tr("Statut") }, pastille(r.statut)),
               h("td", { "data-label": tr("Total"), class: "num" }, r.total ? formatMontant(r.total, r.devise) : "-"),

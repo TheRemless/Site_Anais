@@ -194,7 +194,7 @@ export async function tableauDeBord() {
       departs.length
         ? h(
             "table",
-            { class: "tableau simple seulement-bureau" },
+            { class: "tableau simple seulement-bureau tableau-accueil" },
             h("thead", null, h("tr", null, [tr("Départ"), tr("Client"), tr("Voyage"), tr("Statut"), tr("Reste à payer")].map((t) => h("th", { scope: "col" }, t)))),
             h(
               "tbody",

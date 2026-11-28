@@ -270,6 +270,19 @@ legend { padding: 0 6px; font-weight: 700; }
    rien à l'impression. */
 /* position: relative : un texte réservé aux lecteurs d'écran (.visuellement-cache, en absolu) reste dans la boîte qui défile (Dû aux partenaires). */
 @media screen and (min-width: 720px) { .tableau-defile { position: relative; overflow-x: auto; } }
+/* Entre 720 et 1 100 px, les cellules se resserrent (inchangé à 1 180 et 1 280 px). Un tableau qui ne tient toujours pas défile
+   dans sa boîte : sur ordinateur, pas de lignes empilées, le tri par les en-têtes et la sélection restent (relecture de la PR 367). */
+@media screen and (min-width: 720px) and (max-width: 1100px) { .tableau th, .tableau td { padding: 10px 8px; } }
+/* Accueil Agence à 900 px : le statut (« Acompte reçu ») passe à la ligne, « Reste à payer » reste visible sans défiler. */
+@media screen and (min-width: 720px) and (max-width: 1100px) { .tableau-accueil .statut { white-space: normal; } }
+/* Dossiers de 900 à 1 000 px (barre latérale ouverte, 568 à 668 px de place) : la colonne « Intitulé » se masque pour que le statut,
+   le total et le reste restent visibles sans défiler. C'est la moins utile au tri : « pays · mois » se lit déjà sous le nom (référence)
+   et dans la date de départ, et le titre complet reste sur la fiche du dossier. */
+@media screen and (min-width: 900px) and (max-width: 1000px) { .tableau-dossiers .col-intitule { display: none; } }
+/* Filet : si la boîte défile, elle se prend au clavier (tabindex, role, aria-label posés par app.mjs) et un fondu au bord
+   droit montre la suite, retiré en fin de défilement. */
+.tableau-defile.deborde:not(.fin) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.tableau-defile:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
 @media (max-width: 1180px) { .tableau-dossiers th, .tableau-dossiers td { padding: 10px 8px; font-size: 0.92rem; } }
 .tableau-dossiers .statut { white-space: normal; align-items: flex-start; }
 .tableau-dossiers .statut .point { margin-top: 0.4em; }

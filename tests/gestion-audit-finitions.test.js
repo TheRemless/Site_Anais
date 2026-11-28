@@ -78,12 +78,42 @@ test("tableaux larges : chaque table.tableau défile dans son conteneur, à l'é
   assert.match(app, /t\.parentElement\?\.classList\.contains\("tableau-defilant"\)\) continue;/);
   assert.match(app, /boite\.className = t\.classList\.contains\("simple"\) \? "tableau-defile simple" : "tableau-defile";/);
   assert.match(css, /\.tableau\.simple, \.tableau-defile\.simple \{ margin-bottom: 8px; \}\n\.tableau-defile > \.tableau\.simple \{ margin-bottom: 0; \}/);
-  // Posé dans le rappel synchrone de l'observateur (avant l'affichage), pas au prochain rafraîchissement.
-  assert.match(app, /new MutationObserver\(\(changements\) => \{\s*for \(const c of changements\) for \(const n of c\.addedNodes\) if \(n\.nodeType === 1\) envelopperTableaux\(n\);/);
+  // Posé et ajusté dans le rappel synchrone de l'observateur (avant l'affichage), puis à chaque changement de taille de la boîte.
+  assert.match(app, /envelopperTableaux\(n\);[\s\S]*?aRevoir\.forEach\(ajusterTableau\);/);
+  assert.match(app, /suiviTaille\.observe\(boite\)/);
 });
 
 test("Bandeau du site : la liste ne s'élargit plus à l'aperçu de téléphone avant son zoom (390 px)", () => {
   const css = lire("css/app.css");
   assert.match(css, /\.bsite-liste \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(css, /\.bsite-apercu \{ margin: 0; min-width: 0; \}/);
+});
+
+test("tableaux larges : sur ordinateur, défilement dans la boîte avec le filet, jamais de lignes empilées", async () => {
+  const { boiteDefile, finDefilement } = await import("../src/gestion/js/tableaux-calc.mjs");
+  assert.equal(boiteDefile({ largeurContenu: 1314, largeurBoite: 948 }), true, "Trajets à 1280 px");
+  assert.equal(boiteDefile({ largeurContenu: 569, largeurBoite: 568 }), false, "arrondi d'un pixel");
+  assert.equal(boiteDefile({ largeurContenu: 900, largeurBoite: 0 }), false, "boîte masquée");
+  assert.equal(finDefilement({ gauche: 366, largeurBoite: 948, largeurContenu: 1314 }), true);
+  assert.equal(finDefilement({ gauche: 0, largeurBoite: 948, largeurContenu: 1314 }), false);
+  const css = lire("css/app.css");
+  const app = lire("js/app.mjs");
+  // Plus d'empilement automatique : les lignes empilées restent celles de la coque téléphone (sous 720 px).
+  assert.doesNotMatch(css + app, /empile/);
+  assert.match(css, /@media screen and \(min-width: 720px\) and \(max-width: 1100px\) \{ \.tableau th, \.tableau td \{ padding: 10px 8px; \} \}/);
+  assert.match(css, /\.tableau-defile\.deborde:not\(\.fin\) \{ -webkit-mask-image:/);
+  assert.match(css, /\.tableau-defile:focus-visible \{ outline: 2px solid/);
+  assert.match(app, /boite\.setAttribute\("tabindex", "0"\);\s*boite\.setAttribute\("role", "region"\);\s*boite\.setAttribute\("aria-label", tr\("Tableau, défiler horizontalement"\)\);/);
+});
+
+test("Dossiers de 900 à 1 000 px : la colonne Intitulé se masque, statut, total et reste visibles sans défiler", () => {
+  assert.match(lire("css/app.css"), /@media screen and \(min-width: 900px\) and \(max-width: 1000px\) \{ \.tableau-dossiers \.col-intitule \{ display: none; \} \}/);
+  const vue = lire("js/views/dossiers.mjs");
+  assert.match(vue, /class: i >= 4 \? "num" : i === 1 \? "col-intitule" : null/);
+  assert.match(vue, /h\("td", \{ "data-label": tr\("Intitulé"\), class: "col-intitule" \}/);
+});
+
+test("accueil Agence de 720 à 1 100 px : le statut passe à la ligne, « Reste à payer » visible sans défiler", () => {
+  assert.match(lire("css/app.css"), /@media screen and \(min-width: 720px\) and \(max-width: 1100px\) \{ \.tableau-accueil \.statut \{ white-space: normal; \} \}/);
+  assert.match(lire("js/views/dashboard.mjs"), /class: "tableau simple seulement-bureau tableau-accueil"/);
 });
