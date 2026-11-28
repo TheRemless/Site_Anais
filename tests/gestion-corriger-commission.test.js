@@ -214,9 +214,12 @@ test("point 8 : Mr. Brown ne modifie plus une commission corrigée (démo comme 
 
 test("point 4 et 9 : le nom coche la case, « Dossier » ouvre la fiche ; la note de retour est datée, garde la sélection et vaut pour ce dossier seulement", () => {
   const vue = source("views/encaisser-commissions.mjs");
-  assert.match(vue, /h\("span", \{ class: "enc-client" \}, nom\)/, "le nom est le texte de la case, pas un lien");
-  assert.match(vue, /class: "bouton secondaire petit enc-ouvrir", href: `#\/dossier\/\$\{d\.dossier_id\}`/);
-  assert.match(vue, /noterRetour\(d\.dossier_id, coches\)/);
+  // Ordinateur : le nom est le texte de la case, « Dossier » ouvre la fiche.
+  assert.match(vue, /h\("span", \{ class: "enc-client seulement-bureau" \}, nom\)/, "le nom est le texte de la case, pas un lien");
+  assert.match(vue, /class: "bouton secondaire petit enc-ouvrir seulement-bureau", href: `#\/dossier\/\$\{d\.dossier_id\}`/);
+  // Téléphone (audit mobile n° 35) : le nom est le lien vers le dossier, sans bouton « Dossier » sur la ligne.
+  assert.match(vue, /h\("a", \{ class: "enc-client enc-client-lien seulement-mobile", href: `#\/dossier\/\$\{d\.dossier_id\}`/);
+  assert.match(vue, /const ouvrir = \(\) => noterRetour\(d\.dossier_id, coches\);/);
   assert.match(vue, /noterRetour\(null, coches\);\s+rafraichir\(\);/, "après une correction, la sélection et la hauteur restent");
   assert.match(vue, /const coches = new Set\(\(\(retour && retour\.coches\) \|\| \[\]\)\.filter/);
   const t0 = Date.parse(MAINTENANT);
@@ -257,7 +260,10 @@ test("point 10 : texteCorrection vit dans le calcul, les écrans n'importent plu
 test("droits de l'écran : bouton Corriger seulement avec les nets et l'écriture ; le partenaire et Mook ne le voient pas", () => {
   const vue = source("views/encaisser-commissions.mjs");
   assert.match(vue, /const corrige = ecrit && voitNets\(\);/);
-  assert.match(vue, /corrige \? h\("button", \{ class: "secondaire petit enc-corriger"/);
+  assert.match(vue, /corrige \? h\("button", \{ class: "secondaire petit enc-corriger seulement-bureau"/);
+  // Téléphone : « Corriger » passe dans le menu « … » de 44 px, présent seulement avec le même droit.
+  assert.match(vue, /corrige\s*\? h\(\s*"button",\s*\{\s*class: "bouton-icone secondaire enc-plus seulement-mobile"/);
+  assert.match(vue, /geste\(tr\("Corriger la commission"\), \(\) => ouvrirCorrection\(d\)\)/);
   assert.match(source("views/encaisser.mjs"), /const voitCommissions = voitNets\(\) && modeExcursions\(\);/);
   assert.doesNotMatch(source("views/courses-partenaire.mjs"), /Corriger la commission|corrigerCommission/);
 });

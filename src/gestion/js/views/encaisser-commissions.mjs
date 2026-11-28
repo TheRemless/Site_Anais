@@ -2,8 +2,8 @@
 // Anaïs coche les dossiers que le partenaire lui a payés, voit le total coché et encaisse la sélection d'un geste : un enregistrement par dossier,
 // avec la date et le moyen. Un montant différent du prévu se règle dans la feuille : le reste viendra plus tard, ou le dossier est soldé avec un motif.
 // Le calcul vit dans encaisser-calc.mjs : chaque total affiché est la somme des montants de sa liste.
-import { etat, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, reglages, modeTaxi, chargerDossier, appliquerLignes } from "../etat.mjs";
-import { h, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
+import { etat, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, reglages, modeTaxi, chargerDossier, appliquerLignes, naviguer } from "../etat.mjs";
+import { h, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { aujourdhui, formatDate, ajouterJours, arrondi } from "../calc.mjs";
 import { aRecevoirParPartenaire, recuesParPartenaire, sommeRestes, sommeMontants, natureMontant, ecrituresEncaissement, VALEURS_ANNULATION, MOTIFS_ECART, NOTE_ECART_MAX, correctionCommission, derniereCorrection, texteCorrection, luCorrection, retourEncaisser, CLE_RETOUR, MOTIFS_CORRECTION, NOTE_CORRECTION_MAX } from "../encaisser-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
@@ -124,11 +124,15 @@ export function sectionCommissions({ rafraichir, ecrit }) {
       d.reservations.some((r) => derniereCorrection(netDe(r))) ? h("span", { class: "tag tag-corrigee" }, tr("corrigée")) : null,
     ].filter(Boolean);
     const corrections = d.reservations.map((r) => correctionTexte(netDe(r))).filter(Boolean);
-    // Le nom reste le texte de la case : un tap coche le dossier. Le dossier s'ouvre par son propre bouton.
+    // Ordinateur : le nom reste le texte de la case, un clic coche le dossier ; le dossier s'ouvre par son propre bouton.
+    // Téléphone (audit mobile n° 35) : le nom est le lien vers le dossier, « Corriger » passe dans le menu « … » de la ligne,
+    // et la ligne perd ses deux boutons (page de 6 écrans à 390 px). Un lien dans une étiquette ne coche pas la case.
+    const ouvrir = () => noterRetour(d.dossier_id, coches);
     const texte = h(
       "span",
       { class: "enc-texte" },
-      h("span", { class: "enc-client" }, nom),
+      h("span", { class: "enc-client seulement-bureau" }, nom),
+      h("a", { class: "enc-client enc-client-lien seulement-mobile", href: `#/dossier/${d.dossier_id}`, "aria-label": tr("Ouvrir le dossier : {client}", { client: nom }), onclick: ouvrir }, nom),
       h("span", { class: "enc-detail" }, [dossier && dossier.ref, servicesTexte(d.reservations)].filter(Boolean).join(" · ")),
       tags.length ? h("span", { class: "enc-tags" }, tags) : null,
       corrections.length ? h("span", { class: "enc-detail enc-correction" }, corrections.join(" ; ")) : null
@@ -137,17 +141,40 @@ export function sectionCommissions({ rafraichir, ecrit }) {
     const actions = h(
       "span",
       { class: "enc-actions" },
-      h("a", { class: "bouton secondaire petit enc-ouvrir", href: `#/dossier/${d.dossier_id}`, "aria-label": tr("Ouvrir le dossier : {client}", { client: nom }), onclick: () => noterRetour(d.dossier_id, coches) }, tr("Dossier")),
-      corrige ? h("button", { class: "secondaire petit enc-corriger", type: "button", "aria-label": tr("Corriger la commission : {client}", { client: nom }), onclick: () => ouvrirCorrection(d) }, tr("Corriger")) : null
+      h("a", { class: "bouton secondaire petit enc-ouvrir seulement-bureau", href: `#/dossier/${d.dossier_id}`, "aria-label": tr("Ouvrir le dossier : {client}", { client: nom }), onclick: ouvrir }, tr("Dossier")),
+      corrige ? h("button", { class: "secondaire petit enc-corriger seulement-bureau", type: "button", "aria-label": tr("Corriger la commission : {client}", { client: nom }), onclick: () => ouvrirCorrection(d) }, tr("Corriger")) : null,
+      // Téléphone : un seul bouton de 44 px par ligne, seulement s'il y a une commission à corriger (le dossier s'ouvre par le nom).
+      corrige
+        ? h(
+            "button",
+            {
+              class: "bouton-icone secondaire enc-plus seulement-mobile",
+              type: "button",
+              "aria-haspopup": "dialog",
+              "aria-label": tr("Plus d'actions : {client}", { client: nom }),
+              title: tr("Plus d'actions"),
+              onclick: () => {
+                const geste = (libelle, faire) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), faire()) }, libelle);
+                const fermer = modal(nom, h("div", { class: "modal-corps menu-gestes" }, geste(tr("Corriger la commission"), () => ouvrirCorrection(d)), geste(tr("Ouvrir le dossier"), () => (ouvrir(), naviguer(`#/dossier/${d.dossier_id}`)))), { feuille: true, protege: false });
+              },
+            },
+            icone("ellipsis", 22)
+          )
+        : null
     );
-    if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant), actions);
+    // Classe posée ici plutôt qu'un :has() en CSS, que Safari ne lit qu'à partir d'iOS 15.4 (relecture de la PR 367).
+    const classeLigne = corrige ? "enc-dossier avec-plus" : "enc-dossier";
+    if (!ecrit) return h("li", { class: classeLigne }, h("div", { class: "enc-case" }, texte, montant), actions);
     const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id, checked: coches.has(d.cle) });
+    // Montant coché en couleur : classe « coche » sur la case (plutôt que :has(input:checked), absent d'iOS 15.0 à 15.3).
+    const caseLigne = h("label", { class: coches.has(d.cle) ? "enc-case coche" : "enc-case" }, input, texte, montant);
     input.addEventListener("change", () => {
       if (input.checked) coches.add(d.cle);
       else coches.delete(d.cle);
+      caseLigne.classList.toggle("coche", input.checked);
       maj();
     });
-    return h("li", { class: "enc-dossier" }, h("label", { class: "enc-case" }, input, texte, montant), actions);
+    return h("li", { class: classeLigne }, caseLigne, actions);
   };
 
   const cartePartenaire = (p) => {

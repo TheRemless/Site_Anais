@@ -1981,7 +1981,7 @@ const remarquesCarte = (s) => {
 
   dessinerListe();
   if (idOuvert) await ouvrir(idOuvert === "nouvelle" ? "" : idOuvert);
-  else if (matchMedia("(min-width: 900px)").matches) {
+  else if (!matchMedia("not all and (min-width: 900px), (orientation: landscape) and (max-width: 960px) and (max-height: 500px) and (pointer: coarse)").matches) {
     // Ordinateur : le fil d'une nouvelle conversation est prêt à droite.
     colonneFil.replaceChildren(enTete(), zoneFil, formulaire);
     zoneFil.replaceChildren(suggestions());

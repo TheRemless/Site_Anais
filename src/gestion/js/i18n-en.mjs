@@ -597,6 +597,7 @@ export const EN = {
   "Changer le statut": "Change the status",
   "Plus d'actions : {libelle}": "More actions: {libelle}",
   "Plus d'actions": "More actions",
+  "Plus d'actions : {client}": "More actions: {client}",
   "Voucher envoyé": "Voucher sent",
   "Comment ça marche ?": "How does it work?",
   // Carnet envoyé
