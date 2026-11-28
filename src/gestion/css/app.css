@@ -270,6 +270,23 @@ legend { padding: 0 6px; font-weight: 700; }
    rien à l'impression. */
 /* position: relative : un texte réservé aux lecteurs d'écran (.visuellement-cache, en absolu) reste dans la boîte qui défile (Dû aux partenaires). */
 @media screen and (min-width: 720px) { .tableau-defile { position: relative; overflow-x: auto; } }
+/* Entre 720 et 1 100 px, les cellules se resserrent (inchangé à 1 180 et 1 280 px). Un tableau qui ne tient toujours pas passe en
+   lignes empilées, comme sur téléphone (classe « empile » posée par app.mjs, intitulés repris des en-têtes) : aucune colonne coupée. */
+@media screen and (min-width: 720px) and (max-width: 1100px) { .tableau th, .tableau td { padding: 10px 8px; } }
+.tableau-defile.empile .tableau, .tableau-defile.empile .tableau tbody, .tableau-defile.empile .tableau tr, .tableau-defile.empile .tableau td { display: block; width: 100%; }
+.tableau-defile.empile .tableau thead { position: absolute; left: -9999px; }
+.tableau-defile.empile .tableau tr { padding: 10px 14px; border-bottom: 1px solid var(--bord); }
+.tableau-defile.empile .tableau tbody tr:last-child { border-bottom: 0; }
+/* Bloc plutôt que flex : une cellule à plusieurs éléments (« Koh Lanta → Koh Lipe », nom et référence) les garde ensemble à droite,
+   l'intitulé flotte à gauche. Une cellule sans intitulé (case à cocher) n'ajoute pas de ligne vide. */
+.tableau-defile.empile .tableau td { display: flow-root; padding: 4px 0; border: 0; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.tableau-defile.empile .tableau td::before { content: attr(data-label); float: left; max-width: 45%; margin-right: 16px; font-weight: 600; font-size: 0.85rem; color: var(--texte-2); text-align: left; }
+.tableau-defile.empile .tableau td:not([data-label])::before, .tableau-defile.empile .tableau td[data-label=""]::before { content: none; }
+.tableau-defile.empile .tableau td.action-cellule::before { content: none; }
+/* Filet : si la boîte défile encore, elle se prend au clavier (tabindex, role, aria-label posés par app.mjs) et un fondu au bord
+   droit montre la suite, retiré en fin de défilement. */
+.tableau-defile.deborde:not(.fin) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.tableau-defile:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
 @media (max-width: 1180px) { .tableau-dossiers th, .tableau-dossiers td { padding: 10px 8px; font-size: 0.92rem; } }
 .tableau-dossiers .statut { white-space: normal; align-items: flex-start; }
 .tableau-dossiers .statut .point { margin-top: 0.4em; }

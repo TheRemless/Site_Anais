@@ -598,6 +598,7 @@ export const EN = {
   "Plus d'actions : {libelle}": "More actions: {libelle}",
   "Plus d'actions": "More actions",
   "Plus d'actions : {client}": "More actions: {client}",
+  "Tableau, défiler horizontalement": "Table, scroll horizontally",
   "Voucher envoyé": "Voucher sent",
   "Comment ça marche ?": "How does it work?",
   // Carnet envoyé

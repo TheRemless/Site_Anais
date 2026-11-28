@@ -11,6 +11,7 @@ import { aTraiter } from "./demandes-site-calc.mjs";
 import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes } from "./direct-calc.mjs";
 import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTouche } from "./saisie.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
+import { modeTableau, boiteDefile, intitulesManquants } from "./tableaux-calc.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 import { agentActif, quand } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
@@ -403,13 +404,49 @@ export function envelopperTableaux(racine) {
     boite.className = t.classList.contains("simple") ? "tableau-defile simple" : "tableau-defile";
     t.replaceWith(boite);
     boite.append(t);
+    if (typeof ResizeObserver !== "undefined") suiviTaille.observe(boite);
+    boite.addEventListener("scroll", () => boite.classList.toggle("fin", boite.scrollLeft + boite.clientWidth >= boite.scrollWidth - 1), { passive: true });
   }
 }
+// Un tableau qui ne tient pas dans sa boîte passe en lignes empilées (règles dans tableaux-calc.mjs). Mesuré à la pose, à chaque
+// changement de taille de la boîte et quand des lignes arrivent ; si la boîte défile encore, elle devient une région au clavier.
+function ajusterTableau(boite) {
+  const t = boite.firstElementChild;
+  if (!t || !boite.isConnected) return;
+  boite.classList.remove("empile");
+  const mode = modeTableau({ largeurTableau: t.scrollWidth, largeurBoite: boite.clientWidth, ecran: window.innerWidth });
+  if (mode === "empile") {
+    const entetes = [...(t.tHead?.rows[0]?.cells || [])].map((c) => c.textContent.trim());
+    for (const ligne of t.tBodies[0]?.rows || []) {
+      const cellules = [...ligne.cells];
+      for (const [i, texte] of intitulesManquants(entetes, cellules.map((c, index) => ({ index, label: c.getAttribute("data-label") })))) cellules[i].setAttribute("data-label", texte);
+    }
+    boite.classList.add("empile");
+  }
+  const defile = boiteDefile({ largeurContenu: boite.scrollWidth, largeurBoite: boite.clientWidth });
+  boite.classList.toggle("deborde", defile);
+  boite.classList.toggle("fin", defile && boite.scrollLeft + boite.clientWidth >= boite.scrollWidth - 1);
+  if (defile) {
+    boite.setAttribute("tabindex", "0");
+    boite.setAttribute("role", "region");
+    boite.setAttribute("aria-label", tr("Tableau, défiler horizontalement"));
+  } else for (const a of ["tabindex", "role", "aria-label"]) boite.removeAttribute(a);
+}
+const suiviTaille = typeof ResizeObserver !== "undefined" ? new ResizeObserver((entrees) => entrees.forEach((e) => ajusterTableau(e.target))) : null;
 if (typeof window !== "undefined" && typeof MutationObserver !== "undefined") {
   let prevu = false;
   envelopperTableaux(document.body);
   new MutationObserver((changements) => {
-    for (const c of changements) for (const n of c.addedNodes) if (n.nodeType === 1) envelopperTableaux(n);
+    const aRevoir = new Set();
+    for (const c of changements) for (const n of c.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      envelopperTableaux(n);
+      const b = n.closest?.(".tableau-defile");
+      if (b) aRevoir.add(b);
+      for (const x of n.querySelectorAll?.(".tableau-defile") || []) aRevoir.add(x);
+    }
+    // Avant l'affichage : le tableau trop large n'apparaît jamais coupé.
+    aRevoir.forEach(ajusterTableau);
     if (prevu || !changements.some((c) => c.addedNodes.length)) return;
     prevu = true;
     requestAnimationFrame(() => ((prevu = false), apresChangement()));

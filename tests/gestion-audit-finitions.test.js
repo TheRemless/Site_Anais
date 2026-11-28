@@ -78,12 +78,34 @@ test("tableaux larges : chaque table.tableau défile dans son conteneur, à l'é
   assert.match(app, /t\.parentElement\?\.classList\.contains\("tableau-defilant"\)\) continue;/);
   assert.match(app, /boite\.className = t\.classList\.contains\("simple"\) \? "tableau-defile simple" : "tableau-defile";/);
   assert.match(css, /\.tableau\.simple, \.tableau-defile\.simple \{ margin-bottom: 8px; \}\n\.tableau-defile > \.tableau\.simple \{ margin-bottom: 0; \}/);
-  // Posé dans le rappel synchrone de l'observateur (avant l'affichage), pas au prochain rafraîchissement.
-  assert.match(app, /new MutationObserver\(\(changements\) => \{\s*for \(const c of changements\) for \(const n of c\.addedNodes\) if \(n\.nodeType === 1\) envelopperTableaux\(n\);/);
+  // Posé et ajusté dans le rappel synchrone de l'observateur (avant l'affichage), puis à chaque changement de taille de la boîte.
+  assert.match(app, /envelopperTableaux\(n\);[\s\S]*?aRevoir\.forEach\(ajusterTableau\);/);
+  assert.match(app, /suiviTaille\.observe\(boite\)/);
 });
 
 test("Bandeau du site : la liste ne s'élargit plus à l'aperçu de téléphone avant son zoom (390 px)", () => {
   const css = lire("css/app.css");
   assert.match(css, /\.bsite-liste \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(css, /\.bsite-apercu \{ margin: 0; min-width: 0; \}/);
+});
+
+test("tableaux larges : lignes empilées plutôt qu'une colonne coupée, boîte accessible si elle défile encore", async () => {
+  const { modeTableau, boiteDefile, intitulesManquants } = await import("../src/gestion/js/tableaux-calc.mjs");
+  // Dossiers à 900 px : 613 px dans 568, empilé ; à 1280 px, il tient.
+  assert.equal(modeTableau({ largeurTableau: 613, largeurBoite: 568, ecran: 900 }), "empile");
+  assert.equal(modeTableau({ largeurTableau: 948, largeurBoite: 948, ecran: 1280 }), "normal");
+  assert.equal(modeTableau({ largeurTableau: 569, largeurBoite: 568, ecran: 900 }), "normal", "arrondi d'un pixel");
+  // Sous 720 px, le CSS empile déjà ; un tableau masqué (largeur 0) ne décide rien.
+  assert.equal(modeTableau({ largeurTableau: 900, largeurBoite: 358, ecran: 390 }), "normal");
+  assert.equal(modeTableau({ largeurTableau: 900, largeurBoite: 0, ecran: 1280 }), "normal");
+  assert.equal(boiteDefile({ largeurContenu: 700, largeurBoite: 568 }), true);
+  assert.equal(boiteDefile({ largeurContenu: 568, largeurBoite: 568 }), false);
+  assert.deepEqual(intitulesManquants(["Client", "Total", ""], [{ index: 0, label: "Nom" }, { index: 1, label: null }, { index: 2, label: null }]), [[1, "Total"]]);
+  const css = lire("css/app.css");
+  assert.match(css, /\.tableau-defile\.empile \.tableau td::before \{ content: attr\(data-label\);/);
+  assert.match(css, /@media screen and \(min-width: 720px\) and \(max-width: 1100px\) \{ \.tableau th, \.tableau td \{ padding: 10px 8px; \} \}/);
+  assert.match(css, /\.tableau-defile\.deborde:not\(\.fin\) \{ -webkit-mask-image:/);
+  assert.match(css, /\.tableau-defile:focus-visible \{ outline: 2px solid/);
+  const app = lire("js/app.mjs");
+  assert.match(app, /boite\.setAttribute\("tabindex", "0"\);\s*boite\.setAttribute\("role", "region"\);\s*boite\.setAttribute\("aria-label", tr\("Tableau, défiler horizontalement"\)\);/);
 });
