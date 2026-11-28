@@ -9,8 +9,10 @@
 //   creerIssue()         → { number, html_url } ou null (une exception compte comme une panne)
 //   enregistrerIssue(i)  → la ligne « ameliorations » à jour
 //   valider()            → la carte validée, ou null
+//   relire()             → la carte telle qu'elle est en base, ou null : déjà « validee » (la fonction « rappels » l'a passée entre
+//                          l'enregistrement de l'issue et la validation, valider_cartes_ameliorations_envoyees), c'est un succès
 //   rendre(), effacerLigne()
-export async function envoyerAvecCarte({ prendre, creerIssue, enregistrerIssue, valider, rendre, effacerLigne }) {
+export async function envoyerAvecCarte({ prendre, creerIssue, enregistrerIssue, valider, rendre, effacerLigne, relire = async () => null }) {
   const p = await prendre().catch(() => ({ ok: false, raison: "erreur" }));
   if (!p || p.ok !== true) {
     await effacerLigne();
@@ -30,6 +32,12 @@ export async function envoyerAvecCarte({ prendre, creerIssue, enregistrerIssue, 
     return { erreur: "github_indisponible", statut: 502 };
   }
   const amelioration = await enregistrerIssue(issue);
-  const carte = (await valider().catch(() => null)) || (await valider().catch(() => null));
+  // Une carte déjà validée par « rappels » (elle porte l'issue de cette ligne : rappels ne valide que les cartes dont la ligne a un
+  // issue_numero) compte comme validée : jamais « à confirmer » à tort.
+  const dejaValidee = async () => {
+    const c = await relire().catch(() => null);
+    return c && c.statut === "validee" ? c : null;
+  };
+  const carte = (await valider().catch(() => null)) || (await dejaValidee()) || (await valider().catch(() => null)) || (await dejaValidee());
   return carte ? { amelioration, carte } : { amelioration, carte: null, a_confirmer: true };
 }

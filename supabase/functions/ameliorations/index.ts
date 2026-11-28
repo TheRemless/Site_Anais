@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
       return maj.data || ligne.data;
     },
     valider: async () => (await sb.from("agent_cartes").update({ statut: "validee" }).eq("id", c!.id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single()).data || null,
+    relire: async () => (await sb.from("agent_cartes").select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").eq("id", c!.id).maybeSingle()).data || null,
     rendre: async () => {
       await sb.rpc("rendre_agent_carte", { p_carte: c!.id });
     },

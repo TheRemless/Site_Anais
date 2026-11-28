@@ -476,3 +476,26 @@ test("relecture n° 5 : une amélioration partie sur GitHub ne s'écarte plus et
   assert.match(readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8"), /await db\.rpc\("valider_cartes_ameliorations_envoyees"\)/);
   assert.match(vueSrc(), /if \(r\.raison === "envoyee"\) return tr\("Cette demande est déjà partie sur GitHub : elle ne s'écarte plus\."\);/);
 });
+
+test("contrôle final : une carte déjà validée par rappels entre l'issue et la validation est un succès, pas « à confirmer »", async () => {
+  const { envoyerAvecCarte } = await import("../supabase/functions/ameliorations/envoi.js");
+  const journal = [];
+  const base = {
+    prendre: async () => (journal.push("prendre"), { ok: true }),
+    creerIssue: async () => (journal.push("github"), { number: 21, html_url: "https://github.com/exemple/issues/21" }),
+    enregistrerIssue: async (i) => (journal.push("ligne"), { id: "a", issue_numero: i.number }),
+    rendre: async () => journal.push("rendre"),
+    effacerLigne: async () => journal.push("effacer"),
+  };
+  // rappels a déjà passé la carte à « validee » : la mise à jour de la fonction est refusée (carte_decidee), la relecture la trouve validée.
+  const r = await envoyerAvecCarte({ ...base, valider: async () => (journal.push("valider"), null), relire: async () => (journal.push("relire"), { id: "c", statut: "validee" }) });
+  assert.equal(r.a_confirmer, undefined);
+  assert.equal(r.carte.statut, "validee");
+  assert.deepEqual(journal, ["prendre", "github", "ligne", "valider", "relire"], "une seule issue, pas de second essai inutile");
+  // Toujours proposée après deux essais et deux relectures : « à confirmer », comme avant.
+  journal.length = 0;
+  const r2 = await envoyerAvecCarte({ ...base, valider: async () => (journal.push("valider"), null), relire: async () => (journal.push("relire"), { id: "c", statut: "proposee" }) });
+  assert.equal(r2.a_confirmer, true);
+  assert.deepEqual(journal, ["prendre", "github", "ligne", "valider", "relire", "valider", "relire"]);
+  assert.match(readFileSync(new URL("../supabase/functions/ameliorations/index.ts", import.meta.url), "utf8"), /relire: async \(\) => \(await sb\.from\("agent_cartes"\)\.select\(/);
+});
