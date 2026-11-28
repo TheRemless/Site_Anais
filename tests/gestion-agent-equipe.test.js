@@ -324,30 +324,100 @@ test("relecture n° 2, A : le contrôle de la carte passe avant chaque écriture
   assert.match(valider, /const arret = avantEnregistrer \? await avantEnregistrer\(\) : null;\n\s+if \(arret\) return \{ ok: false, motif: arret \};\n\s+await modifier\(/, "l'option ajoutée sans facture revérifie aussi");
 });
 
-test("relecture n° 2, B : le changement d'auteur ne sort jamais vers le client", () => {
-  const noms = ["Jérémy", "Nani"];
-  for (const t of ["Bonjour, Jérémy reprend la conversation de Nani.", "Message écrit par Jérémy.", "Hello, I am taking over this conversation.", "Hi, this is sent on behalf of Nani.", "Bonjour, je vous écris à la place de Nani."]) assert.ok(mentionReprise(t, { noms }), t);
-  for (const t of ["Bonjour, à la place du ferry nous proposons un speedboat.", "Pickup at 10:00 at your hotel.", "Votre réservation est confirmée."]) assert.equal(mentionReprise(t, { noms }), "", t);
-  const c = controlerReponse("Bonjour, Jérémy reprend la conversation de Nani. Pickup at 10:00.", { signer: true, permisHeures: new Set(["10:00"]), prenoms: noms, reprise: noms });
-  const code = c.avertissements.find((a) => a.startsWith("mention_reprise:"));
-  assert.ok(code, "signée ou non, la mention est signalée");
-  const b = bloquantsReponse(c.avertissements);
-  assert.ok(resteBloque(c.message, b).length > 0, "la copie et l'envoi restent bloqués tant qu'elle est là");
-  assert.deepEqual(resteBloque("Bonjour, pickup at 10:00.", b), [], "retirée, la réponse se copie");
+// Relecture n° 3 : les 12 réponses ordinaires de la relecture ne bloquent jamais ; les tournures qui nomment l'équipe près d'une reprise, oui.
+const ORDINAIRES = [
+  "Our driver will take over your luggage at the pier.",
+  "The boat was taken over by a new captain this season.",
+  "The hotel took over the booking for the transfer.",
+  "The menu is written by the chef every morning.",
+  "This voucher was sent by email.",
+  "Tickets are written by hand at the park.",
+  "Une lettre écrite par le parc vous attend à l'accueil.",
+  "Le programme est écrit par notre équipe.",
+  "Vous pouvez réserver pour le compte de vos amis.",
+  "Nous reprenons la discussion de demain matin.",
+  "We can send a minivan instead of Nani's usual car.",
+  "Pickup at 10:00 at your hotel, see you tomorrow.",
+];
+const REPRISES = [
+  "Hello, Jérémy is stepping in for Nani today.",
+  "Bonjour, je remplace Nani aujourd'hui.",
+  "I am writing on Nani's behalf.",
+  "Je vous écris à la place d’Anaïs.",
+  "Jérémy reprend votre dossier.",
+  "Jeremy picked up the conversation.",
+  "Message écrit par Jérémy.",
+  "Hi, Jérémy here, taking over from Nani.",
+  "Nani est absente, Jérémy prend le relais.",
+  "Je vous réponds au nom de Nani.",
+];
+const EQUIPE_REPRISE = ["Jérémy", "Nani", "Anaïs"];
+
+test("relecture n° 3, 1 : une réponse ordinaire ne bloque jamais, même dans une conversation reprise", () => {
+  for (const t of ORDINAIRES) {
+    assert.equal(mentionReprise(t, { noms: EQUIPE_REPRISE }), "", t);
+    const c = controlerReponse(t, { signer: true, permisHeures: new Set(["10:00"]), reprise: EQUIPE_REPRISE });
+    assert.ok(!c.avertissements.some((a) => a.startsWith("mention_reprise")), t);
+  }
+});
+
+test("relecture n° 3, 1 : une tournure qui nomme l'équipe près d'une reprise bloque, seulement si la conversation a été reprise", () => {
+  for (const t of REPRISES) {
+    assert.ok(mentionReprise(t, { noms: EQUIPE_REPRISE }), t);
+    const c = controlerReponse(t, { signer: true, reprise: EQUIPE_REPRISE });
+    assert.ok(resteBloque(c.message, bloquantsReponse(c.avertissements)).length > 0, `bloquée : ${t}`);
+    // Conversation que personne n'a reprise : aucun contrôle de reprise (la boîte WhatsApp et whatsapp-envoi n'en passent jamais).
+    assert.ok(!controlerReponse(t, { signer: true }).avertissements.some((a) => a.startsWith("mention_reprise")), `sans reprise : ${t}`);
+  }
+  assert.deepEqual(resteBloque("Pickup at 10:00.", bloquantsReponse(controlerReponse(REPRISES[0], { signer: true, reprise: EQUIPE_REPRISE }).avertissements)), [], "retirée, la réponse se copie");
   const sans = controlerReponse("Hello Jérémy, see you", { signer: false, prenoms: ["Nani", "Jérémy"] });
   assert.ok(sans.avertissements.includes("prenom_equipe"), "le prénom de l'auteur réel est un prénom de l'équipe");
   const f = fonctionSrc();
   assert.match(f, /prenoms: \[\.\.\.new Set\(\[ra\.responsable, "Anaïs", "Nani", \.\.\.prenomsReprise\]\.filter\(Boolean\)\)\]/);
-  assert.match(f, /\(memo as Record<string, unknown>\)\.reprise = prenomsReprise;/);
-  assert.match(readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8"), /reprise: memo\.reprise \|\| \[\]/);
+  assert.match(f, /\.reprise = prenomsReprise\.length \? \[\.\.\.new Set\(\[\.\.\.prenomsReprise, ra\.responsable, "Anaïs", "Nani"\]\.filter\(Boolean\)\)\] : \[\];/, "seulement quand quelqu'un d'autre a écrit");
+  assert.match(f, /\.not\("auteur_id", "is", null\)\.neq\("auteur_id", conv!\.user_id\)/, "les auteurs passés de la conversation comptent");
+  assert.match(readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8"), /const reprend = reprise && reprise\.length \? mentionReprise\(m, \{ noms: reprise \}\) : "";/);
 });
 
-test("relecture n° 2, mineurs : ancien nom sans reprise forcée, amélioration validée avant GitHub, cartes rendues en quittant, conversation orpheline", () => {
+test("relecture n° 3, 2 : amélioration, la carte est prise avant GitHub, validée après l'issue, rendue si GitHub est en panne", async () => {
+  const { envoyerAvecCarte } = await import("../supabase/functions/ameliorations/envoi.js");
+  const journal = [];
+  const etapes = (issue, prise = { ok: true }) => ({
+    prendre: async () => (journal.push("prendre"), prise),
+    creerIssue: async () => (journal.push("github"), typeof issue === "function" ? issue() : issue),
+    enregistrerIssue: async (i) => (journal.push("ligne"), { id: "a", issue_numero: i.number }),
+    valider: async () => (journal.push("valider"), { id: "c", statut: "validee" }),
+    rendre: async () => journal.push("rendre"),
+    effacerLigne: async () => journal.push("effacer"),
+  });
+  // GitHub en panne (réponse vide, puis exception) : la carte est rendue, la ligne effacée, jamais validée ; l'écran dit l'erreur.
+  for (const panne of [null, () => { throw new Error("réseau"); }]) {
+    journal.length = 0;
+    assert.deepEqual(await envoyerAvecCarte(etapes(panne)), { erreur: "github_indisponible", statut: 502 });
+    assert.deepEqual(journal, ["prendre", "github", "rendre", "effacer"]);
+  }
+  journal.length = 0;
+  const ok = await envoyerAvecCarte(etapes({ number: 7, html_url: "https://github.com/exemple/issues/7" }));
+  assert.equal(ok.carte.statut, "validee");
+  assert.deepEqual(journal, ["prendre", "github", "ligne", "valider"], "validée seulement après l'issue");
+  journal.length = 0;
+  assert.deepEqual(await envoyerAvecCarte(etapes({ number: 8, html_url: "x" }, { ok: false, raison: "decidee" })), { erreur: "deja_decidee", statut: 409 });
+  assert.deepEqual(journal, ["prendre", "effacer"], "carte déjà décidée : rien ne part vers GitHub");
+  assert.deepEqual(await envoyerAvecCarte(etapes({ number: 9, html_url: "x" }, { ok: false, raison: "prise" })), { erreur: "carte_prise", statut: 409 });
+  const am = readFileSync(new URL("../supabase/functions/ameliorations/index.ts", import.meta.url), "utf8");
+  assert.match(am, /sb\.rpc\("prendre_agent_carte_equipe", \{ p_carte: c!\.id, p_forcer: false \}\)/);
+  assert.match(am, /sb\.rpc\("rendre_agent_carte", \{ p_carte: c!\.id \}\)/);
+  assert.doesNotMatch(am, /statut: "echec"/, "plus de ligne « echec » sans issue");
+});
+
+test("relecture n° 3, 3 : une exception après le remplacement de la discussion pleine l'annule", () => {
+  const f = fonctionSrc();
+  assert.match(f, /const nouvelle = rp\.data\.id;\n\s+sortie\.nettoyer = async \(\) => \{\n\s+const n = await sb\.from\("agent_messages"\)\.select\("id", \{ count: "exact", head: true \}\)\.eq\("conversation_id", nouvelle\);\n\s+if \(n\.error \|\| n\.count\) return;\n\s+await sb\.from\("agent_conversations"\)\.delete\(\)\.eq\("id", nouvelle\);\n\s+await sb\.from\("agent_conversations"\)\.update\(\{ statut: "ouverte" \}\)\.eq\("id", ancien\.id\);/);
+});
+
+test("relecture n° 2, mineurs : ancien nom sans reprise forcée, cartes rendues en quittant, conversation orpheline", () => {
   const sql = readFileSync(new URL("../docs/gestion/migration-133-assistant-equipe.sql", import.meta.url), "utf8");
   assert.match(sql, /return coalesce\(\(prendre_agent_carte_equipe\(p_carte, false\) ->> 'ok'\)::boolean, false\);/);
-  const am = readFileSync(new URL("../supabase/functions/ameliorations/index.ts", import.meta.url), "utf8");
-  assert.ok(am.indexOf('from("agent_cartes").update({ statut: "validee" })') < am.indexOf("api.github.com"), "la carte passe validée avant de créer l'issue");
-  assert.match(am, /if \(decidee\.error\) \{\n\s+await admin\.from\("ameliorations"\)\.delete\(\)/);
   assert.match(vueSrc(), /if \(!faite\(id\)\) etat\.store\.agentRendreCarte\(id\)\.catch\(\(\) => \{\}\);/);
   const f = fonctionSrc();
   assert.match(f, /await sortie\.nettoyer\(\)\.catch\(\(\) => \{\}\);\n\s+await sortie\.liberer\(\)/);

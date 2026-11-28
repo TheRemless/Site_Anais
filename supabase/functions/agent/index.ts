@@ -368,14 +368,23 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void>; net
   };
   // Qui écrit (point 12) : une autre personne que la propriétaire. Les deux prénoms, lus avec la clé de service ; illisibles, rien n'est dit.
   let quiEcrit = "";
-  // Les prénoms de l'auteur réel et de la propriétaire : contrôlés dans toute réponse au client (prenoms, reprise : outils.js).
+  // Les prénoms des personnes qui ont repris la conversation et de la propriétaire (relecture n° 3 de la PR 366) : seulement quand quelqu'un
+  // d'autre que la propriétaire écrit maintenant ou a écrit dans cette conversation (agent_messages.auteur_id). Vide sinon : le contrôle du
+  // changement d'auteur ne joue pas (outils.js, mentionReprise).
   let prenomsReprise: string[] = [];
-  if (conv!.user_id && conv!.user_id !== userId) {
-    const pr = await admin.from("profils").select("user_id, nom, email").in("user_id", [userId, conv!.user_id]);
-    if (pr.error) console.error("agent : profils", pr.error.message);
-    const par = new Map<string, Record<string, unknown>>((pr.error ? [] : pr.data || []).map((x: Record<string, unknown>) => [String(x.user_id), x] as [string, Record<string, unknown>]));
-    prenomsReprise = [prenomProfil(par.get(userId)), prenomProfil(par.get(conv!.user_id))].filter(Boolean);
-    quiEcrit = ligneAuteur({ auteur: prenomProfil(par.get(userId)), proprietaire: prenomProfil(par.get(conv!.user_id)) });
+  if (conv!.user_id) {
+    const repreneurs = new Set<string>(conv!.user_id !== userId ? [userId] : []);
+    if (conversationId) {
+      const a = await sb.from("agent_messages").select("auteur_id").eq("conversation_id", conv!.id).not("auteur_id", "is", null).neq("auteur_id", conv!.user_id).limit(200);
+      if (!a.error) for (const x of a.data || []) if (x.auteur_id) repreneurs.add(String(x.auteur_id));
+    }
+    if (repreneurs.size) {
+      const pr = await admin.from("profils").select("user_id, nom, email").in("user_id", [...repreneurs, conv!.user_id]);
+      if (pr.error) console.error("agent : profils", pr.error.message);
+      const par = new Map<string, Record<string, unknown>>((pr.error ? [] : pr.data || []).map((x: Record<string, unknown>) => [String(x.user_id), x] as [string, Record<string, unknown>]));
+      prenomsReprise = [...[...repreneurs].map((u) => prenomProfil(par.get(u))), prenomProfil(par.get(conv!.user_id))].filter(Boolean);
+      if (conv!.user_id !== userId) quiEcrit = ligneAuteur({ auteur: prenomProfil(par.get(userId)), proprietaire: prenomProfil(par.get(conv!.user_id)) });
+    }
   }
   // Une discussion liée qui se remplit (relecture de la PR 318, discussion-pleine.js) : 20 pièces ou 30 Mo, ou un historique qui perdrait son
   // début. Elle est archivée et une nouvelle, liée à la même conversation WhatsApp, la remplace, ouverte par un court résumé (client,
@@ -405,6 +414,15 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void>; net
         if (!rp.data || rp.data.ok !== true) return repondre({ erreur: "base" }, 500);
         verrou = { id: rp.data.id, jeton: rp.data.jeton };
         remplace = ancien.id;
+        // Une exception avant le flux (relecture n° 3) : le remplacement s'annule. La nouvelle, restée vide, est supprimée (son lien WhatsApp
+        // avec) et l'ancienne redevient la discussion ouverte de la conversation WhatsApp.
+        const nouvelle = rp.data.id;
+        sortie.nettoyer = async () => {
+          const n = await sb.from("agent_messages").select("id", { count: "exact", head: true }).eq("conversation_id", nouvelle);
+          if (n.error || n.count) return;
+          await sb.from("agent_conversations").delete().eq("id", nouvelle);
+          await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", ancien.id);
+        };
         conv = { id: rp.data.id, titre: rp.data.titre, dossier_id: rp.data.dossier_id, cree_le: rp.data.cree_le, user_id: rp.data.user_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id };
       } else {
         if (rp && rp.error && !fonctionAbsente(rp.error)) return repondre({ erreur: "base" }, 500);
@@ -1065,7 +1083,7 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void>; net
   message = maps.texte;
   const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [...new Set([ra.responsable, "Anaïs", "Nani", ...prenomsReprise].filter(Boolean))], conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null, textesPage });
   // Relecture n° 2 de la PR 366 : « reprend la conversation de Nani » et les tournures qui citent ces prénoms bloquent la réponse au client.
-  (memo as Record<string, unknown>).reprise = prenomsReprise;
+  (memo as Record<string, unknown>).reprise = prenomsReprise.length ? [...new Set([...prenomsReprise, ra.responsable, "Anaïs", "Nani"].filter(Boolean))] : [];
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;

@@ -84,6 +84,8 @@ const ERREURS_AMELIORATION = {
   texte_refuse: N_("Le texte sera public : retirez les noms, numéros, montants et liens, puis renvoyez."),
   non_configure: N_("Les demandes d'amélioration ne sont pas encore activées sur le serveur."),
   github_indisponible: N_("GitHub ne répond pas : rien n'est parti, réessayez plus tard."),
+  // Migration 133 : la carte est tenue par une autre personne (validation en cours ailleurs).
+  carte_prise: N_("Cette carte est en cours de validation ailleurs : rien n'est parti, réessayez dans un instant."),
   migration_manquante: N_("Les demandes d'amélioration ne sont pas encore installées dans la base."),
   hors_ligne: N_("Pas de connexion : la demande n'est pas partie."),
 };
@@ -1919,7 +1921,7 @@ const remarquesCarte = (s) => {
       return toast(`${tr(ERREURS_AMELIORATION[r && r.erreur] || N_("La demande n'est pas partie."))}${motifs ? ` (${motifs})` : ""}`, true);
     }
     ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
-    toast(r.avertissement === "github_indisponible" ? tr("Demande notée, mais GitHub ne répond pas : elle attend Jérémy.") : tr("Demande envoyée : vous verrez son avancement ici."), r.avertissement === "github_indisponible");
+    toast(tr("Demande envoyée : vous verrez son avancement ici."));
     const maj = r.carte || { ...c, statut: "validee" };
     fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));
     await rafraichirAttente();

@@ -11,6 +11,7 @@
 // Le suivi (PR prête, en ligne, refusée) est lu sur GitHub par la fonction « rappels » ({ "type": "ameliorations" }, pg_cron).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { DEPOT, LABEL, LIMITE_JOUR_DEFAUT, controlerDemande, corpsIssue, titreIssue } from "./calc.js";
+import { envoyerAvecCarte } from "./envoi.js";
 import { dateBangkok, debutJourBangkok } from "../assistant/calc.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
@@ -81,34 +82,44 @@ Deno.serve(async (req) => {
     .single();
   if (ligne.error) return json({ erreur: manquante(ligne.error) ? "migration_manquante" : ligne.error.code === "23505" ? "deja_decidee" : "base" }, ligne.error.code === "23505" ? 409 : 500);
 
-  // La carte passe « validée » AVANT GitHub (relecture n° 2 de la PR 366) : déjà décidée ou tenue par une autre personne (migration 133,
-  // carte_decidee ou carte_prise), rien ne part et la ligne s'efface.
-  const decidee = await sb.from("agent_cartes").update({ statut: "validee" }).eq("id", c!.id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single();
-  if (decidee.error) {
-    await admin.from("ameliorations").delete().eq("id", ligne.data.id);
-    const deja = /carte_decidee|carte_prise/.test(decidee.error.message || "");
-    return json({ erreur: deja ? "deja_decidee" : "base" }, deja ? 409 : 500);
-  }
-
+  // La carte est prise avant GitHub et validée après l'issue (envoyerAvecCarte, envoi.js) : jamais d'issue pour une carte décidée ailleurs,
+  // jamais de carte validée sans issue.
   const fonctionnement = (reglages.data?.valeur as { fonctionnement?: string } | null)?.fonctionnement || "sur_mesure";
-  let issue: { number?: number; html_url?: string } | null = null;
-  try {
-    const rep = await fetch(`https://api.github.com/repos/${DEPOT}/issues`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${jeton}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "gestion-ameliorations", "Content-Type": "application/json" },
-      body: JSON.stringify({ title: titreIssue(controle.titre), body: corpsIssue({ id: ligne.data.id, texte: controle.texte, entreprise: ent.data?.nom || "", fonctionnement, date: dateBangkok() }), labels: [LABEL] }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (rep.ok) issue = await rep.json();
-    else console.error("ameliorations : GitHub", rep.status, (await rep.text()).slice(0, 200));
-  } catch (err) {
-    console.error("ameliorations : GitHub", err instanceof Error ? err.name : "erreur");
-  }
-  if (!issue || !issue.number || !issue.html_url) {
-    // GitHub ne répond pas : la carte est déjà validée (elle ne revient plus en arrière), la demande reste notée « En attente de Jérémy ».
-    const echec = await admin.from("ameliorations").update({ statut: "echec", maj_le: new Date().toISOString() }).eq("id", ligne.data.id).select("id, entite_id, titre, texte, statut, issue_numero, issue_url, pr_url, sensible, cree_le, maj_le").single();
-    return json({ amelioration: echec.data || ligne.data, carte: decidee.data || null, avertissement: "github_indisponible" });
-  }
-  const maj = await admin.from("ameliorations").update({ issue_numero: issue.number, issue_url: issue.html_url, maj_le: new Date().toISOString() }).eq("id", ligne.data.id).select("id, entite_id, titre, texte, statut, issue_numero, issue_url, pr_url, sensible, cree_le, maj_le").single();
-  return json({ amelioration: maj.data || ligne.data, carte: decidee.data || null });
+  const COL_AMELIORATION = "id, entite_id, titre, texte, statut, issue_numero, issue_url, pr_url, sensible, cree_le, maj_le";
+  const absente = (e: { code?: string; message?: string } | null) => !!e && (e.code === "PGRST202" || e.code === "42883" || /Could not find the function|does not exist/i.test(e.message || ""));
+  const r = await envoyerAvecCarte({
+    prendre: async () => {
+      const p = await sb.rpc("prendre_agent_carte_equipe", { p_carte: c!.id, p_forcer: false });
+      if (p.error) return absente(p.error) ? { ok: true } : { ok: false, raison: "erreur" };
+      return p.data || { ok: false };
+    },
+    creerIssue: async () => {
+      try {
+        const rep = await fetch(`https://api.github.com/repos/${DEPOT}/issues`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jeton}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "gestion-ameliorations", "Content-Type": "application/json" },
+          body: JSON.stringify({ title: titreIssue(controle.titre), body: corpsIssue({ id: ligne.data.id, texte: controle.texte, entreprise: ent.data?.nom || "", fonctionnement, date: dateBangkok() }), labels: [LABEL] }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (rep.ok) return await rep.json();
+        console.error("ameliorations : GitHub", rep.status, (await rep.text()).slice(0, 200));
+      } catch (err) {
+        console.error("ameliorations : GitHub", err instanceof Error ? err.name : "erreur");
+      }
+      return null;
+    },
+    enregistrerIssue: async (issue: { number: number; html_url: string }) => {
+      const maj = await admin.from("ameliorations").update({ issue_numero: issue.number, issue_url: issue.html_url, maj_le: new Date().toISOString() }).eq("id", ligne.data.id).select(COL_AMELIORATION).single();
+      return maj.data || ligne.data;
+    },
+    valider: async () => (await sb.from("agent_cartes").update({ statut: "validee" }).eq("id", c!.id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single()).data || null,
+    rendre: async () => {
+      await sb.rpc("rendre_agent_carte", { p_carte: c!.id });
+    },
+    effacerLigne: async () => {
+      await admin.from("ameliorations").delete().eq("id", ligne.data.id);
+    },
+  });
+  if ("erreur" in r) return json({ erreur: r.erreur }, r.statut);
+  return json({ amelioration: r.amelioration, carte: r.carte });
 });

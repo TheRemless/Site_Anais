@@ -1894,27 +1894,31 @@ export const empreinteMontant = (sel, montant) => sha256(`${sel}:${Number(montan
 // de TEXTE_CONTROLE_MAX caractères, le contrôle se ferme (controle_impossible).
 export const TEXTE_CONTROLE_MAX = 20000;
 const selAleatoire = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(8)), (o) => o.toString(16).padStart(2, "0")).join("");
-// Le changement d'auteur d'une conversation de l'Assistant (migration 133, relecture n° 2 de la PR 366) ne sort jamais vers le client : « Jérémy
-// reprend la conversation de Nani », « écrit par … », « takes over the conversation », « on behalf of Nani »… Rend l'extrait trouvé, ou "".
-// `noms` : les prénoms de l'auteur réel et de la propriétaire, pour les tournures qui les citent.
-const REPRISE_FIXES = [
-  /\b(?:reprend|reprends|reprenons|reprennent|repris|reprise|reprendre)\b[^.!?\n]{0,40}\b(?:conversation|discussion)\b/,
-  /\bpour le compte de\b/,
-  /\becrite? par\b/,
-  /\b(?:takes?|took|taking|taken) over\b/,
-  /\b(?:written|writing|sent) (?:by|on behalf)\b/,
-];
+// Le changement d'auteur d'une conversation de l'Assistant ne sort jamais vers le client (migration 133, relectures n° 2 et 3 de la PR 366).
+// Le contrôle ne joue que dans une conversation où quelqu'un d'autre que la propriétaire a écrit (`noms` non vide, posé par la fonction
+// « agent ») et ne cherche que des tournures qui NOMMENT une personne de l'équipe (`noms` : prénoms de l'auteur réel, de la propriétaire,
+// Anaïs, Nani) tout près d'un verbe de reprise ou de remplacement : « Jérémy reprend votre dossier », « je remplace Nani », « on Nani's
+// behalf », « stepping in for Nani », « à la place d'Anaïs », « Jérémy picked up the conversation ». Une phrase ordinaire (« our driver will
+// take over your luggage », « written by hand », « pour le compte de vos amis ») ne nomme personne de l'équipe : elle passe.
+// Rend l'extrait trouvé, ou "".
+const VERBES_APRES_NOM = String.raw`(?:reprend|reprends|reprendra|repris|reprise|remplace|remplacera|remplacee?|prend le relais|prendra le relais|a pris le relais|takes over|took over|is taking over|will take over|has taken over|steps in|stepped in|is stepping in|will step in|is covering|will cover|covers for|picked up|picks up|is picking up|has picked up|will pick up|is handling|will handle|continues|will continue|is replacing|replaces|replaced)`;
+const AVANT_NOM = String.raw`(?:remplace|remplacer|remplacons|remplacant|remplacante|a la place d'|a la place de|au nom d'|au nom de|pour le compte d'|pour le compte de|en l'absence d'|en l'absence de|instead of|on behalf of|in place of|in for|stepping in for|step in for|stepped in for|steps in for|covering for|cover for|filling in for|fill in for|taking over from|took over from|takes over from|taken over from|replacing|replace|replaced|ecrit par|ecrite par|written by|sent by|de la part d'|de la part de)`;
 const echapper = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const pourReprise = (t) => sansAccents(String(t || "")).toLowerCase().replace(/[’`´]/g, "'");
 export function mentionReprise(message, { noms = [] } = {}) {
-  const t = sansAccents(String(message || "")).toLowerCase();
-  for (const re of REPRISE_FIXES) {
+  const prenoms = [...new Set((noms || []).map((n) => pourReprise(n).trim()).filter((n) => n.length >= 2))];
+  if (!prenoms.length) return "";
+  const t = pourReprise(message);
+  const N = `(?:${prenoms.map(echapper).join("|")})`;
+  const motifs = [
+    // « instead of Nani's usual car » parle de sa voiture, pas d'elle : un possessif après le prénom ne compte pas ici.
+    new RegExp(String.raw`\b${AVANT_NOM}\s*${N}\b(?!'s\b)`),
+    new RegExp(String.raw`\b${N}\b(?:\s+[a-z']+){0,3}?\s+${VERBES_APRES_NOM}\b`),
+    new RegExp(String.raw`\bon ${N}'s behalf\b`),
+    new RegExp(String.raw`\b${N}'s (?:place|stead)\b`),
+  ];
+  for (const re of motifs) {
     const x = re.exec(t);
-    if (x) return x[0].trim();
-  }
-  for (const n of noms) {
-    const p = sansAccents(String(n || "")).toLowerCase().trim();
-    if (p.length < 2) continue;
-    const x = new RegExp(`\\b(?:au nom de|a la place de|on behalf of|in place of|instead of) ${echapper(p)}\\b`).exec(t);
     if (x) return x[0].trim();
   }
   return "";
@@ -1964,8 +1968,8 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
   // Chez Secret et Taxi, la réponse ne nomme personne de l'équipe (la responsable y écrit sous un autre prénom que dans l'outil).
   if (!signer && prenoms.some((p) => p.length > 1 && new RegExp(`\\b${sansAccents(p)}\\b`).test(sansAccents(m)))) avert.push("prenom_equipe");
   // Le changement d'auteur (migration 133) bloque la copie et l'envoi tant qu'il reste dans le texte (bloquantsReponse, comme un partenaire),
-  // signature ou non.
-  const reprend = mentionReprise(m, { noms: reprise });
+  // signature ou non. Seulement dans une conversation reprise par une autre personne (`reprise` non vide).
+  const reprend = reprise && reprise.length ? mentionReprise(m, { noms: reprise }) : "";
   if (reprend) avert.push(`mention_reprise:${reprend}`);
   return { ok: true, message: m, avertissements: avert };
 }

@@ -37,5 +37,5 @@ export const EN_EQUIPE = {
   // Relecture n° 2 de la PR 366.
   "La réponse parle de qui écrit dans l'outil (« {v} ») : à retirer, le client ne doit pas le lire.": "The reply mentions who is writing in the tool (“{v}”): remove it, the client must not read it.",
   "Le texte parle de qui écrit dans l'outil (« {valeur} ») : retirez-le avant d'envoyer.": "The text mentions who is writing in the tool (“{valeur}”): remove it before sending.",
-  "Demande notée, mais GitHub ne répond pas : elle attend Jérémy.": "Request saved, but GitHub is not responding: it is waiting for Jérémy.",
+  "Cette carte est en cours de validation ailleurs : rien n'est parti, réessayez dans un instant.": "This card is being approved elsewhere: nothing was sent, try again in a moment.",
 };
