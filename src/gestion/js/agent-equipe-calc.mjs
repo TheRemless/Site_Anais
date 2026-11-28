@@ -3,8 +3,9 @@
 // (tests/gestion-agent-equipe.test.js) ; la base tient la même règle (agent_voit_equipe, politiques de la migration 133).
 import { prenomDe } from "./noms-calc.mjs";
 
-// Qui voit l'équipe : « reglages.ecrire » et « dossiers.ecrire » dans l'entreprise de la conversation (super_admin : toutes les permissions).
-export const voitEquipe = (permissions = []) => Array.isArray(permissions) && permissions.includes("reglages.ecrire") && permissions.includes("dossiers.ecrire");
+// Qui voit l'équipe : « reglages.ecrire » et « dossiers.ecrire » dans l'entreprise de la conversation, avec la portée « toute » (comme
+// agent_voit_equipe et whatsapp_admin ; super_admin : toutes les permissions et toute l'entreprise). `toute` : voit_tout de l'entreprise.
+export const voitEquipe = (permissions = [], toute = true) => !!toute && Array.isArray(permissions) && permissions.includes("reglages.ecrire") && permissions.includes("dossiers.ecrire");
 
 // Le filtre de la liste : « miennes » (par défaut, la liste d'avant) ou « equipe ». Gardé dans le navigateur pour le retour sur l'écran.
 export const CLE_FILTRE_EQUIPE = "gestion-agent-filtre";
@@ -30,20 +31,22 @@ export function prenomEquipe(equipe = [], userId = "") {
 }
 
 // La propriétaire affichée sur une ligne de la liste « Toute l'équipe » : son prénom, ou rien pour mes conversations.
-export const proprietaireAffichee = (c, { moi = "", equipe = [] } = {}) => (aMoi(c, moi) ? "" : prenomEquipe(equipe, c.user_id) || "?");
+// Une propriétaire hors de la liste de l'équipe : « une personne de l'équipe », écrit par l'écran (FALLBACK).
+export const proprietaireAffichee = (c, { moi = "", equipe = [], inconnue = "" } = {}) => (aMoi(c, moi) ? "" : prenomEquipe(equipe, c.user_id) || inconnue);
 
 // « écrit par Jérémy » sous un message : seulement quand l'auteur réel n'est pas la propriétaire de la conversation. Un message sans auteur
 // (écrit avant la migration 133) est celui de la propriétaire. `vous` : le mot pour la personne connectée (« vous »).
 export function auteurAffiche(auteurId, conv, { moi = "", equipe = [] } = {}) {
   if (!auteurId || !conv || !conv.user_id || auteurId === conv.user_id) return "";
   if (auteurId === moi) return { moi: true, prenom: "" };
-  return { moi: false, prenom: prenomEquipe(equipe, auteurId) || "?" };
+  return { moi: false, prenom: prenomEquipe(equipe, auteurId) };
 }
 
-// Une réponse en cours dans la conversation (verrou de la migration 133) : par qui, si elle date de moins de 3 minutes (la base la libère
-// au-delà). `maintenant` : pour les tests.
+// Une réponse en cours dans la conversation (verrou de la migration 133) : par qui. La base le dit à son heure (reponse_en_cours, lu par
+// agent_reponses_en_cours) ; sans elle, moins de 3 minutes à l'heure du poste. `maintenant` : pour les tests.
 export const VERROU_MS = 3 * 60 * 1000;
 export function reponseEnCours(conv, { maintenant = Date.now() } = {}) {
+  if (conv && typeof conv.reponse_en_cours === "boolean") return conv.reponse_en_cours ? { par: conv.reponse_par || "" } : null;
   if (!conv || !conv.reponse_le) return null;
   const t = Date.parse(conv.reponse_le);
   if (!Number.isFinite(t) || maintenant - t > VERROU_MS) return null;

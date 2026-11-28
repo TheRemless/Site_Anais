@@ -230,6 +230,13 @@ export function ouvrirConfirmation(texteInitial = "", options = {}) {
     }
     // Une autre entreprise que lors du premier essai : on repart de zéro (le client et le dossier déjà créés appartiennent à l'autre).
     if (essai.entite !== cible) essai = { clientId: null, dossierId: null, entite: cible };
+    // Carte de l'Assistant (migration 133) : toujours prise par moi juste avant d'écrire, sinon rien n'est créé.
+    const arret = options.avantCreer ? await options.avantCreer().catch(() => tr("La carte n'a pas pu être vérifiée : rien n'a été enregistré, réessayez.")) : null;
+    if (arret) {
+      etatCreation.replaceChildren(h("p", { class: "cc-erreur" }, arret));
+      if (!auto) toast(arret, true);
+      return { ok: false, motif: arret };
+    }
     bouton.disabled = true;
     bouton.textContent = tr("Création…");
     etatCreation.replaceChildren();

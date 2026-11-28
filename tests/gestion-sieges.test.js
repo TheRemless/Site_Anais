@@ -185,10 +185,11 @@ test("relecture 5 et 6 : la duplication garde les sièges ; une modification se 
   const vue = lire("src/gestion/js/views/reservations.mjs");
   // Les sièges par type (enfant, bébé, « aucun ») suivent la copie.
   assert.match(vue, /\.\.\.detailsAvecSieges\(\{\}, siegesLus\(r\.details \|\| \{\}\)\), \.\.\.\(copie\.ids/);
-  assert.match(vue, /export function formulaireReservation\(r, apres, \{ base = r \} = \{\}\)/);
+  assert.match(vue, /export function formulaireReservation\(r, apres, \{ base = r, avantEnregistrer = null \} = \{\}\)/);
   assert.match(vue, /modifierProtege\("reservations", r\.id, valeurs, \{ base, arbitrer/);
   const agent = lire("src/gestion/js/views/agent.mjs");
-  assert.match(agent, /\}, \{ base: r \}\), \{ ferme: revenir \}\);/, "Vérifier avant d'une modification");
+  // Migration 133 : contrôle de la prise avant d'écrire, carte rendue à la fermeture.
+  assert.match(agent, /\}, \{ base: r, avantEnregistrer: avantFenetre\(c\) \}\), \{ ferme: \(\) => \(rendreSiRien\(c\)\(\), revenir\(\)\) \}\);/, "Vérifier avant d'une modification");
   assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
 });
 

@@ -244,7 +244,8 @@ test("2 et 3. fenêtre dans l'autre entreprise : retour synchrone à la fermetur
   assert.doesNotMatch(agent, /setTimeout\(revenir/, "plus aucun minuteur");
   assert.doesNotMatch(agent, /entrerPourFenetre/);
   assert.match(agent, /envoyerVoucher\(x, \{ avantNavigation: revenir \}\)/);
-  assert.match(agent, /\}\), \{ ferme: revenir \}\);/, "réservation et modification reviennent dans le rappel de fermeture");
+  // Migration 133 : la carte se rend aussi à la fermeture (rendreSiRien), puis le retour, toujours dans le rappel de fermeture.
+  assert.match(agent, /\}\), \{ ferme: \(\) => \(rendreSiRien\(c\)\(\), revenir\(\)\) \}\);/, "réservation et modification reviennent dans le rappel de fermeture");
   const envoi = source("views/voucher-envoi.mjs");
   assert.ok(envoi.indexOf("if (avantNavigation) avantNavigation();") < envoi.indexOf("if (note) naviguer(location.hash);\n      },"), "le retour passe avant la navigation");
 });

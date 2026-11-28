@@ -18,6 +18,7 @@ import { etatsServices, personnesDossier, commissionDossier, actionSuivante, var
 import { MOTIFS_ECART } from "../encaisser-calc.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
+import { aMoi, prenomEquipe } from "../agent-equipe-calc.mjs";
 import { envoyerDocument } from "./document-envoi.mjs";
 import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations-calc.mjs";
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
@@ -123,15 +124,22 @@ function ficheDossierVue(id) {
     responsable.textContent = p ? tr(" · Responsable : {x}", { x: p.nom || p.email }) : "";
   });
   // La conversation de l'onglet Assistant qui a préparé ou touché ce dossier (migration 54) : un lien pour la rouvrir et retrouver le
-  // pourquoi d'une heure ou d'un prix. Seulement les miennes (comme dans l'onglet), et seulement si l'agent est allumé ici.
+  // pourquoi d'une heure ou d'un prix. Celles que la base rend (comme dans l'onglet) : les miennes, et pour l'administration de l'entreprise
+  // celles de l'équipe (migration 133), dites « Conversation de Nani avec l'assistant ». Seulement si l'agent est allumé ici.
   const lienAgent = h("span", { class: "dossier-agent" });
   if (agentActif(reglages()) && peut("dossiers.ecrire") && peut("partenaires.lire") && etat.store.agentConversationsDuDossier) {
     etat.store.agentConversationsDuDossier(d.id).then((liste) => {
       if (!liste.length) return;
-      lienAgent.replaceChildren(
-        " · ",
-        h("a", { href: `#/agent/${liste[0].id}`, title: liste[0].titre || "" }, liste.length > 1 ? tr("Conversations avec l'assistant ({n})", { n: liste.length }) : tr("Conversation avec l'assistant"))
-      );
+      const premiere = liste[0];
+      const moi = (etat.moi && etat.moi.user_id) || "";
+      const aUneCollegue = !aMoi(premiere, moi);
+      const lien = (prenom) =>
+        lienAgent.replaceChildren(
+          " · ",
+          h("a", { href: `#/agent/${premiere.id}`, title: premiere.titre || "" }, liste.length > 1 ? tr("Conversations avec l'assistant ({n})", { n: liste.length }) : prenom ? tr("Conversation de {prenom} avec l'assistant", { prenom }) : tr("Conversation avec l'assistant"))
+        );
+      lien("");
+      if (aUneCollegue && liste.length === 1) equipe().then((gens) => lien(prenomEquipe(gens, premiere.user_id) || tr("l'équipe")), () => lien(tr("l'équipe")));
     }, () => {});
   }
   const regl = reglages();

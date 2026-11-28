@@ -654,7 +654,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     creation = true;
     btn.disabled = true;
     btn.textContent = tr("Création…");
-    const arret = depuisSite && depuisSite.avantCreer ? await depuisSite.avantCreer().catch(() => null) : null;
+    // `options.avantCreer` (carte de l'Assistant, migration 133) : la carte est-elle toujours prise par moi ? Une erreur arrête aussi.
+    const arret = depuisSite && depuisSite.avantCreer ? await depuisSite.avantCreer().catch(() => null) : options.avantCreer ? await options.avantCreer().catch(() => tr("La carte n'a pas pu être vérifiée : rien n'a été enregistré, réessayez.")) : null;
     if (arret) {
       creation = false;
       btn.disabled = false;

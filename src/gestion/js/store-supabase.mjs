@@ -57,6 +57,8 @@ const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 // Colonnes lues de l'organisation. Une colonne ajoutée par une migration pas encore passée (42703 dans Postgres, PGRST204 ou « column … does
 // not exist » via PostgREST) ne doit pas empêcher de lire les autres.
 export const COLONNES_ORGANISATION = "id, nom, fuseau, langue, statut, options, created_at";
+// Une fonction SQL pas encore créée (migration pas appliquée) : PostgREST rend PGRST202, Postgres 42883.
+export const fonctionAbsente = (error) => !!error && (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || ""));
 export const colonneAbsente = (error, colonne) => !!error && (error.code === "42703" || error.code === "PGRST204" || new RegExp(`column [^ ]*${colonne}[^ ]* does not exist|Could not find the '${colonne}' column`, "i").test(error.message || ""));
 
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
@@ -698,7 +700,16 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       let { data, error } = await requete(`${base}, whatsapp_conversation_id, reponse_par, reponse_le`);
       if (error && colonneAbsente(error, "reponse_par")) ({ data, error } = await requete(`${base}, whatsapp_conversation_id`));
       if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete(base));
-      return error ? null : data || [];
+      if (error) return null;
+      // Réponse en cours à l'heure du serveur (migration 133, agent_reponses_en_cours) : l'horloge du poste n'entre pas en compte.
+      const enCours = await this.agentReponsesEnCours(entiteId);
+      return (data || []).map((c) => (enCours ? { ...c, reponse_en_cours: enCours.has(c.id), reponse_par: enCours.get(c.id) || null } : c));
+    },
+    // Map conversation → qui attend la réponse, ou null sans la migration 133.
+    async agentReponsesEnCours(entiteId) {
+      const { data, error } = await sb.rpc("agent_reponses_en_cours", { p_entite: entiteId });
+      if (error) return null;
+      return new Map((data || []).map((x) => [x.conversation_id, x.reponse_par]));
     },
     async agentAttente(entiteId) {
       const { data, error } = await sb.from("agent_cartes").select("conversation_id, agent_conversations!inner(entite_id)").eq("statut", "proposee").eq("agent_conversations.entite_id", entiteId).limit(1000);
@@ -744,6 +755,32 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { error } = await sb.rpc("rendre_agent_carte", { p_carte: id });
       if (error && !(error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || ""))) console.error("rendre_agent_carte", error.message);
     },
+    // Migration 133 (relecture de la PR 366) : la carte se prend en sachant qui la tient. Rend { ok } ou { ok: false, raison ('decidee',
+    // 'prise', 'expiree', 'introuvable'), par, depuis, statut }. `forcer` reprend une prise expirée. Sans la migration : la prise d'avant.
+    async agentPrendreCarteEquipe(id, { forcer = false } = {}) {
+      const { data, error } = await sb.rpc("prendre_agent_carte_equipe", { p_carte: id, p_forcer: !!forcer });
+      if (error) {
+        if (fonctionAbsente(error)) return (await this.agentPrendreCarte(id)) ? { ok: true } : { ok: false, raison: "prise" };
+        throw new Error(error.message);
+      }
+      return data || { ok: false };
+    },
+    // Juste avant d'écrire, et toutes les 45 s pendant qu'on travaille sur la carte : toujours proposée et prise par moi ? La prise se renouvelle.
+    // Sans la migration : { ok: true } (la prise d'avant suffit).
+    async agentControlerCarte(id) {
+      const { data, error } = await sb.rpc("controler_agent_carte", { p_carte: id });
+      if (error) return fonctionAbsente(error) ? { ok: true } : { ok: false, raison: "erreur" };
+      return data || { ok: false };
+    },
+    // « Écarter » : seulement une carte encore proposée, que personne d'autre ne valide en ce moment. Sans la migration : la mise à jour d'avant.
+    async agentEcarterCarte(id) {
+      const { data, error } = await sb.rpc("ecarter_agent_carte", { p_carte: id });
+      if (error) {
+        if (fonctionAbsente(error)) return { ok: true, carte: await this.agentCarte(id, "ecartee") };
+        throw new Error(error.message);
+      }
+      return data || { ok: false };
+    },
     async agentCarte(id, statut) {
       const COL_CARTE = "id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le";
       let r = await sb.from("agent_cartes").update({ statut }).eq("id", id).select(`${COL_CARTE}, decide_par`).single();
@@ -752,7 +789,8 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     },
     // Mes conversations reliées à un dossier (fiche du dossier) : la plus récente d'abord. Vide avant la migration 52.
     async agentConversationsDuDossier(dossierId) {
-      const { data, error } = await sb.from("agent_conversations").select("id, titre, maj_le").eq("dossier_id", dossierId).order("maj_le", { ascending: false }).limit(10);
+      // user_id : la propriétaire, pour dire « Conversation de Nani » sur la fiche (migration 133).
+      const { data, error } = await sb.from("agent_conversations").select("id, titre, maj_le, user_id").eq("dossier_id", dossierId).order("maj_le", { ascending: false }).limit(10);
       return error ? [] : data || [];
     },
     // ---- Apprentissages de l'agent (migration 54) ----

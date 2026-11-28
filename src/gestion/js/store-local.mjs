@@ -449,10 +449,15 @@ export function creer() {
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
   // Une conversation de l'Assistant lisible, comme la base (migration 133, agent_ma_conversation) : la mienne, ou celle de l'équipe pour
   // l'administration de son entreprise, toujours dans une entreprise où j'écris des dossiers.
+  const priseRecente = (c) => !!c.prise_le && Date.now() - Date.parse(c.prise_le) < 2 * 60 * 1000;
+  const carteVisible = (id) => {
+    const c = data.agent_cartes.find((x) => x.id === id);
+    return c && data.agent_conversations.some((v) => v.id === c.conversation_id && convAgentVisible(v)) ? c : null;
+  };
   const convAgentVisible = (c) => {
     if (!c) return false;
     const p = permissionsDans(contexte(), c.entite_id);
-    return p.includes("dossiers.ecrire") && (c.user_id === utilisateur.user_id || voitEquipe(p));
+    return p.includes("dossiers.ecrire") && (c.user_id === utilisateur.user_id || voitEquipe(p, voitTout(contexte(), c.entite_id)));
   };
   // La carte mixte de la démonstration : seulement quand la personne travaille dans les deux entreprises (comme modeUnifie) et que la demande
   // cite une excursion en bateau et un transfert.
@@ -1020,7 +1025,8 @@ export function creer() {
     },
     // ---- Agent de l'onglet « Assistant » (migration 52) : en démonstration, un agent simulé (agent-demo.mjs), mêmes événements que la fonction.
     async agentConversations(entiteId) {
-      return structuredClone(data.agent_conversations.filter((c) => c.entite_id === entiteId && convAgentVisible(c)));
+      // Réponse en cours, comme agent_reponses_en_cours (migration 133) : la démonstration n'a qu'une horloge.
+      return structuredClone(data.agent_conversations.filter((c) => c.entite_id === entiteId && convAgentVisible(c))).map((c) => ({ ...c, reponse_en_cours: !!reponseEnCours(c) }));
     },
     async agentAttente(entiteId) {
       const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === entiteId && convAgentVisible(c)).map((c) => c.id));
@@ -1096,23 +1102,54 @@ export function creer() {
     // Comme la migration 120 : une carte se prend une fois (proposée, pas prise depuis moins de 2 minutes), se rend après un arrêt.
     // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou.
     async agentPrendreCarte(id) {
-      const c = data.agent_cartes.find((x) => x.id === id);
-      if (!c) return true;
-      if (!data.agent_conversations.some((v) => v.id === c.conversation_id && convAgentVisible(v))) throw new Error("Carte introuvable");
-      const maintenant = Date.now();
-      if (c.statut !== "proposee" || (c.prise_le && maintenant - Date.parse(c.prise_le) < 2 * 60 * 1000)) return false;
-      c.prise_le = new Date(maintenant).toISOString();
+      return (await this.agentPrendreCarteEquipe(id, { forcer: true })).ok;
+    },
+    // Comme la migration 133 (prendre_agent_carte_equipe, controler_agent_carte, ecarter_agent_carte) : la prise est à une personne.
+    // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou ({ ok: true }) ;
+    // une carte d'une conversation que la personne ne lit pas : « Carte introuvable », comme avant.
+    async agentPrendreCarteEquipe(id, { forcer = false } = {}) {
+      if (!data.agent_cartes.some((x) => x.id === id)) return { ok: true };
+      const c = carteVisible(id);
+      if (!c) throw new Error("Carte introuvable");
+      if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
+      if (priseRecente(c)) return { ok: false, raison: "prise", par: c.prise_par || null, depuis: c.prise_le };
+      if (c.prise_le && c.prise_par !== utilisateur.user_id && !forcer) return { ok: false, raison: "expiree", par: c.prise_par || null, depuis: c.prise_le };
+      c.prise_le = new Date().toISOString();
       c.prise_par = utilisateur.user_id;
       sauve();
-      return true;
+      return { ok: true };
     },
+    async agentControlerCarte(id) {
+      if (!data.agent_cartes.some((x) => x.id === id)) return { ok: true };
+      const c = carteVisible(id);
+      if (!c) return { ok: false, raison: "introuvable" };
+      if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
+      if (!c.prise_le || c.prise_par !== utilisateur.user_id) return { ok: false, raison: c.prise_le ? "reprise" : "libre", par: c.prise_par || null };
+      c.prise_le = new Date().toISOString();
+      sauve();
+      return { ok: true };
+    },
+    async agentEcarterCarte(id) {
+      if (!data.agent_cartes.some((x) => x.id === id)) return { ok: true, carte: await this.agentCarte(id, "ecartee") };
+      const c = carteVisible(id);
+      if (!c) return { ok: false, raison: "introuvable" };
+      if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
+      if (priseRecente(c) && c.prise_par !== utilisateur.user_id) return { ok: false, raison: "prise", par: c.prise_par || null };
+      Object.assign(c, { statut: "ecartee", decide_le: new Date().toISOString(), decide_par: utilisateur.user_id, prise_le: null, prise_par: null });
+      sauve();
+      return { ok: true, statut: "ecartee" };
+    },
+    // Seule la personne qui a pris la carte la rend.
     async agentRendreCarte(id) {
       const c = data.agent_cartes.find((x) => x.id === id);
-      if (c && c.statut === "proposee" && c.prise_le) (c.prise_le = null), sauve();
+      if (c && c.statut === "proposee" && c.prise_le && (!c.prise_par || c.prise_par === utilisateur.user_id)) (c.prise_le = null), (c.prise_par = null), sauve();
     },
     async agentCarte(id, statut) {
       const c = data.agent_cartes.find((x) => x.id === id);
       if (!c || !data.agent_conversations.some((v) => v.id === c.conversation_id && convAgentVisible(v))) throw new Error("Carte introuvable");
+      // Comme le déclencheur de la migration 133 : une carte décidée ne change plus ; une carte prise par une autre personne ne se décide pas.
+      if (c.statut !== statut && c.statut !== "proposee") throw new Error("carte_decidee");
+      if (c.statut !== statut && priseRecente(c) && c.prise_par && c.prise_par !== utilisateur.user_id) throw new Error("carte_prise");
       // Qui décide est noté comme par la base (migration 133).
       if (c.statut !== statut) (c.statut = statut), (c.decide_le = new Date().toISOString()), (c.decide_par = utilisateur.user_id);
       sauve();

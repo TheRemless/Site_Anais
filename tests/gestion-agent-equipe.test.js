@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { voitEquipe, filtreLu, conversationsFiltrees, aMoi, prenomEquipe, proprietaireAffichee, auteurAffiche, reponseEnCours, VERROU_MS } from "../src/gestion/js/agent-equipe-calc.mjs";
 import { filDepuis } from "../src/gestion/js/agent-calc.mjs";
-import { lirePrise, proprietaireSuite, fonctionAbsente } from "../supabase/functions/agent/equipe.js";
+import { lirePrise, proprietaireSuite, fonctionAbsente, ligneAuteur, prenomProfil } from "../supabase/functions/agent/equipe.js";
+import { textesDeNani, auteursDesTextes } from "../src/gestion/js/devis-calc.mjs";
 import { EN } from "../src/gestion/js/i18n-en.mjs";
 
 const NANI = "11111111-1111-4111-8111-111111111111";
@@ -22,6 +23,7 @@ test("qui voit l'équipe : réglages et dossiers dans l'entreprise, rien d'autre
   assert.equal(voitEquipe(["dossiers.ecrire", "partenaires.lire"]), false, "la saisie ne voit que les siennes");
   assert.equal(voitEquipe(["reglages.ecrire"]), false, "sans dossiers.ecrire, pas d'Assistant");
   assert.equal(voitEquipe(null), false);
+  assert.equal(voitEquipe(["reglages.ecrire", "dossiers.ecrire"], false), false, "point 3 : portée « ses dossiers », pas l'équipe (comme whatsapp_admin)");
 });
 
 test("filtre « Les miennes / Toute l'équipe » : les miennes par défaut, l'équipe seulement pour l'administration", () => {
@@ -41,7 +43,7 @@ test("prénoms : la propriétaire sur la liste, l'auteur réel sous un message, 
   assert.equal(prenomEquipe(EQUIPE, "inconnu"), "");
   assert.equal(proprietaireAffichee({ user_id: NANI }, { moi: JEREMY, equipe: EQUIPE }), "Nani");
   assert.equal(proprietaireAffichee({ user_id: JEREMY }, { moi: JEREMY, equipe: EQUIPE }), "", "mes conversations ne portent pas de prénom");
-  assert.equal(proprietaireAffichee({ user_id: "x" }, { moi: JEREMY, equipe: EQUIPE }), "?");
+  assert.equal(proprietaireAffichee({ user_id: "x" }, { moi: JEREMY, equipe: EQUIPE, inconnue: "une personne de l'équipe" }), "une personne de l'équipe", "jamais un nom deviné");
   const conv = { user_id: NANI };
   assert.equal(auteurAffiche(NANI, conv, { moi: JEREMY, equipe: EQUIPE }), "", "le message de la propriétaire ne porte rien");
   assert.equal(auteurAffiche(null, conv, { moi: JEREMY, equipe: EQUIPE }), "", "un message d'avant la migration est celui de la propriétaire");
@@ -167,4 +169,143 @@ test("démonstration : l'administration voit et reprend la conversation de la sa
   } finally {
     delete globalThis.localStorage;
   }
+});
+
+const vueSrc = () => readFileSync(new URL("../src/gestion/js/views/agent.mjs", import.meta.url), "utf8");
+const fonctionSrc = () => readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+
+test("point 1 : « Écarter » passe par la base (ecarter_agent_carte), jamais par une mise à jour directe", () => {
+  const vue = vueSrc();
+  assert.match(vue, /onclick: \(\) => !enValidation\.has\(c\.id\) && ecarter\(c\) \}, tr\("Écarter"\)\)/);
+  assert.doesNotMatch(vue, /decider\(c, "ecartee"\)/);
+  const sb = readFileSync(new URL("../src/gestion/js/store-supabase.mjs", import.meta.url), "utf8");
+  assert.match(sb, /sb\.rpc\("ecarter_agent_carte", \{ p_carte: id \}\)/);
+});
+
+test("point 2 : prise nommée, reprise seulement en le sachant, tenue renouvelée, contrôle juste avant d'écrire", () => {
+  const vue = vueSrc();
+  assert.match(vue, /await confirmer\(tr\("\{qui\} a commencé à valider cette carte/);
+  assert.match(vue, /agentPrendreCarteEquipe\(c\.id, \{ forcer: true \}\)/);
+  assert.match(vue, /setInterval\(async \(\) => \{\n\s+const r = await etat\.store\.agentControlerCarte\(c\.id\)/, "la prise se renouvelle pendant le travail");
+  assert.match(vue, /const arret = await avantCreer\(\);\n\s+if \(arret\) r = \{ ok: false, motif: arret, perdue: true \};/, "un geste : contrôle avant toute écriture");
+  for (const f of ["ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, avantCreer })", "ouvrirConfirmation(c.donnees.course.texte || \"\", { auto: true, avantCreer })", "avantCreer: avantFenetre(c)", "avantEnregistrer: avantFenetre(c)"]) assert.ok(vue.includes(f), `contrôle branché : ${f}`);
+  assert.match(readFileSync(new URL("../src/gestion/js/views/demande.mjs", import.meta.url), "utf8"), /options\.avantCreer \? await options\.avantCreer\(\)/);
+  assert.match(readFileSync(new URL("../src/gestion/js/views/confirmation.mjs", import.meta.url), "utf8"), /const arret = options\.avantCreer \? await options\.avantCreer\(\)/);
+  assert.match(readFileSync(new URL("../src/gestion/js/views/reservations.mjs", import.meta.url), "utf8"), /if \(avantEnregistrer\) \{\n\s+const arret = await avantEnregistrer\(\)/);
+});
+
+test("démonstration, points 1 et 2 : écarter une carte validée ou tenue ailleurs est refusé ; la reprise d'une prise expirée bloque l'ancienne", async () => {
+  const stockage = new Map();
+  globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, String(v)), removeItem: (k) => stockage.delete(k) };
+  try {
+    const { creer } = await import(`../src/gestion/js/store-local.mjs?cartes=${Date.now()}`);
+    const store = creer();
+    const d = await store.charger();
+    const admin = d.profils.find((p) => p.super_admin && p.email === "admin@demo.local");
+    const saisie = d.profils.find((p) => p.email === "assistante@demo.local");
+    const ent = d.membres.find((m) => m.user_id === saisie.user_id).entite_id;
+    await store.enregistrerReglages(ent, { ...d.reglages[ent], agent_ia: true });
+    store.changerUtilisateurDemo(saisie.user_id);
+    const ev = [];
+    await store.agentEnvoyer({ entite_id: ent, texte: "Brochure du partenaire", fichiers: [{ nom: "tarifs.pdf", media_type: "application/pdf", data: "JVBERi0=" }] }, (x) => ev.push(x));
+    const carteId = ev.find((x) => x.t === "carte").carte.id;
+    store.changerUtilisateurDemo(admin.user_id);
+    assert.deepEqual(await store.agentPrendreCarteEquipe(carteId), { ok: true }, "l'administration prend la carte");
+    store.changerUtilisateurDemo(saisie.user_id);
+    const pris = await store.agentPrendreCarteEquipe(carteId);
+    assert.equal(pris.raison, "prise");
+    assert.equal(pris.par, admin.user_id, "la saisie sait qui la tient");
+    assert.equal((await store.agentEcarterCarte(carteId)).raison, "prise", "S1b : écarter pendant la validation est refusé");
+    await store.agentRendreCarte(carteId);
+    assert.equal((await store.agentPrendreCarteEquipe(carteId)).raison, "prise", "S1c : la saisie ne rend pas la carte de l'administration");
+    await assert.rejects(store.agentCarte(carteId, "ecartee"), /carte_prise/);
+    // Prise expirée : la saisie voit qui était dessus, reprend en le sachant ; le contrôle de l'administration refuse ensuite.
+    const brut = () => JSON.parse([...stockage.values()].find((v) => v.includes(carteId)));
+    const c0 = brut();
+    c0.agent_cartes.find((x) => x.id === carteId).prise_le = new Date(Date.now() - 5 * 60000).toISOString();
+    stockage.set([...stockage.keys()].find((k) => stockage.get(k).includes(carteId)), JSON.stringify(c0));
+    const store2 = creer();
+    await store2.charger();
+    store2.changerUtilisateurDemo(saisie.user_id);
+    const exp = await store2.agentPrendreCarteEquipe(carteId);
+    assert.equal(exp.raison, "expiree");
+    assert.equal(exp.par, admin.user_id);
+    assert.deepEqual(await store2.agentPrendreCarteEquipe(carteId, { forcer: true }), { ok: true });
+    store2.changerUtilisateurDemo(admin.user_id);
+    const ctl = await store2.agentControlerCarte(carteId);
+    assert.equal(ctl.raison, "reprise", "l'administration revient : refusé avant d'écrire");
+    assert.equal(ctl.par, saisie.user_id);
+    store2.changerUtilisateurDemo(saisie.user_id);
+    assert.deepEqual(await store2.agentControlerCarte(carteId), { ok: true });
+    await store2.agentCarte(carteId, "validee");
+    store2.changerUtilisateurDemo(admin.user_id);
+    const ec = await store2.agentEcarterCarte(carteId);
+    assert.equal(ec.raison, "decidee", "S1 : une carte validée ne s'écarte pas");
+    assert.equal(ec.par, saisie.user_id, "… et on sait qui l'a validée");
+    await assert.rejects(store2.agentCarte(carteId, "ecartee"), /carte_decidee/);
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test("point 4 : le verrou est rendu sur toute sortie (filet autour du traitement, finally de l'échange)", () => {
+  const src = fonctionSrc();
+  assert.match(src, /Deno\.serve\(async \(req\) => \{\n\s+const sortie = \{ liberer: async \(\) => \{\} \};\n\s+try \{\n\s+return await traiter\(req, sortie\);\n\s+\} catch \(err\) \{\n\s+await sortie\.liberer\(\)/);
+  assert.match(src, /sortie\.liberer = liberer;/);
+  assert.match(src, /\} finally \{\n\s+await liberer\(\)\.catch\(\(\) => \{\}\);\n\s+await ecrivain\.close\(\)/);
+});
+
+test("point 5 : la discussion pleine est remplacée dans une seule transaction, le verrou passe sur la nouvelle", () => {
+  const src = fonctionSrc();
+  assert.match(src, /sb\.rpc\("remplacer_agent_conversation", \{ p_ancienne: ancien\.id, p_jeton: verrou\.jeton \}\)/);
+  assert.match(src, /verrou = \{ id: rp\.data\.id, jeton: rp\.data\.jeton \};/);
+});
+
+test("point 8 : le devis dit qui a écrit le nombre", () => {
+  const msgs = [
+    { id: 1, role: "user", cree_le: "2026-11-27T08:00:00Z", auteur_id: JEREMY, contenu: [{ type: "text", text: "Voici l'échange\n<conversation>\n[27/11 08:00] Nani : For 11 people we take 2 minivans\n</conversation>" }] },
+  ];
+  const textes = textesDeNani(msgs);
+  assert.ok(textes.length >= 1);
+  assert.deepEqual(auteursDesTextes(msgs), [JEREMY]);
+  assert.deepEqual(auteursDesTextes([{ ...msgs[0], auteur_id: undefined }]), [null], "un message d'avant : la propriétaire");
+  const carte = readFileSync(new URL("../src/gestion/js/views/devis-carte.mjs", import.meta.url), "utf8");
+  assert.match(carte, /tr\("écrit par \{prenom\} dans la conversation", \{ prenom: auteur\.prenom \}\)/);
+  assert.match(vueSrc(), /auteur: \(\) => auteurDevis\(c\)/);
+});
+
+test("point 9 : réponse en cours à l'heure du serveur, prénom ou « une personne de l'équipe », « autre onglet » seulement pour soi", () => {
+  assert.deepEqual(reponseEnCours({ reponse_en_cours: true, reponse_par: NANI, reponse_le: "2000-01-01T00:00:00Z" }), { par: NANI }, "la base fait foi, pas l'horloge du poste");
+  assert.equal(reponseEnCours({ reponse_en_cours: false, reponse_le: new Date().toISOString() }), null);
+  const vue = vueSrc();
+  assert.match(vue, /moiAilleurs \? tr\("L'assistant vous répond dans un autre onglet…"\) : tr\("L'assistant répond à \{prenom\}…", \{ prenom: quiEst\(r\.par\) \}\)/);
+  assert.match(vue, /const quiEst = \(id\) => \(!id \? tr\("une personne de l'équipe"\)/);
+  const sb = readFileSync(new URL("../src/gestion/js/store-supabase.mjs", import.meta.url), "utf8");
+  assert.match(sb, /sb\.rpc\("agent_reponses_en_cours", \{ p_entite: entiteId \}\)/);
+});
+
+test("point 10 : le canal se ferme en quittant l'Assistant", () => {
+  const vue = vueSrc();
+  assert.match(vue, /window\.addEventListener\("hashchange", quitter\);/);
+  assert.match(vue, /if \(\/\^#\\\/agent\(\\\/\|\$\)\/\.test\(location\.hash\) && racine\.isConnected\) return;/);
+  assert.match(vue, /arreterCanal\(\);\n\s+clearTimeout\(minuteurRelecture\);\n\s+window\.removeEventListener\("hashchange", quitter\);/);
+});
+
+test("point 11 : la fiche du dossier dit « Conversation de Nani avec l'assistant »", () => {
+  const d = readFileSync(new URL("../src/gestion/js/views/dossier.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(d, /Seulement les miennes/);
+  assert.match(d, /tr\("Conversation de \{prenom\} avec l'assistant", \{ prenom \}\)/);
+  assert.match(readFileSync(new URL("../src/gestion/js/store-supabase.mjs", import.meta.url), "utf8"), /select\("id, titre, maj_le, user_id"\)\.eq\("dossier_id", dossierId\)/);
+});
+
+test("point 12 : l'Assistant s'adresse à la personne qui écrit, la voix de l'entreprise reste pour le client", () => {
+  assert.equal(prenomProfil({ nom: "Jérémy Test" }), "Jérémy");
+  assert.equal(prenomProfil({ email: "nani@test.local" }), "Nani");
+  assert.equal(prenomProfil(null), "");
+  const l = ligneAuteur({ auteur: "Jérémy", proprietaire: "Nani" });
+  assert.match(l, /écrit par Jérémy, qui reprend la conversation de Nani : adresse-toi à Jérémy/);
+  assert.match(l, /garde la voix et les modèles de l'entreprise/);
+  assert.equal(ligneAuteur({ auteur: "Nani", proprietaire: "Nani" }), "");
+  assert.equal(ligneAuteur({ auteur: "", proprietaire: "Nani" }), "", "jamais un prénom deviné");
+  assert.match(fonctionSrc(), /\+ \(quiEcrit \? `\\n\$\{quiEcrit\}` : ""\);/, "dans le contexte de l'échange, pas dans les consignes en cache");
 });

@@ -67,6 +67,20 @@ begin
 end
 $$;
 
+create or replace function rendre_agent_carte(p_carte uuid) returns void language plpgsql security invoker set search_path = public as $$
+begin
+  update agent_cartes set prise_le = null where id = p_carte and statut = 'proposee';
+end
+$$;
+
+drop trigger if exists agent_conversation_libre on agent_fichiers;
+drop trigger if exists agent_conversation_libre on agent_cartes;
+drop function if exists agent_conversation_libre();
+drop function if exists prendre_agent_carte_equipe(uuid, boolean);
+drop function if exists controler_agent_carte(uuid);
+drop function if exists ecarter_agent_carte(uuid);
+drop function if exists remplacer_agent_conversation(uuid, uuid);
+drop function if exists agent_reponses_en_cours(uuid);
 drop trigger if exists noter_agent_message on agent_messages;
 drop function if exists noter_agent_message();
 drop function if exists prendre_agent_conversation(uuid);

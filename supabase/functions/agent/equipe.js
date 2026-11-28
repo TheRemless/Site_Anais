@@ -30,3 +30,21 @@ export function proprietaireSuite(ancienne, userId) {
   const u = ancienne && typeof ancienne.user_id === "string" && UUID.test(ancienne.user_id) ? ancienne.user_id : null;
   return u && u !== userId ? { user_id: u } : {};
 }
+
+// Le prénom d'un profil (premier mot du nom, sinon la partie de l'e-mail avant @), comme l'écran (noms-calc.mjs, prenomDe). "" sans profil.
+export function prenomProfil(p) {
+  const nom = String((p && p.nom) || "").replace(/\s+/g, " ").trim();
+  if (nom) return nom.split(" ")[0].slice(0, 40);
+  const mail = String((p && p.email) || "").split("@")[0].trim();
+  return mail ? (mail[0].toUpperCase() + mail.slice(1)).slice(0, 40) : "";
+}
+
+// Qui écrit (relecture de la PR 366, point 12) : quand une autre personne que la propriétaire écrit dans la conversation, l'Assistant s'adresse
+// à elle, par son prénom ; tout texte destiné au client garde la voix et les modèles de l'entreprise. Une ligne du contexte de l'échange
+// (jamais dans les consignes en cache). Rien quand la propriétaire écrit elle-même, ou quand un prénom manque.
+export function ligneAuteur({ auteur = "", proprietaire = "" } = {}) {
+  const a = String(auteur || "").trim();
+  const p = String(proprietaire || "").trim();
+  if (!a || !p || a === p) return "";
+  return `Ce message est écrit par ${a}, qui reprend la conversation de ${p} : adresse-toi à ${a}, par son prénom. Tout texte destiné au client (réponse, message, voucher) garde la voix et les modèles de l'entreprise, comme pour ${p}.`;
+}

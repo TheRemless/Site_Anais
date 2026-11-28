@@ -3,8 +3,9 @@
 -- À exécuter une seule fois, APRÈS les migrations 52, 55, 61, 67 et 120. Idempotente. Ne modifie aucune donnée existante.
 -- Retour en arrière : retour-133-assistant-equipe.sql.
 --
--- 1. agent_voit_equipe(e) : l'administration de l'entreprise (« reglages.ecrire », super_admin compris par permissions_dans) qui écrit aussi
---    des dossiers voit toutes les conversations de l'Assistant de CETTE entreprise. Les autres rôles ne voient que les leurs, comme avant.
+-- 1. agent_voit_equipe(e) : l'administration de l'entreprise (« reglages.ecrire » et portée « toute », comme whatsapp_admin de la
+--    migration 58 ; super_admin compris) qui écrit aussi des dossiers voit toutes les conversations de l'Assistant de CETTE entreprise. Les
+--    autres rôles (portée « ses dossiers » comprise) ne voient que les leurs, comme avant.
 --    Chaque entreprise reste séparée : ZTP, Secret et Taxi ont chacune leur règle (une administratrice de Secret ne lit rien de ZTP).
 -- 2. agent_ma_conversation(c) (migration 52) suit la même règle : les messages, les cartes et les pièces jointes (agent_fichiers, migration 55)
 --    d'une conversation de l'équipe s'ouvrent à l'administration, sans changer leurs politiques.
@@ -17,8 +18,13 @@
 --    fonction « agent » n'écrive quoi que ce soit ; une seconde demande, de la même personne ou d'une autre, trouve la conversation occupée.
 --    rendre_agent_conversation(c, jeton) la rend à la fin. Une prise de plus de 3 minutes se reprend (la fonction s'arrête à 150 s). Les colonnes
 --    du verrou ne s'écrivent que par ces deux fonctions ; un message ajouté par une autre personne pendant une réponse est refusé.
--- 6. prendre_agent_carte(c) (migration 120) lit la carte avec « for update » et note qui la prend : deux personnes qui valident la même carte
---    en même temps, une seule la prend.
+-- 6. Cartes (relecture de la PR 366) : une carte se prend, se contrôle, se rend et s'écarte par des fonctions qui la lisent avec « for update ».
+--    La prise est à une personne (prise_par) : elle seule la rend ; son écran la renouvelle tant qu'il travaille dessus ; au-delà de 2 minutes
+--    sans renouvellement, une autre personne peut la reprendre en le sachant (prendre_agent_carte_equipe, p_forcer). Juste avant d'écrire, la
+--    validation revérifie que la carte est toujours proposée et prise par elle (controler_agent_carte) : reprise ailleurs, rien n'est créé.
+--    Une carte validée ou écartée ne change plus de statut ; une carte prise par une autre personne ne se décide pas (déclencheur).
+--    Pendant une réponse de l'Assistant, un fichier ou une carte d'une autre personne est refusé, comme un message.
+--    La discussion pleine se remplace dans une seule transaction, le verrou passant de l'ancienne à la nouvelle (remplacer_agent_conversation).
 -- 7. Temps réel : agent_conversations et agent_cartes entrent dans la publication supabase_realtime. Seul le nom de la table remonte à
 --    l'écran, qui relit avec sa session (RLS). Les deux écrans d'une même conversation se mettent à jour.
 -- Le crédit de l'Assistant reste compté sur l'entreprise (assistant_cout_depuis, migration 52) ; la limite du jour reste celle de la personne
@@ -28,7 +34,7 @@ begin;
 
 -- ---- 1. Qui voit l'équipe -----------------------------------------------------------------------------------------------------------------
 create or replace function agent_voit_equipe(e uuid) returns boolean language sql stable security definer set search_path = public as $$
-  select a_permission(e, 'reglages.ecrire') and a_permission(e, 'dossiers.ecrire');
+  select a_permission(e, 'reglages.ecrire') and a_permission(e, 'dossiers.ecrire') and voit_tout(e);
 $$;
 revoke all on function agent_voit_equipe(uuid) from public, anon;
 grant execute on function agent_voit_equipe(uuid) to authenticated;
@@ -52,7 +58,11 @@ create index if not exists agent_conversations_equipe on agent_conversations (en
 -- Une personne de l'entreprise (membre actif) ou l'administration générale : la seule propriétaire qu'une administratrice peut donner.
 -- Appelée par les politiques avec la session : elle ne répond que pour une entreprise dont la personne connectée est membre (comme equipe_de).
 create or replace function agent_membre_de(u uuid, e uuid) returns boolean language sql stable security definer set search_path = public as $$
-  select est_membre(e) and exists (select 1 from profils p where p.user_id = u and p.actif and (p.super_admin or exists (select 1 from membres m where m.user_id = u and m.entite_id = e)));
+  select est_membre(e) and exists (
+    select 1 from profils p
+    where p.user_id = u and p.actif
+      and ((p.super_admin and p.organisation_id = organisation_de(e)) or exists (select 1 from membres m where m.user_id = u and m.entite_id = e))
+  );
 $$;
 revoke all on function agent_membre_de(uuid, uuid) from public, anon;
 grant execute on function agent_membre_de(uuid, uuid) to authenticated;
@@ -110,8 +120,26 @@ alter table agent_messages add column if not exists auteur_id uuid;
 alter table agent_cartes add column if not exists decide_par uuid;
 alter table agent_cartes add column if not exists prise_par uuid;
 
+-- Pendant qu'une réponse est en cours, seule la personne qui l'a demandée ajoute des messages, des fichiers ou des cartes à la conversation.
+-- La clé de service (aucune personne) n'est pas concernée.
+create or replace function agent_conversation_libre() returns trigger language plpgsql set search_path = public as $$
+begin
+  if auth.uid() is not null and exists (
+    select 1 from agent_conversations a
+    where a.id = new.conversation_id and a.reponse_le > now() - interval '3 minutes' and a.reponse_par is distinct from auth.uid()
+  ) then
+    raise exception 'conversation_occupee' using errcode = '55P03';
+  end if;
+  return new;
+end
+$$;
+drop trigger if exists agent_conversation_libre on agent_fichiers;
+create trigger agent_conversation_libre before insert on agent_fichiers for each row execute function agent_conversation_libre();
+drop trigger if exists agent_conversation_libre on agent_cartes;
+create trigger agent_conversation_libre before insert on agent_cartes for each row execute function agent_conversation_libre();
+
 -- L'auteur d'un message est la session qui l'écrit (la fonction « agent » écrit avec la session de la personne) ; la clé de service n'en
--- a pas. Pendant qu'une réponse est en cours, seule la personne qui l'a demandée ajoute des messages à la conversation.
+-- a pas. Même règle de réponse en cours que les fichiers et les cartes.
 create or replace function noter_agent_message() returns trigger language plpgsql set search_path = public as $$
 begin
   new.auteur_id := auth.uid();
@@ -127,7 +155,10 @@ $$;
 drop trigger if exists noter_agent_message on agent_messages;
 create trigger noter_agent_message before insert on agent_messages for each row execute function noter_agent_message();
 
--- Une carte décidée ne change plus que de sort ; son contenu reste celui que l'agent a proposé. Qui décide est posé par la base.
+-- Le contenu d'une carte reste celui que l'agent a proposé. Une carte validée ou écartée ne change plus de statut ; une carte prise par une
+-- autre personne depuis moins de 2 minutes ne se décide pas. Qui décide est posé par la base. Hors des fonctions de prise (réglage local
+-- « gestion.agent_carte »), une prise de moins de 2 minutes d'une autre personne ne s'efface ni ne se remplace, et qui prend est posé par la
+-- base ; la clé de service n'est pas concernée.
 create or replace function figer_agent_carte() returns trigger language plpgsql set search_path = public as $$
 begin
   new.conversation_id := old.conversation_id;
@@ -136,9 +167,26 @@ begin
   new.donnees := old.donnees;
   new.avertissements := old.avertissements;
   new.cree_le := old.cree_le;
+  if auth.uid() is not null and coalesce(current_setting('gestion.agent_carte', true), '') <> '1' then
+    if old.prise_le is not null and old.prise_le >= now() - interval '2 minutes' and old.prise_par is distinct from auth.uid() then
+      new.prise_le := old.prise_le;
+      new.prise_par := old.prise_par;
+    elsif new.prise_le is distinct from old.prise_le then
+      new.prise_par := case when new.prise_le is null then null else auth.uid() end;
+    else
+      new.prise_par := old.prise_par;
+    end if;
+  end if;
+  if new.statut <> old.statut then
+    if old.statut <> 'proposee' then
+      raise exception 'carte_decidee' using errcode = '55P03';
+    end if;
+    if auth.uid() is not null and old.prise_le is not null and old.prise_le >= now() - interval '2 minutes' and old.prise_par is distinct from auth.uid() then
+      raise exception 'carte_prise' using errcode = '55P03';
+    end if;
+  end if;
   new.decide_le := case when new.statut <> old.statut then now() else old.decide_le end;
   new.decide_par := case when new.statut <> old.statut then auth.uid() else old.decide_par end;
-  new.prise_par := case when new.prise_le is null then null when new.prise_le is distinct from old.prise_le then auth.uid() else old.prise_par end;
   return new;
 end
 $$;
@@ -184,26 +232,148 @@ begin
   return n = 1;
 end
 $$;
+-- Les réponses en cours dans une entreprise, à l'heure du serveur (l'horloge du poste peut avoir des minutes d'écart) : les conversations
+-- que la personne lit (RLS), prises depuis moins de 3 minutes, et par qui. Pour le bandeau « L'assistant répond à Nani… ».
+create or replace function agent_reponses_en_cours(p_entite uuid) returns table (conversation_id uuid, reponse_par uuid) language sql stable security invoker set search_path = public as $$
+  select id, reponse_par from agent_conversations where entite_id = p_entite and reponse_le > now() - interval '3 minutes';
+$$;
+revoke all on function agent_reponses_en_cours(uuid) from public, anon;
+grant execute on function agent_reponses_en_cours(uuid) to authenticated;
+
 revoke all on function prendre_agent_conversation(uuid) from public, anon;
 revoke all on function rendre_agent_conversation(uuid, uuid) from public, anon;
 grant execute on function prendre_agent_conversation(uuid) to authenticated;
 grant execute on function rendre_agent_conversation(uuid, uuid) to authenticated;
 
--- ---- 6. Une carte prise une fois, lue avec « for update » -----------------------------------------------------------------------------------
-create or replace function prendre_agent_carte(p_carte uuid) returns boolean language plpgsql security invoker set search_path = public as $$
+-- ---- 6. Cartes : prendre, contrôler, rendre, écarter, toujours lues avec « for update » -------------------------------------------------------
+-- Rend { ok: true } ; { ok: false, raison: 'decidee', statut, par } ; 'prise' (prise depuis moins de 2 minutes, par une autre personne ou
+-- par moi dans un autre onglet : `par`) ; 'expiree' (une autre personne l'avait prise, sans nouvelle depuis plus de 2 minutes : `par`,
+-- `depuis` ; p_forcer la reprend) ; 'introuvable'. Le renouvellement d'une prise passe par controler_agent_carte.
+create or replace function prendre_agent_carte_equipe(p_carte uuid, p_forcer boolean default false) returns jsonb language plpgsql security invoker set search_path = public as $$
 declare
   c record;
 begin
-  select id, statut, prise_le into c from agent_cartes where id = p_carte for update;
-  if not found or c.statut <> 'proposee' or (c.prise_le is not null and c.prise_le >= now() - interval '2 minutes') then
-    return false;
+  select id, statut, prise_le, prise_par, decide_par into c from agent_cartes where id = p_carte for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'raison', 'introuvable');
   end if;
+  if c.statut <> 'proposee' then
+    return jsonb_build_object('ok', false, 'raison', 'decidee', 'statut', c.statut, 'par', c.decide_par);
+  end if;
+  if c.prise_le is not null and c.prise_le >= now() - interval '2 minutes' then
+    return jsonb_build_object('ok', false, 'raison', 'prise', 'par', c.prise_par, 'depuis', c.prise_le);
+  end if;
+  if c.prise_le is not null and c.prise_par is distinct from auth.uid() and not p_forcer then
+    return jsonb_build_object('ok', false, 'raison', 'expiree', 'par', c.prise_par, 'depuis', c.prise_le);
+  end if;
+  perform set_config('gestion.agent_carte', '1', true);
+  update agent_cartes set prise_le = now(), prise_par = auth.uid() where id = p_carte;
+  perform set_config('gestion.agent_carte', '', true);
+  return jsonb_build_object('ok', true);
+end
+$$;
+
+-- La fonction de la migration 120, gardée pour un écran pas encore à jour : même règle (aucune prise de moins de 2 minutes ne se reprend,
+-- même par soi ; une prise expirée se reprend).
+create or replace function prendre_agent_carte(p_carte uuid) returns boolean language plpgsql security invoker set search_path = public as $$
+begin
+  return coalesce((prendre_agent_carte_equipe(p_carte, true) ->> 'ok')::boolean, false);
+end
+$$;
+
+-- Juste avant d'écrire : la carte est-elle toujours proposée et prise par moi ? La prise se renouvelle. Rend { ok } ou { ok: false, raison,
+-- par } (raison : 'decidee', 'reprise' quand une autre personne l'a reprise, 'libre' quand elle a été rendue, 'introuvable').
+create or replace function controler_agent_carte(p_carte uuid) returns jsonb language plpgsql security invoker set search_path = public as $$
+declare
+  c record;
+begin
+  select id, statut, prise_le, prise_par, decide_par into c from agent_cartes where id = p_carte for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'raison', 'introuvable');
+  end if;
+  if c.statut <> 'proposee' then
+    return jsonb_build_object('ok', false, 'raison', 'decidee', 'statut', c.statut, 'par', c.decide_par);
+  end if;
+  if c.prise_par is distinct from auth.uid() or c.prise_le is null then
+    return jsonb_build_object('ok', false, 'raison', case when c.prise_le is null then 'libre' else 'reprise' end, 'par', c.prise_par);
+  end if;
+  perform set_config('gestion.agent_carte', '1', true);
   update agent_cartes set prise_le = now() where id = p_carte;
-  return true;
+  perform set_config('gestion.agent_carte', '', true);
+  return jsonb_build_object('ok', true);
+end
+$$;
+
+-- Seule la personne qui a pris la carte la rend (une validation arrêtée).
+create or replace function rendre_agent_carte(p_carte uuid) returns void language plpgsql security invoker set search_path = public as $$
+begin
+  perform 1 from agent_cartes where id = p_carte and statut = 'proposee' and prise_par = auth.uid() for update;
+  if found then
+    perform set_config('gestion.agent_carte', '1', true);
+    update agent_cartes set prise_le = null, prise_par = null where id = p_carte;
+    perform set_config('gestion.agent_carte', '', true);
+  end if;
+end
+$$;
+
+-- « Écarter » : seulement une carte encore proposée, et pas pendant qu'une autre personne la valide. Rend { ok, statut } ou { ok: false,
+-- raison ('decidee', 'prise', 'introuvable'), par }.
+create or replace function ecarter_agent_carte(p_carte uuid) returns jsonb language plpgsql security invoker set search_path = public as $$
+declare
+  c record;
+begin
+  select id, statut, prise_le, prise_par, decide_par into c from agent_cartes where id = p_carte for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'raison', 'introuvable');
+  end if;
+  if c.statut <> 'proposee' then
+    return jsonb_build_object('ok', false, 'raison', 'decidee', 'statut', c.statut, 'par', c.decide_par);
+  end if;
+  if c.prise_le is not null and c.prise_le >= now() - interval '2 minutes' and c.prise_par is distinct from auth.uid() then
+    return jsonb_build_object('ok', false, 'raison', 'prise', 'par', c.prise_par);
+  end if;
+  perform set_config('gestion.agent_carte', '1', true);
+  update agent_cartes set statut = 'ecartee', prise_le = null, prise_par = null where id = p_carte;
+  perform set_config('gestion.agent_carte', '', true);
+  return jsonb_build_object('ok', true, 'statut', 'ecartee');
 end
 $$;
 revoke all on function prendre_agent_carte(uuid) from public, anon;
+revoke all on function prendre_agent_carte_equipe(uuid, boolean) from public, anon;
+revoke all on function controler_agent_carte(uuid) from public, anon;
+revoke all on function rendre_agent_carte(uuid) from public, anon;
+revoke all on function ecarter_agent_carte(uuid) from public, anon;
 grant execute on function prendre_agent_carte(uuid) to authenticated;
+grant execute on function prendre_agent_carte_equipe(uuid, boolean) to authenticated;
+grant execute on function controler_agent_carte(uuid) to authenticated;
+grant execute on function rendre_agent_carte(uuid) to authenticated;
+grant execute on function ecarter_agent_carte(uuid) to authenticated;
+
+-- Discussion pleine (agent/discussion-pleine.js) remplacée dans une seule transaction : l'ancienne est archivée et rendue, la nouvelle (même
+-- entreprise, titre, dossier, conversation WhatsApp et propriétaire) est créée et prise avec un nouveau jeton. Seulement avec le jeton de la
+-- réponse en cours. Rend { ok, id, jeton, titre, dossier_id, cree_le, user_id } ou { ok: false }.
+create or replace function remplacer_agent_conversation(p_ancienne uuid, p_jeton uuid) returns jsonb language plpgsql security invoker set search_path = public as $$
+declare
+  a record;
+  n record;
+  j uuid := gen_random_uuid();
+begin
+  select id, entite_id, titre, dossier_id, whatsapp_conversation_id, user_id, reponse_jeton into a from agent_conversations where id = p_ancienne for update;
+  if not found or a.reponse_jeton is distinct from p_jeton then
+    return jsonb_build_object('ok', false);
+  end if;
+  perform set_config('gestion.agent_verrou', '1', true);
+  update agent_conversations set statut = 'archivee', reponse_par = null, reponse_le = null, reponse_jeton = null where id = p_ancienne;
+  insert into agent_conversations (entite_id, titre, dossier_id, whatsapp_conversation_id, user_id)
+    values (a.entite_id, a.titre, a.dossier_id, a.whatsapp_conversation_id, a.user_id)
+    returning id, titre, dossier_id, cree_le, user_id into n;
+  update agent_conversations set reponse_par = auth.uid(), reponse_le = now(), reponse_jeton = j where id = n.id;
+  perform set_config('gestion.agent_verrou', '', true);
+  return jsonb_build_object('ok', true, 'id', n.id, 'jeton', j, 'titre', n.titre, 'dossier_id', n.dossier_id, 'cree_le', n.cree_le, 'user_id', n.user_id);
+end
+$$;
+revoke all on function remplacer_agent_conversation(uuid, uuid) from public, anon;
+grant execute on function remplacer_agent_conversation(uuid, uuid) to authenticated;
 
 -- ---- 7. Temps réel ------------------------------------------------------------------------------------------------------------------------
 do $$

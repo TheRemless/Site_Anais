@@ -359,7 +359,8 @@ const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
 // Le choix des sièges est exigé pour un nouveau service, quand le nombre d'enfants et de bébés change, ou quand un choix déjà posé est effacé.
 const petitsDe = (r) => (Number(((r && r.personnes) || {}).enfants) || 0) + (Number(((r && r.personnes) || {}).bebes) || 0);
 export const siegesExiges = (base, petits) => !(base && base.id) || petits !== petitsDe(base) || siegesChoisis(siegesLus((base && base.details) || {}));
-export function formulaireReservation(r, apres, { base = r } = {}) {
+// `avantEnregistrer()` (carte de l'Assistant, migration 133) : rend le motif d'arrêt juste avant d'écrire (carte reprise ailleurs), ou null.
+export function formulaireReservation(r, apres, { base = r, avantEnregistrer = null } = {}) {
   const nets = voitNets() && peut("dossiers.ecrire");
   const n = r.id && nets ? netReservation(r) : null;
   const p = r.personnes || {};
@@ -676,6 +677,10 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
         if (valeurs.libelle === (r.libelle || "").trim()) {
           const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });
           if (suivi) valeurs.libelle = suivi;
+        }
+        if (avantEnregistrer) {
+          const arret = await avantEnregistrer().catch(() => tr("La carte n'a pas pu être vérifiée : rien n'a été enregistré, réessayez."));
+          if (arret) return void toast(arret, true);
         }
         // Net et commission vidés avant l'écriture du service (D4) : remis tels quels si l'écriture échoue ou est abandonnée.
         let nouvelEssaiNets = null;

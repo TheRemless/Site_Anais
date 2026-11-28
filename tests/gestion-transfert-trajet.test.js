@@ -198,7 +198,7 @@ async function ongletAvec(liste, { prisesAilleurs = new Set(), echecsDecider = 0
   const conv = { id: `conv-double-${Date.now()}`, entite_id: E.etat.entiteId, user_id: E.etat.moi.user_id, titre: "Double", apercu: "", dossier_id: null, statut: "ouverte", cree_le: new Date().toISOString(), maj_le: new Date().toISOString() };
   const cartes = liste.map((x, i) => ({ ...x, id: `${conv.id}-carte-${i}`, conversation_id: conv.id, statut: "proposee", cree_le: new Date(Date.now() + i).toISOString() }));
   const st = E.etat.store;
-  const noms = ["agentConversations", "agentFil", "agentAttente", "agentCarte", "agentMajConversation", "agentNoterApprentissages", "agentPrendreCarte", "agentRendreCarte"];
+  const noms = ["agentConversations", "agentFil", "agentAttente", "agentCarte", "agentMajConversation", "agentNoterApprentissages", "agentPrendreCarte", "agentRendreCarte", "agentPrendreCarteEquipe", "agentControlerCarte", "agentEcarterCarte"];
   const origines = Object.fromEntries(noms.map((k) => [k, st[k]]));
   const nos = (id) => id === conv.id || cartes.some((x) => x.id === id);
   const prises = new Set(prisesAilleurs);
@@ -224,6 +224,10 @@ async function ongletAvec(liste, { prisesAilleurs = new Set(), echecsDecider = 0
     return true;
   };
   st.agentRendreCarte = async (id) => (appels.rendre++, prises.delete(id));
+  // Migration 133 : la prise nommée (par moi dans un autre onglet), le contrôle juste avant d'écrire, « Écarter » par la base.
+  st.agentPrendreCarteEquipe = async (id) => ((await st.agentPrendreCarte(id)) ? { ok: true } : { ok: false, raison: (cartes.find((y) => y.id === id) || {}).statut === "proposee" ? "prise" : "decidee", par: E.etat.moi.user_id });
+  st.agentControlerCarte = async (id) => ({ ok: prises.has(id) && (cartes.find((y) => y.id === id) || {}).statut === "proposee" });
+  st.agentEcarterCarte = async (id) => ({ ok: true, carte: await st.agentCarte(id, "ecartee") });
   st.agentMajConversation = async (id, patch) => (nos(id) ? Object.assign(conv, patch) : origines.agentMajConversation.call(st, id, patch));
   st.agentNoterApprentissages = async (...a) => (nos(a[1]) ? [] : origines.agentNoterApprentissages.call(st, ...a));
   const { vueAgent } = await import("../src/gestion/js/views/agent.mjs");
@@ -284,7 +288,7 @@ test("carte « dossier » déjà prise ailleurs (autre onglet, autre appareil) :
     await dom.attendre(120);
     assert.equal(dossiersDe(nom).length, 0, "aucun dossier");
     assert.equal(o.cartes[0].statut, "proposee");
-    assert.match(o.carteVue(0).textContent, /déjà en cours de validation, ou déjà validée/);
+    assert.match(o.carteVue(0).textContent, /déjà en cours de validation dans un autre onglet/);
     assert.equal(o.principal(0).disabled, false, "le bouton revient");
   } finally {
     o.fin();
@@ -338,7 +342,7 @@ test("« Vérifier avant » : la carte se prend à l'ouverture ; prise ailleurs,
     verifier().click();
     await dom.attendre(60);
     assert.equal(fenetres(), avant, "prise ailleurs : la fenêtre ne s'ouvre pas");
-    assert.match(o.carteVue(0).textContent, /déjà en cours de validation \(autre onglet ou autre appareil\)/);
+    assert.match(o.carteVue(0).textContent, /déjà en cours de validation dans un autre onglet/);
     // Rendue ailleurs : la fenêtre s'ouvre et prend la carte ; un tap sur « Créer le dossier » pendant ce temps ne crée rien.
     await E.etat.store.agentRendreCarte(o.cartes[0].id);
     verifier().click();

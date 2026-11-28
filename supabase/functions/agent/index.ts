@@ -50,7 +50,7 @@ import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion
 import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
-import { lirePrise, proprietaireSuite } from "./equipe.js";
+import { fonctionAbsente, ligneAuteur, lirePrise, prenomProfil, proprietaireSuite } from "./equipe.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
 
@@ -105,7 +105,20 @@ const COLONNES_WA = [
   "id, telephone, nom, entite_id, client_id, dossier_id, reponses",
 ];
 
+// Toute sortie rend la conversation prise pour la réponse (relecture de la PR 366, point 4) : une exception avant le début du flux passe par
+// ce filet, qui rend le verrou et répond 500 ; une fois le flux lancé, l'échange le rend lui-même (finally).
 Deno.serve(async (req) => {
+  const sortie = { liberer: async () => {} };
+  try {
+    return await traiter(req, sortie);
+  } catch (err) {
+    await sortie.liberer().catch(() => {});
+    console.error("agent : erreur", err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "inconnue");
+    return new Response(JSON.stringify({ erreur: "base" }), { status: 500, headers: entetes(req) });
+  }
+});
+
+async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): Promise<Response> {
   const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: entetes(req) });
   if (req.method === "OPTIONS") return new Response("ok", { headers: entetes(req) });
   if (req.method !== "POST") return json({ erreur: "methode" }, 405);
@@ -327,10 +340,19 @@ Deno.serve(async (req) => {
     const r = await sb.rpc("rendre_agent_conversation", { p_conversation: v.id, p_jeton: v.jeton });
     if (r.error) console.error("agent : rendre la conversation", r.error.message);
   };
+  sortie.liberer = liberer;
   const repondre = async (corps: Record<string, unknown>, status: number) => {
     await liberer();
     return json(corps, status);
   };
+  // Qui écrit (point 12) : une autre personne que la propriétaire. Les deux prénoms, lus avec la clé de service ; illisibles, rien n'est dit.
+  let quiEcrit = "";
+  if (conv!.user_id && conv!.user_id !== userId) {
+    const pr = await admin.from("profils").select("user_id, nom, email").in("user_id", [userId, conv!.user_id]);
+    if (pr.error) console.error("agent : profils", pr.error.message);
+    const par = new Map<string, Record<string, unknown>>((pr.error ? [] : pr.data || []).map((x: Record<string, unknown>) => [String(x.user_id), x] as [string, Record<string, unknown>]));
+    quiEcrit = ligneAuteur({ auteur: prenomProfil(par.get(userId)), proprietaire: prenomProfil(par.get(conv!.user_id)) });
+  }
   // Une discussion liée qui se remplit (relecture de la PR 318, discussion-pleine.js) : 20 pièces ou 30 Mo, ou un historique qui perdrait son
   // début. Elle est archivée et une nouvelle, liée à la même conversation WhatsApp, la remplace, ouverte par un court résumé (client,
   // dossiers, dernier prix de vente accepté). Dès que la personne lit encore cette conversation WhatsApp (waLue), même sans le droit d'y
@@ -353,16 +375,27 @@ Deno.serve(async (req) => {
         sb.from("agent_cartes").select("genre, statut, donnees, cree_le, decide_le").eq("conversation_id", conv.id).eq("statut", "validee").order("cree_le", { ascending: false }).limit(20),
       ]);
       const ancien = conv;
-      const arch = await sb.from("agent_conversations").update({ statut: "archivee" }).eq("id", ancien.id);
-      if (arch.error) return repondre({ erreur: "base" }, 500);
-      // La suite garde la propriétaire de l'ancienne quand l'administration écrit pour elle (migration 133).
-      const neuve = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: ancien.titre, dossier_id: ancien.dossier_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id, ...proprietaireSuite(ancien, userId) }).select("id, titre, dossier_id, cree_le, user_id").single();
-      if (neuve.error) {
-        await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", ancien.id);
-        return repondre({ erreur: "base" }, 500);
+      // Migration 133 : archivée et remplacée dans une seule transaction, le verrou passe sur la nouvelle (même propriétaire).
+      const rp: any = verrou ? await sb.rpc("remplacer_agent_conversation", { p_ancienne: ancien.id, p_jeton: verrou.jeton }) : null;
+      if (rp && !rp.error) {
+        if (!rp.data || rp.data.ok !== true) return repondre({ erreur: "base" }, 500);
+        verrou = { id: rp.data.id, jeton: rp.data.jeton };
+        remplace = ancien.id;
+        conv = { id: rp.data.id, titre: rp.data.titre, dossier_id: rp.data.dossier_id, cree_le: rp.data.cree_le, user_id: rp.data.user_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id };
+      } else {
+        if (rp && rp.error && !fonctionAbsente(rp.error)) return repondre({ erreur: "base" }, 500);
+        // Sans la migration 133 : comme avant, en deux écritures.
+        const arch = await sb.from("agent_conversations").update({ statut: "archivee" }).eq("id", ancien.id);
+        if (arch.error) return repondre({ erreur: "base" }, 500);
+        // La suite garde la propriétaire de l'ancienne quand l'administration écrit pour elle (migration 133).
+        const neuve = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: ancien.titre, dossier_id: ancien.dossier_id, whatsapp_conversation_id: ancien.whatsapp_conversation_id, ...proprietaireSuite(ancien, userId) }).select("id, titre, dossier_id, cree_le, user_id").single();
+        if (neuve.error) {
+          await sb.from("agent_conversations").update({ statut: "ouverte" }).eq("id", ancien.id);
+          return repondre({ erreur: "base" }, 500);
+        }
+        remplace = ancien.id;
+        conv = { ...neuve.data, whatsapp_conversation_id: ancien.whatsapp_conversation_id };
       }
-      remplace = ancien.id;
-      conv = { ...neuve.data, whatsapp_conversation_id: ancien.whatsapp_conversation_id };
       const resume = resumeReport({ client: cl.error ? null : cl.data, dossiers: ds.error ? [] : ds.data || [], prix: ct.error ? null : dernierPrixAccepte(ct.data || []), raison: plein });
       message = message ? `${resume}\n\n${message}` : resume;
     }
@@ -959,7 +992,7 @@ Deno.serve(async (req) => {
   // anciens.data va du plus récent au plus ancien : remis dans l'ordre, les deux derniers sont les plus récents.
   const textesGardes = ([...(anciens.data || [])].reverse() as { role: string; contenu: unknown }[]).filter((l) => l.role === "user" && Array.isArray(l.contenu)).flatMap((l) => (l.contenu as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || ""));
   const itineraire = decisionItineraire({ texte: message, precedents: textesGardes, modeWa: waId ? waMode : "" });
-  const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie, itineraire: ligneItineraire(itineraire) });
+  const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie, itineraire: ligneItineraire(itineraire) }) + (quiEcrit ? `\n${quiEcrit}` : "");
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   // Les lectures de la boîte WhatsApp des messages précédents ne repartent pas (whatsapp-lecture.js, retirerLecturesWhatsApp) : l'agent
   // relit avec l'outil, sous les règles du moment (un contact passé en « jamais » n'est plus renvoyé).
@@ -1053,7 +1086,7 @@ Deno.serve(async (req) => {
     if (error) throw new Error(`message non enregistré : ${error.message}`);
   };
 
-  (async () => {
+  const echange = async () => {
     let statut = "ok";
     let dernierTexte = "";
     let motifErreur = "";
@@ -1094,8 +1127,18 @@ Deno.serve(async (req) => {
     // Seuil d'alerte passé avec cet échange (ou crédit épuisé) : la fonction « rappels » prévient, une fois par alerte, en tâche de fond.
     if (statut === "credit_epuise" || etatBudget({ cout: coutDuMois + (Number(ligne.cout_estime_usd) || 0), plafond, seuil }).alerte) alerterEnFond(statut === "credit_epuise" ? { credit_epuise: true } : {});
     await envoyer({ t: "fin", statut, cout_usd: ligne.cout_estime_usd, modele: ligne.modele });
-    await ecrivain.close().catch(() => {});
+  };
+  // Le verrou est rendu quoi qu'il arrive à la fin de l'échange (point 4), et le flux se ferme.
+  (async () => {
+    try {
+      await echange();
+    } catch (err) {
+      console.error("agent : fin d'échange", err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "inconnue");
+    } finally {
+      await liberer().catch(() => {});
+      await ecrivain.close().catch(() => {});
+    }
   })();
 
   return new Response(flux.readable, { headers: { ...entetes(req, "application/x-ndjson; charset=utf-8"), "Cache-Control": "no-store" } });
-});
+}
