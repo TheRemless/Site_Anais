@@ -11,6 +11,14 @@ export function etatsServices(reservations) {
 }
 
 // Nombre de personnes d'un service : adultes, enfants et bébés. Un dossier dont les services n'ont pas tous le même groupe donne une fourchette.
+// Dates du dossier pour le résumé (audit mobile n° 2, 26.11.2026) : celles du dossier quand il en a, sinon la plage des services datés
+// non annulés. Un dossier Secret n'a souvent pas de date propre : il affichait « Dates à fixer » alors que ses services étaient datés.
+export function datesResume(dossier, reservations) {
+  if (dossier && dossier.date_depart) return { debut: dossier.date_depart, fin: dossier.date_retour || dossier.date_depart };
+  const jours = actives(reservations).map((r) => r.date_service).filter(Boolean).sort();
+  return jours.length ? { debut: jours[0], fin: jours[jours.length - 1] } : null;
+}
+
 export function personnesDossier(reservations) {
   const effectifs = actives(reservations)
     .map((r) => ["adultes", "enfants", "bebes"].reduce((s, k) => s + (Number(r.personnes && r.personnes[k]) || 0), 0))

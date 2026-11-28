@@ -7,7 +7,8 @@ import { voitEquipe, reponseEnCours } from "./agent-equipe-calc.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
-import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { calculerNets, suiviDeclencheur, lignesOptionChangees } from "./nets-base-local.mjs";
+import { imputationDossier } from "./operations-calc.mjs";
 import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
 import { corrigerLocal } from "./encaisser-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
@@ -22,6 +23,7 @@ import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
+import { lireReglageNuit } from "./whatsapp-nuit-calc.mjs";
 import { refusLienDemande, refusDelier, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -288,7 +290,11 @@ export function creer() {
     const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
     if (!finances) return base;
     const doc = docs.filter((x) => x.type === "facture").pop() || devis;
-    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)), sur_place: doc ? montantSurPlace(doc.contenu) : 0 };
+    const total = totalDossier(docs);
+    const recu = sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id));
+    // Comme recalculer_dossier (migration 131) : la part du reçu imputée à chaque service payé sur place, et ce qui dépasse.
+    const imp = imputationDossier({ total, recu, reservations: data.reservations.filter((x) => x.dossier_id === d.id), annule: !!d.annule });
+    return { ...base, total, devise: (doc && doc.contenu.devise) || null, recu, sur_place: doc ? montantSurPlace(doc.contenu) : 0, parts: imp.parts, a_rembourser: imp.a_rembourser, trop_percu: imp.trop_percu };
   };
   const dossiersVisibles = () => {
     const ctx = contexte();
@@ -844,7 +850,7 @@ export function creer() {
     },
     async whatsappConversation(id) {
       const c = conversationLue(id);
-      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, ...(c.type_contact ? { type_contact: c.type_contact } : {}) } : null;
+      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, telephone: c.telephone || "", nom: c.nom || "", partenaire_id: c.partenaire_id || null, ...(c.type_contact ? { type_contact: c.type_contact } : {}), ...(c.reponses ? { reponses: c.reponses } : {}) } : null;
     },
     // Demandes du site et WhatsApp reliés (migration 72), avec les contrôles de demande_site_relier et whatsapp_relier_apres_demande.
     async demandeSite(id) {
@@ -1001,6 +1007,19 @@ export function creer() {
     async whatsappRelancerEvenements() {
       return 0;
     },
+    // Message de nuit (migration 132) : mêmes contrôles que whatsapp_regler_nuit.
+    async whatsappMessageNuit(organisationId, valeurs) {
+      const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
+      // Le droit d'écrire dans la boîte (whatsapp_ecrit), comme la base.
+      if (!r || organisationId !== monOrg() || !ecritWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      const lu = lireReglageNuit(valeurs);
+      if (lu.erreur) throw new Error(tr(lu.erreur));
+      if ((r.nuit_modifie_le || null) !== ((valeurs && valeurs.luLe) || null)) throw new Error(tr("Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version."));
+      const maintenant = new Date().toISOString();
+      Object.assign(r, { nuit_active: lu.valeurs.active, nuit_texte: lu.valeurs.texte, nuit_debut: lu.valeurs.debut, nuit_fin: lu.valeurs.fin, nuit_modifie_le: maintenant, updated_at: maintenant });
+      sauve();
+      return { organisation_id: r.organisation_id, nuit_active: r.nuit_active, nuit_texte: r.nuit_texte, nuit_debut: r.nuit_debut, nuit_fin: r.nuit_fin, nuit_modifie_le: r.nuit_modifie_le };
+    },
     async whatsappReception(organisationId, actif) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
       if (!r || organisationId !== monOrg() || !litWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
@@ -1101,8 +1120,9 @@ export function creer() {
     },
     // Comme la migration 120 : une carte se prend une fois (proposée, pas prise depuis moins de 2 minutes), se rend après un arrêt.
     // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou.
+    // L'ancien nom ne force jamais une prise d'une autre personne (relecture n° 2 de la PR 366) : un écran resté en cache ne passe pas outre.
     async agentPrendreCarte(id) {
-      return (await this.agentPrendreCarteEquipe(id, { forcer: true })).ok;
+      return (await this.agentPrendreCarteEquipe(id)).ok;
     },
     // Comme la migration 133 (prendre_agent_carte_equipe, controler_agent_carte, ecarter_agent_carte) : la prise est à une personne.
     // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou ({ ok: true }) ;
@@ -1659,9 +1679,24 @@ export function creer() {
         details[k] = court(ligne[k]) && court(v) ? { avant: ligne[k] ?? null, apres: v } : "modifié";
       }
       const copie = table === "reservations" ? structuredClone(ligne) : null;
+      const contenuAvant = table === "documents" && "contenu" in patch ? structuredClone(ligne.contenu) : null;
       Object.assign(ligne, patch);
       if (Object.keys(details).length) journaliser(table, "update", ligne, details);
       if (copie) remplirNets(ligne, copie);
+      // Comme suivre_nets_options_document (migration 130) : une ligne d'option changée sur la facture ou le devis fait suivre le net.
+      if (contenuAvant && ["facture", "devis"].includes(ligne.type)) {
+        const ids = lignesOptionChangees(contenuAvant, ligne.contenu);
+        if (ids.size)
+          for (const r of data.reservations.filter((x) => x.dossier_id === ligne.dossier_id && x.statut !== "annule" && [x.ligne_id, ...((x.details && x.details.lignes_ids) || [])].some((id) => ids.has(id)))) {
+            const n = data.reservations_nets.find((y) => y.reservation_id === r.id) || null;
+            const excursions = (entiteId) => ((data.reglages || {})[entiteId] || {}).fonctionnement === "excursions";
+            const valeurs = calculerNets(r, n, { ...data, excursions }, { suivreNet: true });
+            if (!valeurs) continue;
+            if (n) Object.assign(n, valeurs);
+            // Pas encore de ligne de nets : créée, comme calculer_nets_reservation (migration 32).
+            else data.reservations_nets.push({ id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, commission_recue_moyen: null, commission_partielle_le: null, commission_ecart_motif: null, commission_ecart_note: null, ...valeurs });
+          }
+      }
       sauve();
       return structuredClone(ligne);
     },

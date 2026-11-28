@@ -7,6 +7,8 @@ import { voitEquipe, filtreLu, conversationsFiltrees, aMoi, prenomEquipe, propri
 import { filDepuis } from "../src/gestion/js/agent-calc.mjs";
 import { lirePrise, proprietaireSuite, fonctionAbsente, ligneAuteur, prenomProfil } from "../supabase/functions/agent/equipe.js";
 import { textesDeNani, auteursDesTextes } from "../src/gestion/js/devis-calc.mjs";
+import { mentionReprise, controlerReponse } from "../supabase/functions/agent/outils.js";
+import { bloquantsReponse, resteBloque } from "../src/gestion/js/agent-calc.mjs";
 import { EN } from "../src/gestion/js/i18n-en.mjs";
 
 const NANI = "11111111-1111-4111-8111-111111111111";
@@ -188,7 +190,7 @@ test("point 2 : prise nommée, reprise seulement en le sachant, tenue renouvelé
   assert.match(vue, /agentPrendreCarteEquipe\(c\.id, \{ forcer: true \}\)/);
   assert.match(vue, /setInterval\(async \(\) => \{\n\s+const r = await etat\.store\.agentControlerCarte\(c\.id\)/, "la prise se renouvelle pendant le travail");
   assert.match(vue, /const arret = await avantCreer\(\);\n\s+if \(arret\) r = \{ ok: false, motif: arret, perdue: true \};/, "un geste : contrôle avant toute écriture");
-  for (const f of ["ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, avantCreer })", "ouvrirConfirmation(c.donnees.course.texte || \"\", { auto: true, avantCreer })", "avantCreer: avantFenetre(c)", "avantEnregistrer: avantFenetre(c)"]) assert.ok(vue.includes(f), `contrôle branché : ${f}`);
+  for (const f of ["ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, whatsappLie: await conversationWaLiee(), avantCreer })", "validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise, whatsappLie: await conversationWaLiee(), avantCreer })", "ouvrirConfirmation(c.donnees.course.texte || \"\", { auto: true, avantCreer })", "avantCreer: avantFenetre(c)", "avantEnregistrer: avantFenetre(c)"]) assert.ok(vue.includes(f), `contrôle branché : ${f}`);
   assert.match(readFileSync(new URL("../src/gestion/js/views/demande.mjs", import.meta.url), "utf8"), /options\.avantCreer \? await options\.avantCreer\(\)/);
   assert.match(readFileSync(new URL("../src/gestion/js/views/confirmation.mjs", import.meta.url), "utf8"), /const arret = options\.avantCreer \? await options\.avantCreer\(\)/);
   assert.match(readFileSync(new URL("../src/gestion/js/views/reservations.mjs", import.meta.url), "utf8"), /if \(avantEnregistrer\) \{\n\s+const arret = await avantEnregistrer\(\)/);
@@ -250,7 +252,7 @@ test("démonstration, points 1 et 2 : écarter une carte validée ou tenue aille
 
 test("point 4 : le verrou est rendu sur toute sortie (filet autour du traitement, finally de l'échange)", () => {
   const src = fonctionSrc();
-  assert.match(src, /Deno\.serve\(async \(req\) => \{\n\s+const sortie = \{ liberer: async \(\) => \{\} \};\n\s+try \{\n\s+return await traiter\(req, sortie\);\n\s+\} catch \(err\) \{\n\s+await sortie\.liberer\(\)/);
+  assert.match(src, /Deno\.serve\(async \(req\) => \{\n\s+const sortie = \{ liberer: async \(\) => \{\}, nettoyer: async \(\) => \{\} \};\n\s+try \{\n\s+return await traiter\(req, sortie\);\n\s+\} catch \(err\) \{\n(?:\s+\/\/[^\n]*\n)?\s+await sortie\.nettoyer\(\)\.catch\(\(\) => \{\}\);\n\s+await sortie\.liberer\(\)/);
   assert.match(src, /sortie\.liberer = liberer;/);
   assert.match(src, /\} finally \{\n\s+await liberer\(\)\.catch\(\(\) => \{\}\);\n\s+await ecrivain\.close\(\)/);
 });
@@ -308,4 +310,47 @@ test("point 12 : l'Assistant s'adresse à la personne qui écrit, la voix de l'e
   assert.equal(ligneAuteur({ auteur: "Nani", proprietaire: "Nani" }), "");
   assert.equal(ligneAuteur({ auteur: "", proprietaire: "Nani" }), "", "jamais un prénom deviné");
   assert.match(fonctionSrc(), /\+ \(quiEcrit \? `\\n\$\{quiEcrit\}` : ""\);/, "dans le contexte de l'échange, pas dans les consignes en cache");
+});
+
+test("relecture n° 2, A : le contrôle de la carte passe avant chaque écriture (combinée, service, modification, temps)", () => {
+  const vue = vueSrc();
+  const valider = readFileSync(new URL("../src/gestion/js/views/agent-valider.mjs", import.meta.url), "utf8");
+  assert.match(vue, /validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise, whatsappLie: await conversationWaLiee\(\), avantCreer \}\)/);
+  assert.match(valider, /creer: \(e, i, clientId\) => dans\(e\.entite_id, async \(\) => ouvrirDemande\(null, await preparationComplete\(sous\(e\)\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\}, clientId, whatsappLie, \.\.\.\(avantCreer \? \{ avantCreer \} : \{\}\) \}\)\)/, "chaque dossier de la carte combinée revérifie la prise");
+  assert.match(vue, /ajouterParCarte\(\{ \.\.\.c, donnees: donneesReservation\(c\) \}, tr\("Service ajouté au dossier\."\), \{ avantEnregistrer: avantCreer \}\)/);
+  assert.match(vue, /enregistrerReservation\(reservationModifiee\(ancienne, c\.donnees\), tr\("Service modifié\."\), ancienne, \{ avantEnregistrer: avantCreer \}\)/);
+  assert.match(vue, /c\.genre === "temps"\) r = await ajouterTemps\(c, \{ avantCreer \}\)/);
+  assert.match(vue, /async function ajouterTemps\(c, \{ avantCreer = null \} = \{\}\) \{\n\s+const d = c\.donnees;\n\s+try \{\n\s+\/\/ [^\n]+\n\s+const arret = avantCreer \? await avantCreer\(\) : null;/);
+  assert.match(valider, /const arret = avantEnregistrer \? await avantEnregistrer\(\) : null;\n\s+if \(arret\) return \{ ok: false, motif: arret \};\n\s+await modifier\(/, "l'option ajoutée sans facture revérifie aussi");
+});
+
+test("relecture n° 2, B : le changement d'auteur ne sort jamais vers le client", () => {
+  const noms = ["Jérémy", "Nani"];
+  for (const t of ["Bonjour, Jérémy reprend la conversation de Nani.", "Message écrit par Jérémy.", "Hello, I am taking over this conversation.", "Hi, this is sent on behalf of Nani.", "Bonjour, je vous écris à la place de Nani."]) assert.ok(mentionReprise(t, { noms }), t);
+  for (const t of ["Bonjour, à la place du ferry nous proposons un speedboat.", "Pickup at 10:00 at your hotel.", "Votre réservation est confirmée."]) assert.equal(mentionReprise(t, { noms }), "", t);
+  const c = controlerReponse("Bonjour, Jérémy reprend la conversation de Nani. Pickup at 10:00.", { signer: true, permisHeures: new Set(["10:00"]), prenoms: noms, reprise: noms });
+  const code = c.avertissements.find((a) => a.startsWith("mention_reprise:"));
+  assert.ok(code, "signée ou non, la mention est signalée");
+  const b = bloquantsReponse(c.avertissements);
+  assert.ok(resteBloque(c.message, b).length > 0, "la copie et l'envoi restent bloqués tant qu'elle est là");
+  assert.deepEqual(resteBloque("Bonjour, pickup at 10:00.", b), [], "retirée, la réponse se copie");
+  const sans = controlerReponse("Hello Jérémy, see you", { signer: false, prenoms: ["Nani", "Jérémy"] });
+  assert.ok(sans.avertissements.includes("prenom_equipe"), "le prénom de l'auteur réel est un prénom de l'équipe");
+  const f = fonctionSrc();
+  assert.match(f, /prenoms: \[\.\.\.new Set\(\[ra\.responsable, "Anaïs", "Nani", \.\.\.prenomsReprise\]\.filter\(Boolean\)\)\]/);
+  assert.match(f, /\(memo as Record<string, unknown>\)\.reprise = prenomsReprise;/);
+  assert.match(readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8"), /reprise: memo\.reprise \|\| \[\]/);
+});
+
+test("relecture n° 2, mineurs : ancien nom sans reprise forcée, amélioration validée avant GitHub, cartes rendues en quittant, conversation orpheline", () => {
+  const sql = readFileSync(new URL("../docs/gestion/migration-133-assistant-equipe.sql", import.meta.url), "utf8");
+  assert.match(sql, /return coalesce\(\(prendre_agent_carte_equipe\(p_carte, false\) ->> 'ok'\)::boolean, false\);/);
+  const am = readFileSync(new URL("../supabase/functions/ameliorations/index.ts", import.meta.url), "utf8");
+  assert.ok(am.indexOf('from("agent_cartes").update({ statut: "validee" })') < am.indexOf("api.github.com"), "la carte passe validée avant de créer l'issue");
+  assert.match(am, /if \(decidee\.error\) \{\n\s+await admin\.from\("ameliorations"\)\.delete\(\)/);
+  assert.match(vueSrc(), /if \(!faite\(id\)\) etat\.store\.agentRendreCarte\(id\)\.catch\(\(\) => \{\}\);/);
+  const f = fonctionSrc();
+  assert.match(f, /await sortie\.nettoyer\(\)\.catch\(\(\) => \{\}\);\n\s+await sortie\.liberer\(\)/);
+  assert.match(f, /if \(!n\.error && !n\.count\) await sb\.from\("agent_conversations"\)\.delete\(\)\.eq\("id", neuve\);/);
+  assert.equal(EN["Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe."], "This card was already approved by {qui}: it can no longer be dismissed, the file exists.");
 });

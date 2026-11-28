@@ -190,7 +190,8 @@ test("relecture 5 et 6 : la duplication garde les sièges ; une modification se 
   const agent = lire("src/gestion/js/views/agent.mjs");
   // Migration 133 : contrôle de la prise avant d'écrire, carte rendue à la fermeture.
   assert.match(agent, /\}, \{ base: r, avantEnregistrer: avantFenetre\(c\) \}\), \{ ferme: \(\) => \(rendreSiRien\(c\)\(\), revenir\(\)\) \}\);/, "Vérifier avant d'une modification");
-  assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /\{ base: ancienne \|\| valeurs \}\);/, "modification d'un geste");
+  // Migration 133 : avec le contrôle de la carte juste avant d'écrire (avantEnregistrer).
+  assert.match(lire("src/gestion/js/views/agent-valider.mjs"), /\{ base: ancienne \|\| valeurs, avantEnregistrer: /, "modification d'un geste");
 });
 
 test("fiche de réservation : le champ « Sièges enfant ou bébé » existe et la carte de l'Assistant dit les sièges", () => {

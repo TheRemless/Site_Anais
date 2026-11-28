@@ -32,7 +32,8 @@ export function feuilleJour(reservations, date, contexte, ecartees = new Set()) 
   const groupes = feuilleDuJour(reservations || [], date, contexte, ecartees).map((g) => {
     const lignes = g.lignes.map((l) => {
       const p = duDossier(parId.get(l.id));
-      return { ...l, ...(p ? { personnes: { ...l.personnes, ...p }, personnes_du_dossier: true } : {}), sorte: "pickup", precision: precisionPickup(parId.get(l.id)) };
+      const options = contexte.options && parId.get(l.id) ? contexte.options(parId.get(l.id)) : [];
+      return { ...l, ...(p ? { personnes: { ...l.personnes, ...p }, personnes_du_dossier: true } : {}), sorte: "pickup", precision: precisionPickup(parId.get(l.id)), ...(options.length ? { options } : {}) };
     });
     const somme = (k) => lignes.reduce((t, l) => t + (Number(l.personnes && l.personnes[k]) || 0), 0);
     return { ...g, lignes, adultes: somme("adultes"), enfants: somme("enfants") };
@@ -104,6 +105,8 @@ export function texteFeuillePartage(groupe, date) {
       l.sorte === "en_cours" ? "" : l.heure || "time TBC",
       l.sorte === "retour" ? "RETURN" : "",
       libelleClient(l.libelle),
+      // Les options du service, en anglais avec le nombre, sans prix : la feuille part chez le prestataire.
+      ...(l.options || []).map((o) => `+ ${o.libelle_en}${o.qte > 1 ? ` ×${o.qte}` : ""}`),
       l.client,
       l.telephone,
       l.sorte === "en_cours" ? "" : [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", ") || (l.sorte === "retour" ? "place TBC" : "pickup TBC"),

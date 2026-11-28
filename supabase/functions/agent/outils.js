@@ -230,7 +230,16 @@ const SERVICE = obj({
   sieges_bebe: I("Sièges BÉBÉ demandés pour ce service (« baby seat », siège coque, « infant seat »), 0 si rien n'est dit."),
   sans_siege: B("true seulement si le client (ou la personne) a dit qu'il ne faut AUCUN siège enfant ni bébé, sinon false. Jamais true par défaut."),
   bagages: I("Nombre de bagages écrit dans la conversation (« 2 valises », « 3 bags »), 0 si rien n'est dit. Imprimé sur le voucher, jamais dans une remarque."),
-  prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes."),
+  prix_saisi: S("Seulement un montant que la personne a tapé dans la conversation pour ce service (« 3500 »), sinon \"\". Jamais un prix que tu estimes. Sans les options : leur prix va dans « options »."),
+  // Les options du service (26.11.2026 : une extension devenait un second service).
+  options: {
+    type: "array",
+    description: "Les options demandées pour CE service (extension d'une île, lunch box, transfert d'hôtel…) : seulement celles que chercher_catalogue rend dans « options » de la ligne de ce service. Une option n'est jamais un service à part. [] s'il n'y en a pas.",
+    items: obj({
+      ref: S("La référence de l'option (P-…) rendue dans « options » de la ligne du service."),
+      prix_saisi: S("Seulement un montant tapé dans la conversation pour cette option, sinon \"\". Jamais un prix que tu estimes."),
+    }),
+  },
   vol: S("Numéro du vol d'un transfert qui part d'un aéroport ou y va (« FD3217 »), seulement s'il est écrit dans la conversation, le WhatsApp lu ou une pièce jointe, sinon \"\". Jamais l'heure du vol, jamais un numéro deviné."),
   // Deux remarques (Jérémy, 22.11.2026) : le voucher sert au client ET au chauffeur ; la note interne ne sort jamais.
   remarque_voucher: S("\"\" par défaut. EN ANGLAIS, une seule information pratique pour le client ou le chauffeur qu'aucun champ du voucher ne porte (« Meet at the pier exit, the driver holds a name sign. », « One surfboard. »). Jamais ce que le voucher imprime déjà : véhicule, paiement (en espèces au chauffeur), lieux, heure, personnes, sièges, bagages, vol, prix ou ce qu'il comprend (ferry). Jamais un lien, un net, une commission, une marge ni un nom de partenaire."),
@@ -341,8 +350,8 @@ export const OUTILS = [
     input_schema: obj({
       titre: S("Titre court de la carte."),
       reservation: S("Référence R-… rendue par lire_dossier."),
-      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "sieges", "sieges_bebe", "sans_siege", "bagages", "vol", "drop_off", "remarque_voucher", "note_interne", "annulation"] },
-      valeur: S("La nouvelle valeur (AAAA-MM-JJ, HH:MM, texte ou nombre)."),
+      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "sieges", "sieges_bebe", "sans_siege", "bagages", "vol", "drop_off", "remarque_voucher", "note_interne", "annulation", "option"] },
+      valeur: S("La nouvelle valeur (AAAA-MM-JJ, HH:MM, texte ou nombre). Champ « option » : la référence de l'option à ajouter au service (P-… rendue dans « options » de sa ligne par chercher_catalogue), suivie du prix tapé dans la conversation s'il y en a un (« P-1a2b3c4d 700 »)."),
       raison: S("Pourquoi, en une phrase, pour la personne."),
     }),
   },
@@ -604,6 +613,9 @@ export const entreeValide = (nom, e) => normaliserEntree(nom, e) !== null;
 // ---- Catalogue -------------------------------------------------------------------------------------------------------------------
 
 const prestationProposable = (p) => !["option", "frais"].includes(p.famille) && !["ch", "sup"].includes(p.unite);
+// Une option d'un service (migration 130) ne se propose jamais seule : elle se rend dans « options » de la ligne de son service.
+export const estOptionCatalogue = (p) => !!p && Array.isArray(p.option_de) && p.option_de.length > 0;
+const optionsDuService = (p, prestations, masques) => (prestations || []).filter((o) => estOptionCatalogue(o) && o.option_de.includes(p.id) && o.entite_id === p.entite_id && proposable(o, masques));
 const correspond = (txt, mots) => mots.every((m) => txt.includes(m));
 const motsDe = (q) =>
   sansAccents(q)
@@ -660,8 +672,11 @@ export async function chercherCatalogue(e, ctx) {
   const netT = new Map((netsT || []).map((n) => [n.trajet_id, n]));
   const lignes = [];
   if (e.famille !== "trajet") {
-    const ps = (prestations || []).filter((p) => proposable(p, masques) && prestationProposable(p) && (e.famille === "tout" || p.famille === e.famille));
-    const trouves = ps.filter((p) => correspond(sansAccents([p.libelle, p.libelle_en, p.groupe, p.famille].join(" ")), mots));
+    const ps = (prestations || []).filter((p) => proposable(p, masques) && prestationProposable(p) && !estOptionCatalogue(p) && (e.famille === "tout" || p.famille === e.famille));
+    // Le texte cherché : la ligne, ses options (le nom d'une extension trouve son service) et le nom de son partenaire (un mot qui n'est que dans ce nom
+    // ne trouvait rien). Le nom du partenaire ne sort jamais : il sert seulement à trouver.
+    const nomDe = new Map((partenaires || []).map((x) => [x.id, x.nom || ""]));
+    const trouves = ps.filter((p) => correspond(sansAccents([p.libelle, p.libelle_en, p.groupe, p.famille, nomDe.get(p.partenaire_id) || "", ...optionsDuService(p, prestations, masques).flatMap((o) => [o.libelle, o.libelle_en])].join(" ")), mots));
     // Les zones Private Taxi de Taxi (zonesLanta), si la recherche stricte ne les a pas déjà.
     for (const p of zonesLanta(ps, mots)) if (!trouves.includes(p)) trouves.push(p);
     // Options équivalentes : même groupe (la même excursion chez deux prestataires), sinon même libellé.
@@ -695,6 +710,8 @@ export async function chercherCatalogue(e, ctx) {
           unite: texte(p.unite, 20),
           ...(reco.has(p.id) ? { recommande: true } : {}),
           ...(ligneDeZoneLanta(p) ? { depuis_koh_lanta: true } : {}),
+          // Les options de ce service : à proposer dans « options » du service, jamais comme un service à part.
+          ...(optionsDuService(p, prestations, masques).length ? { options: optionsDuService(p, prestations, masques).map((o) => ({ ref: refDe("P", o.id), libelle: sansNoms(texte(o.libelle_en || o.libelle, 160), noms), prix_vente: nombre(o.prix_vente), unite: texte(o.unite, 20) })) } : {}),
           ...champsInternes(ctx, fiche, { net, net_enfant: n ? nombre(n.net_enfant) : null, marge, commission, gain: fiche ? gainDe(fiche.sur_place, marge, commission) : null }, p.entite_id),
         });
       }
@@ -713,7 +730,7 @@ export async function chercherCatalogue(e, ctx) {
   }
   // Recommandés d'abord, puis par libellé : le même catalogue donne toujours le même résultat.
   lignes.sort((a, b) => (b.recommande ? 1 : 0) - (a.recommande ? 1 : 0) || String(a.libelle || a.trajet).localeCompare(String(b.libelle || b.trajet)));
-  const prixVus = lignes.flatMap((l) => [l.prix_vente, l.prix_adulte, l.prix_enfant]).filter((x) => x !== null && x !== undefined);
+  const prixVus = lignes.flatMap((l) => [l.prix_vente, l.prix_adulte, l.prix_enfant, ...(l.options || []).map((o) => o.prix_vente)]).filter((x) => x !== null && x !== undefined);
   const conseil = !lignes.length ? "Aucun tarif ne correspond : essaie d'autres mots, ou dis que ce n'est pas au catalogue." : lignes.some((l) => l.depuis_koh_lanta) ? CONSEIL_ZONE_LANTA : "";
   return { resultat: { nombre: lignes.length, lignes: lignes.slice(0, 30), ...(lignes.length > 30 ? { tronque: true } : {}), ...(conseil ? { conseil } : {}) }, prix: prixVus };
 }
@@ -1335,7 +1352,7 @@ export const vetoDeNani = (texte) => {
 export const accordExplicite = (texte) => ACCORD.test(platAccord(texte));
 // Compatibilité de lecture : un message seul qui vaut accord.
 export const accordDeNani = (texte) => !!String(texte || "").trim() && !vetoDeNani(texte) && accordExplicite(texte);
-const texteDeNani = (x) => x && x.sens === "sortant" && ["app", "gestion"].includes(x.origine) && !x.supprime_le && typeof x.texte === "string" && x.texte.trim() && !(Array.isArray(x.medias) && x.medias.length) && !["image", "document", "video", "audio", "sticker"].includes(x.type);
+const texteDeNani = (x) => x && x.sens === "sortant" && !x.automatique && ["app", "gestion"].includes(x.origine) && !x.supprime_le && typeof x.texte === "string" && x.texte.trim() && !(Array.isArray(x.medias) && x.medias.length) && !["image", "document", "video", "audio", "sticker"].includes(x.type);
 export function montantsClientValides(messages = []) {
   const out = new Set();
   const liste = (messages || []).filter(Boolean);
@@ -1536,6 +1553,9 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
   const exiges = lieuxExigesService({ p, t, fonctionnement: fonctionnementDuService(ctx, entreprise) });
   if (exiges.pickup && !lieux.lieu_pickup) avert.push("pickup_a_verifier");
   if (exiges.dropoff && !lieux.vers) avert.push("dropoff_a_verifier");
+  // Une option prise comme service à part (26.11.2026) : la carte le dit, l'option se met dans le service qu'elle complète.
+  if (p && estOptionCatalogue(p)) avert.push("option_seule");
+  const options = p ? optionsDeCarte(s, p, prestations, { adultes, enfants, tapes, memo, avert }) : [];
   return {
     texte: texte(s.texte, 160),
     offre: p ? { genre: "prestation", id: p.id } : t ? { genre: "trajet", id: t.id } : null,
@@ -1556,6 +1576,8 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     prix,
     origine_prix: origine,
     ...(catalogueAffiche !== null ? { prix_catalogue: catalogueAffiche } : {}),
+    // Les options du service (26.11.2026) : { offre, libelle anglais, prix total, origine du prix }. Le prix du service ne les compte pas.
+    ...(options.length ? { options } : {}),
     // Le numéro de vol, seulement pour un transfert (une excursion ou un billet de bateau n'en imprime pas) et seulement s'il a une source.
     vol: p && p.famille !== "transfert" ? "" : t ? "" : volSource(s.vol, ctx, memo, avert),
     // La remarque du voucher (details.remarques, vue par le client et le chauffeur) et la note interne (notes, jamais imprimée).
@@ -1563,6 +1585,33 @@ async function serviceDepuis(s, ctx, tapes, entiteDossier = null, memo = {}) {
     ...entreprise,
     avertissements: avert,
   };
+}
+
+// Les options demandées pour un service du catalogue (26.11.2026). Seules les options de CE tarif sont gardées (une autre référence :
+// « option_inconnue »). Le prix : celui tapé dans la conversation (mêmes sources que le prix du service : tapé par la personne, jamais un net),
+// sinon celui du catalogue pour les personnes du service (par personne : adultes + enfants, sinon une fois).
+export function optionsDeCarte(s, p, prestations, { adultes = 0, enfants = 0, tapes = new Set(), memo = {}, avert = [] } = {}) {
+  const demandees = Array.isArray(s.options) ? s.options.slice(0, 10) : [];
+  const out = [];
+  for (const o of demandees) {
+    const ref = texte(o && o.ref, 12);
+    const x = /^P-/i.test(ref) ? trouverRef(ref, prestations) : null;
+    if (!x || !estOptionCatalogue(x) || !x.option_de.includes(p.id) || x.entite_id !== p.entite_id) {
+      if (!avert.includes("option_inconnue")) avert.push("option_inconnue");
+      continue;
+    }
+    if (out.some((y) => y.offre.id === x.id)) continue;
+    const qte = ["pp", "ad"].includes(x.unite) ? Math.max(1, adultes + enfants) : 1;
+    const catalogue = nombre(x.prix_vente) !== null ? Math.round(Number(x.prix_vente) * qte * 100) / 100 : null;
+    const saisi = nombre(String((o && o.prix_saisi) || "").replace(/[ ,']/g, ""));
+    const interdit = saisi !== null && ((memo.internes instanceof Set && memo.internes.has(saisi)) || netsDuControle(memo).bloquants.has(saisi));
+    let prix = catalogue;
+    let origine = catalogue !== null ? "catalogue" : "a_fixer";
+    if (saisi !== null && saisi >= 0 && tapes.has(saisi) && !interdit) (prix = saisi), (origine = "saisi");
+    else if (saisi !== null && saisi !== catalogue) avert.push(interdit ? "prix_egal_net" : "prix_non_tape");
+    out.push({ offre: { genre: "prestation", id: x.id }, libelle: texte(x.libelle_en || x.libelle, 160), prix, origine_prix: origine, qte, unite: texte(x.unite, 20) });
+  }
+  return out;
 }
 
 // Un transfert (sieges_requis) avec au moins un enfant ou un bébé, ni siège ni « aucun siège » (Jérémy, 22.11.2026). Les enfants du service,
@@ -1845,7 +1894,33 @@ export const empreinteMontant = (sel, montant) => sha256(`${sel}:${Number(montan
 // de TEXTE_CONTROLE_MAX caractères, le contrôle se ferme (controle_impossible).
 export const TEXTE_CONTROLE_MAX = 20000;
 const selAleatoire = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(8)), (o) => o.toString(16).padStart(2, "0")).join("");
-export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", entreprises = [], prenoms = [], internes = new Set(), ventes = new Set(), netsAutres = new Set(), elementsVente = [], composants = [], leveInternes = null, masquerNets = false, controleImpossible = false, sel = null }) {
+// Le changement d'auteur d'une conversation de l'Assistant (migration 133, relecture n° 2 de la PR 366) ne sort jamais vers le client : « Jérémy
+// reprend la conversation de Nani », « écrit par … », « takes over the conversation », « on behalf of Nani »… Rend l'extrait trouvé, ou "".
+// `noms` : les prénoms de l'auteur réel et de la propriétaire, pour les tournures qui les citent.
+const REPRISE_FIXES = [
+  /\b(?:reprend|reprends|reprenons|reprennent|repris|reprise|reprendre)\b[^.!?\n]{0,40}\b(?:conversation|discussion)\b/,
+  /\bpour le compte de\b/,
+  /\becrite? par\b/,
+  /\b(?:takes?|took|taking|taken) over\b/,
+  /\b(?:written|writing|sent) (?:by|on behalf)\b/,
+];
+const echapper = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export function mentionReprise(message, { noms = [] } = {}) {
+  const t = sansAccents(String(message || "")).toLowerCase();
+  for (const re of REPRISE_FIXES) {
+    const x = re.exec(t);
+    if (x) return x[0].trim();
+  }
+  for (const n of noms) {
+    const p = sansAccents(String(n || "")).toLowerCase().trim();
+    if (p.length < 2) continue;
+    const x = new RegExp(`\\b(?:au nom de|a la place de|on behalf of|in place of|instead of) ${echapper(p)}\\b`).exec(t);
+    if (x) return x[0].trim();
+  }
+  return "";
+}
+
+export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", entreprises = [], prenoms = [], internes = new Set(), ventes = new Set(), netsAutres = new Set(), elementsVente = [], composants = [], leveInternes = null, masquerNets = false, controleImpossible = false, sel = null, reprise = [] }) {
   let m = typeof message === "string" ? message.trim() : "";
   const avert = [];
   if (!m || !/\S/.test(m)) return { ok: false };
@@ -1888,6 +1963,10 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
   for (const n of partenairesCites(m, prestataires)) avert.push(`nom_prestataire:${n}`);
   // Chez Secret et Taxi, la réponse ne nomme personne de l'équipe (la responsable y écrit sous un autre prénom que dans l'outil).
   if (!signer && prenoms.some((p) => p.length > 1 && new RegExp(`\\b${sansAccents(p)}\\b`).test(sansAccents(m)))) avert.push("prenom_equipe");
+  // Le changement d'auteur (migration 133) bloque la copie et l'envoi tant qu'il reste dans le texte (bloquantsReponse, comme un partenaire),
+  // signature ou non.
+  const reprend = mentionReprise(m, { noms: reprise });
+  if (reprend) avert.push(`mention_reprise:${reprend}`);
   return { ok: true, message: m, avertissements: avert };
 }
 
@@ -1922,12 +2001,28 @@ export async function proposer(nom, e, ctx, memo) {
     if (!t) return { erreur: "confirmation_introuvable" };
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { course: { texte: t.slice(0, 4000) } } };
   }
+  // La conversation WhatsApp liée est passée dans une autre entreprise (contre-relecture de la PR 355) : sa consigne (apporteur, numéro du
+  // client) ne vaut plus ici. Aucune carte de dossier ou de réservation (le modèle pourrait reprendre l'apporteur comme client), ni de
+  // réponse au client préparée avec le contexte de cette entreprise. Calculé par index.ts (cartesRefuseesAutreEntreprise).
+  if (ctx && ctx.conversationAutreEntreprise && CARTES_REFUSEES_AUTRE_ENTREPRISE.includes(nom)) return { erreur: "conversation_autre_entreprise", conseil: CONSEIL_AUTRE_ENTREPRISE };
   // Plus de 10 sièges enfant ou bébé : refusé avec un motif, jamais ramené à 10 en silence (relecture de la PR 315).
   if (["proposer_dossier", "proposer_reservation"].includes(nom) && [...(e.services || []), ...(e.service ? [e.service] : [])].some((x) => x && (Number(x.sieges) || 0) + (Number(x.sieges_bebe) || 0) > SIEGES_MAX)) return { erreur: "sieges_trop_nombreux" };
   if (nom === "proposer_dossier") {
     const services = [];
     for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes, null, memo));
     if (!services.length) return { erreur: "aucun_service" };
+    // Une option proposée comme service à part (relecture de la PR 359) : rattachée d'office au service de la carte qu'elle complète ; sans
+    // ce service sur la carte, la carte n'est pas proposée (l'option ne se vend jamais seule).
+    const prestationsCarte = await ctx.charger("prestations");
+    for (const x of [...services]) {
+      if (!(x.avertissements || []).includes("option_seule")) continue;
+      const o = prestationsCarte.find((p) => x.offre && p.id === x.offre.id);
+      const parent = services.find((y) => y !== x && y.offre && o && o.option_de.includes(y.offre.id));
+      if (!parent) return { erreur: "option_sans_son_service", conseil: "Une option ne se propose jamais seule : mets-la dans « options » du service qu'elle complète (le même dossier), ou propose ce service." };
+      const qte = ["pp", "ad"].includes(o.unite) ? Math.max(1, (parent.adultes || 0) + (parent.enfants || 0)) : 1;
+      parent.options = [...(parent.options || []), { offre: x.offre, libelle: texte(o.libelle_en || o.libelle, 160), prix: x.prix, origine_prix: x.origine_prix, qte }];
+      services.splice(services.indexOf(x), 1);
+    }
     // Mode unifié : les entreprises de la demande (deux pour une demande mixte, qui donnera deux dossiers liés).
     const entreprises = estUnifie(ctx) ? ENTREPRISES_UNIFIEES.filter((slug) => services.some((x) => x.entreprise === slug)) : null;
     const avert = avertissementsEntreprise(services);
@@ -1941,7 +2036,8 @@ export async function proposer(nom, e, ctx, memo) {
     if (app.avertissement) avert.push(app.avertissement);
     // Un enfant ou un bébé sur un transfert sans choix des sièges : la carte ne se valide pas, la question est à poser au client.
     if (siegesAChoisirServices(services, { enfants: entier(e.enfants), bebes: entier(e.bebes, 10) })) avert.push("sieges_a_choisir");
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
+    // Préparée depuis une conversation WhatsApp d'un client (ctx.telephoneWa, index.ts) : le numéro complet de la conversation (telephoneDeCarte).
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: ctx.telephoneWa ? telephoneDeCarte(texte(e.client_telephone, 30), ctx.telephoneWa) : texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}), ...(page ? { message_page: page } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
@@ -1950,6 +2046,13 @@ export async function proposer(nom, e, ctx, memo) {
     if (choix.plusieurs) return { ...plusieursDossiers(ctx, choix.plusieurs) };
     const d = choix.ligne;
     if (!d) return { erreur: "dossier_introuvable" };
+    // Une option seule ne s'ajoute pas comme un service (relecture de la PR 359) : elle va sur le service réservé, champ « option ».
+    {
+      const prestationsLues = await ctx.charger("prestations");
+      const visee = trouverRef(texte(e.service && e.service.ref, 12), prestationsLues);
+      const optionSeule = visee && estOptionCatalogue(visee) ? visee : null;
+      if (optionSeule) return { erreur: "option_sans_son_service", conseil: "Cette ligne est une option : ajoute-la au service réservé avec proposer_modification, champ « option »." };
+    }
     // Mode unifié : le service va dans l'entreprise du dossier visé.
     const ent = entrepriseDe(ctx, d.entite_id);
     const service = await serviceDepuis(e.service, ctx, tapes, ent ? ent.id : null, memo);
@@ -1960,6 +2063,26 @@ export async function proposer(nom, e, ctx, memo) {
   if (nom === "proposer_modification") {
     const r = trouverRef(e.reservation, ctx.parRef ? await ctx.parRef("reservations", e.reservation) : await ctx.charger("reservations"));
     if (!r) return { erreur: "reservation_introuvable" };
+    // Une option ajoutée à un service réservé (26.11.2026) : seulement une option de SON tarif, au prix tapé ou à celui du catalogue.
+    if (e.champ === "option") {
+      if (r.statut === "annule") return { erreur: "deja_annule" };
+      // Taxi : une course suit sa propre facture, sans options (relecture de la PR 359, C4) ; l'écran refuse aussi, rien n'est proposé.
+      const entR = estUnifie(ctx) ? entrepriseDe(ctx, r.entite_id) : null;
+      if (fonctionnementDuService(ctx, entR ? { entreprise: entR.slug } : {}) === "taxi") return { erreur: "option_taxi", conseil: "Une course de Taxi n'a pas d'options : propose plutôt de changer le prix de la course (champ « prix »)." };
+      // « P-1a2b3c4d 1 000 » : la référence, puis tout le reste comme montant (un montant écrit avec des espaces reste entier).
+      const valeurOpt = String(e.valeur || "").trim();
+      const refOption = valeurOpt.split(/\s+/)[0] || "";
+      const prixTexte = valeurOpt.slice(refOption.length).trim();
+      const p = r.prestation_id ? (await ctx.charger("prestations")).find((x) => x.id === r.prestation_id) || null : null;
+      if (!p) return { erreur: "option_sans_service_du_catalogue" };
+      const avertOption = [];
+      const pers = r.personnes || {};
+      const [option] = optionsDeCarte({ options: [{ ref: refOption, prix_saisi: prixTexte }] }, p, await ctx.charger("prestations"), { adultes: entier(pers.adultes), enfants: entier(pers.enfants), tapes, memo, avert: avertOption });
+      if (!option) return { erreur: "option_inconnue" };
+      const ent = entrepriseDe(ctx, r.entite_id);
+      const valeurOption = `+ ${option.libelle}${option.prix !== null ? ` · ${option.prix}` : ""}`;
+      return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, ...(ent ? { entite_id: ent.id, entreprise: ent.slug } : {}), libelle: texte(r.libelle, 160), champ: "option", avant: "", valeur: valeurOption, option, raison: texte(e.raison, 300) }, avertissements: avertOption };
+    }
     // Un numéro de vol : sa forme, et une source dans la conversation (volSource) ; sans source, la carte n'est pas proposée.
     const avertVol = [];
     // Une remarque du voucher sans lien ni redite des champs, une note interne d'une ligne, un lieu sans lien (22.11.2026).
@@ -1993,7 +2116,7 @@ export async function proposer(nom, e, ctx, memo) {
     // Les nets du catalogue : ceux des services de la demande en cours bloquent, les autres avertissent (netsDuControle). Les totaux se
     // calculent sur les prix sourcés présents dans le texte, les lignes de la carte de dossier du même échange et les montants de Nani.
     const nets = netsDuControle(memo);
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true, leveInternes: new Set([...(memo.prixServices || []), ...(memo.ventesDossier || [])]) });
+    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], reprise: memo.reprise || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true, leveInternes: new Set([...(memo.prixServices || []), ...(memo.ventesDossier || [])]) });
     if (!c.ok) return { erreur: "message_vide" };
     const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: c.avertissements };
@@ -2077,7 +2200,9 @@ export async function executer(nom, entree, ctx, memo) {
       // Ce qui repart chez Claude : la carte est affichée, rien n'est fait. Les prix retenus, pour qu'il ne les répète pas faux.
       // Mode unifié : l'entreprise retenue pour chaque service (« » : à choisir par la personne).
       const ent = (x) => ("entreprise" in x ? { entreprise: x.entreprise } : {});
-      const prix = carte.genre === "dossier" && carte.donnees.services ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix, ...ent(s) })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix, ...ent(carte.donnees.service) }] : undefined;
+      // Les options de chaque service (26.11.2026) : leur prix compte aussi comme un composant d'un total.
+      const avecOptions = (x) => [{ service: x.texte, prix: x.prix, origine: x.origine_prix, ...ent(x) }, ...(x.options || []).map((o) => ({ service: `${x.texte} + ${o.libelle}`, prix: o.prix, origine: o.origine_prix, ...ent(x) }))];
+      const prix = carte.genre === "dossier" && carte.donnees.services ? carte.donnees.services.flatMap(avecOptions) : carte.genre === "reservation" ? avecOptions(carte.donnees.service) : undefined;
       const connu = carte.genre === "brochure" ? { partenaire_au_catalogue: !carte.donnees.nouveau } : {};
       // Un apporteur noté (apporteur.js) : seulement les entreprises où il l'est, jamais son nom ni sa fiche.
       const { resume_apporteur: resumeApporteur, ...carteGardee } = carte;
@@ -2205,3 +2330,32 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
 }
 
 export { tempsSimule };
+
+// Le numéro du client sur une carte « dossier » préparée depuis une conversation WhatsApp (26.11.2026) : le numéro complet de la conversation
+// (E.164), jamais une forme raccourcie. `saisi` : ce que le modèle a écrit ; `telWa` : le numéro de la conversation liée, donné seulement
+// quand le contact n'est pas un apporteur (le numéro d'un apporteur n'est jamais celui d'un client). Vide, le même numéro ou sa forme locale
+// (« 081… », les derniers chiffres) : le numéro de la conversation. Un autre numéro écrit par le client (celui d'un proche) est gardé.
+export function telephoneDeCarte(saisi, telWa) {
+  const s = String(saisi || "").trim();
+  const wa = String(telWa || "").trim();
+  const chiffresWa = wa.replace(/\D/g, "");
+  if (chiffresWa.length < 6 || chiffresWa.length > 15) return s;
+  const complet = `+${chiffresWa}`;
+  const chiffres = s.replace(/\D/g, "").replace(/^0+/, "");
+  if (!chiffres) return complet;
+  if (chiffres === chiffresWa || (chiffres.length >= 6 && chiffresWa.endsWith(chiffres))) return complet;
+  return s;
+}
+
+// Le numéro d'une conversation WhatsApp qui peut aller sur la carte « dossier » comme celui du client (relecture de la PR 355) : seulement un
+// contact de client, comme whatsapp-calc.mjs (ficheAMettreAJour) : type vide ou « client », aucune fiche partenaire reliée, jamais un contact
+// personnel. Partenaire, chauffeur, hôtel, apporteur ou contact personnel : "" (sinon le voucher partirait chez eux).
+export function telephoneDeConversation(conv) {
+  if (!conv || typeof conv.telephone !== "string" || !conv.telephone.trim()) return "";
+  if (conv.reponses === "jamais" || conv.partenaire_id) return "";
+  if (conv.type_contact && conv.type_contact !== "client") return "";
+  return conv.telephone;
+}
+
+export const CARTES_REFUSEES_AUTRE_ENTREPRISE = ["proposer_dossier", "proposer_reservation", "proposer_reponse"];
+export const CONSEIL_AUTRE_ENTREPRISE = "La conversation WhatsApp liée à cette discussion est maintenant rangée dans une autre entreprise. Ne propose aucune carte ici : dis-le à la personne et invite-la à ouvrir l'Assistant depuis la conversation WhatsApp, dans l'entreprise où elle est rangée.";

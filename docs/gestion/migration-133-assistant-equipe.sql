@@ -273,11 +273,11 @@ begin
 end
 $$;
 
--- La fonction de la migration 120, gardée pour un écran pas encore à jour : même règle (aucune prise de moins de 2 minutes ne se reprend,
--- même par soi ; une prise expirée se reprend).
+-- La fonction de la migration 120, gardée pour un écran pas encore à jour : aucune prise de moins de 2 minutes ne se reprend, même par soi ;
+-- sa propre prise expirée se reprend ; celle d'une autre personne, jamais par ce nom (sans confirmation, un écran en cache ne passe pas outre).
 create or replace function prendre_agent_carte(p_carte uuid) returns boolean language plpgsql security invoker set search_path = public as $$
 begin
-  return coalesce((prendre_agent_carte_equipe(p_carte, true) ->> 'ok')::boolean, false);
+  return coalesce((prendre_agent_carte_equipe(p_carte, false) ->> 'ok')::boolean, false);
 end
 $$;
 

@@ -77,9 +77,11 @@ img { max-width: 100%; }
 .barre-haut .bouton-icone { width: 44px; height: 44px; color: var(--texte); }
 .barre-onglets { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); padding-bottom: env(safe-area-inset-bottom); }
 .barre-onglets ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0 4px; list-style: none; }
-.onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.72rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
+.onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.75rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
 .onglet-icone { position: relative; display: flex; align-items: center; justify-content: center; width: 60px; height: 32px; border-radius: 999px; transition: background-color var(--duree) var(--courbe); }
 .onglet:active .onglet-icone { background: var(--surface-2); }
+/* iOS garde :hover sur le dernier lien touché : un onglet quitté restait teinté comme l'onglet actif (26.11.2026). */
+@media (hover: none) { a.onglet:not([aria-current]):hover { color: var(--texte-2); } }
 .onglet[aria-current] { color: var(--teal-700); }
 .onglet[aria-current] .onglet-icone { background: var(--teal-100); box-shadow: inset 0 0 0 1.5px var(--teal-600); }
 .badge { position: absolute; top: -3px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; line-height: 18px; text-align: center; }
@@ -91,7 +93,7 @@ img { max-width: 100%; }
 /* Entrées de menu communes à la barre latérale et à la feuille « Plus ». */
 .menu-section { margin-bottom: 12px; }
 .menu-section ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.menu-section-titre { margin: 0 0 4px; padding: 0 12px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); }
+.menu-section-titre { margin: 0 0 4px; padding: 0 12px; font-size: 0.82rem; font-weight: 700; color: var(--texte-2); }
 .lien-ecran { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--rayon); color: var(--texte); text-decoration: none; font-weight: 500; font-size: 0.95rem; -webkit-tap-highlight-color: transparent; transition: background-color var(--duree); }
 .lien-ecran svg { flex: none; color: var(--texte-2); }
 .lien-ecran:hover, .lien-ecran:active { background: var(--surface-2); color: var(--texte); }
@@ -103,20 +105,29 @@ img { max-width: 100%; }
 .compte-texte { display: flex; flex-direction: column; min-width: 0; font-size: 0.85rem; line-height: 1.3; }
 .compte-texte strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compte-texte span { color: var(--texte-2); }
-.menu-outils { display: flex; gap: 6px; }
+.menu-outils { display: flex; flex-wrap: wrap; gap: 6px; }
+.outil-libelle { display: inline-flex; align-items: center; gap: 8px; }
+/* Sans aucun pointeur qui survole (téléphone, iPad au doigt), pas de raccourcis clavier ; un iPad avec clavier et pavé tactile garde le bouton
+   (relecture de la PR 363 : « pointer: coarse » le cachait sur tout iPad). */
+@media (any-hover: none) { .seulement-clavier { display: none !important; } }
 /* Choix de la langue : deux boutons côte à côte, celui de la langue active est teinté. */
 .langues { display: flex; width: 100%; padding: 3px; background: var(--fond); border: 1px solid var(--bord); border-radius: 999px; }
 .langues .langue { flex: 1; min-height: 44px; padding: 0 12px; background: transparent; border: 0; border-radius: 999px; color: var(--texte-2); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background var(--duree) var(--courbe), color var(--duree) var(--courbe); }
 .langues .langue:hover { background: var(--surface-2); color: var(--texte); }
 .langues .langue[aria-pressed="true"] { background: var(--surface); color: var(--teal-700); font-weight: 700; box-shadow: var(--ombre); }
 .langues .langue:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
-.connexion > .langues { width: auto; margin: 0 0 24px auto; max-width: 240px; }
+.connexion > .langues { width: auto; margin: 24px auto 0 0; max-width: 240px; }
 .feuille-pied { flex-wrap: wrap; }
 .feuille-pied .langues { flex: 1 0 100%; }
 .feuille-menu .menu-section-titre { padding-left: 4px; }
 .feuille-menu .lien-ecran { padding: 0 8px; }
 .feuille-pied { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--bord); }
 .feuille-pied .compte { flex: 1; }
+/* Avec leur libellé en clair (audit mobile n° 26), « Rappels » et « Se déconnecter » ne tiennent plus à côté du compte :
+   le nom tombait à 22 px de large et passait sous les boutons. Les outils prennent leur propre ligne, à parts égales. */
+.feuille-pied .compte { justify-content: flex-start; }
+.feuille-pied .menu-outils { flex: 1 0 100%; }
+.feuille-pied .menu-outils > button { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 
 @media (min-width: 900px) {
   .barre-fixe { bottom: 0; }
@@ -174,6 +185,9 @@ button:active:not(:disabled), .bouton:active { filter: brightness(0.94); }
 .champ label, label.etiquette { display: block; margin-bottom: 4px; font-size: 0.88rem; font-weight: 600; }
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--texte); background: var(--surface); border: 1px solid var(--bord-champ); border-radius: var(--rayon); }
 textarea { resize: vertical; line-height: 1.45; }
+/* Safari iOS dessine date et heure à sa façon : plus hautes, centrées, plus larges que le cadre. Même gabarit que les autres champs (audit mobile n° 6). */
+input[type="date"], input[type="time"], input[type="datetime-local"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; height: 44px; text-align: start; }
+input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value { text-align: start; margin: 0; }
 /* Cases à cocher et boutons radio : leur taille normale, jamais celle des champs de saisie ci-dessus (largeur 100 %, 44 px de haut, bordure).
    Une seule règle pour tout Gestion (18.11.2026 : les radios « Utiliser ce client » de « Coller une confirmation » s'étiraient sur la ligne).
    La cible tactile de 44 px vient du libellé (`.case`), pas du rond. */
@@ -298,6 +312,8 @@ legend { padding: 0 6px; font-weight: 700; }
 .carte-ligne-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; }
 .carte-ligne-tete .calc { margin-left: auto; font-variant-numeric: lining-nums tabular-nums; color: var(--texte-2); font-size: 0.9rem; }
 .outils { display: flex; gap: 2px; }
+/* Téléphone : Monter, Descendre, Supprimer d'une ligne de devis en vrais boutons espacés, plus en liens collés (audit mobile n° 41). */
+@media (max-width: 719px) { .carte-ligne-tete .outils { gap: 6px; flex-wrap: wrap; } .carte-ligne-tete .outils .lien { min-height: 44px; padding: 0 10px; border: 1px solid var(--bord-fort); border-radius: 8px; text-decoration: none; } }
 .ajouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .total-edition { margin: 8px 0 12px; font-weight: 700; }
 
@@ -314,7 +330,8 @@ legend { padding: 0 6px; font-weight: 700; }
 @keyframes apparaitre { from { opacity: 0; } }
 @keyframes surgir { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
 @keyframes monter { from { transform: translateY(100%); } }
-html.modal-ouverte, html.modal-ouverte body { overflow: hidden; }
+/* Seulement html : overflow sur body en ferait le conteneur de défilement et la barre collante du haut sortait de l'écran sous une feuille (audit mobile n° 8). */
+html.modal-ouverte { overflow: hidden; }
 @media (max-width: 719px) {
   .modal-fond { align-items: flex-end; padding: 0; bottom: var(--clavier, 0px); }
   .modal { max-width: none; max-height: min(92dvh, calc(var(--vv, 100dvh) - 8px)); border-radius: 18px 18px 0 0; padding: 0 20px 0; animation: monter 0.26s var(--courbe); touch-action: pan-y; }
@@ -325,6 +342,8 @@ html.modal-ouverte, html.modal-ouverte body { overflow: hidden; }
   .modal .choix-liste { max-height: none; overflow: visible; }
 }
 #toasts { position: fixed; z-index: 200; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
+/* Feuille ouverte : le toast passe en haut, il ne couvre plus le champ de la feuille (saisie des commissions enchaînée, relecture de la PR 361). */
+@media (max-width: 719px) { html.modal-ouverte #toasts { top: calc(env(safe-area-inset-top) + 12px); bottom: auto; } }
 @media (min-width: 900px) { #toasts { bottom: 24px; left: 276px; } }
 .toast { max-width: 460px; padding: 12px 16px; border-radius: var(--rayon); background: #1f2a2a; color: #fff; font-size: 0.92rem; font-weight: 500; pointer-events: auto; }
 .toast.erreur { background: var(--danger); }
@@ -366,6 +385,19 @@ ul.avertissements-voucher { list-style: none; margin: 0 0 14px; padding: 10px 14
 .bandeau-alerte .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .etat-synchro { position: fixed; z-index: 150; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); padding: 10px 14px; border-radius: var(--rayon); background: #fff4d6; border: 1px solid #e8d49a; color: #5a4300; font-size: 0.88rem; font-weight: 500; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
 @media (min-width: 900px) { .etat-synchro { right: auto; left: 24px; bottom: 24px; max-width: 420px; } }
+/* Téléphone : le bandeau hors connexion est une bande posée sur la barre d'onglets (ou sur la barre d'action), sous les feuilles (z-index
+   inférieur à 100) : collé en haut, il couvrait la recherche et « Filtrer », et passait sur le titre d'une feuille haute (audit mobile n° 21,
+   relecture de la PR 363). Le « + » remonte d'autant. */
+@media (max-width: 899px) {
+  .etat-synchro { z-index: 29; left: 0; right: 0; bottom: calc(var(--barre-basse) + var(--clavier, 0px)); padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); border-width: 1px 0 0; border-radius: 0; box-shadow: none; font-size: 0.82rem; line-height: 1.3; }
+  html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + var(--haut-barre-action, 64px) + var(--clavier, 0px)); }
+  html.synchro-visible .bouton-plus { bottom: calc(var(--barre-basse) + 16px + var(--haut-synchro, 32px)); }
+}
+/* Hors connexion, rien ne s'enregistre : les actions d'écriture sont grisées (et marquées aria-disabled avec la raison en infobulle par
+   app.mjs). Elles restent cliquables : le serveur refuse déjà, et le message d'erreur dit pourquoi (relecture de la PR 363).
+   Seuls les boutons sont visés : un lien (« Ouvrir WhatsApp », « Répondre sur WhatsApp ») n'écrit rien et reste normal. Un bouton qui ne fait
+   que lire ou ouvrir porte data-lecture (passe finale de la PR 363). */
+html.hors-ligne button.principal:not([data-lecture]), html.hors-ligne .bouton-plus, html.hors-ligne .barre-action button:not([data-lecture]) { opacity: 0.45; filter: grayscale(1); }
 
 /* Entreprises, utilisateurs, réglages */
 .entite-choix, .entite-nom { margin: 0 0 14px; padding: 0 8px; }
@@ -419,6 +451,8 @@ input.couleur { width: 72px; padding: 2px; }
 .tag.cie { margin-left: 0; background: var(--teal-100); color: var(--teal-700); }
 /* Voucher modifié depuis son envoi (lot B, 17.11.2026) : même jaune que les écarts de facture. */
 .tag.tag-alerte { background: #fff4d6; color: #5a4300; }
+/* Trace d'envoi du point du soir (« Peut-être parti à 16:31 : vérifiez dans WhatsApp ») : une phrase, pas un mot ; elle passe à la ligne au lieu de sortir de la carte (relecture de la PR 361). */
+.tag.tag-annonce { display: inline-block; max-width: 100%; margin-left: 0; padding: 2px 10px; border-radius: 10px; white-space: normal; line-height: 1.35; }
 .envois-fait { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .net { color: var(--texte-2); }
 .marge { font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
@@ -510,6 +544,8 @@ input.couleur { width: 72px; padding: 2px; }
 .envoi-voucher .envoi-apercu { margin: 0 0 14px; text-align: center; }
 .envoi-voucher .envoi-apercu img { display: block; margin: 0 auto; max-width: 100%; max-height: 52vh; border: 1px solid var(--bord); border-radius: 8px; box-shadow: var(--ombre); }
 .envoi-voucher .envoi-actions { flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+/* Le texte d'état de la préparation prend toute une ligne, hors de la rangée des boutons (relecture de la PR 362). */
+.envoi-voucher .envoi-actions .envoi-statut { flex-basis: 100%; margin: 0; }
 @media (max-width: 719px) { .envoi-voucher .envoi-actions { flex-direction: column; align-items: stretch; } .envoi-voucher .envoi-actions button { width: 100%; } }
 .envoi-voucher .aide { margin: 12px 0 0; }
 /* Voucher envoyé dans la conversation WhatsApp du client (voucher-whatsapp.mjs) : destinataire, image plus petite, message modifiable. */
@@ -524,7 +560,7 @@ input.couleur { width: 72px; padding: 2px; }
 
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }
-.choix-groupe { padding: 10px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); background: #fafcfc; }
+.choix-groupe { padding: 10px 12px 4px; font-size: 0.82rem; font-weight: 700; color: var(--texte-2); background: #fafcfc; }
 .choix { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--bord); }
 .choix:last-child { border-bottom: 0; }
 .choix-texte { display: flex; flex-direction: column; min-width: 0; }
@@ -544,6 +580,73 @@ input.couleur { width: 72px; padding: 2px; }
 .choix-libre > .aide { margin: 0 0 14px; }
 .choix-mode-prix { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 0 0 8px; }
 .modal.large .choix-prestation .choix-libre .grille-form { grid-template-columns: repeat(2, minmax(0, 220px)); }
+/* Ajout d'un service (26.11.2026) : la recherche, la date et les onglets restent en haut, la liste défile seule, « Terminé » reste en bas.
+   Téléphone : feuille plein écran au-dessus du clavier (--vv), rien n'est caché par lui. Cibles de 44 px. */
+.modal.plein { height: min(86dvh, 820px); }
+.modal.plein .modal-defile { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.modal.plein .choix-prestation { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.cp-haut { flex: none; display: grid; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--bord); }
+.cp-haut .champ { margin: 0; }
+.cp-haut input { min-height: 44px; }
+.cp-recherche input { font-size: 1rem; }
+.cp-haut .onglets { margin: 0; }
+.cp-haut .onglets button { min-height: 44px; }
+.cp-corps { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin: 0 -20px; padding: 8px 20px 12px; }
+.modal.plein .choix-liste { max-height: none; overflow: visible; }
+.modal.plein .barre-modal { flex: none; margin: 0 -20px; padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bord); background: var(--surface); }
+.choix.deplie { background: var(--surface-2); }
+.choix-tete { all: unset; box-sizing: border-box; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 44px; cursor: pointer; border-radius: 6px; }
+.choix-tete:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.choix-tete .choix-options-nb { font-size: 0.8rem; color: var(--teal-700); font-weight: 600; }
+.choix-detail { grid-column: 1 / -1; display: grid; gap: 10px; padding-top: 4px; }
+.choix-detail .choix-qte input, .choix-actions .choix-qte input { min-height: 44px; }
+.cp-options { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.cp-options legend { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--texte-2); padding: 0; margin-bottom: 2px; }
+.cp-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 12px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); cursor: pointer; }
+.cp-option input[type="checkbox"] { width: 22px; height: 22px; margin: 0; }
+.cp-option .cp-option-nom { display: flex; flex-direction: column; min-width: 0; }
+.cp-option .cp-option-nom span { font-size: 0.82rem; color: var(--texte-2); }
+.cp-option .cp-option-prix-bloc { grid-column: 2; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--texte-2); }
+.cp-option input.cp-option-prix { width: 120px; min-height: 44px; text-align: right; }
+@media (min-width: 720px) { .cp-option { grid-template-columns: auto minmax(0, 1fr) auto; } .cp-option .cp-option-prix-bloc { grid-column: auto; } .cp-option .cp-option-prix-bloc > span { min-width: 92px; } }
+.choix-detail .principal, .modal.plein .choix-actions .principal { min-height: 44px; }
+/* Options d'une réservation (26.11.2026) : nom, prix modifiable, « Retirer » ; « Ajouter l'option » en dessous. Cibles de 44 px. */
+.options-resa-liste { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.options-resa-liste li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.options-resa-liste input { min-height: 44px; width: 96px; text-align: right; }
+.options-resa-liste button, .options-resa-ajout button { min-height: 44px; }
+.options-resa-nom { overflow-wrap: anywhere; }
+.options-resa-prix { display: flex; align-items: center; gap: 6px; }
+.options-resa-prix small { color: var(--texte-2); white-space: nowrap; }
+.options-resa-prix .options-resa-qte { width: 4.5em; min-height: 44px; }
+/* Dans une fenêtre, les champs prennent toute la largeur : ici le prix et la quantité gardent la leur, sur une ligne. */
+.options-resa-liste .options-resa-prix input { flex: 0 0 auto; width: 96px; }
+.options-resa-liste .options-resa-prix input.options-resa-qte { width: 4.5em; }
+.agent-option-qte-champ { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.agent-option-qte { width: 4em; min-height: 44px; }
+.options-resa-ajout { display: flex; flex-wrap: wrap; gap: 8px; }
+.options-resa-ajout select { flex: 1 1 200px; min-height: 44px; }
+/* Téléphone : le nom et « Retirer » sur une ligne, le prix et la quantité sur la suivante (le nom n'est plus écrasé par les champs). */
+@media (max-width: 479px) { .options-resa-liste li { grid-template-columns: minmax(0, 1fr) auto; } .options-resa-nom { grid-column: 1; grid-row: 1; } .options-resa-liste li button { grid-column: 2; grid-row: 1; } .options-resa-liste li .options-resa-prix { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; } }
+/* Clavier ouvert (html.clavier, ui.mjs) : l'en-tête fixe se réduit à la recherche et aux onglets, pour que la liste garde au moins
+   quatre rangées visibles au-dessus du clavier d'un iPhone (relecture de la PR 359). */
+html.clavier .modal.plein .cp-haut .grille-form > .champ:not(.cp-recherche),
+html.clavier .modal.plein .cp-haut label,
+html.clavier .modal.plein .cp-corps > .aide { display: none; }
+html.clavier .modal.plein .cp-haut { gap: 6px; padding-bottom: 6px; }
+html.clavier .modal.plein .modal-tete { margin-bottom: 4px; }
+html.clavier .modal.plein .barre-modal { padding-top: 6px; padding-bottom: 6px; }
+/* Clavier ouvert : une rangée repliée tient sur une ligne (nom et prix), pour garder au moins quatre rangées visibles. Dépliée, elle garde tout. */
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > span,
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-prix > span { display: none; }
+html.clavier .modal.plein .choix-tete[aria-expanded="false"] .choix-texte > strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.clavier .modal.plein .cp-corps li.choix { padding-top: 0; padding-bottom: 0; }
+@media (max-width: 719px) {
+  .modal.plein { height: var(--vv, 100dvh); max-height: none; border-radius: 0; padding-top: env(safe-area-inset-top); }
+  .modal.plein .modal-poignee { display: none; }
+  .modal.plein .choix-detail .principal { width: 100%; }
+  .modal.plein .cp-haut .grille-form { grid-template-columns: 1fr; }
+}
 
 /* Recherche globale */
 .palette-fond { align-items: flex-start; padding: 8vh 16px; }
@@ -554,7 +657,7 @@ input.couleur { width: 72px; padding: 2px; }
 .palette-champ input::-webkit-search-cancel-button { display: none; }
 .palette-champ .bouton-icone { color: var(--texte-2); }
 .palette-liste { max-height: min(60vh, 460px); margin: 0; padding: 6px; overflow-y: auto; list-style: none; }
-.palette-groupe { padding: 10px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); }
+.palette-groupe { padding: 10px 12px 4px; font-size: 0.82rem; font-weight: 700; color: var(--texte-2); }
 .palette-liste [role="option"] { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 12px; border-radius: var(--rayon); cursor: pointer; }
 .palette-liste [role="option"] svg { flex: none; color: var(--texte-2); }
 .palette-liste [aria-selected="true"] { background: var(--teal-100); }
@@ -697,7 +800,7 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .version-choix .version-nb { color: var(--teal-700); font-weight: 600; }
 /* Lot C1 : version identique à un envoi, ligne sans prix, bandeau d'un document envoyé. */
 .version-choix .version-envoi { font-size: 0.85em; color: #5a4300; }
-.carte-ligne.ligne-sans-prix { border-left: 3px solid var(--danger); }
+.carte-ligne.ligne-sans-prix { border-color: var(--danger); }
 .carte-ligne.ligne-sans-prix .calc { color: var(--danger); font-weight: 600; }
 .bandeau-envoi p { margin: 0 0 0.25rem; }
 .bandeau-envoi .actions { margin-top: 0.5rem; }
@@ -725,6 +828,7 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 
 /* Barre d'action collante : Enregistrer, Annuler. Fixée au-dessus des onglets, au-dessus du clavier quand il est ouvert. */
 .barre-action-espace { height: 76px; }
+.barre-action .bouton-icone-seul { min-width: 48px; padding: 0 12px; }
 .barre-action { position: fixed; z-index: 29; left: 0; right: 0; bottom: var(--barre-basse); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; padding: 10px 16px; background: rgba(255, 255, 255, 0.96); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); }
 .barre-action > .principal, .barre-action > .secondaire { flex: 1 1 auto; }
 html.clavier .barre-action { bottom: var(--clavier); padding-bottom: 10px; }
@@ -735,8 +839,8 @@ html.clavier { --barre-basse: 0px; }
   .barre-action { position: sticky; left: auto; right: auto; bottom: 0; z-index: 5; margin: 0 -8px; padding: 12px 8px; background: var(--fond); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .barre-action > .principal, .barre-action > .secondaire { flex: 0 0 auto; }
 }
-html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
-@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: 24px; } }
+html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
+@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: 24px; } }
 
 /* Puces de filtre défilantes */
 .puces { display: flex; gap: 8px; margin: 0 -16px; padding: 2px 16px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch; }
@@ -751,6 +855,17 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .barre-filtres { position: sticky; top: var(--haut-barre); z-index: 12; margin: 0 -16px 12px; padding: 8px 16px 4px; background: var(--fond); border-bottom: 1px solid transparent; }
 .barre-filtres-haut { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .barre-filtres .champ.recherche { flex: 1; min-width: 0; margin: 0; }
+/* Croix « Effacer la recherche » (barreFiltres, audit mobile n° 1) : 44 px au bout du champ, la croix native masquée. */
+.recherche-zone { position: relative; }
+.recherche-zone > input[type="search"] { width: 100%; }
+.recherche-zone:has(> .effacer-recherche:not([hidden])) > input[type="search"] { padding-right: 48px; }
+.recherche-zone > input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.effacer-recherche { position: absolute; top: 50%; right: 2px; width: 44px; height: 44px; transform: translateY(-50%); background: none; border: 0; color: var(--texte-2); }
+.effacer-recherche[hidden] { display: none; }
+/* Pendant une recherche, les puces ne filtrent plus : gris contrasté (texte-2 sur surface-2, 6,2:1), sans opacité (relecture de la PR #357). */
+.puces[aria-disabled="true"] .puce { background: var(--surface-2); border-color: var(--bord); color: var(--texte-2); box-shadow: none; }
+.puces[aria-disabled="true"] .puce[aria-pressed="true"] { border-style: dashed; border-color: var(--texte-2); }
+.puces[aria-disabled="true"] .puce-nombre { background: var(--surface); color: var(--texte-2); }
 .bouton-filtrer { flex: none; gap: 6px; }
 .filtres-ligne { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 8px; }
 .filtres-ligne .champ { min-width: 180px; flex: 1; margin-bottom: 10px; }
@@ -784,7 +899,14 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 @media (min-width: 720px) { .demande-champs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .demande-champs .champ:first-child, .demande-champs .champ:nth-child(2) { grid-column: span 2; } .demande-champs .champ:last-child { grid-column: 1 / -1; } }
 .demande-client { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); }
 .demande-client.connu { background: var(--teal-100); border-color: var(--teal-600); }
+/* Conversation WhatsApp au nom du client : le numéro se lit en entier, le bouton fait 44 px. */
+.demande-wa span { overflow-wrap: anywhere; }
+.demande-wa button { min-height: 44px; }
 .demande-offres { max-height: none; margin-bottom: 12px; }
+/* Options d'un service dans « Vérifier avant » (relecture de la PR 359) : visibles, avec leur prix et « Retirer » (44 px). */
+.dsv-options { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; flex-basis: 100%; }
+.dsv-options li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; font-size: 0.9rem; }
+.dsv-options button { min-height: 44px; }
 .demande-offres li { border-bottom: 1px solid var(--bord); }
 .demande-offres li:last-child { border-bottom: 0; }
 .demande-offre { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 56px; padding: 10px 12px 10px 14px; text-align: left; font-weight: 400; background: var(--surface); border: 0; border-radius: 0; color: var(--texte); }
@@ -953,7 +1075,10 @@ div.enc-case { cursor: default; }
 /* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */
 .bouton-plus { display: none; position: fixed; z-index: 28; right: 16px; bottom: calc(var(--barre-basse) + 16px); width: 56px; height: 56px; min-height: 0; padding: 0; border-radius: 50%; background: var(--teal-600); color: #fff; box-shadow: 0 4px 14px rgba(8, 107, 107, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2); }
 .bouton-plus:active { background: var(--teal-700); transform: scale(0.96); }
-.coque.avec-plus .bouton-plus { display: inline-flex; }
+.coque.avec-plus .bouton-plus { display: inline-flex; transition: opacity 0.2s ease, visibility 0s linear 0s; }
+/* Effacé pour de bon (relecture de la PR 363) : il glissait sous la barre d'onglets, qui le laissait voir par transparence. */
+html.plus-replie .coque.avec-plus .bouton-plus { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.2s ease, visibility 0s linear 0.2s; }
+@media (prefers-reduced-motion: reduce) { .coque.avec-plus .bouton-plus { transition: none; } }
 .coque.avec-plus .contenu { padding-bottom: calc(var(--barre-basse) + 96px); }
 html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none !important; }
 @media (min-width: 900px) { .bouton-plus, .coque.avec-plus .bouton-plus { display: none; } .coque.avec-plus .contenu { padding-bottom: 48px; } }
@@ -964,10 +1089,10 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 
 /* Services du jour : l'heure de pickup à gauche, le détail, puis appeler et écrire d'un geste */
 .services { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.service { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 0 12px; padding: 14px 16px 14px 12px; background: var(--surface); border: 1px solid var(--bord); border-left: 4px solid var(--teal-600); border-radius: 12px; box-shadow: var(--ombre); }
+.service { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 0 12px; padding: 14px 16px 14px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
 .service-heure { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; font-variant-numeric: lining-nums tabular-nums; }
 .service-heure strong { font-size: 1.35rem; font-weight: 700; }
-.service-heure span { font-size: 0.78rem; color: var(--texte-2); }
+.service-heure span { font-size: 0.82rem; color: var(--texte-2); }
 .service-corps { min-width: 0; }
 .service-titre { display: block; min-height: 24px; font-weight: 700; color: var(--texte); text-decoration: none; }
 .service-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
@@ -1030,6 +1155,12 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .barre-dossier .barre-action > * { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
 .barre-dossier .barre-action > .principal { flex: 1.5 1 0; }
 .barre-dossier .barre-action svg { display: none; }
+/* WhatsApp en icône seule (le logo suffit) : largeur fixe, le libellé de l'étape suivante garde la place et passe sur deux lignes au besoin (audit mobile n° 11). */
+.barre-dossier .barre-action > .bouton-icone-seul { flex: none; width: 52px; padding: 0; }
+.barre-dossier .barre-action > .bouton-icone-seul svg { display: block; }
+.barre-dossier .barre-action > .avec-icone { gap: 4px; }
+.barre-dossier .barre-action > .avec-icone svg { display: inline-block; flex: none; }
+.barre-dossier .barre-action > .principal { flex: 2 1 0; white-space: normal; line-height: 1.15; }
 
 /* Filtres secondaires repliés derrière une ligne (Trajets) : départ et arrivée restent toujours visibles */
 .filtres-plus { flex: 1 1 100%; }
@@ -1057,6 +1188,9 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
   .onglet { flex-direction: row; gap: 8px; min-height: 48px; padding: 4px 6px; font-size: 0.8rem; }
   .onglet-icone { width: 40px; height: 28px; }
   .modal { max-height: 96dvh; }
+  /* Paysage : la barre du haut et la recherche défilent avec la page, les puces tiennent sur une rangée (audit mobile n° 7). */
+  .barre-haut, .barre-filtres { position: static; }
+  .puces, .wa-liste .puces { flex-wrap: nowrap; overflow-x: auto; }
 }
 /* Lecture à contraste élevé : bordures et textes secondaires renforcés */
 @media (prefers-contrast: more) {
@@ -1112,6 +1246,8 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
 
 /* Tuiles : chiffre, écart, mini graphique. La tuile entière est un lien vers la liste derrière le chiffre. */
 .st-tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: dense; gap: 10px; margin-bottom: 28px; }
+/* Téléphone : la petite tuile restée seule sur sa ligne (marquée par grilleTuiles, analyses-widgets.mjs) prend toute la largeur. */
+@media (max-width: 719px) { .st-tuile.seule { grid-column: 1 / -1; } }
 @media (min-width: 720px) { .st-tuiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } }
 @media (min-width: 1100px) { .st-tuiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .st-tuile { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; }
@@ -1149,22 +1285,28 @@ a.st-tuile-lien:active { background: var(--surface-2); }
 .st-graphe-corps { display: flex; align-items: flex-start; }
 .st-graphe-axe { flex: none; }
 .st-graphe-defile { flex: 1; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+/* Une rangée qui déborde (puces, onglets, graphique) s'estompe du côté où il reste à voir (classes posées par app.mjs, audit mobile n° 16). */
+.suite-droite { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+.suite-gauche { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px); mask-image: linear-gradient(to right, transparent, #000 44px); }
+.suite-gauche.suite-droite { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
 .st-svg { display: block; max-width: none; }
 .st-grille { stroke: var(--bord); stroke-width: 1; }
 .st-zero { stroke: var(--texte-2); stroke-width: 1; }
-.st-axe { fill: var(--texte-2); font-size: 11px; font-family: inherit; pointer-events: none; }
+.st-axe { fill: var(--texte-2); font-size: 12px; font-family: inherit; pointer-events: none; }
 .st-valeur { fill: var(--texte); font-size: 10.5px; font-weight: 700; font-family: inherit; pointer-events: none; font-variant-numeric: tabular-nums; }
 .st-barre.s1 { fill: #0b9999; }
 .st-barre.s2 { fill: #c77d00; }
 .st-barre.ref { fill: #7b9090; }
 .st-fond { fill: transparent; }
 .st-fond.actif { fill: var(--teal-100); }
-.st-zone { fill: transparent; cursor: pointer; }
+.st-svg.st-touchable { cursor: pointer; }
 .st-colonne { outline: none; -webkit-tap-highlight-color: transparent; }
 .st-colonne:hover .st-fond:not(.actif) { fill: var(--surface-2); }
 .st-colonne:focus-visible .st-fond { stroke: var(--teal-600); stroke-width: 2; }
 .st-lecture { display: flex; flex-direction: column; justify-content: center; gap: 8px; min-height: 104px; margin-top: 8px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; }
 .st-lecture .aide, .st-lecture p { margin: 0; }
+/* Sans colonne choisie, la consigne tient sur une ligne, sans grand cadre vide (audit mobile, n° 18). */
+.st-lecture:has(> .aide:only-child) { min-height: 0; padding: 0; background: none; border: 0; }
 .st-lecture-corps ul { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
 .st-lecture-corps li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .st-lecture-titre { font-weight: 700; }
@@ -1275,17 +1417,32 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 /* ==== Session F : cibles tactiles de 44 px (restes de l'audit mobile) ========================================== */
 /* Pastilles de référence cliquables : la zone tactile dépasse la pastille sans changer la mise en page. */
 @media (pointer: coarse) { a.tag { padding-block: 11px; } }
+/* Fiche partenaire et À encaisser : numéro, e-mail et nom du partenaire touchables sur 44 px sans changer la mise en page (audit mobile, n° 13).
+   Numéro et e-mail d'un guichet sont des éléments de flex (rembourrage et marge négative) ; l'e-mail d'une fiche et le nom restent en ligne,
+   où le rembourrage vertical ne décale rien. */
+@media (pointer: coarse) {
+  .tel > a[href^="tel:"] { padding-block: 10px; margin-block: -10px; }
+  .guichet > a[href^="mailto:"] { padding-block: 13px; margin-block: -13px; }
+  .ligne-info a[href^="mailto:"] { padding-block: 13px; }
+  .enc-tete h3 a { padding-block: 12px; }
+}
 .service-titre { display: flex; align-items: center; min-height: 44px; }
 details > summary { padding-block: 11px; margin: 0; }
 .bloc-tarifs h2 a, .carte-regle h3 a, .regles-trajets .aide a, .st-lien-groupe a { display: inline-flex; align-items: center; min-height: 44px; }
-@media (pointer: coarse), (max-width: 719px) { .bouton-icone { width: 44px; height: 44px; } }
+@media (pointer: coarse), (max-width: 719px) { .bouton-icone, .tel .bouton-icone { width: 44px; height: 44px; } }
 /* Réglages : groupes repliables (légende = bouton) et recherche */
 .recherche-reglages { width: 100%; max-width: 520px; min-height: 48px; margin: 4px 0 12px; }
-.repli-groupe-fs > legend { float: none; width: 100%; padding: 0; }
+/* Téléphone : la légende flotte dans le cadre (pas à cheval sur la bordure), un groupe fermé se lit comme une ligne d'accordéon et plus comme un champ vide (audit mobile, n° 14). */
+.repli-groupe-fs > legend { float: left; width: 100%; padding: 0; }
 .repli-groupe-fs > legend .repli-groupe { border-top: 0; font-size: 1rem; min-height: 48px; padding: 0 4px; }
-.repli-groupe-fs > .repli-corps { padding-top: 0; }
+.repli-groupe-fs > .repli-corps { clear: both; padding-top: 0; }
+/* Un groupe fermé ne contient plus que la légende flottante : ce dégagement le fait tenir autour d'elle sans compter sur le contexte
+   de formatage propre du fieldset, qui n'est pas le même d'un moteur à l'autre (relecture de la PR #357, Safari iOS). */
+.repli-groupe-fs::after { content: ""; display: block; clear: both; }
+.repli-groupe-fs:has(> .repli-corps[hidden]) { padding-block: 8px; }
 @media (min-width: 720px) {
-  .repli-groupe-fs > legend { width: auto; padding: 0 6px; }
+  .repli-groupe-fs > legend { float: none; width: auto; padding: 0 6px; }
+  .repli-groupe-fs::after { content: none; }
   .repli-groupe-fs > legend .repli-groupe { min-height: 0; padding: 0; margin: 0; font-size: inherit; }
 }
 /* Journal, tarifs : filtres pleine largeur sur téléphone, un peu d'air sous le texte d'aide */
@@ -1303,6 +1460,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .titre-lien:active { background: var(--surface-2); }
 .service-titre { font-weight: 700; margin: 0; }
 .tache-texte .titre-lien { margin: -8px 0 -2px; }
+/* Lien de dossier dans une ligne de texte (tâches, accueil) : zone de toucher agrandie sans changer la ligne (audit mobile n° 13). Placée
+   après les règles du lien, sinon elles l'écrasaient (relecture de la PR 363). */
+@media (pointer: coarse) { .titre-lien, .tache-texte .titre-lien { padding-block: 12px; margin-block: -12px; } }
 .repli { scroll-margin-top: calc(var(--haut-barre) + 8px); }
 
 /* Résumé en tête de fiche : une carte sur téléphone, deux colonnes sur ordinateur */
@@ -1317,6 +1477,11 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-libelle { margin: 0 0 4px; font-size: 0.82rem; font-weight: 600; color: var(--texte-2); }
 .resume-titre { display: block; margin: -8px 0 0; padding: 8px 0; color: var(--texte); font-size: 1.05rem; font-weight: 700; text-decoration: none; }
 .resume-contact { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; color: var(--teal-700); font-weight: 500; overflow-wrap: anywhere; }
+/* Un numéro ne se coupe jamais en deux lignes (« +41 79 000 00 / 01 », audit mobile n° 29). Limité au résumé du dossier
+   (relecture de la PR #360) : ailleurs un double numéro doit pouvoir passer à la ligne à 375 px. */
+.resume-contact[href^="tel:"] { overflow-wrap: normal; white-space: nowrap; }
+.resume-contact svg { flex: none; }
+.resume-contact[href^="tel:"] { gap: 6px; font-size: 0.94rem; letter-spacing: -0.01em; }
 .resume-valeur { margin: 0; font-weight: 700; }
 .resume-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .resume-lien { display: flex; flex-direction: column; gap: 6px; min-height: 44px; margin: -6px 0; padding: 6px 0; color: var(--texte); text-decoration: none; }
@@ -1327,6 +1492,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; font-variant-numeric: lining-nums tabular-nums; }
 .resume-ligne dt { color: var(--texte-2); font-size: 0.92rem; }
 .resume-ligne dd { margin: 0; font-weight: 700; text-align: right; }
+.resume-sous-valeur { display: block; font-weight: 400; font-size: 0.85rem; color: var(--texte-2); }
 .resume-reste dd { color: #8a5200; }
 .resume-ok dd { color: #25653d; }
 .resume-lien-bas { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-bottom: -10px; font-weight: 600; }
@@ -1404,9 +1570,15 @@ details > summary { padding-block: 11px; margin: 0; }
 .carte-barre.seul { justify-content: flex-end; }
 .carte-barre .bouton-menu { flex: none; width: 48px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .carte-barre .bouton-menu svg { stroke-width: 3; }
+/* Le « … » de l'en-tête de Réservations sur téléphone (audit mobile n° 19). */
+.entete-actions .bouton-menu { width: 48px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.entete-actions .bouton-menu svg { stroke-width: 3; }
 .carte-lien.statique > .prestataire-etat { grid-column: 1 / -1; margin: 6px 0 0; }
 .menu-gestes { display: grid; gap: 8px; padding-top: 4px; }
 .menu-geste { width: 100%; min-height: 48px; justify-content: flex-start; text-align: left; }
+/* Les groupes du menu « … » d'une carte de réservation, sous un petit titre en casse normale (relecture de la PR 361). */
+.menu-groupe { display: grid; gap: 8px; margin-top: 8px; }
+.menu-groupe-titre { margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--texte-2); }
 .menu-geste.courant { border-color: var(--teal); background: var(--teal-100); }
 @media (min-width: 720px) { .carte-barre { justify-content: flex-end; } .carte-barre .principal { flex: 0 1 auto; padding-left: 20px; padding-right: 20px; } }
 .aide-repli { margin: 0 0 10px; }
@@ -1659,7 +1831,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .fid-envoi.fait { color: #25653d; }
 .fid-filtres { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; }
 .fid-filtre { display: grid; gap: 4px; font-size: 0.88rem; font-weight: 600; }
-.fid-filtre select { min-height: 44px; }
+.fid-filtre select { min-height: 44px; font-size: 1rem; }
 .fid-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; }
 .calcul-fiduciaire { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; margin: 12px 0; }
 .calcul-fiduciaire dt { color: var(--texte-2); }
@@ -1707,6 +1879,7 @@ p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
 .editeur-grille .entete-grille .champ { flex: 1; margin: 0; }
 .ordre-tarif { display: inline-flex; gap: 2px; }
 .ordre-tarif .bouton-icone { width: 36px; height: 36px; }
+@media (pointer: coarse), (max-width: 719px) { .ordre-tarif .bouton-icone { width: 44px; height: 44px; } }
 @media (max-width: 600px) {
   .ligne-saisie { grid-template-columns: minmax(0, 1fr) auto; }
   .ligne-saisie > :first-child { grid-column: 1 / -1; }
@@ -2409,6 +2582,24 @@ button.agent-joint { cursor: pointer; }
 .wa-ouvrir[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
 .wa-copier { flex: 1 1 0; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; border-radius: 12px; }
 .wa-copier.fait { background: var(--teal-100); color: var(--teal-700); border-color: var(--teal-600); }
+/* Audit mobile n° 3 (26.11.2026) : « Ouvrir dans WhatsApp » ne rétrécissait pas (nowrap, largeur minimale du contenu) et poussait « Copier »
+   12 px hors de l'écran à 375 px, la page glissait de côté. Les deux boutons rétrécissent ; le libellé long passe à la ligne s'il le faut. */
+.wa-prop-actions > * { min-width: 0; }
+.wa-ouvrir { flex: 1 1 auto; }
+.wa-copier { flex: 0 1 auto; padding: 0 16px; }
+.wa-ouvrir svg, .wa-copier svg { flex: none; }
+@media (max-width: 379px) { .wa-copier { flex: none; width: 54px; padding: 0; } .wa-copier-texte { display: none; } }
+/* Audit mobile n° 4 (26.11.2026) : sur téléphone, la réponse préparée est repliée sur deux lignes (« Voir la réponse ») ; dépliée, le champ
+   grandit avec le texte (hauteur posée par whatsapp.mjs) au lieu de défiler dans la page. Ordinateur : inchangé. */
+.wa-apercu, .wa-replier { display: none; }
+@media (max-width: 899px) {
+  .wa-prop.repliee textarea, .wa-prop.repliee .wa-morceaux:not([hidden]) { display: none; }
+  .wa-prop.repliee .wa-apercu { display: grid; gap: 4px; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px; text-align: left; background: var(--surface-2); border: 1px solid var(--bord-champ); border-radius: 10px; color: var(--texte); font: inherit; font-weight: 400; cursor: pointer; }
+  .wa-apercu-texte { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+  .wa-apercu-voir { font-weight: 700; color: var(--teal-700); }
+  .wa-prop:not(.repliee) .wa-replier { display: inline-flex; align-items: center; min-height: 44px; margin-left: auto; padding: 0; font-size: 0.9rem; font-weight: 600; }
+  .wa-prop textarea { min-height: 4.5em; resize: none; overflow: hidden; }
+}
 .wa-morceaux { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin: 6px 0 0; }
 .wa-morceaux[hidden] { display: none; }
 .wa-morceaux .lien { min-height: 40px; padding: 0; }
@@ -2424,6 +2615,16 @@ button.agent-joint { cursor: pointer; }
 .wa-reglages-etat { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 0.92rem; }
 .wa-reglages-etat dt { color: var(--texte-2); }
 .wa-reglages-etat dd { margin: 0; }
+/* Message de nuit (migration 132) : heures côte à côte, boutons de 44 px (règle commune des boutons), qui passent à la ligne sur téléphone. */
+.wa-nuit { margin: 18px 0 12px; padding-top: 14px; border-top: 1px solid var(--bord); }
+.wa-nuit h3 { margin: 0 0 4px; font-size: 1rem; }
+.wa-nuit label:not(.case) { display: block; margin: 12px 0 0; font-weight: 500; font-size: 0.92rem; }
+.wa-nuit label:not(.case) > input, .wa-nuit label:not(.case) > textarea { margin-top: 4px; }
+.wa-nuit-heures { display: grid; grid-template-columns: repeat(2, minmax(0, 9rem)); gap: 0 14px; }
+.wa-nuit textarea { min-height: 12rem; }
+.wa-nuit-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 4px; }
+.wa-nuit .erreur-form { margin: 10px 0 0; }
+.wa-meta .wa-auto { font-weight: 600; color: var(--teal-700); }
 .wa-compte.connecte { color: var(--teal-700); font-weight: 600; }
 .wa-compte.deconnecte, .wa-compte.retire { color: var(--danger); font-weight: 600; }
 
@@ -2526,6 +2727,10 @@ button.agent-badge-entreprise { cursor: pointer; }
 .wa-conv-nom strong { min-width: 0; }
 .wa-conv-apercu { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; color: var(--texte-2); }
 .wa-conv.non-lue .wa-conv-apercu { color: var(--texte); }
+/* Audit mobile n° 31 (26.11.2026) : « Message supprimé » n'est pas un message à lire, en italique gris même non lu ; le nom garde sa place,
+   les pastilles passent dessous quand la ligne est trop étroite. */
+.wa-conv-apercu.supprime, .wa-conv.non-lue .wa-conv-apercu.supprime { font-style: italic; color: var(--texte-2); }
+.wa-conv-nom { flex-wrap: wrap; row-gap: 4px; }
 /* Messages manquants (migration 100) : repère discret sur la carte et dans la conversation, ligne « non transmis » à la place d'une bulle. */
 .wa-conv-manque { display: block; margin-top: 2px; font-size: 0.8125rem; color: var(--texte-2); font-style: italic; }
 .wa-conv-vous { color: var(--texte-2); }
@@ -2539,6 +2744,10 @@ button.agent-badge-entreprise { cursor: pointer; }
 .wa-liste .puce-nombre { min-width: 20px; padding: 0 5px; }
 .wa-jamais { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
 .wa-menu { flex: none; width: 44px; height: 44px; }
+/* L'Assistant depuis la conversation (26.11.2026) : toujours visible dans l'en-tête collé, 44 px, l'icône seule sous 360 px. */
+.wa-assistant { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 0.9rem; border-radius: 22px; }
+.wa-assistant svg { color: var(--teal-700); }
+@media (max-width: 359px) { .wa-assistant { padding: 0; justify-content: center; } .wa-assistant span { display: none; } }
 /* Faits du client : le dossier, les dates, l'hôtel, le prochain pickup, les prix donnés, le reste à payer. Un tap copie le fait. */
 .wa-faits { margin: 0 -16px; padding: 8px 16px 12px; background: var(--surface); border-bottom: 1px solid var(--bord); }
 .wa-faits > summary { display: flex; align-items: baseline; gap: 8px; min-height: 36px; cursor: pointer; font-weight: 700; }
@@ -2559,11 +2768,17 @@ section.wa-faits .wa-faits-tete { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .wa-fait { transition: none; } }
 /* Le clavier de l'iPhone ne cache ni la saisie de l'Assistant ni les boutons de la réponse (design n° 10). */
 html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans-reponse.avec-bouton { bottom: var(--clavier); }
+/* La barre collée des Réglages (« Enregistrer les réglages ») suit aussi le bas visible : sinon elle passait sous le clavier (26.11.2026). */
+html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
+/* Clavier ouvert : iOS fait descendre la partie visible ; l'en-tête de la discussion (Assistant, WhatsApp) reste collé à son haut au lieu
+   de rester hors de l'écran avec la barre du haut (26.11.2026). Un décalage d'en-tête collé ne change pas la hauteur de la page. */
+/* Jamais sous la barre du haut (collée, z-index 30) quand on remonte le fil clavier ouvert : le plus bas des deux (relecture de la PR 355). */
+@media (max-width: 899px) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: max(var(--haut-barre), var(--haut-visible, 0px)); } }
 @media (max-width: 899px) {
   /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
   .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }
   .agent.avec-fil .agent-fil, .wa.avec-fil .wa-fil { min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 16px); margin-bottom: 0; }
-  html.clavier .contenu:has(.agent.avec-fil), html.clavier .contenu:has(.wa.avec-fil) { padding-bottom: var(--clavier); }
+  /* Clavier ouvert : aucune marge qui suit le clavier (26.11.2026). La hauteur de la page ne dépend plus de --clavier : iOS ne boucle plus. */
 }
 @media (min-width: 900px) {
   /* Les messages gardent au moins la moitié de la colonne (design n° 6) : faits et résumé défilent dans leur propre hauteur. */
@@ -2592,6 +2807,7 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-fil-liens { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 0; }
 .agent-fil-liens a { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
 .agent-fil-liens svg { color: #128c4a; }
+.agent-wa-numero { display: inline-flex; align-items: center; min-height: 28px; font-size: 0.85rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
 .agent-bulle.agent-whatsapp { align-self: flex-start; max-width: min(92%, 34rem); padding: 8px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 16px 16px 16px 4px; }
 .agent-whatsapp summary { display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; font-weight: 600; }
 .agent-whatsapp summary svg { flex: none; color: #128c4a; }
@@ -2677,6 +2893,10 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .point-soir-bloc { margin-top: 14px; }
 .point-soir-bloc h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 1rem; margin: 0 0 8px; }
 .point-soir-message { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); border-radius: var(--rayon); font-size: 0.92rem; overflow-wrap: anywhere; white-space: pre-line; }
+/* Sur téléphone, l'aperçu de deux lignes du message, déplié par « Voir tout le message » ; sur ordinateur, le message entier (relecture de la PR 361). */
+/* Replié, les sauts de ligne deviennent des espaces : les deux lignes montrent du texte, pas « Hello Ben, » et une ligne vide. */
+@media (max-width: 719px) { .point-soir-message.replie .point-soir-texte { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; } }
+.point-soir-deplier { min-height: 44px; padding: 0; }
 .point-soir-signal { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
 .point-soir-destinataire { margin: 0; flex: 1 0 100%; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
 .point-soir-numero { flex: 1 0 100%; font-size: 0.9rem; }
@@ -2768,3 +2988,43 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 /* Les deux remarques d'un service sur une carte de l'Assistant : « Sur le voucher » et « Interne » (22.11.2026). */
 .agent-remarques { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 2px 12px; margin-top: 4px; font-size: 0.85rem; }
 .agent-remarques p { margin: 0; }
+
+/* ---- Relecture de la PR #360 (fiche dossier et éditeur sur téléphone, 26.11.2026) ---------------------------------- */
+/* Toast avec un bouton (« Ligne supprimée. Annuler ») : le bouton reste lisible sur le fond sombre et fait 44 px de haut. */
+.toast.avec-action { display: flex; align-items: center; gap: 12px; padding-block: 0; padding-right: 6px; }
+.toast.avec-action > span { padding-block: 12px; }
+.toast-action { min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #9fe3dc; font: inherit; font-weight: 700; cursor: pointer; }
+.toast-action:hover { background: rgba(255, 255, 255, 0.1); }
+/* Barre du bas de la fiche : « Envoyer la confirmation du 29/11 » tient en deux lignes à 375 px, pas trois. */
+.barre-dossier .barre-action > .principal { padding: 0 6px; font-size: 0.92rem; }
+/* Éditeur : la barre « Envoyer » du bas s'efface quand le clavier est ouvert, comme la barre d'onglets. */
+html.clavier .barre-editeur-bas { display: none; }
+/* Éditeur sur téléphone : l'en-tête de l'application ne colle plus, seule la barre Éditer / Aperçu reste en haut. */
+@media (max-width: 719px) {
+  html:has(#principal.plein .editeur) .barre-haut { position: relative; }
+  .editeur-barre { top: 0; padding-top: max(4px, env(safe-area-inset-top)); }
+}
+/* Carte de réservation sans geste principal : le « … » sur la ligne du titre, à droite de la date. */
+.carte-lien.menu-en-haut { grid-template-columns: minmax(0, 1fr) auto auto; }
+.carte-lien.menu-en-haut .carte-menu-haut { grid-column: 3; grid-row: 1 / span 2; align-self: start; flex: none; width: 44px; min-height: 44px; margin: -6px -8px 0 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.carte-lien.menu-en-haut .carte-menu-haut svg { stroke-width: 3; }
+/* Liens texte de la fiche dossier (Facture, Devis, Dossier lié) : 44 px de zone de toucher sans changer l'aspect (audit mobile n° 13). */
+@media (pointer: coarse) {
+  .lien-doc { display: inline-block; padding-block: 10px; margin-block: -10px; }
+  .dossier-lie a { display: inline-block; padding-block: 11px; margin-block: -11px; }
+}
+
+/* Paysage sur téléphone, suite du bloc plus haut : la barre du haut y défile avec la page, les en-têtes collés sous elle (fil WhatsApp,
+   Assistant, onglets des Statistiques) remontent donc au bord de l'écran au lieu de garder un vide de la hauteur de la barre. Placé en fin
+   de fichier pour passer après leurs propres règles (relecture de la PR 363). */
+@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px) {
+  .wa-fil-tete, .agent-fil-tete { top: 0; }
+  .st-nav { top: 0; }
+  html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: var(--haut-visible, 0px); }
+}
+
+/* Date vide sur iPhone et iPad : Safari n'affiche ni le format ni le placeholder d'un champ date, qui reste une case blanche. app.mjs pose
+   la classe « vide » et le format attendu (data-vide) ; seulement sur iOS (-webkit-touch-callout), les autres navigateurs l'écrivent déjà. */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"].vide::before { content: attr(data-vide); color: var(--texte-2); opacity: 0.8; }
+}

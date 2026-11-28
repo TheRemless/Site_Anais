@@ -188,3 +188,47 @@ export function resultatsRechercheWhatsApp(trouves = [], { conversations = [], c
   }
   return out;
 }
+
+// ---- Retour dans l'entreprise d'origine (relecture de la PR 355) ------------------------------------------------------------------------
+// L'Assistant d'une conversation Secret ouvert depuis Taxi fait passer l'application chez Secret. Au retour sur la même conversation, on
+// revient chez Taxi. `brut` : ce que l'écran WhatsApp a rangé ({ conversation, entite, le }) ; rend l'entreprise à rétablir, ou "".
+// Seulement pour la même conversation, dans les quinze minutes, vers une entreprise encore accessible et différente de l'active.
+export const CLE_RETOUR_ENTITE = "gestion-wa-retour-entite";
+// Quinze minutes (contre-relecture de la PR 355) : au-delà, une notification qui ouvre la conversation garde l'entreprise qu'elle désigne.
+export const RETOUR_ENTITE_MS = 15 * 60 * 1000;
+export function entiteDeRetour(brut, { conversation = "", active = "", accessibles = [], maintenant = Date.now() } = {}) {
+  let d = null;
+  try {
+    d = typeof brut === "string" ? JSON.parse(brut) : brut;
+  } catch {
+    return "";
+  }
+  if (!d || !estUuid(d.conversation) || !estUuid(d.entite) || d.conversation !== conversation) return "";
+  if (!(Number(d.le) > 0) || maintenant - Number(d.le) > RETOUR_ENTITE_MS || maintenant < Number(d.le)) return "";
+  if (d.entite === active || !accessibles.includes(d.entite)) return "";
+  return d.entite;
+}
+
+// L'entreprise à afficher avant de construire l'écran (app.mjs, afficher), contre-relecture de la PR 355 :
+//   - retour de l'Assistant d'une autre entreprise sur la même conversation WhatsApp (entiteDeRetour) : il passe avant « ?entite= » de
+//     l'adresse (le lien « Voir la conversation » de l'Assistant porte l'entreprise de la conversation), et « entite » est retiré de
+//     l'adresse : un redessin (nouveau message) ne rebascule plus ;
+//   - sinon « ?entite= » d'une notification, si la personne y a accès.
+// `retourBrut` : ce que l'écran WhatsApp a rangé (CLE_RETOUR_ENTITE). Rend { entite, adresse, consommer } : `entite` à activer ("" : rien
+// à changer), `adresse` à mettre à la place de l'adresse courante ("" : inchangée), `consommer` : la mémoire du retour est à effacer.
+export function entrepriseAAfficher({ hash = "", active = "", accessibles = [], retourBrut = null, maintenant = Date.now() } = {}) {
+  const [chemin, requete = ""] = String(hash).split("?");
+  const params = new URLSearchParams(requete);
+  const surWhatsApp = /^#\/whatsapp$/.test(chemin);
+  // La mémoire ne sert qu'une fois : toute visite de WhatsApp l'efface, qu'elle serve ou non.
+  const consommer = surWhatsApp && !!retourBrut;
+  const retour = surWhatsApp && retourBrut ? entiteDeRetour(retourBrut, { conversation: params.get("c") || "", active, accessibles, maintenant }) : "";
+  if (retour) {
+    params.delete("entite");
+    const reste = params.toString();
+    return { entite: retour, adresse: `${chemin}${reste ? `?${reste}` : ""}`, consommer };
+  }
+  const demandee = params.get("entite") || "";
+  const entite = demandee && demandee !== active && accessibles.includes(demandee) ? demandee : "";
+  return { entite, adresse: "", consommer };
+}

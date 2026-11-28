@@ -3,6 +3,7 @@
 import { h, vider, modal } from "../ui.mjs";
 import { formatMontant, formatNombre } from "../calc.mjs";
 import { tr } from "../i18n.mjs";
+import { indexTuileSeule, sautEtiquettes, largeurGraphique, colonnePlusProche } from "../mobile-calc.mjs";
 
 const NS = "http://www.w3.org/2000/svg";
 export const s = (tag, attrs = {}, ...enfants) => {
@@ -71,6 +72,16 @@ export function tuile({ libelle, valeur, detail, ecart, precedent, devise, monna
   );
 }
 
+// Grille de tuiles. Sur téléphone (deux colonnes), une tuile « grande » prend une ligne entière et les autres vont deux par deux
+// (placement dense) : avec un nombre impair de petites tuiles, la dernière reste seule, on la marque pour qu'elle prenne la ligne.
+// Compter la position du dernier enfant en CSS se trompait dès qu'une deuxième grande tuile entrait (relecture de la PR #357).
+export function grilleTuiles(tuiles) {
+  const t = tuiles.filter(Boolean);
+  const i = indexTuileSeule(t.map((x) => x.classList.contains("grande")));
+  if (i >= 0) t[i].classList.add("seule");
+  return h("div", { class: "st-tuiles" }, t);
+}
+
 export function ouvrirAide([titre, texte], lien) {
   modal(tr(titre), h("div", { class: "modal-corps" }, h("p", null, tr(texte)), lien ? h("p", null, h("a", { class: "bouton secondaire", href: lien }, tr("Voir la liste"))) : null), { feuille: true });
 }
@@ -96,7 +107,8 @@ function pasRond(x) {
 // cases : [{ cle, libelle }] ; series : [{ nom, valeurs: [], classe: "s1"|"s2"|"ref" }].
 // lecture(i) → nœud affiché sous le graphique pour la colonne choisie ; lien(i) → adresse de la liste derrière la colonne.
 // format(v) : texte de l'axe et des valeurs (par défaut « 12,4 k ») ; le suivi de l'assistant y écrit des dollars à quelques centimes.
-export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien, etiquettes = true, hauteur = 230, format = compact }) {
+// ajuster : vue jour par jour, qui tient dans la largeur jusqu'à 31 colonnes (voir largeurGraphique, mobile-calc.mjs).
+export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien, etiquettes = true, hauteur = 230, format = compact, ajuster = false }) {
   const n = cases.length;
   const enveloppe = h("div", { class: "st-graphe" });
   const defile = h("div", { class: "st-graphe-defile", role: "group", "aria-label": titre });
@@ -114,11 +126,24 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
     lectureEl.append(...[lecture(i), lien && lien(i) ? h("a", { class: "bouton secondaire petit", href: lien(i) }, tr("Voir la liste")) : null].filter(Boolean));
   };
 
+  const choisir = (i) => {
+    if (choisi === i && lien && lien(i)) {
+      location.hash = lien(i);
+      return;
+    }
+    lire(i);
+    dessiner();
+    const g = defile.querySelectorAll(".st-colonne")[i];
+    if (g) g.focus({ preventScroll: true });
+  };
+
   const dessiner = () => {
     const gauche = 6, haut = 24, bas = 30, droite = 8, largeurAxe = 46;
     const pas = Math.max(series.length > 1 ? 56 : 44, 0);
     const disponible = Math.max((enveloppe.clientWidth || 340) - largeurAxe, 240);
-    const W = Math.max(disponible, gauche + droite + n * pas);
+    // Vue Jour jusqu'à 31 colonnes : toute la période tient dans la largeur (audit mobile, n° 18). Semaine et Mois gardent leurs colonnes
+    // de 44 px et plus, avec leurs montants, et défilent au besoin (contre-relecture de la PR #357).
+    const W = largeurGraphique({ n, disponible, pas, marges: gauche + droite, ajuster });
     const H = hauteur;
     const hh = H - haut - bas;
     const valeurs = series.flatMap((x) => x.valeurs);
@@ -133,7 +158,9 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
     const y = (v) => haut + hh - ((v - plancher) / etendue) * hh;
     const ligneZero = y(0);
     const largeurCase = (W - gauche - droite) / n;
-    const bw = Math.max(6, Math.min(30, (largeurCase - 12) / series.length - 2));
+    // Colonnes étroites : la marge et l'écart entre séries rétrécissent avec elles, pour que les barres ne se chevauchent pas.
+    const ecartSeries = series.length > 1 ? Math.min(2, largeurCase / 10) : 0;
+    const bw = Math.max(2, Math.min(30, (largeurCase - Math.min(12, largeurCase * 0.3)) / series.length - ecartSeries));
     const svg = s("svg", { class: "st-svg", viewBox: `0 0 ${W} ${H}`, width: String(W), height: String(H), role: "group", "aria-label": titre });
     const svgAxe = s("svg", { class: "st-svg", viewBox: `0 0 ${largeurAxe} ${H}`, width: String(largeurAxe), height: String(H), "aria-hidden": "true" });
     for (const v of graduations) {
@@ -141,40 +168,38 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
       svgAxe.append(s("text", { x: largeurAxe - 8, y: y(v) + 4, class: "st-axe", "text-anchor": "end" }, format(v)));
     }
     vider(axe).append(svgAxe);
-    const sautEtiquette = largeurCase < 40 ? Math.ceil(40 / largeurCase) : 1;
+    const sautEtiquette = sautEtiquettes(largeurCase);
     cases.forEach((c, i) => {
       const x0 = gauche + i * largeurCase;
       const centre = x0 + largeurCase / 2;
-      const total = series.length * bw + (series.length - 1) * 2;
+      const total = series.length * bw + (series.length - 1) * ecartSeries;
       const fond = s("rect", { x: x0 + 1, y: haut - 4, width: largeurCase - 2, height: hh + 8, class: `st-fond${i === choisi ? " actif" : ""}`, rx: "6" });
       const groupe = s("g", { class: "st-colonne", tabindex: "0", role: "button", "aria-pressed": i === choisi ? "true" : "false", "aria-label": `${c.libelle} : ${series.map((x) => `${tr(x.nom)} ${format === compact ? formatNombre(x.valeurs[i]) : format(x.valeurs[i])}`).join(", ")}` }, fond);
       series.forEach((x, k) => {
         const v = x.valeurs[i];
-        const bx = centre - total / 2 + k * (bw + 2);
+        const bx = centre - total / 2 + k * (bw + ecartSeries);
         const top = v >= 0 ? y(v) : ligneZero;
         const hauteurBarre = Math.abs(y(v) - ligneZero);
         groupe.append(s("path", { d: chemin(bx, top, bw, hauteurBarre, 4), class: `st-barre ${x.classe}` }));
+        // Le montant au-dessus de la barre seulement s'il a la place ; sinon il se lit sous le graphique en touchant la colonne.
         if (etiquettes && v !== 0 && x.classe !== "ref" && bw >= 20) groupe.append(s("text", { x: bx + bw / 2, y: Math.max(11, top - 5), class: "st-valeur", "text-anchor": "middle" }, format(v)));
       });
-      if (i % sautEtiquette === 0) groupe.append(s("text", { x: centre, y: H - 10, class: "st-axe", "text-anchor": "middle" }, c.court || c.libelle));
-      // Zone de toucher : toute la colonne, bien plus large que la barre.
-      groupe.append(s("rect", { x: x0, y: 0, width: largeurCase, height: H, class: "st-zone" }));
-      const choisir = () => {
-        if (choisi === i && lien && lien(i)) {
-          location.hash = lien(i);
-          return;
-        }
-        lire(i);
-        dessiner();
-        const g = svg.parentNode && svg.parentNode.querySelectorAll(".st-colonne")[i];
-        if (g) g.focus({ preventScroll: true });
-      };
-      groupe.addEventListener("click", choisir);
+      // Une étiquette sur deux (ou sur sept) comptée depuis la dernière colonne : le jour le plus récent garde toujours la sienne.
+      if ((n - 1 - i) % sautEtiquette === 0) groupe.append(s("text", { x: centre, y: H - 10, class: "st-axe", "text-anchor": "middle" }, c.court || c.libelle));
       groupe.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") (e.preventDefault(), choisir());
+        if (e.key === "Enter" || e.key === " ") (e.preventDefault(), choisir(i));
       });
       svg.append(groupe);
     });
+    // Un seul gestionnaire de toucher pour tout le graphique : la colonne la plus proche du doigt, même quand les colonnes de la vue Jour
+    // ne font que 9 à 16 px de large (contre-relecture de la PR #357). Le clavier garde ses colonnes focalisables.
+    svg.addEventListener("click", (e) => {
+      const r = svg.getBoundingClientRect();
+      if (!r.width) return;
+      const i = colonnePlusProche(((e.clientX - r.left) * W) / r.width, { gauche, largeurCase, n });
+      if (i >= 0) choisir(i);
+    });
+    svg.classList.add("st-touchable");
     if (minV < 0) svg.append(s("line", { x1: 0, x2: W - droite, y1: ligneZero, y2: ligneZero, class: "st-zero" }));
     vider(defile).append(svg);
     svg.style.width = `${W}px`;

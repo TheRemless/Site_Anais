@@ -1,7 +1,7 @@
 // Validation des cartes de l'onglet Assistant (sorti de views/agent.mjs, relecture de la PR 332, pour que les tests passent par ce code) :
 // la préparation d'une carte « dossier » pour la fiche de création, le chauffeur, le règlement et le lieu d'une carte « reservation »,
 // l'enregistrement d'une réservation par la fenêtre habituelle (cachée), et la carte « dossier » de l'espace unifié (deux dossiers liés).
-import { etat, reglages, nomPartenaire, modeTaxi, modifier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis } from "../etat.mjs";
+import { etat, reglages, nomPartenaire, modeTaxi, modifier, chargerDossier, supprimer as supprimerLigne, changerEntite, permissionsDe, partageClientsPermis } from "../etat.mjs";
 import { modal, toast } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { propositionDepuisCarte, reservationDepuisCarte, chauffeurCarte, payeSurPlaceCarte } from "../agent-calc.mjs";
@@ -41,8 +41,30 @@ export const optionsCarte = (c) => {
   return { partenaireId, surPlace: payeSurPlaceCarte({ taxi: modeTaxi(), partenaire, modeDe: modeParDefaut }) };
 };
 
-export async function enregistrerReservation(valeurs, message, ancienne = null) {
+// `avantEnregistrer()` (carte de l'Assistant, migration 133) : la carte est-elle toujours prise par moi ? Rend le motif d'arrêt juste avant
+// d'écrire, ou null.
+export async function enregistrerReservation(valeurs, message, ancienne = null, { avantEnregistrer = null } = {}) {
   const { formulaireReservation } = await import("./reservations.mjs");
+  // Une option ajoutée par une carte « modification » (26.11.2026) : les lignes de la facture doivent être lues avant la fenêtre cachée.
+  if (Array.isArray(valeurs.options_ajout) && valeurs.options_ajout.length) {
+    // Taxi : une course suit sa propre facture, sans options (relecture de la PR 359) : refusé, rien n'est écrit.
+    if (modeTaxi()) return { ok: false, motif: tr("Les options ne s'ajoutent pas à une course de Taxi : modifiez le prix de la course.") };
+    const r = ancienne || valeurs;
+    const liee = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
+    if (liee) await chargerDossier(r.dossier_id);
+    else {
+      // Service sans ligne de facture (ajouté par carte) : l'option va sur la réservation, son prix dans le montant vendu, en une écriture.
+      const opts = valeurs.options_ajout.filter((o) => !((r.details && r.details.options) || []).some((x) => x.prestation_id === o.prestation_id));
+      const plus = opts.reduce((t, o) => t + (Number(o.prix) || 0), 0);
+      if (!opts.length) return { ok: false, motif: tr("Cette option est déjà sur le service.") };
+      if (opts.some((o) => o.prix === null || o.prix === undefined)) return { ok: false, motif: tr("Le prix de l'option est à saisir : ouvrez « Vérifier avant ».") };
+      const arret = avantEnregistrer ? await avantEnregistrer() : null;
+      if (arret) return { ok: false, motif: arret };
+      await modifier("reservations", r.id, { montant_vente: r.montant_vente === null || r.montant_vente === undefined ? null : Math.round((Number(r.montant_vente) + plus) * 100) / 100, details: { ...(r.details || {}), options: [...((r.details && r.details.options) || []), ...opts.map((o) => ({ prestation_id: o.prestation_id, libelle: o.libelle || "", prix: o.prix ?? null, qte: Math.max(1, Number(o.qte) || 1) }))] } });
+      toast(message);
+      return { ok: true, reservation: { ...r, id: r.id } };
+    }
+  }
   return new Promise((fin) => {
     let fini = false;
     let minuterie = null;
@@ -54,7 +76,7 @@ export async function enregistrerReservation(valeurs, message, ancienne = null) 
       ferme();
       fin(r);
     };
-    const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }), { base: ancienne || valeurs });
+    const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }), { base: ancienne || valeurs, avantEnregistrer: avantEnregistrer ? async () => { const arret = await avantEnregistrer(); if (arret) terminer({ ok: false, motif: arret }); return arret; } : null });
     ferme = modal(tr("Réservation"), form, { cache: true });
     minuterie = setTimeout(() => terminer({ ok: false, motif: tr("Rien n'a été enregistré : ouvrez « Vérifier avant ».") }), 60_000);
     form.requestSubmit();
@@ -77,7 +99,9 @@ const MOTIFS_UNIFIE = (libelleEntreprise) => ({
   aucun_service: () => tr("Aucun service à créer."),
 });
 // `donnees` : la carte avec ses corrections d'un tap et son devis (donneesCarte de l'écran) ; `libelleEntreprise(id)` : « Secret » ou « Taxi ».
-export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise = (id) => id } = {}) {
+// `avantCreer()` (migration 133) : revérifie la prise de la carte juste avant chaque dossier écrit ; un motif arrête tout (les dossiers déjà
+// créés de la même carte vont à la corbeille, comme pour tout arrêt).
+export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise = (id) => id, whatsappLie = null, avantCreer = null } = {}) {
   const motifs = MOTIFS_UNIFIE(libelleEntreprise);
   const plan = planCreation({ services: donnees.services || [], activeId: etat.entiteId, permissionsDe, nouveauClient: false, partagePermis: (a, b) => partageClientsPermis(a, b) });
   if (!plan.ok) {
@@ -99,8 +123,9 @@ export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise 
   const r = await creerDossiersLies({
     etapes: plan.etapes,
     // Passe à blanc : préparation et contrôles de chaque dossier (prix à fixer, service introuvable, numéro), rien n'est écrit.
-    essayer: (e, i) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre })),
-    creer: (e, i, clientId) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId })),
+    // `whatsappLie` : la conversation WhatsApp de la carte, dont le numéro complète celui du premier client créé (les suivants reprennent sa fiche).
+    essayer: (e, i) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, essai: true, clientAVenir: i > 0, titre: c.titre, whatsappLie })),
+    creer: (e, i, clientId) => dans(e.entite_id, async () => ouvrirDemande(null, await preparationComplete(sous(e)), { auto: true, titre: c.titre, surCree: () => {}, clientId, whatsappLie, ...(avantCreer ? { avantCreer } : {}) })),
     // Un dossier ne passe pas : ceux déjà créés vont à la corbeille (la suppression habituelle), dans leur entreprise.
     defaire: async (crees) => {
       for (const d of crees) await dans(d.entite_id, () => supprimerLigne("dossiers", d.id));
@@ -131,4 +156,4 @@ export async function validerUnifie(c, { donnees = c.donnees, libelleEntreprise 
 
 
 // Carte « reservation » validée d'un geste : la fenêtre habituelle, cachée, avec le chauffeur et le règlement de la course.
-export const ajouterParCarte = (c, message) => enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), message);
+export const ajouterParCarte = (c, message, options = {}) => enregistrerReservation(reservationDepuisCarte(c.donnees, optionsCarte(c)), message, null, options);

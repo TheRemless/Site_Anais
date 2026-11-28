@@ -165,6 +165,7 @@ ok((await prendreE("admin", K2)).ok === true, "l'administration prend une second
 await vieillir(K2, "prise_le = now() - interval '3 minutes'");
 const exp = await prendreE("nani", K2);
 ok(exp.ok === false && exp.raison === "expiree" && exp.par === U.admin, "prise expirée : Nani voit que l'administration était dessus");
+ok((await prendre("nani", K2)) === false && (await statut(K2)).prise_par === U.admin, "l'ancien nom (écran en cache) ne reprend jamais la prise d'une autre personne sans confirmation");
 ok((await prendreE("nani", K2, true)).ok === true, "… et la reprend en le sachant");
 const ctl = await controler("admin", K2);
 ok(ctl.ok === false && ctl.raison === "reprise" && ctl.par === U.nani, "l'administration revient et enregistre : refusé avant toute écriture, rien n'est créé deux fois");

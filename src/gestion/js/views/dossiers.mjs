@@ -2,12 +2,13 @@ import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, 
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { boutonAssistant } from "./commun.mjs";
 import { h, champ, vider, toast, erreurChamp } from "../ui.mjs";
-import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
+import { identiteDepuisSaisie, verifierNouveauClient, messageTelephone } from "../client-calc.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier, barreFiltres } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { filtreDeLEntite, filtreDepuisAdresse, adresseListe } from "../filtre-entite-calc.mjs";
 
 const ONGLETS = [
   ["cours", N_("En cours"), ["brouillon", "devis_envoye", "accepte", "acompte"]],
@@ -46,7 +47,10 @@ const COMPARE = {
 // Valeurs enregistrées en français dans les réglages (civilités, nom du champ « pays ») : on traduit seulement l'affichage.
 const _AFFICHAGE = [N_("Madame"), N_("Monsieur"), N_("Mademoiselle"), N_("Pays"), N_("Service"), N_("Trajet")];
 
-const filtre = { onglet: "cours", q: "", tri: "recents" };
+// Un filtre par entreprise : la recherche et l'onglet d'Agence ne suivent pas dans Excursions (audit mobile du 26.11.2026).
+const FILTRE_DEFAUT = { onglet: "cours", q: "", tri: "recents" };
+const memoFiltres = new Map();
+let filtre = FILTRE_DEFAUT;
 const PAGE = 50;
 // Dossiers cochés pour une action groupée (changer de responsable).
 const selection = new Set();
@@ -54,12 +58,13 @@ const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
 
 export function listeDossiers() {
   selection.clear();
-  // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser).
+  filtre = filtreDeLEntite(memoFiltres, etat.entiteId, FILTRE_DEFAUT);
+  // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser) ; notre propre adresse rend l'onglet et le tri
+  // de l'entreprise qui l'a écrite, sans toucher à la recherche (voir filtre-entite-calc.mjs).
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   // Un onglet d'une autre entreprise (« Soldés » de Secret) n'existe pas forcément ici : on revient au premier.
   if (!ongletsActifs().some(([k]) => k === filtre.onglet)) filtre.onglet = ongletsActifs()[0][0];
-  if (ongletsActifs().some(([k]) => k === params.get("onglet"))) { filtre.onglet = params.get("onglet"); filtre.q = ""; }
-  if (COMPARE[params.get("tri")]) filtre.tri = params.get("tri");
+  Object.assign(filtre, filtreDepuisAdresse(params, etat.entiteId, { onglets: ongletsActifs().map(([k]) => k), tris: Object.keys(COMPARE) }));
   const corps = h("div");
   const groupee = peut("dossiers.ecrire");
   const barre = h("div", { class: "barre-selection", hidden: true });
@@ -99,11 +104,21 @@ export function listeDossiers() {
       .filter((r) => !q || sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays || ""} ${excursions ? `${r.dossier.bandeau || ""} ${etat.db.reservations.filter((x) => x.dossier_id === r.dossier.id).map((x) => x.libelle).join(" ")}` : ""}`).includes(q))
       .sort(COMPARE[filtre.tri]);
     vider(corps);
+    // Pendant une recherche, les puces ne filtrent plus : la rangée passe en gris contrasté et se dit inactive (audit mobile, n° 42).
+    // Pas d'opacité, qui faisait tomber le texte sous le contraste lisible (relecture de la PR #357). Elles restent cliquables : l'onglet
+    // choisi servira quand la recherche sera effacée.
+    const rangee = filtres && filtres.noeud.querySelector(".puces");
+    if (rangee) {
+      if (q) rangee.setAttribute("aria-disabled", "true");
+      else rangee.removeAttribute("aria-disabled");
+    }
     corps.append(...(q && filtre.onglet !== "tous" ? [h("p", { class: "aide", role: "status" }, tr("La recherche porte sur tous les dossiers, quel que soit l'onglet."))] : []));
     if (!lignes.length) {
       corps.append(
         etat.db.dossiers.length
-          ? vide(tr("Aucun dossier ne correspond"), tr("Essayez un autre onglet ou effacez la recherche."))
+          ? q
+            ? vide(tr("Aucun dossier ne correspond à « {recherche} »", { recherche: filtre.q.trim() }), tr("Vérifiez l'orthographe ou effacez la recherche."))
+            : vide(tr("Aucun dossier ne correspond"), tr("Essayez un autre onglet ou effacez la recherche."))
           : vide(tr("Aucun dossier pour l'instant"), taxi ? tr("Un dossier regroupe le client, la course et sa Booking confirmation.") : excursions ? tr("Un dossier regroupe le client, ses services, la facture et les paiements.") : tr("Un dossier regroupe le client, le voyage, le devis, la facture et les paiements."), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Créer le premier dossier")) : null)
       );
       return;
@@ -116,7 +131,7 @@ export function listeDossiers() {
           "a",
           { class: "carte-lien", href: `#/dossier/${r.dossier.id}` },
           h("span", { class: "carte-titre" }, nomClient(r.client)),
-          h("span", { class: "carte-droite" }, h("strong", null, r.total ? formatMontant(r.total, r.devise) : "—"), r.total && r.reste > 0 && r.statut !== "annule" ? h("span", null, tr("reste {montant}", { montant: formatMontant(r.reste, r.devise) })) : null),
+          h("span", { class: "carte-droite" }, r.total ? h("strong", null, formatMontant(r.total, r.devise)) : null, r.total && r.reste > 0 && r.statut !== "annule" ? h("span", null, tr("reste {montant}", { montant: formatMontant(r.reste, r.devise) })) : null),
           h("span", { class: "carte-sous" }, sousTitreDossier(r.dossier)),
           h("span", { class: "carte-pied" }, pastille(r.statut), r.dossier.date_depart ? h("span", { class: "ref" }, tr("Départ {date}", { date: formatDate(r.dossier.date_depart) })) : null)
         ),
@@ -148,11 +163,11 @@ export function listeDossiers() {
     else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, tr("{n} dossiers affichés.", { n: lignes.length })));
   }
 
-  // L'adresse suit l'onglet et le tri : un rechargement ou un favori retrouve la même liste.
-  const majUrl = () => history.replaceState(null, "", `#/dossiers?onglet=${filtre.onglet}&tri=${filtre.tri}`);
+  // L'adresse suit l'onglet et le tri, marqués de l'entreprise : un rechargement ou un favori retrouve la même liste.
+  const majUrl = () => history.replaceState(null, "", adresseListe(filtre, etat.entiteId));
   // Recherche collante, onglets en puces défilantes, tri dans la feuille « Filtrer » (à plat sur ordinateur).
   const filtres = barreFiltres({
-    recherche: { valeur: filtre.q, placeholder: taxi ? tr("Nom du client, référence, trajet") : excursions ? tr("Nom du client, référence, service") : tr("Nom du client, référence, pays"), libelle: tr("Rechercher") },
+    recherche: { valeur: filtre.q, placeholder: taxi ? tr("Client, réf. ou trajet") : excursions ? tr("Client, réf. ou service") : tr("Client ou référence"),libelle: tr("Rechercher") },
     puces: { options: ongletsActifs().map(([cle, libelle]) => ({ valeur: cle, libelle: tr(libelle) })), valeur: filtre.onglet, libelle: tr("Dossiers") },
     filtres: [{ cle: "tri", libelle: tr("Trier par"), type: "select", neutre: "recents", valeur: filtre.tri, options: TRIS.map(([k, l]) => ({ valeur: k, libelle: tr(l) })) }],
     onchange: (v) => {
@@ -183,7 +198,9 @@ export function nouveauDossier() {
   const regl = reglages();
   const listePays = [...regl.listes.pays, tr("Autre")];
   const libellePays = tr(regl.dossier.libelle_pays || "Pays");
-  const selClient = selecteurClient({ valeur: params.get("client") || "", avecNouveau: peut("clients.ecrire"), surChangement: () => majClient() });
+  // « ou créer » seulement pour qui peut créer un client : sinon le libellé promet une action absente (relecture de la PR #357).
+  const avecNouveau = peut("clients.ecrire");
+  const selClient = selecteurClient({ libelle: avecNouveau ? tr("Rechercher ou créer un client") : tr("Rechercher un client"), valeur: params.get("client") || "", avecNouveau, surChangement: () => majClient() });
   const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, tr(c))));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });
@@ -251,7 +268,7 @@ export function nouveauDossier() {
       const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value, email: nvEmail.value });
       if (!verif.ok) {
         if (verif.champ === "nom") (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
-        else if (verif.champ === "telephone") (erreurChamp(nvTel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.")), nvTel.focus());
+        else if (verif.champ === "telephone") (erreurChamp(nvTel, messageTelephone(verif.raison, verif.proposition)), nvTel.focus());
         else (erreur.textContent = tr("Cette adresse e-mail est illisible : vérifiez-la."), nvEmail.focus());
         return;
       }
@@ -321,7 +338,7 @@ export function nouveauDossier() {
         "fieldset",
         null,
         h("legend", null, tr("Dossier")),
-        h("div", { class: "grille-form" }, champ(libellePays, pays), champPaysLibre, champ(tr("Début"), depart), champ(tr("Fin"), retour)),
+        h("div", { class: "grille-form" }, champ(libellePays, pays), champPaysLibre, champ(tr("Début"), depart, tr("Facultatif : sans date, le dossier reste « Dates à fixer ».")), champ(tr("Fin"), retour)),
         champ(tr("Titre affiché sur le document"), bandeau, tr("Se remplit avec le modèle de l'entreprise, le pays et les dates. Modifiable à la main.")),
         champ(tr("Référence"), ref, regl.numerotation.mode === "sequence" ? tr("Numéro suivant de l'année pour cette entreprise.") : tr("Initiales, date du jour et pays.")),
         champ(tr("Premier document"), typeDoc)

@@ -29,7 +29,7 @@ import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-
 import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 import { noteTypeDeduit } from "./whatsapp-type.mjs";
 // Assistant et WhatsApp reliés (PR B, 21.11.2026) : « Demander à l'assistant », vue « À faire », aller au message.
-import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS } from "../whatsapp-relie-calc.mjs";
+import { demandePermise, conversationLiee, messageCible, SURBRILLANCE_MS, CLE_RETOUR_ENTITE } from "../whatsapp-relie-calc.mjs";
 import { aFaireDeLaBoite, listeAFaire } from "./whatsapp-a-faire.mjs";
 // Messages manquants (migration 100) : ligne « non transmis » et repère discret, sans IA ni notification.
 import { suivreFil, decisionArrivee, ratioMedia, cacheLiens, empreinteMessage } from "../fil-defilement.mjs";
@@ -79,7 +79,7 @@ function ligneConversation(c, prop, ouverte) {
   const att = attenteClient(c, prop);
   const texte = ap.texte || (ap.type === "supprime" ? tr(LIBELLE_SUPPRIME) : ap.type ? tr(libelleType(ap.type)) : "");
   const apercu = texte
-    ? h("span", { class: "wa-conv-apercu" }, ap.deNani ? h("span", { class: "wa-conv-vous" }, tr("Vous : ")) : null, texte)
+    ? h("span", { class: `wa-conv-apercu${!ap.texte && ap.type === "supprime" ? " supprime" : ""}` }, ap.deNani ? h("span", { class: "wa-conv-vous" }, tr("Vous : ")) : null, texte)
     : h("span", { class: `wa-conv-etat ${et.cle}` }, et.libelle ? tr(et.libelle) : "");
   return h(
     "li",
@@ -215,7 +215,7 @@ function menuConversation(c) {
       { class: "agent-menu" },
       ici && !lectureSeule ? item(client ? tr("Changer le client relié") : tr("Relier un client"), () => ouvrirRelier(c)) : null,
       client ? item(tr("Ouvrir la fiche du client"), () => naviguer(`#/client/${client.id}`)) : null,
-      etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Contact personnel : rien envoyé à l'IA"), () => basculerReponses(c)) : null,
+      etat.brut.whatsapp_tri_disponible !== false && !lectureSeule ? item(reponsesDe(c) === "jamais" ? tr("Ce n'est plus un contact personnel") : tr("Marquer comme contact personnel (rien envoyé à l'IA)"), () => basculerReponses(c)) : null,
       // IA coupée pour cette conversation (migration 105), sans la classer en Contact personnel.
       etapesDisponibles() && !lectureSeule && reponsesDe(c) !== "jamais" ? item(c.ia_coupee ? tr("Rallumer l'IA pour cette conversation") : tr("Couper l'IA pour cette conversation"), () => basculerIA(c, rafraichir)) : null,
       wa ? h("a", { class: "bouton secondaire", href: wa, target: "_blank", rel: "noopener", onclick: () => fermer() }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null
@@ -332,6 +332,9 @@ function enTete(c, prop) {
       { class: "wa-fil-tete" },
       h("a", { class: "bouton-icone lien wa-retour", href: "#/whatsapp", "aria-label": tr("Retour aux conversations") }, icone("retour", 22)),
       h("div", { class: "wa-fil-titre" }, titreNom(c), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), sousTitreNom(c))),
+      // L'Assistant de l'entreprise de la conversation, toujours à portée dans l'en-tête collé (26.11.2026) : le bouton des faits restait
+      // tout en haut de la conversation, hors de l'écran dès qu'elle s'ouvre sur le dernier message.
+      boutonAssistantTete(c, prop),
       h("button", { class: "bouton-icone secondaire wa-menu", type: "button", "aria-label": tr("Options de la conversation"), onclick: () => menuConversation(c) }, icone("ellipsis", 20))
     ),
     h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), selecteurType(c)),
@@ -581,7 +584,7 @@ async function versAssistant(c, prop) {
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
-  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  passerDansEntreprise(c, entiteId);
   naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
 }
 // ---- Demander à l'assistant (PR B, 21.11.2026) ----------------------------------------------------------------------------------------
@@ -594,8 +597,38 @@ function boutonDemander(c, prop) {
   const possible = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
   return possible ? h("button", { type: "button", class: "secondaire petit wa-demander", onclick: () => demanderAssistant(c, prop) }, icone("assistant", 16), tr("Demander à l'assistant")) : null;
 }
-async function demanderAssistant(c, prop) {
+// Le même « Demander à l'assistant », en tête de la conversation : 44 px, libellé court, mêmes conditions que boutonDemander.
+function boutonAssistantTete(c, prop) {
+  if (!boutonDemander(c, prop)) return null;
+  return h("button", { type: "button", class: "secondaire wa-assistant", "aria-label": tr("Demander à l'assistant"), onclick: (e) => demanderAssistant(c, prop, e.currentTarget) }, icone("assistant", 18), h("span", null, tr("Assistant")));
+}
+async function demanderAssistant(c, prop, bouton = null) {
   if (!demandePermise(c)) return;
+  // Un seul départ par toucher : la lecture des conversations liées prend un instant, un second toucher est ignoré.
+  if (bouton) {
+    if (bouton.disabled) return;
+    bouton.disabled = true;
+  }
+  try {
+    await ouvrirAssistantQuestion(c, prop);
+  } finally {
+    // Rallumé à la fin, quoi qu'il arrive (fenêtre fermée, erreur) : jamais après un délai fixe (relecture de la PR 355).
+    if (bouton) bouton.disabled = false;
+  }
+}
+// L'entreprise quittée pour ouvrir l'Assistant d'une autre : rangée pour le retour sur cette conversation, et le changement est dit.
+function passerDansEntreprise(c, entiteId) {
+  if (entiteId === etat.entiteId) return;
+  try {
+    sessionStorage.setItem(CLE_RETOUR_ENTITE, JSON.stringify({ conversation: c.id, entite: etat.entiteId, le: Date.now() }));
+  } catch {
+    // stockage refusé : on reste dans la nouvelle entreprise
+  }
+  changerEntite(entiteId, { naviguer: false });
+  const e = entite(entiteId);
+  if (e) toast(tr("Assistant ouvert dans {nom}.", { nom: e.nom }));
+}
+async function ouvrirAssistantQuestion(c, prop) {
   let entiteId = c.entite_id;
   if (!entiteId) {
     const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
@@ -615,7 +648,7 @@ async function demanderAssistant(c, prop) {
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
-  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  passerDansEntreprise(c, entiteId);
   naviguer(liee ? `#/agent/${liee.id}` : "#/agent/nouvelle");
 }
 
@@ -676,6 +709,9 @@ function actionsDossier(c, prop, dossier = null) {
 
 // Le résumé en trois lignes (fonction « whatsapp », Claude Haiku), repliable ; replié ou non est gardé pour la session.
 const resumesReplies = new Set();
+// Sur téléphone, le choix de la personne pour chaque réponse préparée (audit mobile n° 4, 26.11.2026) : id → dépliée (vrai) ou repliée
+// (faux), gardé d'un redessin à l'autre. Sans choix, la réponse est repliée, sauf texte modifié ou contenu interne qui bloque la copie.
+const choixReponses = new Map();
 function blocResume(c) {
   const lignes = lignesResume(c.resume);
   if (!lignes.length) return null;
@@ -827,20 +863,22 @@ function bulleMessage(m) {
   const texte = m.texte && !(medias.length && medias.some((x) => x.legende === m.texte)) ? m.texte : "";
   // Statut d'envoi (migration 64) : envoyé, remis, lu, ou non remis avec la raison de WhatsApp. Discret, à la suite de l'heure.
   const statut = statutEnvoi(m);
-  const meta = [heureBangkok(m.envoye_le), m.sens === "sortant" && ORIGINES[m.origine] ? tr(ORIGINES[m.origine]) : "", m.modifie_le ? tr("modifié") : ""].filter(Boolean).join(" · ");
+  // Message automatique de nuit (migration 132) : envoyé par Gestion à la place de Nani, marqué comme tel au lieu de « Envoyé depuis Gestion ».
+  const auto = m.automatique === "nuit";
+  const meta = [heureBangkok(m.envoye_le), m.sens === "sortant" && !auto && ORIGINES[m.origine] ? tr(ORIGINES[m.origine]) : "", m.modifie_le ? tr("modifié") : ""].filter(Boolean).join(" · ");
   return h(
     "div",
     { class: `wa-bulle ${m.sens}${m.supprime_le ? " supprime" : ""}${m.type === "reaction" ? " reaction" : ""}${statut && statut.cle === "echec" ? " non-remis" : ""}`, "data-message": m.id },
     m.supprime_le ? h("p", { class: "wa-supprime" }, tr("Supprimé par le client")) : null,
     medias.map(blocMedia),
     texte ? h("p", { class: "wa-texte" }, m.type === "reaction" ? `${tr("Réaction")} ${texte}` : texte) : !medias.length ? h("p", { class: "wa-texte wa-type" }, tr(libelleType(m.type))) : null,
-    h("p", { class: "wa-meta" }, meta, statut ? h("span", { class: `wa-statut ${statut.cle}` }, ` · ${tr(statut.libelle)}`) : null),
+    h("p", { class: "wa-meta" }, meta, auto ? h("span", { class: "wa-auto" }, ` · ${tr("Message automatique de nuit")}`) : null, statut ? h("span", { class: `wa-statut ${statut.cle}` }, ` · ${tr(statut.libelle)}`) : null),
     statut && statut.cle === "echec" && m.statut_envoi === "echec" && m.erreur_envoi !== "sans_confirmation" ? h("p", { class: "wa-statut-detail" }, statut.detail ? tr(statut.detail) : m.erreur_envoi || tr("WhatsApp n'a pas remis ce message.")) : null
   );
 }
 
 // ---- Proposition de l'agent -------------------------------------------------------------------------------------------------------
-async function copier(c, p, zone, bouton) {
+async function copier(c, p, zone, bouton, deplier = null) {
   if (bouton.disabled) return;
   // Comme pour l'envoi (audit dev B2) : une réponse remplacée entre-temps (le client a réécrit) ne se copie pas sans le dire.
   if (!toujoursCourante(c, p)) {
@@ -850,10 +888,14 @@ async function copier(c, p, zone, bouton) {
   try {
     await versPressePapiers(zone.value);
     bouton.classList.add("fait");
-    bouton.replaceChildren(icone("coche", 20), tr("Copié"));
-    setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), tr("Copier"))), 2500);
+    // Le libellé reste dans son span (caché sous 380 px, audit mobile n° 3) ; l'étiquette accessible suit.
+    bouton.replaceChildren(icone("coche", 20), h("span", { class: "wa-copier-texte" }, tr("Copié")));
+    bouton.setAttribute("aria-label", tr("Copié"));
+    setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier"))), bouton.setAttribute("aria-label", tr("Copier"))), 2500);
     toast(tr("Réponse copiée. Collez-la dans WhatsApp."));
   } catch {
+    // Un champ replié (display: none) ne se sélectionne pas : on déplie d'abord (relecture de la PR 355).
+    if (deplier) deplier();
     zone.focus();
     zone.select();
     toast(tr("Copie impossible dans ce navigateur. Le texte est sélectionné, copiez-le à la main."), true);
@@ -1039,7 +1081,8 @@ function carteProposition(c, p, messages) {
   // Le texte modifié survit au redessin de l'écran (synchronisation, nouveau message dans une autre conversation).
   zone.value = brouillons.has(p.id) ? brouillons.get(p.id) : p.texte || "";
   const f = fenetre(messages);
-  const boutonCopier = h("button", { class: "secondaire wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget) }, icone("copier", 20), tr("Copier"));
+  const boutonCopier = h("button", { class: "secondaire wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget, () => plier(true, { choisi: true })) }, icone("copier", 20), h("span", { class: "wa-copier-texte" }, tr("Copier")));
+  boutonCopier.setAttribute("aria-label", tr("Copier"));
   // « Ouvrir dans WhatsApp » avec la réponse déjà écrite (wa.me/<numéro>?text=, lot 2, usage n° 3) : un tap, Nani n'a plus qu'à envoyer.
   // Le texte est aussi copié, au cas où l'app ne reprend pas le texte du lien.
   const boutonOuvrir = lienWhatsApp(c.telephone)
@@ -1099,6 +1142,28 @@ function carteProposition(c, p, messages) {
   });
   marquerBrouillon();
   majEnvoi();
+  // Téléphone (audit mobile n° 4, 26.11.2026) : la réponse se replie sur deux lignes, « Voir la réponse » la déplie ; dépliée, le champ
+  // grandit avec son texte au lieu de défiler dans une page qui défile. Dépliée d'office quand le texte a été modifié ou qu'un montant ou un
+  // nom interne bloque la copie. Ordinateur : rien ne change (la colonne a sa propre hauteur).
+  const telephone = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+  const ajusterZone = () => {
+    if (!telephone() || !zone.isConnected || !zone.offsetParent) return;
+    zone.style.height = "auto";
+    zone.style.height = `${zone.scrollHeight + 2}px`;
+  };
+  zone.addEventListener("input", ajusterZone);
+  const texteApercu = h("span", { class: "wa-apercu-texte" });
+  const apercu = h("button", { class: "wa-apercu", type: "button", "aria-expanded": "false", "aria-controls": "wa-reponse" }, texteApercu, h("span", { class: "wa-apercu-voir" }, tr("Voir la réponse")));
+  const replier = h("button", { class: "lien wa-replier", type: "button", "aria-controls": "wa-reponse" }, tr("Replier"));
+  const plier = (deplie, { choisi = false } = {}) => {
+    if (choisi) choixReponses.set(p.id, deplie);
+    section.classList.toggle("repliee", !deplie);
+    apercu.setAttribute("aria-expanded", deplie ? "true" : "false");
+    texteApercu.textContent = zone.value.replace(/\s+/g, " ").trim();
+    if (deplie) requestAnimationFrame(ajusterZone);
+  };
+  apercu.addEventListener("click", () => plier(true, { choisi: true }));
+  replier.addEventListener("click", () => plier(false, { choisi: true }));
   const avs = avertissements({ ...p, avertissements: filtre.visibles });
   // Préparée avec les données d'une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis) : on le dit.
   const pour = p.entite_id && p.entite_id !== c.entite_id ? entite(p.entite_id) : null;
@@ -1106,13 +1171,14 @@ function carteProposition(c, p, messages) {
   const boutonIgnorer = h("button", { class: "lien", type: "button" }, tr("Ignorer"));
   boutonTraitee.addEventListener("click", () => traiter(p, "traitee", [boutonTraitee, boutonIgnorer]));
   boutonIgnorer.addEventListener("click", () => traiter(p, "ignoree", [boutonTraitee, boutonIgnorer]));
-  return h(
+  const section = h(
     "section",
     // Hors saisie (audit dev B2) : le texte modifié survit au redessin (Map brouillons), il ne doit donc pas figer l'écran. Seul le curseur
     // dans le champ retient le redessin (curseurDansUnChamp).
     { class: "wa-prop", "aria-label": tr("Réponse préparée"), "data-pas-saisie": "" },
-    h("h3", null, tr("Réponse préparée"), p.langue ? h("span", { class: "tag" }, p.langue.toUpperCase()) : null, pour ? h("span", { class: "wa-pour" }, tr("préparée pour {nom}", { nom: pour.nom })) : null),
+    h("h3", null, tr("Réponse préparée"), p.langue ? h("span", { class: "tag" }, p.langue.toUpperCase()) : null, pour ? h("span", { class: "wa-pour" }, tr("préparée pour {nom}", { nom: pour.nom })) : null, replier),
     avs.length ? h("ul", { class: "wa-avertissements" }, avs.map((a) => h("li", { class: a.niveau }, icone(a.niveau === "alerte" ? "alerte" : "coche", 16), h("span", null, tr(a.texte, a.vars))))) : null,
+    apercu,
     zone,
     alerte,
     morceaux,
@@ -1120,6 +1186,19 @@ function carteProposition(c, p, messages) {
     lectureSeule ? null : h("div", { class: "wa-prop-suite" }, boutonTraitee, boutonIgnorer, boutonEnvoyer),
     pourquoi
   );
+  plier(choixReponses.has(p.id) ? choixReponses.get(p.id) : brouillons.has(p.id) || !alerte.hidden);
+  // Le champ suit sa largeur (rotation, fenêtre redimensionnée) et sa première mise en page, sans limite de temps (relecture de la PR 355) :
+  // l'observateur s'arrête quand la réponse quitte l'écran.
+  if (typeof ResizeObserver === "function") {
+    let largeur = 0;
+    const ro = new ResizeObserver(() => {
+      if (!section.isConnected) return ro.disconnect();
+      const l = Math.round(zone.getBoundingClientRect().width);
+      if (l && l !== largeur) ((largeur = l), ajusterZone());
+    });
+    ro.observe(zone);
+  }
+  return section;
 }
 
 async function fil(c, prop) {
@@ -1152,8 +1231,9 @@ async function fil(c, prop) {
       cartePaiement(c),
       cartePret(c, { lectureSeule, creerDossier: creerPret(c, prop), peutRelierDans: (id) => entitesWhatsApp().some((e) => e.id === id), rafraichir })
     ),
+    // Le message automatique de nuit (migration 132) n'est pas une réponse : « Préparer une réponse » reste là au matin.
     doute ? carteVerifier(c, doute) : null,
-    carteProposition(c, prop, messages)
+    carteProposition(c, prop, messages.filter((m) => !m.automatique))
   );
   return { noeud, messages };
 }

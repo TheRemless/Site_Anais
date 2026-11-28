@@ -218,7 +218,7 @@ export function vueGroupe() {
       h(
         "div",
         { class: "chiffres" },
-        chiffre(tr("Facturé, toutes sociétés"), montant(groupe.facture, cible), h("span", null, evol(groupe.evolFacture), tr(" par rapport à la période précédente · {nbFactures} facture(s)", { nbFactures: groupe.nbFactures }))),
+        chiffre(tr("Facturé, toutes sociétés"), montant(groupe.facture, cible), h("span", null, evol(groupe.evolFacture), tr(" par rapport à la période précédente · {factures}", { factures: pluriel(groupe.nbFactures, N_("{n} facture"), N_("{n} factures")) }))),
         chiffre(tr("Encaissé"), montant(groupe.encaisse, cible), h("span", null, evol(groupe.evolEncaisse), tr(" par rapport à la période précédente"))),
         // Petits restes soldés sans que l'argent arrive (frais Wise, change) : ni dans l'encaissé, ni perdus de vue (lot I, contrôle du 17.11.2026).
         groupe.nbEcarts ? chiffre(tr("Écarts soldés"), montant(groupe.ecarts, cible), tr("Frais Wise ou de change soldés sans arriver chez nous : hors de l'encaissé.")) : null,
@@ -286,7 +286,7 @@ export function vueGroupe() {
   return h(
     "div",
     { "data-titre": tr("Vue d'ensemble"), "data-large": "1" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Vue d'ensemble")), h("p", { class: "sous" }, tr("{n} société(s) : {liste}", { n: entites.length, liste: entites.map((e) => e.nom).join(", ") })))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Vue d'ensemble")), h("p", { class: "sous" }, pluriel(entites.length, N_("{n} société : {liste}"), N_("{n} sociétés : {liste}"), { liste: entites.map((e) => e.nom).join(", ") })))),
     h("div", { class: "barre-outils" }, h("div", { class: "grille-form filtres" }, h("div", { class: "champ" }, h("label", { for: "gr-periode" }, tr("Période")), selPeriode), choixDevise), perso),
     corps
   );

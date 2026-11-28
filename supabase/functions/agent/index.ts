@@ -38,7 +38,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { lireApprentissages } from "./apprentissages.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule, lieuxMapsPourCtx } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, clientPourPrixDeNani, clientProbable, prixClientValides, MESSAGES_PRIX_CLIENT, tempsSimule, lieuxMapsPourCtx, telephoneDeConversation } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -47,12 +47,13 @@ import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { dernierPrixAccepte, discussionPleine, resumeReport } from "./discussion-pleine.js";
-import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, cartesRefuseesAutreEntreprise, conversationDansEntreprise, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { decisionItineraire, ligneItineraire } from "./itineraire.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { fonctionAbsente, ligneAuteur, lirePrise, prenomProfil, proprietaireSuite } from "./equipe.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
+import { avecAutomatique } from "../whatsapp/automatique.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,17 +109,19 @@ const COLONNES_WA = [
 // Toute sortie rend la conversation prise pour la réponse (relecture de la PR 366, point 4) : une exception avant le début du flux passe par
 // ce filet, qui rend le verrou et répond 500 ; une fois le flux lancé, l'échange le rend lui-même (finally).
 Deno.serve(async (req) => {
-  const sortie = { liberer: async () => {} };
+  const sortie = { liberer: async () => {}, nettoyer: async () => {} };
   try {
     return await traiter(req, sortie);
   } catch (err) {
+    // Une conversation créée pour cette demande et restée sans message ne reste pas orpheline dans la liste (relecture n° 2 de la PR 366).
+    await sortie.nettoyer().catch(() => {});
     await sortie.liberer().catch(() => {});
     console.error("agent : erreur", err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "inconnue");
     return new Response(JSON.stringify({ erreur: "base" }), { status: 500, headers: entetes(req) });
   }
 });
 
-async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): Promise<Response> {
+async function traiter(req: Request, sortie: { liberer: () => Promise<void>; nettoyer: () => Promise<void> }): Promise<Response> {
   const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: entetes(req) });
   if (req.method === "OPTIONS") return new Response("ok", { headers: entetes(req) });
   if (req.method !== "POST") return json({ erreur: "methode" }, 405);
@@ -217,6 +220,8 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
   // La conversation WhatsApp jointe ou liée telle que la personne la lit, même sans droit d'écrire (revue de sécurité de la PR 299) : son
   // réglage (Contact personnel : l'échange joint plus tôt ne repart plus), son type et son nom (contrôle de la réponse au client).
   let waLue: Record<string, any> | null = null;
+  // La conversation WhatsApp liée à la discussion est rangée dans une autre entreprise que celle de l'Assistant (outils.js, proposer).
+  let conversationAutreEntreprise = false;
   // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
   // pas typé, son nom est lu comme un nom de profil).
   // Puis le tri et les faits des étapes (migration 105) : sans eux, le contact n'est jamais un client probable. Chaque repli garde ce que la
@@ -257,7 +262,8 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
       if (!ent || ent.error || !ent.data || !["secret", "taxi"].includes(ent.data.slug)) return json({ erreur: "whatsapp_introuvable" }, 404);
     }
     // Ligne « non transmis » (migration 100) : jamais envoyée à l'Assistant.
-    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
+    // automatique (migration 132) : le message de nuit est marqué comme tel, jamais présenté comme une réponse de Nani.
+    const wm = await avecAutomatique((cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", waId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA), "sens, texte, medias, envoye_le, modifie_le, supprime_le");
     if (wm.error) return json({ erreur: "base" }, 500);
     const messagesWa = wm.data || [];
     textesPage = messagesWa.filter((m: { sens?: string; texte?: string; supprime_le?: string | null }) => m.sens === "entrant" && !m.supprime_le && typeof m.texte === "string" && m.texte.trim()).sort((a: { envoye_le?: string }, b: { envoye_le?: string }) => String(a.envoye_le || "").localeCompare(String(b.envoye_le || ""))).map((m: { texte: string }) => m.texte);
@@ -281,7 +287,10 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
     const dossierWa = (waMode === "maj" || waMode === "question") && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
-    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
+    // La fiche client reliée (26.11.2026), lue avec la session et dans l'entreprise de l'Assistant : son nom est dit à l'agent avec le numéro.
+    // Filtrée côté serveur sur l'entreprise de l'Assistant, comme dossierWa (relecture de la PR 355).
+    const clientWa = wc.data.client_id && UUID.test(wc.data.client_id) ? (await sb.from("clients").select("prenom, nom").eq("id", wc.data.client_id).eq("entite_id", entiteId).maybeSingle()).data : null;
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, client: clientWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
     // Dans une conversation existante, les pièces se contrôlent plus bas avec celles qu'elle garde déjà (nombre et taille).
     controle = conversationId ? null : verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
@@ -311,8 +320,15 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
       const [w, peutLiee] = await Promise.all([lireWa(lieeId), sb.rpc("whatsapp_peut_ecrire", { p_conversation: lieeId })]);
       if (w.error) console.error("agent : conversation WhatsApp liée", w.error.message);
       if (peutLiee.error) console.error("agent : whatsapp_peut_ecrire (conversation liée)", peutLiee.error.message);
+      // Relue même hors de l'entreprise : un contact passé « jamais » retire l'échange joint de l'historique (revue 299, point 9).
       if (!w.error) waLue = w.data || null;
-      if (!w.error && !peutLiee.error && peutLiee.data === true) waLiee = w.data || null;
+      // Relecture de la PR 355 : elle ne sert à écrire (numéro sur la carte, consigne apporteur) que dans l'entreprise de l'Assistant, ou à
+      // trier chez Secret et Taxi, comme la conversation jointe.
+      const dansEntreprise = !!w.data && conversationDansEntreprise(w.data, entiteId, ent.data?.slug || "");
+      if (!w.error && dansEntreprise && !peutLiee.error && peutLiee.data === true) waLiee = w.data;
+      // Rangée ailleurs depuis : ni consigne apporteur ni numéro ici, et aucune carte de dossier (contre-relecture de la PR 355).
+      // En espace unifié, un client rangé dans l'autre entreprise de la paire ne bloque rien (cartesRefuseesAutreEntreprise).
+      if (!w.error && w.data && !dansEntreprise) conversationAutreEntreprise = cartesRefuseesAutreEntreprise(w.data, { entitesUnifiees: unifie ? unifie.entites.map((e) => e.id) : [] });
     }
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
@@ -321,6 +337,11 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
     const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre, dossier_id: dossierId, ...(waId && waEcrit ? { whatsapp_conversation_id: waId } : {}) }).select("id, titre, dossier_id, cree_le").single();
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
+    const neuve = c.data.id;
+    sortie.nettoyer = async () => {
+      const n = await sb.from("agent_messages").select("id", { count: "exact", head: true }).eq("conversation_id", neuve);
+      if (!n.error && !n.count) await sb.from("agent_conversations").delete().eq("id", neuve);
+    };
   }
   // Une seule réponse à la fois (migration 133) : la conversation est prise en base (verrou lu avec « for update ») avant toute écriture, et
   // rendue à la fin de l'échange ou à son refus. Une seconde demande, de la même personne ou d'une autre, reçoit « conversation_occupee » et
@@ -347,10 +368,13 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
   };
   // Qui écrit (point 12) : une autre personne que la propriétaire. Les deux prénoms, lus avec la clé de service ; illisibles, rien n'est dit.
   let quiEcrit = "";
+  // Les prénoms de l'auteur réel et de la propriétaire : contrôlés dans toute réponse au client (prenoms, reprise : outils.js).
+  let prenomsReprise: string[] = [];
   if (conv!.user_id && conv!.user_id !== userId) {
     const pr = await admin.from("profils").select("user_id, nom, email").in("user_id", [userId, conv!.user_id]);
     if (pr.error) console.error("agent : profils", pr.error.message);
     const par = new Map<string, Record<string, unknown>>((pr.error ? [] : pr.data || []).map((x: Record<string, unknown>) => [String(x.user_id), x] as [string, Record<string, unknown>]));
+    prenomsReprise = [prenomProfil(par.get(userId)), prenomProfil(par.get(conv!.user_id))].filter(Boolean);
     quiEcrit = ligneAuteur({ auteur: prenomProfil(par.get(userId)), proprietaire: prenomProfil(par.get(conv!.user_id)) });
   }
   // Une discussion liée qui se remplit (relecture de la PR 318, discussion-pleine.js) : 20 pièces ou 30 Mo, ou un historique qui perdrait son
@@ -477,10 +501,12 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
     return p.includes("partenaires.lire") && p.includes("partenaires.nets");
   };
   const NETS_RES_AVANT_57 = "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le";
+  const PRESTATIONS_AVANT_130 = "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id";
   const COLONNES: Record<string, string> = {
     // entite_id : l'entreprise de chaque ligne, pour l'espace unifié (outils.js : entreprise du service, droits de la ligne). Les outils
     // ne le renvoient jamais tel quel.
-    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id",
+    // option_de (migration 130) : les services qu'une option complète. Sans la migration, repli sur les colonnes d'avant (PRESTATIONS_AVANT_130).
+    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id, option_de",
     trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id, entite_id",
     // regles : le mode de règlement du partenaire (« sur place » ou chez nous), lu par les outils, jamais renvoyé tel quel.
     partenaires: "id, nom, actif, regles, entite_id",
@@ -501,7 +527,11 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
   const charger = (nom: string): Promise<unknown[]> => {
     // En mode unifié, les deux entreprises (catalogue, partenaires, nets, hôtels, temps de trajet, ferries) : la RLS ne rend que ce que la
     // personne peut lire, les nets seulement avec le droit.
-    if (!cache.has(nom)) cache.set(nom, paginer(nom, COLONNES[nom], (q) => dans(q)));
+    if (!cache.has(nom)) {
+      const lu = paginer(nom, COLONNES[nom], (q) => dans(q));
+      // Migration 130 pas encore appliquée : le catalogue se relit sans option_de (aucune option, comme avant).
+      cache.set(nom, nom === "prestations" ? lu.catch((err) => (/option_de/.test(String(err && err.message)) ? paginer(nom, PRESTATIONS_AVANT_130, (q) => dans(q)) : Promise.reject(err))) : lu);
+    }
     return cache.get(nom)!;
   };
   const lire = async (requete: any, table: string) => {
@@ -776,10 +806,14 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
           const n = Math.min(200, Math.max(1, Number(derniers) || 40));
           // Ligne « non transmis » (migration 100) : jamais lue par l'Assistant.
           const base = (cols: string, opts?: any) => sb.from("whatsapp_messages").select(cols, opts).eq("conversation_id", id).is("supprime_le", null).neq("type", "non_transmis");
-          let q = base("id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le");
-          if (depuis) q = q.gte("envoye_le", borneJour(depuis));
-          else if (avant) q = q.lt("envoye_le", borneJour(avant));
-          const messages = await lire(q.order("envoye_le", { ascending: !!depuis }).limit(n), "whatsapp_messages");
+          // automatique (migration 132) : le message de nuit est rendu marqué comme tel (whatsapp-lecture.js).
+          const requete = (cols: string) => {
+            let q = base(cols);
+            if (depuis) q = q.gte("envoye_le", borneJour(depuis));
+            else if (avant) q = q.lt("envoye_le", borneJour(avant));
+            return q.order("envoye_le", { ascending: !!depuis }).limit(n);
+          };
+          const messages = await lire(avecAutomatique(requete, "id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le"), "whatsapp_messages");
           let compte: { avant: number; apres: number } | null = null;
           if (messages.length) {
             const dates = messages.map((m) => String(m.envoye_le)).sort();
@@ -1029,7 +1063,9 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
   const lieuxMaps = lieuxMapsPourCtx();
   const maps = message ? await lieuxMaps(message) : { texte: message, lieux: [] };
   message = maps.texte;
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null, textesPage });
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [...new Set([ra.responsable, "Anaïs", "Nani", ...prenomsReprise].filter(Boolean))], conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientPourPrixDeNani(waLue, slugsDossier), clientProbable: !clientConfirme(waLue) && clientProbable(waLue, slugsDossier), conversationLiee: waLue ? waLue.id : null, textesPage });
+  // Relecture n° 2 de la PR 366 : « reprend la conversation de Nani » et les tournures qui citent ces prénoms bloquent la réponse au client.
+  (memo as Record<string, unknown>).reprise = prenomsReprise;
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;
@@ -1042,8 +1078,9 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
   // Le prix du client non corrigé par Nani (revue de la PR 307) : calculé ici, à chaque échange, sur les 60 derniers messages de la
   // conversation WhatsApp liée, lus en base avec la session, dans l'ordre d'envoi. Jamais du bloc joint ni de lire_conversation : une
   // correction faite ensuite dans WhatsApp retire le prix au prochain échange. Une lecture en échec ne valide rien.
+  // Le message automatique de nuit (migration 132) ne valide aucun prix : il n'est pas de Nani (montantsClientValides l'écarte).
   if (waLue && clientConfirme(waLue)) {
-    const lusWa = await sb.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waLue.id).neq("type", "non_transmis").order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT);
+    const lusWa = await avecAutomatique((cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", waLue.id).neq("type", "non_transmis").order("envoye_le", { ascending: false }).order("id", { ascending: false }).limit(MESSAGES_PRIX_CLIENT), "id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le");
     if (!lusWa.error) memo.clientValides = prixClientValides([...(lusWa.data || [])].reverse(), waLue);
   }
   // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte
@@ -1068,7 +1105,11 @@ async function traiter(req: Request, sortie: { liberer: () => Promise<void> }): 
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
-  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now() };
+  // La conversation WhatsApp liée où la personne écrit (waLiee) et dont le contact n'est pas un apporteur : son numéro complet va sur la carte
+  // « dossier » (whatsapp.js, telephoneDeCarte), jamais une forme raccourcie par le modèle (26.11.2026).
+  // Seulement un contact de client (telephoneDeConversation, relecture de la PR 355) : ni partenaire, ni apporteur, ni contact personnel.
+  const telephoneWa = waLiee && !contactApporteur(waLiee) ? telephoneDeConversation(waLiee) : "";
+  const ctx = { itineraire, historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), vouchers, aujourdhui, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, lieuxMaps, maintenant: () => Date.now(), ...(telephoneWa ? { telephoneWa } : {}), ...(conversationAutreEntreprise ? { conversationAutreEntreprise } : {}) };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

@@ -32,6 +32,10 @@ export const EN_EQUIPE = {
   "écrit par vous dans la conversation": "written by you in the conversation",
   "écrit par {prenom} dans la conversation": "written by {prenom} in the conversation",
   "Cette carte a déjà été écartée par {qui}.": "This card was already dismissed by {qui}.",
-  "Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe.": "This card was already approved by {qui}: it can no longer be dismissed, the booking exists.",
+  "Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe.": "This card was already approved by {qui}: it can no longer be dismissed, the file exists.",
   "{qui} valide cette carte en ce moment : elle ne s'écarte pas.": "{qui} is approving this card right now: it cannot be dismissed.",
+  // Relecture n° 2 de la PR 366.
+  "La réponse parle de qui écrit dans l'outil (« {v} ») : à retirer, le client ne doit pas le lire.": "The reply mentions who is writing in the tool (“{v}”): remove it, the client must not read it.",
+  "Le texte parle de qui écrit dans l'outil (« {valeur} ») : retirez-le avant d'envoyer.": "The text mentions who is writing in the tool (“{valeur}”): remove it before sending.",
+  "Demande notée, mais GitHub ne répond pas : elle attend Jérémy.": "Request saved, but GitHub is not responding: it is waiting for Jérémy.",
 };

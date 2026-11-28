@@ -234,6 +234,8 @@ const AVERTISSEMENTS = {
   montant_illisible: { texte: N_("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000."), niveau: "alerte" },
   controle_impossible: { texte: N_("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau."), niveau: "alerte" },
   prenom_equipe: { texte: N_("Un prénom de l'équipe est dans le texte. Vérifiez qu'il doit y être."), niveau: "alerte" },
+  // Migration 133 : la reprise d'une conversation de l'Assistant par une autre personne ne va jamais au client.
+  mention_reprise: { texte: N_("Le texte parle de qui écrit dans l'outil (« {valeur} ») : retirez-le avant d'envoyer."), niveau: "alerte" },
   signature_retiree: { texte: N_("La signature a été retirée, les messages partent sans signature."), niveau: "info" },
 };
 export function libelleAvertissement(code) {
@@ -484,7 +486,8 @@ export function etatCompte(code) {
 // le déclencheur, pour la démonstration et les tests.
 export const APERCU_MAX = 140;
 export function apercuDepuisMessages(messages = []) {
-  const tries = [...messages].filter((m) => m && m.type !== "reaction").sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
+  // Le message automatique de nuit (migration 132) n'est ni le dernier message montré ni une réponse, comme dans whatsapp_apercu.
+  const tries = [...messages].filter((m) => m && m.type !== "reaction" && !m.automatique).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
   const dernier = tries[tries.length - 1] || null;
   let reponse = -Infinity;
   // Un envoi depuis Gestion en échec (migration 64) n'est pas une réponse.

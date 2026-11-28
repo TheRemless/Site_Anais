@@ -147,6 +147,6 @@ test("rappels : seulement pour les administratrices (Jérémy, 17.11.2026) ; Moo
 
 test("la cloche n'apparaît qu'à l'administratrice de l'entreprise ouverte (même critère que la fonction)", () => {
   const app = fs.readFileSync("src/gestion/js/app.mjs", "utf8");
-  assert.match(app, /estAdmin\(\) \? h\("button", \{ class: "bouton-icone secondaire", type: "button", onclick: async \(\) => \(apres && apres\(\), \(await import\("\.\/views\/rappels\.mjs"\)\)\.ouvrirRappels\(\)\)/);
+  assert.match(app, /estAdmin\(\) \? outil\(apres, "cloche", tr\("Rappels"\), async \(\) => \(apres && apres\(\), \(await import\("\.\/views\/rappels\.mjs"\)\)\.ouvrirRappels\(\)\)\)/);
   assert.match(fs.readFileSync("src/gestion/js/etat.mjs", "utf8"), /export const estAdmin = \(\) => peut\("reglages\.ecrire"\);/);
 });

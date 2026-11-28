@@ -3,6 +3,7 @@
 // Échap, un toucher sur le fond ou le bouton retour du téléphone referment. La conversation derrière ne bouge pas.
 import { h, icone } from "./ui.mjs";
 import { tr } from "./i18n.mjs";
+import { photoFermeeAuRetour } from "./fenetres-historique-calc.mjs";
 
 let ouverte = null;
 
@@ -22,7 +23,8 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
     h("div", { class: "visionneuse-cadre" }, image)
   );
   const surTouche = (e) => {
-    if (e.key === "Escape") (e.preventDefault(), fermer());
+    // Échap ferme la photo seulement : la fenêtre du dessous (écoute en phase de bouillonnement) ne la reçoit pas (relecture de la PR 363).
+    if (e.key === "Escape") return void (e.preventDefault(), e.stopPropagation(), fermer());
     // Le focus reste dans la fenêtre.
     if (e.key === "Tab") {
       const f = [...fond.querySelectorAll("a, button")];
@@ -33,8 +35,14 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
   };
   // Le bouton retour (Android, geste du bord) ferme la photo au lieu de quitter la conversation : une entrée d'historique sans changer
   // l'adresse. Fermée autrement, l'entrée est retirée.
+  // Une fenêtre ouverte par-dessus la photo se ferme d'abord : la photo ne se ferme que sur un retour sous sa propre entrée.
   let parRetour = false;
-  const surRetour = () => ((parRetour = true), fermer());
+  let entreePhoto = null;
+  const surRetour = (e) => {
+    if (!photoFermeeAuRetour(entreePhoto, e.state)) return;
+    parRetour = true;
+    fermer();
+  };
   function fermer() {
     if (ouverte !== api) return;
     ouverte = null;
@@ -52,7 +60,10 @@ export function ouvrirVisionneuse({ src, alt = "", original = null, ferme: apres
   document.documentElement.classList.add("modal-ouverte");
   document.addEventListener("keydown", surTouche, true);
   try {
-    history.pushState({ ...(history.state || {}), visionneuse: true }, "");
+    // Posée sur l'entrée d'une fenêtre fermée (fantôme), l'entrée de la photo n'en est pas un : la fermer ne quitte pas l'écran.
+    const { fantome, ...dessous } = history.state || {};
+    history.pushState({ ...dessous, visionneuse: true }, "");
+    entreePhoto = history.state;
     window.addEventListener("popstate", surRetour);
   } catch {
     // historique refusé (rare) : Fermer et Échap suffisent

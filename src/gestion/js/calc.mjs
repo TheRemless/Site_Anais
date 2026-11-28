@@ -165,7 +165,8 @@ export function totaux(contenu, recu = 0) {
   const remises = arrondi(lignes.reduce((s, l, i) => (l.kind === "remise" ? s + montants[i] : s), 0));
   const net = arrondi(sousTotal + remises);
   const r = arrondi(recu);
-  return { sousTotal, remises, net, recu: r, reste: arrondi(net - r), montants };
+  // Le reste imprimé ne devient jamais négatif (migration 131) : un reçu au-delà du dû chez nous paie les services sur place (leurs vouchers).
+  return { sousTotal, remises, net, recu: r, reste: arrondi(Math.max(0, net - r)), montants };
 }
 
 export function afficherSousTotal(contenu, recu = 0) {
@@ -364,7 +365,8 @@ export function resume(dossier, db, reglages) {
     devise: (doc && doc.contenu.devise) || (!charge && dossier.devise) || reglages.devise || null,
     total,
     recu,
-    reste: arrondi(total - recu),
+    // Jamais négatif (migration 131) : ce qui dépasse le dû chez nous paie les services sur place, ou se dit en alerte (à rembourser, trop-perçu).
+    reste: arrondi(Math.max(0, total - recu)),
     surPlace,
     devisEnvoyeLe,
     pct,

@@ -624,7 +624,10 @@ export function donneesDemo(ajd, ajouterJours) {
   partenaires_prives.push({ id: uid(), entite_id: e2.id, partenaire_id: taxi.id, banque: {}, paiement: "", commissions: ["Marge de 10 % en attendant un accord."] });
   prestation(longtail, "excursion", "Group tours", "4 Islands by longtail, full day", 1200, "pp", 800, { horaires: "08:00 - 15:30 (departure 09:00)", inclus: "Hotel pickup, lunch, mask and snorkel, fruit.", parc: "Park fee 200 ฿ per adult, paid on site.", conditions: "Weather permitting." });
   prestation(longtail, "excursion", "Group tours", "4 Islands by longtail, child 3 to 9 years", 900, "ch", 600, {});
-  prestation(longtail, "excursion", "Private charter", "Koh Rok by private longtail, 1 to 6 people", 6500, "boat", 5000, { capacite: "1 to 6 people", inclus: "Boat, skipper, lunch, snorkelling gear." });
+  const rokPrive = prestation(longtail, "excursion", "Private charter", "Koh Rok by private longtail, 1 to 6 people", 6500, "boat", 5000, { capacite: "1 to 6 people", inclus: "Boat, skipper, lunch, snorkelling gear." });
+  // Options du Koh Rok privé (26.11.2026) : elles se choisissent sous le service et vont sur sa réservation et son voucher.
+  prestation(longtail, "excursion", "Private charter", "Koh Ha extension on the private Koh Rok trip", 800, "boat", 600, {}, { option_de: [rokPrive.id] });
+  prestation(longtail, "excursion", "Private charter", "Lunch box, per person", 150, "pp", 100, {}, { option_de: [rokPrive.id] });
   prestation(null, "frais", "National park fees", "Koh Rok and Koh Ha", 400, "ad", null, { enfant: 200, thai_adulte: 40, thai_enfant: 20, note: "Paid in cash to the ranger on the island." }, { sur_place: true });
   prestation(null, "frais", "National park fees", "4 Islands", 200, "ad", null, { enfant: 100, note: "Paid in cash on site." }, { sur_place: true });
   prestation(taxi, "transfert", "Private minivan", "Krabi Airport → Koh Lanta", 2500, "veh", 2250, { note: "Up to 9 people, luggage included." });

@@ -12,6 +12,8 @@ import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCart
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { lireMessage } from "../demande-calc.mjs";
+import { numeroAffiche } from "../demandes-site-calc.mjs";
+import { libelleUnite } from "../partenaires-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -26,6 +28,7 @@ import { CLE_DEMANDE_AGENT, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "
 import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
+import { conversationDansEntreprise } from "../telephone-carte-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { boutonPasBien } from "./agent-retour.mjs";
@@ -35,7 +38,7 @@ import { textesDeNani, bornesEchange, auteursDesTextes } from "../devis-calc.mjs
 import { suivreFil } from "../fil-defilement.mjs";
 import { voitEquipe, CLE_FILTRE_EQUIPE, filtreLu, conversationsFiltrees, aMoi, prenomEquipe, proprietaireAffichee, auteurAffiche, reponseEnCours } from "../agent-equipe-calc.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
-const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
+const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne"), option: N_("Option") };
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -130,6 +133,9 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
   pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service."),
   dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service."),
+  // Options d'un service (26.11.2026).
+  option_seule: N_("Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part."),
+  option_inconnue: N_("Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
   remarque_voucher_interne: N_("La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
@@ -148,6 +154,8 @@ function texteAvertissement(a) {
   if (code === "montant_illisible") return tr("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.");
   if (code === "controle_impossible") return tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.");
   if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
+  // Migration 133 : le changement d'auteur de la conversation ne va jamais au client (bloque la copie tant qu'il reste).
+  if (code === "mention_reprise") return tr("La réponse parle de qui écrit dans l'outil (« {v} ») : à retirer, le client ne doit pas le lire.", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }
 
@@ -466,6 +474,12 @@ export async function vueAgent(idOuvert = "") {
     return wc ? nomConversation(wc, wc.client_id ? (etat.brut.clients || []).find((x) => x.id === wc.client_id) || null : null) : "";
   };
   const nomWaLiee = () => nomWa(waLiee());
+  // Le numéro complet de la conversation WhatsApp liée (26.11.2026) : on sait toujours avec qui l'Assistant travaille.
+  const numeroWaLiee = () => {
+    const id = waLiee();
+    const wc = id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === id) : null;
+    return wc && wc.telephone ? numeroAffiche(wc.telephone) : "";
+  };
   function enTete() {
     const dossier = conv && conv.dossier_id ? etat.db.dossiers.find((d) => d.id === conv.dossier_id) : null;
     const lienWa = waLiee() ? lienWaLiee() : "";
@@ -487,7 +501,8 @@ export async function vueAgent(idOuvert = "") {
               { class: "agent-fil-liens" },
               dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
               // Liée à WhatsApp (design n° 4, PR B) : un lien pour revenir à la conversation du client.
-              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null
+              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null,
+              lienWa && numeroWaLiee() ? h("span", { class: "agent-wa-numero" }, numeroWaLiee()) : null
             )
           : null
       ),
@@ -885,7 +900,11 @@ export async function vueAgent(idOuvert = "") {
       arreterCanal();
       clearTimeout(minuteurRelecture);
       window.removeEventListener("hashchange", quitter);
-      for (const id of [...tenues.keys()]) lacher({ id });
+      // Les cartes tenues (validation ou « Vérifier avant » en cours) se rendent : personne ne les attend 2 minutes (relecture n° 2).
+      for (const id of [...tenues.keys()]) {
+        lacher({ id });
+        if (!faite(id)) etat.store.agentRendreCarte(id).catch(() => {});
+      }
       arretDirectAgent = null;
     };
     window.addEventListener("hashchange", quitter);
@@ -968,7 +987,29 @@ export async function vueAgent(idOuvert = "") {
   };
   const bagagesTexte = (s) => (Number(s.bagages) > 0 ? pluriel(Number(s.bagages), N_("{n} bagage"), N_("{n} bagages")) : "");
   // Les deux remarques d'un service (22.11.2026) : ce que le voucher imprime (vu par le client et le chauffeur) et ce qui reste interne.
-  const remarquesCarte = (s) => {
+  // Les options d'un service sur la carte (26.11.2026) : « + Koh Kradan extension · THB 700 », sous le service, jamais un service à part.
+// `qteSaisie(j, o)` : le champ de quantité d'une option par personne (carte proposée), ou null.
+const optionsCarte_ = (s, qteSaisie = () => null) => {
+  const opts = Array.isArray(s.options) ? s.options : [];
+  if (!opts.length) return null;
+  const devise = (reglages() || {}).devise || "THB";
+  const m = (x) => formatMontant(x, devise);
+  // Le prix comme partout : le prix unitaire et son unité (« par personne × 2 »), le total de l'option quand il y en a plusieurs.
+  const prixOption = (o) => {
+    if (o.prix === null || o.prix === undefined) return h("span", { class: "tag attention" }, tr("prix à saisir"));
+    const q = Math.max(1, Number(o.qte) || 1);
+    return q > 1 ? `${m(Math.round((o.prix / q) * 100) / 100)} ${libelleUnite(o.unite || "")} × ${q} = ${m(o.prix)}` : `${m(o.prix)} ${o.unite ? libelleUnite(o.unite) : ""}`.trim();
+  };
+  const complet = s.prix !== null && s.prix !== undefined && opts.every((o) => o.prix !== null && o.prix !== undefined);
+  return h(
+    "small",
+    { class: "agent-options" },
+    ...opts.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""} · `, prixOption(o), qteSaisie(j, o)]).filter(Boolean),
+    h("br"),
+    complet ? h("strong", null, tr("Total du service avec ses options : {montant}", { montant: m(Number(s.prix) + opts.reduce((t, o) => t + Number(o.prix), 0)) })) : h("span", { class: "tag attention" }, tr("Total à compléter : un prix manque."))
+  );
+};
+const remarquesCarte = (s) => {
     const voucher = String(s.remarque_voucher || "").trim();
     const interne = [s.note_interne, s.remarque].filter((x) => x && String(x).trim()).join(" ");
     if (!voucher && !interne) return null;
@@ -1015,9 +1056,31 @@ export async function vueAgent(idOuvert = "") {
   const lieuxSaisis = new Map();
   // La carte avec ses entreprises corrigées d'un tap (espace unifié), sans les lieux saisis : ce qu'elle dit elle-même.
   const donneesBrutes = (c) => (carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
-  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(donneesBrutes(c), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
+  // La quantité d'une option par personne changée sur la carte (relecture de la PR 359, N5) : carte -> « service:option » -> quantité. Le prix
+  // de l'option suit (prix unitaire × quantité). Un seul plongeur sur deux prend la plongée en plus.
+  const qtesSaisies = new Map();
+  const avecQtes = (donnees, edits) => {
+    if (!edits || !donnees) return donnees;
+    const maj = (sv, i) =>
+      sv && Array.isArray(sv.options)
+        ? { ...sv, options: sv.options.map((o, j) => { const q = edits[`${i}:${j}`]; if (!q) return o; const q0 = Math.max(1, Number(o.qte) || 1); return { ...o, qte: q, prix: o.prix === null || o.prix === undefined ? o.prix : Math.round((Number(o.prix) / q0) * q * 100) / 100 }; }) }
+        : sv;
+    return Array.isArray(donnees.services) ? { ...donnees, services: donnees.services.map(maj) } : donnees.service ? { ...donnees, service: maj(donnees.service, 0) } : donnees;
+  };
+  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(avecQtes(donneesBrutes(c), qtesSaisies.get(c.id)), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
   // Une carte « reservation » avec les lieux remplis sur elle.
-  const donneesReservation = (c) => avecLieuxSaisis(c.donnees, "reservation", lieuxSaisis.get(c.id));
+  const donneesReservation = (c) => avecLieuxSaisis(avecQtes(c.donnees, qtesSaisies.get(c.id)), "reservation", lieuxSaisis.get(c.id));
+  // Le champ de quantité d'une option par personne, sur une carte encore proposée.
+  const champQteOption = (c, i) => (j, o) => {
+    if (c.statut !== "proposee" || !["pp", "ad"].includes(o.unite)) return null;
+    const input = h("input", { type: "number", min: "1", step: "1", inputmode: "numeric", class: "agent-option-qte", value: Math.max(1, Number(o.qte) || 1), "aria-label": tr("Quantité de l'option {nom}", { nom: o.libelle || "" }) });
+    input.addEventListener("change", () => {
+      const q = Math.max(1, Math.round(Number(input.value) || 1));
+      qtesSaisies.set(c.id, { ...(qtesSaisies.get(c.id) || {}), [`${i}:${j}`]: q });
+      redessiner(c);
+    });
+    return h("label", { class: "agent-option-qte-champ" }, " ", tr("Quantité"), " ", input);
+  };
   const entrepriseDe = (id) => entitesAccessibles().find((e) => e.id === id) || null;
   const libelleEntreprise = (id) => {
     const e = entrepriseDe(id);
@@ -1124,7 +1187,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, remarquesCarte(s)), prixTexte(s))))));
+      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, optionsCarte_(s, champQteOption(c, i)), remarquesCarte(s)), prixTexte(s))))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -1140,9 +1203,11 @@ export async function vueAgent(idOuvert = "") {
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
       if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil, auteur: () => auteurDevis(c) }));
     } else if (c.genre === "reservation") {
-      const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), remarquesCarte(s)), prixTexte(s)))));
-      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 };
+      const s = donneesReservation(c).service || {};
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), optionsCarte_(s, champQteOption(c, 0)), remarquesCarte(s)), prixTexte(s)))));
+      // Une option sans prix bloque l'ajout, comme sur la carte « modification » (relecture de la PR 359, N3) : « Vérifier avant » reste là.
+      const optionSansPrix = (s.options || []).some((o) => o.prix === null || o.prix === undefined);
+      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 || optionSansPrix, ...(optionSansPrix ? { motifBloque: tr("Le prix d'une option est à saisir : ouvrez « Vérifier avant ».") } : {}) };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, LIBELLES_MODIF[d.champ] ? h("span", null, tr(LIBELLES_MODIF[d.champ]), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
@@ -1229,7 +1294,7 @@ export async function vueAgent(idOuvert = "") {
             { class: "actions gauche" },
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
-            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
+            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, action.motifBloque || tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
             action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque || enValidation.has(c.id), "aria-busy": enValidation.has(c.id) ? "true" : null, onclick: (e) => agir(e.currentTarget, action) }, enValidation.has(c.id) ? tr("Création…") : action.libelle), action) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && ecarter(c) }, tr("Écarter"))
@@ -1495,8 +1560,10 @@ export async function vueAgent(idOuvert = "") {
 
   // Conversation ouverte depuis l'écran WhatsApp (migration 61) : le dossier validé se relie à la conversation WhatsApp, avec son client
   // (et l'entreprise si elle était à trier). Une panne ici ne gêne jamais la validation ; elle est dite.
-  async function relierWhatsApp(dossier) {
-    const waId = conv && conv.whatsapp_conversation_id;
+  // `choisie` : la conversation au nom du client reprise dans « Vérifier avant » (« Reprendre ce numéro »), quand la conversation de
+  // l'Assistant n'est pas liée à WhatsApp (la conversation est restée sans client ni dossier).
+  async function relierWhatsApp(dossier, choisie = null) {
+    const waId = (conv && conv.whatsapp_conversation_id) || choisie;
     if (!waId) return;
     try {
       // Relue en base juste avant : quelqu'un a pu la relier ou la ranger ailleurs pendant la conversation avec l'Assistant.
@@ -1594,18 +1661,18 @@ export async function vueAgent(idOuvert = "") {
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true, avantCreer });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
-      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise });
-      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, avantCreer });
+      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise, whatsappLie: await conversationWaLiee(), avantCreer });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, whatsappLie: await conversationWaLiee(), avantCreer });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
-      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier.")));
+      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier."), { avantEnregistrer: avantCreer }));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
           // Les notes d'avant : une remarque retouchée s'apprend par ce qui a été ajouté (agent-apprendre.mjs).
-          return ancienne ? enregistrerReservation(reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
+          return ancienne ? enregistrerReservation(reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne, { avantEnregistrer: avantCreer }).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
         });
-      } else if (c.genre === "temps") r = await ajouterTemps(c);
+      } else if (c.genre === "temps") r = await ajouterTemps(c, { avantCreer });
     } catch (err) {
       r = { ok: false, motif: err.message };
     }
@@ -1647,7 +1714,7 @@ export async function vueAgent(idOuvert = "") {
       if (typeLie === "apporteur") await noterApporteur(c.donnees.apporteur, r.dossiers || [dossier]);
       else toast(tr("Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur."));
     }
-    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
+    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier, r.whatsappId || null);
     // Migration 72 : la demande du site « nouvelle » du même numéro passe « confirmée » avec ce dossier (views/demandes-whatsapp.mjs).
     if (dossier && c.genre === "dossier") await (await import("./demandes-whatsapp.mjs")).relierDemandesApresDossier(r.dossiers || [dossier]);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
@@ -1670,6 +1737,21 @@ export async function vueAgent(idOuvert = "") {
     if (maj) redessiner(maj);
   }
 
+  // La conversation WhatsApp liée, relue en base (son numéro complète celui de la carte) : null sans liaison ou en cas de panne. Même condition
+  // que le serveur (index.ts, PR 355) : rangée dans l'entreprise de l'Assistant, ou à trier chez Secret et Taxi ; jamais un apporteur.
+  async function conversationWaLiee() {
+    const waId = conv && conv.whatsapp_conversation_id;
+    if (!waId) return null;
+    let wc = null;
+    try {
+      wc = (etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null) || (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+    } catch (err) {
+      console.error("agent : conversation WhatsApp liée", err);
+      wc = (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+    }
+    const slug = ((etat.brut.entites || []).find((e) => e.id === etat.entiteId) || {}).slug || "";
+    return wc && conversationDansEntreprise(wc, etat.entiteId, slug) && !apporteurConfirme(wc) ? wc : null;
+  }
   // Le type du contact de la conversation WhatsApp liée, relu en base : null sans liaison, illisible ou sans type.
   async function typeContactLie() {
     const waId = conv && conv.whatsapp_conversation_id;
@@ -1744,7 +1826,7 @@ export async function vueAgent(idOuvert = "") {
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     // `services` : ce que l'écran a fait de chaque service (prix tapé à la place de celui du catalogue), pour les apprentissages.
-    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }), ferme: rendreSiRien(c), avantCreer: avantFenetre(c) });
+    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, whatsappLie: await conversationWaLiee(), surCree: ({ dossier, services, whatsappId }) => noterReussite(c, { ok: true, dossier, ecran: services, whatsappId }), ferme: rendreSiRien(c), avantCreer: avantFenetre(c) });
     if (!ouverte) rendreSiRien(c)();
   }
   async function ouvrirCourse(c) {
@@ -1794,9 +1876,12 @@ export async function vueAgent(idOuvert = "") {
 
 
   // Une durée donnée dans la conversation entre dans la table de référence, confirmée (Nani l'a donnée elle-même).
-  async function ajouterTemps(c) {
+  async function ajouterTemps(c, { avantCreer = null } = {}) {
     const d = c.donnees;
     try {
+      // Migration 133 : la carte revérifiée juste avant d'écrire.
+      const arret = avantCreer ? await avantCreer() : null;
+      if (arret) return { ok: false, motif: arret };
       await etat.store.enregistrerTempsTrajets(etat.entiteId, [{ de: d.de, vers: d.vers, cle: clePaire(d.de, d.vers), mode: "route", duree_min: d.duree_min, ferry: !!d.ferry, marge_min: d.marge_min || 0, source: d.source || "", source_date: new Date().toISOString().slice(0, 10), a_verifier: false, origine: "agent" }]);
       toast(tr("Durée ajoutée à la table des temps de trajet."));
       return { ok: true };
@@ -1834,7 +1919,7 @@ export async function vueAgent(idOuvert = "") {
       return toast(`${tr(ERREURS_AMELIORATION[r && r.erreur] || N_("La demande n'est pas partie."))}${motifs ? ` (${motifs})` : ""}`, true);
     }
     ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
-    toast(tr("Demande envoyée : vous verrez son avancement ici."));
+    toast(r.avertissement === "github_indisponible" ? tr("Demande notée, mais GitHub ne répond pas : elle attend Jérémy.") : tr("Demande envoyée : vous verrez son avancement ici."), r.avertissement === "github_indisponible");
     const maj = r.carte || { ...c, statut: "validee" };
     fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));
     await rafraichirAttente();

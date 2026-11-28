@@ -122,7 +122,7 @@ test("doublons Secret et Taxi : même téléphone ou même nom, la plus ancienne
 
 test("Assistant : validation refusée sans rien écrire, écriture dans l'entreprise du dossier visé", () => {
   const agent = source("views/agent.mjs") + source("views/agent-valider.mjs");
-  assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise \}\);/);
+  assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise, whatsappLie: await conversationWaLiee\(\), avantCreer \}\);/);
   assert.match(agent, /entreprise_a_choisir: \(\) => tr\("Choisissez Secret ou Taxi"\)/);
   assert.match(agent, /lier: \(a, b\) => lierDossiers\(a, b, modifier\)/, "dossier_lie_id des deux côtés");
   assert.match(agent, /r = await dansEntreprise\(entiteVisee\(c\), \(\) => ajouterParCarte\(\{ \.\.\.c, donnees: donneesReservation\(c\) \}, /, "service ajouté au dossier de l'autre entreprise");

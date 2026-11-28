@@ -11,6 +11,8 @@
 //   7. Messages manquants (migration 100) : webhook du compte WhatsApp (whatsapp.messages) pour rattraper ce que Telnyx n'a pas transmis,
 //      ligne visible pour un message que WhatsApp n'a pas transmis, client reconnu par son BSUID, repère « Un message du client semble
 //      manquer » sur une réponse de Nani (./manquants.js). Rien de tout cela n'appelle l'IA ni n'envoie de notification.
+//   8. Message automatique de nuit (migration 132, ./nuit.ts) : un client qui écrit entre 22:00 et 06:00 (Bangkok) reçoit une fois par nuit le
+//      message d'absence de Réglages > WhatsApp, à la place de l'app de Nani en mode avion. La base décide et garantit l'unicité.
 // Secrets : TELNYX_PUBLIC_KEY (obligatoire), TELNYX_API_KEY (médias sans lien direct ; facultatif), WHATSAPP_ORGANISATION (Zwald par défaut).
 // Doc : docs/gestion/whatsapp.md. Logique pure : ./calc.js (tests/gestion-whatsapp.test.js). Base : migration 58.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
@@ -18,6 +20,7 @@ import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
 import { apprendreDeNani } from "../agent/apprendre-whatsapp.js";
 import { pretApresMessage, rattraperPret } from "./pret.ts";
+import { messageDeNuit, reprendreNuit } from "./nuit.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
 import { interpreterWaba, rattrapageAttend, sembleManquer, citationDatable, repereAutorise, REPERE } from "./manquants.js";
@@ -161,6 +164,8 @@ async function traiterEnAttente(db: SupabaseClient, idCourant: string | null) {
   await purgerSortants(db).catch((err) => console.error("purge des vouchers envoyés :", String((err as Error)?.message || err).slice(0, 200)));
   // Reprise seulement : les conversations jamais passées par « Prêt à réserver » (celles d'avant la migration 85), 20 par passage.
   if (!idCourant) await rattraperPret(db, ORGANISATION).catch((err) => console.error("rattrapage prêt à réserver :", String((err as Error)?.message || err).slice(0, 200)));
+  // Reprise seulement : les messages de nuit refusés par Telnyx (refus sûr) se retentent, la même nuit, 3 essais en tout (migration 132).
+  if (!idCourant) await reprendreNuit(db, ORGANISATION).catch((err) => console.error("message de nuit, reprise :", String((err as Error)?.message || err).slice(0, 200)));
   const r = await reglages(db);
   if (!r.purge_le || Date.now() - new Date(r.purge_le).getTime() > 3600_000) {
     reglagesLus = null;
@@ -322,7 +327,11 @@ async function appliquer(db: SupabaseClient, a: any, pris: { recu_le?: string } 
     // Prêt à réserver (migration 85) : sans IA, refait à chaque message, de Nani comme du client.
     enFond(pretApresMessage(db, data.conversation_id));
     // Un message du client : la réponse se prépare et l'équipe est prévenue, hors de ce traitement (il ne retarde pas les autres événements).
-    if (a.message.sens === "entrant") enFond(apresMessageClient(db, data.conversation_id, data.message_id));
+    if (a.message.sens === "entrant") {
+      enFond(apresMessageClient(db, data.conversation_id, data.message_id));
+      // La nuit (22:00 à 06:00, Bangkok) : le message d'absence, une fois par conversation et par nuit (migration 132, ./nuit.ts).
+      enFond(messageDeNuit(db, data.message_id));
+    }
     // Nani a répondu depuis l'app : la proposition en attente est traitée (plus de doublon possible).
     else if (a.message.origine === "app") {
       const { error: e } = await db.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "app" }).eq("conversation_id", data.conversation_id).in("statut", ["a_faire", "en_cours", "envoi"]);
@@ -387,8 +396,9 @@ async function reperer(db: SupabaseClient, conversation: string, message: string
     // Jamais pour un partenaire, un apporteur, une fiche partenaire ni un Contact personnel (lecture impossible : rien).
     const { data: conv, error: errV } = await db.from("whatsapp_conversations").select("type_contact, partenaire_id, reponses").eq("id", conversation).maybeSingle();
     if (errV || !repereAutorise(conv)) return;
+    // Le message automatique de nuit (migration 132) n'est pas une réponse de Nani : il ne compte pas comme le message d'avant.
     const { data: avant, error } = await db.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conversation).neq("id", message)
-      .lte("envoye_le", m.envoye_le).order("envoye_le", { ascending: false }).limit(1);
+      .is("automatique", null).lte("envoye_le", m.envoye_le).order("envoye_le", { ascending: false }).limit(1);
     if (error) throw new Error(error.message);
     // Seul un id Telnyx cité se date (passé par Telnyx, donc depuis le 20.11.2026) : un wamid cité inconnu ne pose aucun repère.
     let citeInconnu = false;

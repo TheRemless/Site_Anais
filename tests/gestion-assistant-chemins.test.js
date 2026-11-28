@@ -69,6 +69,11 @@ const carteDe = async (outil, e) => {
   return { id: `carte-${++n}`, ...r.carte, statut: "proposee" };
 };
 const chauffeur = () => partenaireDeTaxi(E.etat.db.partenaires, chauffeurRegle(E.reglages()));
+// La rangée d'un tarif se déplie au toucher (ajout d'un service refait pour le téléphone, 26.11.2026) : « Ajouter » est dans la rangée dépliée.
+function ajouterTarif(li) {
+  li.querySelector(".choix-tete").click();
+  dom.document.querySelectorAll("li.choix.deplie").pop().querySelector(".choix-detail button.principal").click();
+}
 
 // Ce que la carte dit du service, dans les clés de la réservation, et la comparaison champ par champ avec ce que l'écran a écrit.
 const CLES = ["drop_off", "lieu_pickup", "heure_pickup", "vol", "sieges", "sieges_bebe", "sans_siege", "bagages", "remarques", "adultes", "enfants", "bebes", "montant_vente", "partenaire_id", "paye_sur_place"];
@@ -367,7 +372,13 @@ test("4. carte « reservation » : formulaireReservation par enregistrerReservat
   const client = await E.inserer("clients", { civilite: "", prenom: "Client", nom: "Exemple R", adresse: "Resort Exemple", telephone: "+41790001999", email: "", notes: "" });
   const dossier = await E.inserer("dossiers", { ref: "T-RES", client_id: client.id, pays: "", bandeau: "", accepte_le: "2026-11-23", annule: false, notes: "" });
   const c = await carteDe("proposer_reservation", { titre: "Ajout", dossier: refDe("D", dossier.id), service: service({ ref: refDe("P", transfert.id), enfants: 2 }) });
-  const r = await V.enregistrerReservation(reservationDepuisCarte(c.donnees, V.optionsCarte(c)), "Service ajouté au dossier.");
+  // Migration 133 (relecture n° 2 de la PR 366) : la carte reprise ailleurs entre la prise et l'écriture, rien n'est écrit.
+  const avantRefus = ecrits.length;
+  const refus = await V.enregistrerReservation(reservationDepuisCarte(c.donnees, V.optionsCarte(c)), "Service ajouté au dossier.", null, { avantEnregistrer: async () => "Nani a repris cette carte" });
+  assert.equal(refus.ok, false);
+  assert.equal(refus.motif, "Nani a repris cette carte");
+  assert.equal(ecrits.slice(avantRefus).filter((e) => e.table === "reservations").length, 0, "aucune réservation écrite après un contrôle refusé");
+  const r = await V.enregistrerReservation(reservationDepuisCarte(c.donnees, V.optionsCarte(c)), "Service ajouté au dossier.", null, { avantEnregistrer: async () => null });
   assert.equal(r.ok, true, r.motif);
   // Deux enfants pour un child seat et un baby seat (une carte « reservation » n'a pas les bébés du dossier).
   comparer(ecrite(r.reservation.id), { ...DE_LA_CARTE, enfants: 2, partenaire_id: (chauffeur() || {}).id || null, paye_sur_place: true }, "ajout");
@@ -453,7 +464,7 @@ test("6 bis. « Vérifier avant », « Choisir dans la base » chez Taxi : la co
   // La ligne de test, sans partenaire (la démo a aussi un tarif « Krabi Airport », celui de ses chauffeurs).
   const ligne = dom.document.querySelectorAll("li.choix").filter((li) => li.querySelector("strong").textContent === "Krabi Airport" && !li.textContent.includes("Chauffeurs démo")).pop();
   assert.ok(ligne, "le trajet dans la liste du catalogue");
-  ligne.querySelector(".choix-actions button").click();
+  ajouterTarif(ligne);
   dom.boutons("Terminé").slice(-1)[0].click();
   await dom.attendre(10);
   dom.boutons("Créer le dossier").slice(-1)[0].click();
@@ -478,7 +489,7 @@ test("7. demande du site (trajet) : la fiche lit le formulaire, et la réservati
   if (dom.boutons("Choisir dans la base").length) {
     dom.boutons("Choisir dans la base").slice(-1)[0].click();
     await dom.attendre(10);
-    dom.document.querySelectorAll("li.choix").filter((li) => li.querySelector("strong").textContent === "Krabi Airport" && !li.textContent.includes("Chauffeurs démo")).pop().querySelector(".choix-actions button").click();
+    ajouterTarif(dom.document.querySelectorAll("li.choix").filter((li) => li.querySelector("strong").textContent === "Krabi Airport" && !li.textContent.includes("Chauffeurs démo")).pop());
     dom.boutons("Terminé").slice(-1)[0].click();
     await dom.attendre(10);
   }
@@ -608,7 +619,7 @@ async function coller(slug, texte, { telephone } = {}) {
       await dom.attendre(10);
       const choix = dom.document.querySelectorAll("li.choix").filter((x) => x.querySelector("strong").textContent === libelle && !x.textContent.includes("Chauffeurs démo")).pop();
       assert.ok(choix, `le tarif « ${libelle} » dans la base`);
-      choix.querySelector(".choix-actions button").click();
+      ajouterTarif(choix);
       dom.boutons("Terminé").slice(-1)[0].click();
       await dom.attendre(10);
     },
