@@ -89,23 +89,31 @@ test("Bandeau du site : la liste ne s'élargit plus à l'aperçu de téléphone 
   assert.match(css, /\.bsite-apercu \{ margin: 0; min-width: 0; \}/);
 });
 
-test("tableaux larges : lignes empilées plutôt qu'une colonne coupée, boîte accessible si elle défile encore", async () => {
-  const { modeTableau, boiteDefile, intitulesManquants } = await import("../src/gestion/js/tableaux-calc.mjs");
-  // Dossiers à 900 px : 613 px dans 568, empilé ; à 1280 px, il tient.
-  assert.equal(modeTableau({ largeurTableau: 613, largeurBoite: 568, ecran: 900 }), "empile");
-  assert.equal(modeTableau({ largeurTableau: 948, largeurBoite: 948, ecran: 1280 }), "normal");
-  assert.equal(modeTableau({ largeurTableau: 569, largeurBoite: 568, ecran: 900 }), "normal", "arrondi d'un pixel");
-  // Sous 720 px, le CSS empile déjà ; un tableau masqué (largeur 0) ne décide rien.
-  assert.equal(modeTableau({ largeurTableau: 900, largeurBoite: 358, ecran: 390 }), "normal");
-  assert.equal(modeTableau({ largeurTableau: 900, largeurBoite: 0, ecran: 1280 }), "normal");
-  assert.equal(boiteDefile({ largeurContenu: 700, largeurBoite: 568 }), true);
-  assert.equal(boiteDefile({ largeurContenu: 568, largeurBoite: 568 }), false);
-  assert.deepEqual(intitulesManquants(["Client", "Total", ""], [{ index: 0, label: "Nom" }, { index: 1, label: null }, { index: 2, label: null }]), [[1, "Total"]]);
+test("tableaux larges : sur ordinateur, défilement dans la boîte avec le filet, jamais de lignes empilées", async () => {
+  const { boiteDefile, finDefilement } = await import("../src/gestion/js/tableaux-calc.mjs");
+  assert.equal(boiteDefile({ largeurContenu: 1314, largeurBoite: 948 }), true, "Trajets à 1280 px");
+  assert.equal(boiteDefile({ largeurContenu: 569, largeurBoite: 568 }), false, "arrondi d'un pixel");
+  assert.equal(boiteDefile({ largeurContenu: 900, largeurBoite: 0 }), false, "boîte masquée");
+  assert.equal(finDefilement({ gauche: 366, largeurBoite: 948, largeurContenu: 1314 }), true);
+  assert.equal(finDefilement({ gauche: 0, largeurBoite: 948, largeurContenu: 1314 }), false);
   const css = lire("css/app.css");
-  assert.match(css, /\.tableau-defile\.empile \.tableau td::before \{ content: attr\(data-label\);/);
+  const app = lire("js/app.mjs");
+  // Plus d'empilement automatique : les lignes empilées restent celles de la coque téléphone (sous 720 px).
+  assert.doesNotMatch(css + app, /empile/);
   assert.match(css, /@media screen and \(min-width: 720px\) and \(max-width: 1100px\) \{ \.tableau th, \.tableau td \{ padding: 10px 8px; \} \}/);
   assert.match(css, /\.tableau-defile\.deborde:not\(\.fin\) \{ -webkit-mask-image:/);
   assert.match(css, /\.tableau-defile:focus-visible \{ outline: 2px solid/);
-  const app = lire("js/app.mjs");
   assert.match(app, /boite\.setAttribute\("tabindex", "0"\);\s*boite\.setAttribute\("role", "region"\);\s*boite\.setAttribute\("aria-label", tr\("Tableau, défiler horizontalement"\)\);/);
+});
+
+test("Dossiers de 900 à 1 000 px : la colonne Intitulé se masque, statut, total et reste visibles sans défiler", () => {
+  assert.match(lire("css/app.css"), /@media screen and \(min-width: 900px\) and \(max-width: 1000px\) \{ \.tableau-dossiers \.col-intitule \{ display: none; \} \}/);
+  const vue = lire("js/views/dossiers.mjs");
+  assert.match(vue, /class: i >= 4 \? "num" : i === 1 \? "col-intitule" : null/);
+  assert.match(vue, /h\("td", \{ "data-label": tr\("Intitulé"\), class: "col-intitule" \}/);
+});
+
+test("accueil Agence de 720 à 1 100 px : le statut passe à la ligne, « Reste à payer » visible sans défiler", () => {
+  assert.match(lire("css/app.css"), /@media screen and \(min-width: 720px\) and \(max-width: 1100px\) \{ \.tableau-accueil \.statut \{ white-space: normal; \} \}/);
+  assert.match(lire("js/views/dashboard.mjs"), /class: "tableau simple seulement-bureau tableau-accueil"/);
 });

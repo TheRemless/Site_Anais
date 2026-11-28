@@ -11,7 +11,7 @@ import { aTraiter } from "./demandes-site-calc.mjs";
 import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes } from "./direct-calc.mjs";
 import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTouche } from "./saisie.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
-import { modeTableau, boiteDefile, intitulesManquants } from "./tableaux-calc.mjs";
+import { boiteDefile, finDefilement } from "./tableaux-calc.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 import { agentActif, quand } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
@@ -405,27 +405,17 @@ export function envelopperTableaux(racine) {
     t.replaceWith(boite);
     boite.append(t);
     if (typeof ResizeObserver !== "undefined") suiviTaille.observe(boite);
-    boite.addEventListener("scroll", () => boite.classList.toggle("fin", boite.scrollLeft + boite.clientWidth >= boite.scrollWidth - 1), { passive: true });
+    boite.addEventListener("scroll", () => boite.classList.toggle("fin", finDefilement({ gauche: boite.scrollLeft, largeurBoite: boite.clientWidth, largeurContenu: boite.scrollWidth })), { passive: true });
   }
 }
-// Un tableau qui ne tient pas dans sa boîte passe en lignes empilées (règles dans tableaux-calc.mjs). Mesuré à la pose, à chaque
-// changement de taille de la boîte et quand des lignes arrivent ; si la boîte défile encore, elle devient une région au clavier.
+// Un tableau qui ne tient pas défile dans sa boîte (règles dans tableaux-calc.mjs) : la boîte devient alors une région prise au
+// clavier, avec un fondu au bord droit tant que la fin n'est pas atteinte. Mesuré à la pose, à chaque changement de taille de la
+// boîte et quand des lignes arrivent (relecture de la PR 367 : pas de lignes empilées sur ordinateur, le tri et la sélection restent).
 function ajusterTableau(boite) {
-  const t = boite.firstElementChild;
-  if (!t || !boite.isConnected) return;
-  boite.classList.remove("empile");
-  const mode = modeTableau({ largeurTableau: t.scrollWidth, largeurBoite: boite.clientWidth, ecran: window.innerWidth });
-  if (mode === "empile") {
-    const entetes = [...(t.tHead?.rows[0]?.cells || [])].map((c) => c.textContent.trim());
-    for (const ligne of t.tBodies[0]?.rows || []) {
-      const cellules = [...ligne.cells];
-      for (const [i, texte] of intitulesManquants(entetes, cellules.map((c, index) => ({ index, label: c.getAttribute("data-label") })))) cellules[i].setAttribute("data-label", texte);
-    }
-    boite.classList.add("empile");
-  }
+  if (!boite.isConnected) return;
   const defile = boiteDefile({ largeurContenu: boite.scrollWidth, largeurBoite: boite.clientWidth });
   boite.classList.toggle("deborde", defile);
-  boite.classList.toggle("fin", defile && boite.scrollLeft + boite.clientWidth >= boite.scrollWidth - 1);
+  boite.classList.toggle("fin", defile && finDefilement({ gauche: boite.scrollLeft, largeurBoite: boite.clientWidth, largeurContenu: boite.scrollWidth }));
   if (defile) {
     boite.setAttribute("tabindex", "0");
     boite.setAttribute("role", "region");

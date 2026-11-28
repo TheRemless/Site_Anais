@@ -1,19 +1,9 @@
-// Tableaux larges (relecture de la PR 367) : logique pure, testée avec node --test ; app.mjs mesure et pose les classes.
-// Un tableau qui ne tient pas dans sa place passe en lignes empilées (la présentation du téléphone, chaque cellule précédée de
-// son intitulé) plutôt que de défiler ou de couper une colonne. La boîte qui défile ne sert plus que de filet.
+// Tableaux larges (relecture de la PR 367) : logique pure, testée avec node --test ; app.mjs mesure et pose les attributs.
+// Sur ordinateur, un tableau qui ne tient pas défile dans sa boîte. La boîte devient alors une région prise au clavier, avec un
+// fondu au bord qui montre la suite. Les lignes empilées restent réservées à la coque téléphone (CSS, sous 720 px).
 
-// Mode d'un tableau : « empile » s'il dépasse sa boîte (tolérance d'un pixel pour les arrondis), sinon « normal ».
-// Sous 720 px, le CSS empile déjà tous les tableaux : rien à décider.
-export function modeTableau({ largeurTableau, largeurBoite, ecran }) {
-  if (!largeurBoite || ecran < 720) return "normal";
-  return largeurTableau > largeurBoite + 1 ? "empile" : "normal";
-}
-
-// La boîte défile-t-elle encore (contenu empilé trop large, très rare) ? Alors elle devient une région accessible au clavier.
+// La boîte défile-t-elle ? Tolérance d'un pixel pour les arrondis ; une boîte masquée (largeur 0) ne défile pas.
 export const boiteDefile = ({ largeurContenu, largeurBoite }) => Boolean(largeurBoite) && largeurContenu > largeurBoite + 1;
 
-// Intitulés des cellules en mode empilé : repris des en-têtes de colonnes, sans écraser un intitulé déjà posé par l'écran.
-// `entetes` : textes des th ; `cellules` : [{ index, label }] d'une ligne. Renvoie les intitulés à poser ([index, texte]).
-export function intitulesManquants(entetes, cellules) {
-  return cellules.filter((c) => !c.label && entetes[c.index]).map((c) => [c.index, entetes[c.index]]);
-}
+// Fin de défilement atteinte (le fondu au bord droit disparaît).
+export const finDefilement = ({ gauche, largeurBoite, largeurContenu }) => gauche + largeurBoite >= largeurContenu - 1;
