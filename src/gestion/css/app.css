@@ -63,7 +63,11 @@ img { max-width: 100%; }
 .chargement-corps { padding: 20px 16px; max-width: 1040px; }
 .titre-attente { padding: 0; background: transparent; border: 0; }
 .titre-attente span { height: 28px !important; }
-@media (min-width: 900px) { .chargement-barre { display: none; } .chargement-corps { padding: 32px 40px 32px 292px; } }
+/* Mise en page d'ordinateur (barre latérale) : 900 px de large ET (plus de 500 px de haut OU une souris). Un iPhone en paysage
+   (926 à 956 px de large, 430 px de haut environ, pointeur tactile) garde donc la coque de téléphone (audit mobile n° 7, grands
+   iPhone) ; un iPad en paysage (768 px de haut et plus) et un ordinateur gardent la leur. Les règles de téléphone (max-width: 899px)
+   reçoivent le cas inverse : (max-height: 500px) et pointeur tactile. */
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .chargement-barre { display: none; } .chargement-corps { padding: 32px 40px 32px 292px; } }
 
 /* Coque : sur téléphone une barre en haut (entreprise, recherche) et quatre onglets en bas ;
    sur ordinateur une barre latérale par sections. Les deux existent dans la page, le CSS n'en montre qu'une. */
@@ -129,7 +133,7 @@ img { max-width: 100%; }
 .feuille-pied .menu-outils { flex: 1 0 100%; }
 .feuille-pied .menu-outils > button { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   .barre-fixe { bottom: 0; }
   .coque { display: grid; grid-template-columns: 252px minmax(0, 1fr); }
   .barre-haut, .barre-onglets { display: none; }
@@ -344,11 +348,11 @@ html.modal-ouverte { overflow: hidden; }
 #toasts { position: fixed; z-index: 200; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
 /* Feuille ouverte : le toast passe en haut, il ne couvre plus le champ de la feuille (saisie des commissions enchaînée, relecture de la PR 361). */
 @media (max-width: 719px) { html.modal-ouverte #toasts { top: calc(env(safe-area-inset-top) + 12px); bottom: auto; } }
-@media (min-width: 900px) { #toasts { bottom: 24px; left: 276px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { #toasts { bottom: 24px; left: 276px; } }
 .toast { max-width: 460px; padding: 12px 16px; border-radius: var(--rayon); background: #1f2a2a; color: #fff; font-size: 0.92rem; font-weight: 500; pointer-events: auto; }
 .toast.erreur { background: var(--danger); }
 .bandeau-version { position: fixed; z-index: 201; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-radius: var(--rayon); background: #1f2a2a; color: #fff; font-size: 0.92rem; font-weight: 500; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); }
-@media (min-width: 900px) { .bandeau-version { left: auto; right: 24px; bottom: 24px; max-width: 460px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .bandeau-version { left: auto; right: 24px; bottom: 24px; max-width: 460px; } }
 
 /* Connexion */
 .connexion { max-width: 380px; margin: 10vh auto 0; padding: 0 20px; }
@@ -384,11 +388,11 @@ ul.avertissements-voucher { list-style: none; margin: 0 0 14px; padding: 10px 14
 .bandeau-alerte p { margin: 0 0 10px; }
 .bandeau-alerte .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .etat-synchro { position: fixed; z-index: 150; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); padding: 10px 14px; border-radius: var(--rayon); background: #fff4d6; border: 1px solid #e8d49a; color: #5a4300; font-size: 0.88rem; font-weight: 500; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
-@media (min-width: 900px) { .etat-synchro { right: auto; left: 24px; bottom: 24px; max-width: 420px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .etat-synchro { right: auto; left: 24px; bottom: 24px; max-width: 420px; } }
 /* Téléphone : le bandeau hors connexion est une bande posée sur la barre d'onglets (ou sur la barre d'action), sous les feuilles (z-index
    inférieur à 100) : collé en haut, il couvrait la recherche et « Filtrer », et passait sur le titre d'une feuille haute (audit mobile n° 21,
    relecture de la PR 363). Le « + » remonte d'autant. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) {
   .etat-synchro { z-index: 29; left: 0; right: 0; bottom: calc(var(--barre-basse) + var(--clavier, 0px)); padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); border-width: 1px 0 0; border-radius: 0; box-shadow: none; font-size: 0.82rem; line-height: 1.3; }
   html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + var(--haut-barre-action, 64px) + var(--clavier, 0px)); }
   html.synchro-visible .bouton-plus { bottom: calc(var(--barre-basse) + 16px + var(--haut-synchro, 32px)); }
@@ -834,13 +838,13 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 html.clavier .barre-action { bottom: var(--clavier); padding-bottom: 10px; }
 html.clavier .barre-onglets { display: none; }
 html.clavier { --barre-basse: 0px; }
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   .barre-action-espace { display: none; }
   .barre-action { position: sticky; left: auto; right: auto; bottom: 0; z-index: 5; margin: 0 -8px; padding: 12px 8px; background: var(--fond); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .barre-action > .principal, .barre-action > .secondaire { flex: 0 0 auto; }
 }
 html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
-@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: 24px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: 24px; } }
 
 /* Puces de filtre défilantes */
 .puces { display: flex; gap: 8px; margin: 0 -16px; padding: 2px 16px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch; }
@@ -871,7 +875,7 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc
 .filtres-ligne .champ { min-width: 180px; flex: 1; margin-bottom: 10px; }
 .feuille-filtres .actions { justify-content: stretch; }
 .feuille-filtres .actions button { flex: 1; }
-@media (min-width: 900px) { .barre-filtres { top: 0; margin: 0 0 12px; padding: 8px 0 4px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .barre-filtres { top: 0; margin: 0 0 12px; padding: 8px 0 4px; } }
 
 /* Liste adaptative : tri, actions de carte, suite de la liste */
 .tri-mobile { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
@@ -946,7 +950,7 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc
   .apercu { overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
   .apercu.zoome .apercu-cadre { margin: 0; }
 }
-@media (max-width: 899px) { .editeur-barre { top: calc(56px + env(safe-area-inset-top)); } }
+@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) { .editeur-barre { top: calc(56px + env(safe-area-inset-top)); } }
 @media (min-width: 1180px) { .editeur-barre { display: none; } }
 /* Feuille du jour, tâches reportables, rappels rapides. */
 .feuille-jours { margin-bottom: 8px; }
@@ -1062,6 +1066,28 @@ div.enc-case { cursor: default; }
 .enc-actions { flex: none; display: flex; gap: 8px; margin: 0 0 10px auto; }
 @media (min-width: 720px) { .enc-actions { margin: 0 0 0 auto; } }
 .enc-actions .petit { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
+/* Téléphone (audit mobile n° 35) : le nom ouvre le dossier, « Corriger » est dans le menu « … » de 44 px, posé à droite du montant
+   au lieu d'une rangée de boutons sous chaque ligne. */
+@media (max-width: 719px) {
+  /* Case, nom et montant sur la première rangée ; référence, service et étiquettes sur toute la largeur en dessous. */
+  .enc-dossier { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 8px; }
+  .enc-case { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-rows: minmax(40px, auto); column-gap: 12px; row-gap: 2px; align-items: start; min-height: 0; padding: 8px 0 10px; }
+  div.enc-case { grid-template-columns: 0 minmax(0, 1fr) auto; column-gap: 0; }
+  div.enc-case .enc-montant { margin-left: 12px; }
+  .enc-case > input[type="checkbox"] { grid-column: 1; grid-row: 1; align-self: center; margin: 0; }
+  .enc-case .enc-texte { display: contents; }
+  .enc-case .enc-client-lien { grid-column: 2; grid-row: 1; }
+  .enc-case .enc-montant { grid-column: 3; grid-row: 1; align-self: center; }
+  .enc-case .enc-detail, .enc-case .enc-tags { grid-column: 2 / 4; }
+  /* La case prend toute la ligne ; le « … » se pose sur sa première rangée, seul le montant lui laisse la place. */
+  .enc-case { grid-column: 1 / -1; grid-row: 1; }
+  .enc-dossier:has(.enc-plus) .enc-case .enc-montant { margin-right: 52px; }
+  .enc-actions { grid-column: 2; grid-row: 1; justify-self: end; position: relative; z-index: 1; margin: 0; padding-top: 6px; }
+  .enc-actions:not(:has(.enc-plus)) { display: none; }
+  .enc-plus { width: 44px; height: 44px; }
+  /* Cible de 44 px au doigt sans grandir la ligne : la zone déborde de 10 px en haut et en bas. */
+  .enc-texte a.enc-client-lien { display: inline-flex; align-items: center; align-self: center; min-height: 44px; margin: -10px 0; }
+}
 .enc-correction { color: var(--texte-2); font-style: italic; }
 .tag-corrigee { background: var(--teal-100); color: var(--teal-700); }
 .corr-feuille .enc-motif .puce { min-height: 44px; }
@@ -1081,7 +1107,7 @@ html.plus-replie .coque.avec-plus .bouton-plus { opacity: 0; visibility: hidden;
 @media (prefers-reduced-motion: reduce) { .coque.avec-plus .bouton-plus { transition: none; } }
 .coque.avec-plus .contenu { padding-bottom: calc(var(--barre-basse) + 96px); }
 html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none !important; }
-@media (min-width: 900px) { .bouton-plus, .coque.avec-plus .bouton-plus { display: none; } .coque.avec-plus .contenu { padding-bottom: 48px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .bouton-plus, .coque.avec-plus .bouton-plus { display: none; } .coque.avec-plus .contenu { padding-bottom: 48px; } }
 .choix-nouveau { display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%; min-height: 64px; margin: 0 0 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: 12px; text-align: left; font-weight: 400; color: var(--texte); }
 .choix-nouveau svg { flex: none; color: var(--teal-700); }
 .choix-nouveau span { display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; color: var(--texte-2); }
@@ -1180,9 +1206,9 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
 .contenu { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
 .barre-haut { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
 .barre-onglets ul { padding-left: max(4px, env(safe-area-inset-left)); padding-right: max(4px, env(safe-area-inset-right)); }
-@media (min-width: 900px) { .contenu { padding: 32px 40px 48px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .contenu { padding: 32px 40px 48px; } }
 /* Paysage sur téléphone : barres plus basses pour laisser de la place au contenu */
-@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px) {
+@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px), (max-height: 480px) and (orientation: landscape) and (pointer: coarse) {
   :root { --barre-basse: calc(48px + env(safe-area-inset-bottom)); --haut-barre: calc(48px + env(safe-area-inset-top)); }
   .barre-haut { min-height: 48px; }
   .onglet { flex-direction: row; gap: 8px; min-height: 48px; padding: 4px 6px; font-size: 0.8rem; }
@@ -1209,7 +1235,7 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
 .st-onglet { display: inline-flex; align-items: center; min-height: 48px; padding: 0 12px; border-bottom: 3px solid transparent; color: var(--texte-2); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .st-onglet:hover { color: var(--texte); }
 .st-onglet[aria-current] { color: var(--teal-700); border-bottom-color: var(--teal-600); }
-@media (min-width: 900px) { .st { --st-haut: 0px; } .st-nav { margin-inline: -40px; padding-inline: 40px; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .st { --st-haut: 0px; } .st-nav { margin-inline: -40px; padding-inline: 40px; } }
 
 .st-barre { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 20px; margin-bottom: 8px; }
 .st-puces { display: flex; gap: 8px; max-width: 100%; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; }
@@ -1927,7 +1953,7 @@ button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1p
 
 /* ---- Demandes du site (migration 30) ------------------------------------------------------------------------------- */
 .dsite-liste, .bsite-liste { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
-@media (min-width: 900px) { .dsite-liste { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .dsite-liste { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); } }
 .dsite-carte { padding: 14px 16px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; }
 .dsite-carte.s-confirmee, .dsite-carte.s-refusee, .dsite-carte.s-classee { background: #fbfcfc; }
 .dsite-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -2304,7 +2330,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-bascule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
 .agent-bascule p { flex: 1 1 260px; margin: 0; }
 
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   .agent { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 0; height: calc(100dvh - var(--decalage, 80px)); margin: -32px -40px -48px; border-top: 1px solid var(--bord); }
   .agent-liste, .agent.avec-fil .agent-liste { display: block; overflow-y: auto; padding: 20px 16px; border-right: 1px solid var(--bord); background: var(--surface); }
   .agent-fil, .agent.avec-fil .agent-fil { display: flex; flex-direction: column; min-height: 0; }
@@ -2552,7 +2578,7 @@ button.agent-joint { cursor: pointer; }
 .wa-messages, .agent-messages { overflow-anchor: none; }
 .wa-nouveaux, .agent-nouveaux { position: sticky; bottom: 12px; z-index: 6; align-self: center; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: var(--teal-600); color: #fff; font-weight: 600; white-space: nowrap; box-shadow: var(--ombre-forte); }
 .wa-nouveaux[hidden], .agent-nouveaux[hidden] { display: none; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) {
   .wa-nouveaux, .agent-nouveaux { position: fixed; left: 50%; bottom: calc(var(--barre-basse) + 84px); transform: translateX(-50%); }
 }
 /* Une photo en grand (visionneuse.mjs) : fond sombre, photo entière, Fermer en haut à droite. */
@@ -2592,7 +2618,7 @@ button.agent-joint { cursor: pointer; }
 /* Audit mobile n° 4 (26.11.2026) : sur téléphone, la réponse préparée est repliée sur deux lignes (« Voir la réponse ») ; dépliée, le champ
    grandit avec le texte (hauteur posée par whatsapp.mjs) au lieu de défiler dans la page. Ordinateur : inchangé. */
 .wa-apercu, .wa-replier { display: none; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) {
   .wa-prop.repliee textarea, .wa-prop.repliee .wa-morceaux:not([hidden]) { display: none; }
   .wa-prop.repliee .wa-apercu { display: grid; gap: 4px; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px; text-align: left; background: var(--surface-2); border: 1px solid var(--bord-champ); border-radius: 10px; color: var(--texte); font: inherit; font-weight: 400; cursor: pointer; }
   .wa-apercu-texte { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
@@ -2629,7 +2655,7 @@ button.agent-joint { cursor: pointer; }
 .wa-compte.deconnecte, .wa-compte.retire { color: var(--danger); font-weight: 600; }
 
 
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   .wa:not(.wa-indisponible) { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 0; height: calc(100dvh - var(--decalage, 80px)); margin: -32px -40px -48px; border-top: 1px solid var(--bord); }
   .wa-liste .puces { flex-wrap: nowrap; gap: 6px; margin: 0; padding: 2px 0 8px; }
   .wa-liste .puce { padding: 0 9px; font-size: 0.88rem; }
@@ -2666,7 +2692,7 @@ button.agent-joint { cursor: pointer; }
 .wa-sans-reponse .wa-prop-fait, .wa-sans-reponse .wa-note { margin: 0; }
 .wa-sans-reponse .secondaire { min-height: 40px; }
 .wa-conv-etat.sans { color: var(--texte-2); font-style: italic; }
-@media (min-width: 900px) { .wa-sans-reponse { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); } .wa-sans-reponse .wa-prop-fait { border-top: 0; padding: 0; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .wa-sans-reponse { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); } .wa-sans-reponse .wa-prop-fait { border-top: 0; padding: 0; } }
 /* Temps réel coupé (canal Realtime en erreur) : discret, à côté du titre, tant que l'écran se relit toutes les 5 s. */
 .wa-direct { align-self: center; padding: 1px 8px; border: 1px solid #e8d49a; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
 .wa-direct[hidden] { display: none; }
@@ -2685,7 +2711,7 @@ button.agent-joint { cursor: pointer; }
 .wa-tache { margin: 10px 0 0; font-size: 0.86rem; line-height: 1.45; color: var(--texte-2); }
 .wa-tache svg { display: inline; vertical-align: -3px; margin-right: 6px; }
 .wa-tache a { margin-left: 8px; }
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   .wa-resume { margin: 0; padding: 8px 24px; }
 }
 /* Pièces à joindre pour l'Assistant : rien de coché d'office, six au plus. */
@@ -2773,14 +2799,14 @@ html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
 /* Clavier ouvert : iOS fait descendre la partie visible ; l'en-tête de la discussion (Assistant, WhatsApp) reste collé à son haut au lieu
    de rester hors de l'écran avec la barre du haut (26.11.2026). Un décalage d'en-tête collé ne change pas la hauteur de la page. */
 /* Jamais sous la barre du haut (collée, z-index 30) quand on remonte le fil clavier ouvert : le plus bas des deux (relecture de la PR 355). */
-@media (max-width: 899px) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: max(var(--haut-barre), var(--haut-visible, 0px)); } }
-@media (max-width: 899px) {
+@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) { html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: max(var(--haut-barre), var(--haut-visible, 0px)); } }
+@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) {
   /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
   .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }
   .agent.avec-fil .agent-fil, .wa.avec-fil .wa-fil { min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 16px); margin-bottom: 0; }
   /* Clavier ouvert : aucune marge qui suit le clavier (26.11.2026). La hauteur de la page ne dépend plus de --clavier : iOS ne boucle plus. */
 }
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   /* Les messages gardent au moins la moitié de la colonne (design n° 6) : faits et résumé défilent dans leur propre hauteur. */
   .wa-faits { flex: none; margin: 0; padding: 4px 24px 8px; }
   .wa-faits-liste { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px; }
@@ -2829,7 +2855,7 @@ html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
 .wa-apporteur .lien { min-height: 36px; padding: 0; }
 /* « Personnel » est une des puces du type : la pastille « Contact personnel » d'avant ne se répète pas. */
 .wa-fil-infos:has(.wa-contact) .wa-jamais { display: none; }
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) {
   .wa-contacts { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
 }
 /* Assistant et WhatsApp reliés (PR B, 21.11.2026) : vue « À faire », message cité, questions rapides, résultats WhatsApp de la recherche. */
@@ -2852,7 +2878,7 @@ html.clavier .barre-fixe { bottom: calc(var(--clavier) + 8px); }
 .palette-texte mark { background: #fff4d6; color: inherit; border-radius: 3px; padding: 0 1px; }
 @media (prefers-reduced-motion: reduce) { .wa-bulle { transition: none; } }
 /* Cinq filtres avec « À faire » : sur ordinateur ils passent à la ligne au lieu de défiler. */
-@media (min-width: 900px) { .wa-liste .puces { flex-wrap: wrap; overflow: visible; } }
+@media (min-width: 900px) and (min-height: 501px), (min-width: 900px) and (pointer: fine) { .wa-liste .puces { flex-wrap: wrap; overflow: visible; } }
 /* Revue de la PR 297 : trombone éteint pendant une question WhatsApp, limite de longueur dite sous le champ. */
 .agent-joindre.desactive { opacity: 0.45; cursor: not-allowed; }
 .agent-wa-longueur:empty { display: none; }
@@ -3008,7 +3034,7 @@ html.clavier .barre-editeur-bas { display: none; }
 /* Paysage sur téléphone, suite du bloc plus haut : la barre du haut y défile avec la page, les en-têtes collés sous elle (fil WhatsApp,
    Assistant, onglets des Statistiques) remontent donc au bord de l'écran au lieu de garder un vide de la hauteur de la barre. Placé en fin
    de fichier pour passer après leurs propres règles (relecture de la PR 363). */
-@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px) {
+@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px), (max-height: 480px) and (orientation: landscape) and (pointer: coarse) {
   .wa-fil-tete, .agent-fil-tete { top: 0; }
   .st-nav { top: 0; }
   html.clavier .agent-fil-tete, html.clavier .wa-fil-tete { top: var(--haut-visible, 0px); }

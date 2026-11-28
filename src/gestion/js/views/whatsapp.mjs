@@ -1145,7 +1145,7 @@ function carteProposition(c, p, messages) {
   // Téléphone (audit mobile n° 4, 26.11.2026) : la réponse se replie sur deux lignes, « Voir la réponse » la déplie ; dépliée, le champ
   // grandit avec son texte au lieu de défiler dans une page qui défile. Dépliée d'office quand le texte a été modifié ou qu'un montant ou un
   // nom interne bloque la copie. Ordinateur : rien ne change (la colonne a sa propre hauteur).
-  const telephone = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+  const telephone = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (max-height: 500px) and (pointer: coarse)").matches;
   const ajusterZone = () => {
     if (!telephone() || !zone.isConnected || !zone.offsetParent) return;
     zone.style.height = "auto";
