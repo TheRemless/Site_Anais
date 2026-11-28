@@ -162,14 +162,16 @@ export function sectionCommissions({ rafraichir, ecrit }) {
           )
         : null
     );
-    if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant), actions);
+    // Classe posée ici plutôt qu'un :has() en CSS, que Safari ne lit qu'à partir d'iOS 15.4 (relecture de la PR 367).
+    const classeLigne = corrige ? "enc-dossier avec-plus" : "enc-dossier";
+    if (!ecrit) return h("li", { class: classeLigne }, h("div", { class: "enc-case" }, texte, montant), actions);
     const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id, checked: coches.has(d.cle) });
     input.addEventListener("change", () => {
       if (input.checked) coches.add(d.cle);
       else coches.delete(d.cle);
       maj();
     });
-    return h("li", { class: "enc-dossier" }, h("label", { class: "enc-case" }, input, texte, montant), actions);
+    return h("li", { class: classeLigne }, h("label", { class: "enc-case" }, input, texte, montant), actions);
   };
 
   const cartePartenaire = (p) => {

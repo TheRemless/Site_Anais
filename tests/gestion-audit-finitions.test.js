@@ -50,7 +50,13 @@ test("n° 7 : coques de téléphone et d'ordinateur exactement complémentaires,
 test("n° 35 : À encaisser sur téléphone, un bouton « … » de 44 px par ligne au lieu de « Dossier » et « Corriger »", () => {
   const css = lire("css/app.css");
   assert.match(css, /\.enc-plus \{ width: 44px; height: 44px; \}/);
-  assert.match(css, /\.enc-actions:not\(:has\(\.enc-plus\)\) \{ display: none; \}/);
+  // Sans :has() (iOS 15.0 à 15.3) : la ligne porte la classe avec-plus.
+  assert.match(css, /\.enc-dossier:not\(\.avec-plus\) \.enc-actions \{ display: none; \}/);
+  assert.match(css, /\.enc-dossier\.avec-plus \.enc-case \.enc-montant \{ margin-right: 52px; \}/);
+  assert.doesNotMatch(css, /:has\(\.enc-plus\)/);
+  // À 900 px avec la barre latérale, le tableau « Les clients doivent » défile dans son conteneur, la page ne déborde plus.
+  assert.match(css, /@media \(min-width: 720px\) \{ \.liste-adaptative \{ overflow-x: auto; \} \}/);
+  assert.match(lire("js/views/encaisser-commissions.mjs"), /const classeLigne = corrige \? "enc-dossier avec-plus" : "enc-dossier";/);
   // Le lien du nom garde une cible de 44 px sans agrandir la ligne.
   assert.match(css, /\.enc-texte a\.enc-client-lien \{ display: inline-flex; align-items: center; align-self: center; min-height: 44px; margin: -10px 0; \}/);
   const vue = lire("js/views/encaisser-commissions.mjs");

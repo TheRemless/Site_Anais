@@ -264,6 +264,9 @@ legend { padding: 0 6px; font-weight: 700; }
 .tableau tbody tr:last-child td { border-bottom: 0; }
 .tableau tbody tr:hover { background: #f8fbfb; }
 .tableau .num { text-align: right; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+/* Un tableau plus large que sa colonne (À encaisser à 900 px, barre latérale ouverte : 621 px pour 568) défile dans son conteneur
+   au lieu de pousser la page de 13 px (relecture de la PR 367). Sans effet quand il tient, comme à 1280 px. */
+@media (min-width: 720px) { .liste-adaptative { overflow-x: auto; } }
 @media (max-width: 1180px) { .tableau-dossiers th, .tableau-dossiers td { padding: 10px 8px; font-size: 0.92rem; } }
 .tableau-dossiers .statut { white-space: normal; align-items: flex-start; }
 .tableau-dossiers .statut .point { margin-top: 0.4em; }
@@ -1083,9 +1086,9 @@ div.enc-case { cursor: default; }
   .enc-case .enc-detail, .enc-case .enc-tags { grid-column: 2 / 4; }
   /* La case prend toute la ligne ; le « … » se pose sur sa première rangée, seul le montant lui laisse la place. */
   .enc-case { grid-column: 1 / -1; grid-row: 1; }
-  .enc-dossier:has(.enc-plus) .enc-case .enc-montant { margin-right: 52px; }
+  .enc-dossier.avec-plus .enc-case .enc-montant { margin-right: 52px; }
   .enc-actions { grid-column: 2; grid-row: 1; justify-self: end; position: relative; z-index: 1; margin: 0; padding-top: 6px; }
-  .enc-actions:not(:has(.enc-plus)) { display: none; }
+  .enc-dossier:not(.avec-plus) .enc-actions { display: none; }
   .enc-plus { width: 44px; height: 44px; }
   /* Cible de 44 px au doigt sans grandir la ligne : la zone déborde de 10 px en haut et en bas. */
   .enc-texte a.enc-client-lien { display: inline-flex; align-items: center; align-self: center; min-height: 44px; margin: -10px 0; }
