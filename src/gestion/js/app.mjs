@@ -391,9 +391,25 @@ function apresChangement() {
   const barre = document.querySelector(".barre-action");
   if (barre && barre.offsetHeight) document.documentElement.style.setProperty("--haut-barre-action", `${barre.offsetHeight}px`);
 }
+// Tout tableau large défile dans son conteneur au lieu d'élargir la page (900 px avec la barre latérale : Dossiers, accueil Agence,
+// À encaisser ; relecture de la PR 367). Posé avant l'affichage (rappel synchrone de l'observateur), une seule fois par tableau.
+export function envelopperTableaux(racine) {
+  const tableaux = racine.matches?.("table.tableau") ? [racine] : [...(racine.querySelectorAll?.("table.tableau") || [])];
+  for (const t of tableaux) {
+    // Déjà dans une boîte qui défile (la nôtre, ou .tableau-defilant des statistiques et de la vue d'ensemble) : rien à faire.
+    if (!t.parentNode || t.parentElement?.classList.contains("tableau-defile") || t.parentElement?.classList.contains("tableau-defilant")) continue;
+    const boite = document.createElement("div");
+    // La marge basse d'un tableau « simple » passe à la boîte : elle fusionne avec la suite comme avant (même hauteur de page).
+    boite.className = t.classList.contains("simple") ? "tableau-defile simple" : "tableau-defile";
+    t.replaceWith(boite);
+    boite.append(t);
+  }
+}
 if (typeof window !== "undefined" && typeof MutationObserver !== "undefined") {
   let prevu = false;
+  envelopperTableaux(document.body);
   new MutationObserver((changements) => {
+    for (const c of changements) for (const n of c.addedNodes) if (n.nodeType === 1) envelopperTableaux(n);
     if (prevu || !changements.some((c) => c.addedNodes.length)) return;
     prevu = true;
     requestAnimationFrame(() => ((prevu = false), apresChangement()));

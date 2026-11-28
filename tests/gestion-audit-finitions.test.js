@@ -54,8 +54,10 @@ test("n° 35 : À encaisser sur téléphone, un bouton « … » de 44 px par li
   assert.match(css, /\.enc-dossier:not\(\.avec-plus\) \.enc-actions \{ display: none; \}/);
   assert.match(css, /\.enc-dossier\.avec-plus \.enc-case \.enc-montant \{ margin-right: 52px; \}/);
   assert.doesNotMatch(css, /:has\(\.enc-plus\)/);
-  // À 900 px avec la barre latérale, le tableau « Les clients doivent » défile dans son conteneur, la page ne déborde plus.
-  assert.match(css, /@media \(min-width: 720px\) \{ \.liste-adaptative \{ overflow-x: auto; \} \}/);
+  // Plus aucun :has() dans À encaisser ; le montant coché se colore par la classe « coche », posée au changement de la case.
+  assert.doesNotMatch(css, /\.enc-[a-z-]+:has\(/);
+  assert.match(css, /\.enc-case\.coche \.enc-montant \{ color: var\(--teal-700\); \}/);
+  assert.match(lire("js/views/encaisser-commissions.mjs"), /caseLigne\.classList\.toggle\("coche", input\.checked\);/);
   assert.match(lire("js/views/encaisser-commissions.mjs"), /const classeLigne = corrige \? "enc-dossier avec-plus" : "enc-dossier";/);
   // Le lien du nom garde une cible de 44 px sans agrandir la ligne.
   assert.match(css, /\.enc-texte a\.enc-client-lien \{ display: inline-flex; align-items: center; align-self: center; min-height: 44px; margin: -10px 0; \}/);
@@ -65,4 +67,23 @@ test("n° 35 : À encaisser sur téléphone, un bouton « … » de 44 px par li
   // Un iPhone en paysage (720 à 960 px) garde la variante du doigt, malgré .seulement-mobile qui s'arrête à 720 px.
   assert.match(css, new RegExp(`@media ${echapper(P)} \\{\\s*\\.enc-dossier \\.seulement-bureau \\{ display: none !important; \\}`));
   assert.match(css, new RegExp(`@media \\(max-width: 719px\\), ${echapper(P)} \\{\\s*/\\* Case, nom et montant`));
+});
+
+test("tableaux larges : chaque table.tableau défile dans son conteneur, à l'écran seulement", () => {
+  const css = lire("css/app.css");
+  assert.match(css, /@media screen and \(min-width: 720px\) \{ \.tableau-defile \{ position: relative; overflow-x: auto; \} \}/);
+  const app = lire("js/app.mjs");
+  assert.match(app, /export function envelopperTableaux\(racine\)/);
+  // Pas de double boîte autour des tableaux qui défilent déjà ; la marge d'un tableau « simple » passe à la boîte.
+  assert.match(app, /t\.parentElement\?\.classList\.contains\("tableau-defilant"\)\) continue;/);
+  assert.match(app, /boite\.className = t\.classList\.contains\("simple"\) \? "tableau-defile simple" : "tableau-defile";/);
+  assert.match(css, /\.tableau\.simple, \.tableau-defile\.simple \{ margin-bottom: 8px; \}\n\.tableau-defile > \.tableau\.simple \{ margin-bottom: 0; \}/);
+  // Posé dans le rappel synchrone de l'observateur (avant l'affichage), pas au prochain rafraîchissement.
+  assert.match(app, /new MutationObserver\(\(changements\) => \{\s*for \(const c of changements\) for \(const n of c\.addedNodes\) if \(n\.nodeType === 1\) envelopperTableaux\(n\);/);
+});
+
+test("Bandeau du site : la liste ne s'élargit plus à l'aperçu de téléphone avant son zoom (390 px)", () => {
+  const css = lire("css/app.css");
+  assert.match(css, /\.bsite-liste \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(css, /\.bsite-apercu \{ margin: 0; min-width: 0; \}/);
 });

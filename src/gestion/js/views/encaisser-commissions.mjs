@@ -166,12 +166,15 @@ export function sectionCommissions({ rafraichir, ecrit }) {
     const classeLigne = corrige ? "enc-dossier avec-plus" : "enc-dossier";
     if (!ecrit) return h("li", { class: classeLigne }, h("div", { class: "enc-case" }, texte, montant), actions);
     const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id, checked: coches.has(d.cle) });
+    // Montant coché en couleur : classe « coche » sur la case (plutôt que :has(input:checked), absent d'iOS 15.0 à 15.3).
+    const caseLigne = h("label", { class: coches.has(d.cle) ? "enc-case coche" : "enc-case" }, input, texte, montant);
     input.addEventListener("change", () => {
       if (input.checked) coches.add(d.cle);
       else coches.delete(d.cle);
+      caseLigne.classList.toggle("coche", input.checked);
       maj();
     });
-    return h("li", { class: classeLigne }, h("label", { class: "enc-case" }, input, texte, montant), actions);
+    return h("li", { class: classeLigne }, caseLigne, actions);
   };
 
   const cartePartenaire = (p) => {

@@ -258,15 +258,18 @@ legend { padding: 0 6px; font-weight: 700; }
 
 /* Tableaux */
 .tableau { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--bord); border-radius: 8px; overflow: hidden; }
-.tableau.simple { margin-bottom: 8px; }
+.tableau.simple, .tableau-defile.simple { margin-bottom: 8px; }
+.tableau-defile > .tableau.simple { margin-bottom: 0; }
 .tableau th, .tableau td { padding: 12px 14px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--bord); }
 .tableau thead th { font-size: 0.85rem; font-weight: 600; color: var(--texte-2); background: #fafcfc; }
 .tableau tbody tr:last-child td { border-bottom: 0; }
 .tableau tbody tr:hover { background: #f8fbfb; }
 .tableau .num { text-align: right; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
-/* Un tableau plus large que sa colonne (À encaisser à 900 px, barre latérale ouverte : 621 px pour 568) défile dans son conteneur
-   au lieu de pousser la page de 13 px (relecture de la PR 367). Sans effet quand il tient, comme à 1280 px. */
-@media (min-width: 720px) { .liste-adaptative { overflow-x: auto; } }
+/* Tout tableau plus large que sa colonne défile dans son conteneur (posé par app.mjs) au lieu de pousser la page : À encaisser,
+   Dossiers et accueil Agence à 900 px avec la barre latérale (relecture de la PR 367). Sans effet quand il tient, comme à 1280 px ;
+   rien à l'impression. */
+/* position: relative : un texte réservé aux lecteurs d'écran (.visuellement-cache, en absolu) reste dans la boîte qui défile (Dû aux partenaires). */
+@media screen and (min-width: 720px) { .tableau-defile { position: relative; overflow-x: auto; } }
 @media (max-width: 1180px) { .tableau-dossiers th, .tableau-dossiers td { padding: 10px 8px; font-size: 0.92rem; } }
 .tableau-dossiers .statut { white-space: normal; align-items: flex-start; }
 .tableau-dossiers .statut .point { margin-top: 0.4em; }
@@ -1035,7 +1038,8 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version { bottom: calc
 .enc-case { flex: 1 1 260px; display: flex; align-items: flex-start; gap: 12px; min-height: 56px; padding: 10px 0; cursor: pointer; }
 div.enc-case { cursor: default; }
 .enc-case input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 2px 0 0; }
-.enc-case:has(input:checked) .enc-montant { color: var(--teal-700); }
+/* Classe posée par le JS au changement de la case : :has() n'est lu qu'à partir d'iOS 15.4 (relecture de la PR 367). */
+.enc-case.coche .enc-montant { color: var(--teal-700); }
 .enc-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .enc-client { font-weight: 600; }
 .enc-detail { font-size: 0.88rem; color: var(--texte-2); overflow-wrap: anywhere; }
@@ -2050,7 +2054,10 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .bsite-anciens summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
 .bsite-apercu-bloc h3 { font-size: 1rem; margin: 4px 0 10px; }
 .bsite-apercus { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
-.bsite-apercu { margin: 0; }
+/* Colonnes bornées à la place disponible : sinon la grille s'élargissait à l'aperçu de 375 px avant son zoom, et la page débordait
+   de 37 px à 390 px de large (balayage de la PR 367). Le zoom (ajusterApercus) réduit ensuite l'aperçu à cette largeur. */
+.bsite-liste { grid-template-columns: minmax(0, 1fr); }
+.bsite-apercu { margin: 0; min-width: 0; }
 .bsite-apercu figcaption { font-size: 0.8rem; font-weight: 600; color: var(--texte-2); margin-bottom: 4px; }
 .bsite-ecran { box-sizing: content-box; width: 375px; border: 1px solid var(--bord-fort); border-radius: 10px; overflow: hidden; background: #fff; }
 /* Ordinateur : la page est mise en page à 1280 px puis réduite (zoom) à la largeur disponible ; les lignes tombent comme sur le site. */
