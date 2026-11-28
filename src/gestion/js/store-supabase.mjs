@@ -45,7 +45,8 @@ function verifie({ data, error }) {
 // Le résumé tenu par la base est fusionné dans le dossier : ses colonnes sont COLONNES_RESUME (sauvegarde.mjs), que la sauvegarde retire avant d'écrire le fichier.
 // Les montants à confirmer d'un refus « montant_a_confirmer » de whatsapp-envoi (nombres seulement).
 const montantsLus = (lu) => (lu && Array.isArray(lu.a_confirmer) ? lu.a_confirmer.map(Number).filter((x) => Number.isFinite(x) && x > 0) : []);
-const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0 } : dossier);
+// `parts`, `a_rembourser`, `trop_percu` (migration 131) : la part du reçu imputée à chaque service payé sur place, calculée par la base.
+const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0, parts: r.parts || {}, a_rembourser: Number(r.a_rembourser) || 0, trop_percu: Number(r.trop_percu) || 0 } : dossier);
 
 // Le catalogue (partenaires, tarifs, trajets et leurs nets) pèse l'essentiel de la lecture et ne change presque jamais : à la synchronisation de chaque minute on ne le relit
 // que s'il a changé (nombre de lignes, ou dernière modification des tables qui en ont une), ou au plus tard après un quart d'heure (les nets n'ont pas de date de modification).
@@ -57,6 +58,8 @@ const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 // Colonnes lues de l'organisation. Une colonne ajoutée par une migration pas encore passée (42703 dans Postgres, PGRST204 ou « column … does
 // not exist » via PostgREST) ne doit pas empêcher de lire les autres.
 export const COLONNES_ORGANISATION = "id, nom, fuseau, langue, statut, options, created_at";
+// Une fonction SQL pas encore créée (migration pas appliquée) : PostgREST rend PGRST202, Postgres 42883.
+export const fonctionAbsente = (error) => !!error && (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || ""));
 export const colonneAbsente = (error, colonne) => !!error && (error.code === "42703" || error.code === "PGRST204" || new RegExp(`column [^ ]*${colonne}[^ ]* does not exist|Could not find the '${colonne}' column`, "i").test(error.message || ""));
 
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
@@ -250,7 +253,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     const [conversations, propositions, reglages] = await Promise.all([
       lireConversations(),
       lire("whatsapp_propositions", sb.from("whatsapp_propositions").select("id, cree_le, conversation_id, message_id, entite_id, statut, texte, langue, avertissements, entreprise_proposee, erreur, traitee_le, traitee_par_quoi").order("cree_le", { ascending: false }).limit(1000)),
-      lire("whatsapp_reglages", sb.from("whatsapp_reglages").select("organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at")),
+      // Message de nuit (migration 132) : relu sans ses colonnes tant que la migration n'est pas appliquée.
+      (async () => {
+        const COLS = "organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at";
+        let r = await sb.from("whatsapp_reglages").select(`${COLS}, nuit_active, nuit_texte, nuit_debut, nuit_fin, nuit_modifie_le`);
+        if (colonneAbsente(r.error, "nuit_active")) r = await sb.from("whatsapp_reglages").select(COLS);
+        return lire("whatsapp_reglages", Promise.resolve(r));
+      })(),
     ]);
     return {
       whatsapp_conversations: conversations || [],
@@ -398,6 +407,8 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   // Boîte WhatsApp en direct : un canal à part, pour ne pas toucher à celui des demandes du site. Même règle, seul le nom de la table remonte.
   // `surEtat` : l'état du canal (« connexion », « abonne », « coupe »), pour le repli et la pastille « Direct coupé ».
   let canalWhatsApp = null;
+  // L'Assistant en équipe (migration 133) : son propre canal, ouvert tant que l'écran Assistant est affiché.
+  let canalAgent = null;
   function ecouterWhatsApp(tables, rappel, { surEtat = () => {} } = {}) {
     if (canalWhatsApp) canalWhatsApp.arreter();
     const moi = canalFiable("gestion-whatsapp", tables, rappel, surEtat);
@@ -412,12 +423,23 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     mode: "supabase",
     ecouter,
     ecouterWhatsApp,
+    // L'Assistant en équipe (migration 133) : les conversations et les cartes de l'équipe en direct, sur un canal à part. Seul le nom de la
+    // table remonte ; l'écran relit avec sa session (RLS). Sans la migration, le canal ne reçoit rien : l'écran relit à chaque échange.
+    ecouterAgent(rappel) {
+      if (canalAgent) canalAgent.arreter();
+      const moi = canalFiable("gestion-agent", ["agent_conversations", "agent_cartes"], rappel);
+      canalAgent = moi;
+      return () => {
+        moi.arreter();
+        if (canalAgent === moi) canalAgent = null;
+      };
+    },
     // L'état des deux canaux, pour le repli et la pastille « Direct coupé » de l'écran WhatsApp.
     etatDirect: () => ({ direct: canal ? canal.etat() : "ferme", whatsapp: canalWhatsApp ? canalWhatsApp.etat() : "ferme" }),
     // Retour sur l'onglet, réseau revenu, page restaurée : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined ».
     // forcer : après une longue absence, les canaux sont refaits même s'ils se disent « joined » (socket mort au réveil).
     async reveillerDirect({ forcer = false } = {}) {
-      await Promise.all([canal ? canal.verifier({ forcer }) : null, canalWhatsApp ? canalWhatsApp.verifier({ forcer }) : null]);
+      await Promise.all([canal ? canal.verifier({ forcer }) : null, canalWhatsApp ? canalWhatsApp.verifier({ forcer }) : null, canalAgent ? canalAgent.verifier({ forcer }) : null]);
     },
     // Relecture ciblée de la boîte WhatsApp (conversations, propositions, réglage), sans les dossiers ni les clients. Les messages de la
     // conversation ouverte sont relus par l'écran à son redessin (whatsappMessages).
@@ -429,9 +451,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async whatsappMessages(conversationId, { inclure = "" } = {}) {
       const base = "id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le";
       // repere (migration 100) : relu sans lui tant que la migration n'est pas appliquée.
-      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere`;
+      // automatique (migration 132) : relu sans lui tant que la migration n'est pas appliquée.
+      let colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere, automatique`;
       const requete = (cols) => sb.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId);
       let r = await requete(colonnes).order("envoye_le", { ascending: false }).limit(500);
+      if (colonneAbsente(r.error, "automatique")) r = await requete((colonnes = `${base}, statut_envoi, erreur_envoi, statut_le, repere`)).order("envoye_le", { ascending: false }).limit(500);
       if (colonneAbsente(r.error, "repere")) r = await requete((colonnes = `${base}, statut_envoi, erreur_envoi, statut_le`)).order("envoye_le", { ascending: false }).limit(500);
       if (colonneAbsente(r.error, "statut_envoi")) r = await requete((colonnes = base)).order("envoye_le", { ascending: false }).limit(500);
       const lus = verifie(r).reverse();
@@ -541,8 +565,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // type_contact (migration 68) : la conversation d'un apporteur ne se relie pas au client ; sans la colonne, la lecture d'avant.
     async whatsappConversation(id) {
       const lire = (cols) => sb.from("whatsapp_conversations").select(cols).eq("id", id).maybeSingle();
-      let { data, error } = await lire("id, entite_id, client_id, dossier_id, type_contact");
-      if (error && colonneAbsente(error, "type_contact")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id"));
+      // telephone et nom (26.11.2026) : le numéro complet de la conversation reprend un téléphone vide ou coupé sur la carte.
+      // reponses (« jamais » : contact personnel) et type_contact : le filtre des contacts personnels et l'exclusion des apporteurs s'appliquent.
+      let { data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact, reponses");
+      if (error && colonneAbsente(error, "reponses")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom, partenaire_id, type_contact"));
+      if (error && ["type_contact", "partenaire_id"].some((c) => colonneAbsente(error, c))) ({ data, error } = await lire("id, entite_id, client_id, dossier_id, telephone, nom"));
       if (error) throw new Error(error.message);
       return data || null;
     },
@@ -626,6 +653,25 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return data || null;
     },
     // L'interrupteur « Recevoir les messages WhatsApp » (Réglages), seule colonne des réglages WhatsApp ouverte à l'outil.
+    // Message de nuit (migration 132) : whatsapp_regler_nuit contrôle les droits (administrateur de Secret ou de Taxi) et les valeurs.
+    // luLe : nuit_modifie_le tel qu'il a été lu ; changé ailleurs entre-temps, refusé (modifie_ailleurs).
+    async whatsappMessageNuit(organisationId, { active, texte, debut, fin, luLe = null }) {
+      const { data, error } = await sb.rpc("whatsapp_regler_nuit", { p_org: organisationId, p_active: !!active, p_texte: texte, p_debut: debut, p_fin: fin, p_lu_le: luLe });
+      if (error) {
+        const m = String(error.message || "");
+        if (/droit_manquant/.test(m) || error.code === "42501") throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+        if (/texte_vide/.test(m)) throw new Error(tr("Le message ne peut pas être vide."));
+        if (/texte_trop_long/.test(m)) throw new Error(tr("Le message est trop long pour WhatsApp (4 096 octets au plus)."));
+        if (/heures_invalides/.test(m)) throw new Error(tr("L'heure de début et l'heure de fin doivent être différentes."));
+        if (/plage_de_jour/.test(m)) throw new Error(tr("La plage doit être la nuit : le début et la fin entre 18:00 et 08:00."));
+        if (/plage_trop_longue/.test(m)) throw new Error(tr("La plage dure plus de 12 heures : le message partirait aussi le jour. Vérifiez l'heure de début et l'heure de fin."));
+        if (/nom_partenaire/.test(m)) throw new Error(tr("Le texte cite un partenaire : retirez son nom, ce message part chez tous les clients."));
+        if (/montant_net/.test(m)) throw new Error(tr("Le texte contient un montant égal à un net du catalogue : retirez-le."));
+        if (/modifie_ailleurs/.test(m)) throw new Error(tr("Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version."));
+        throw new Error(m);
+      }
+      return data || null;
+    },
     async whatsappReception(organisationId, actif) {
       const lignes = verifie(await sb.from("whatsapp_reglages").update({ reception_active: !!actif }).eq("organisation_id", organisationId).select());
       if (!lignes.length) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
@@ -675,23 +721,39 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return data;
     },
     // ---- Agent de l'onglet « Assistant » (migration 52, fonction « agent ») ---------------------------------------------------------------
-    // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : seulement les siennes). null avant la migration.
+    // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : les siennes, et celles de l'équipe pour
+    // l'administration de l'entreprise, migration 133). null avant la migration 52.
     async agentConversations(entiteId) {
-      // whatsapp_conversation_id (migration 61) : relue sans elle tant que la migration n'est pas appliquée.
-      const requete = (colonnes) => sb.from("agent_conversations").select(colonnes).eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
-      let { data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le, whatsapp_conversation_id");
-      if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le"));
-      return error ? null : data || [];
+      // whatsapp_conversation_id (migration 61), user_id et le verrou de réponse (migration 133) : relues sans elles tant que la migration
+      // n'est pas appliquée. 600 lignes : l'équipe entière tient dans la liste.
+      const requete = (colonnes) => sb.from("agent_conversations").select(colonnes).eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(600);
+      const base = "id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le, user_id";
+      let { data, error } = await requete(`${base}, whatsapp_conversation_id, reponse_par, reponse_le`);
+      if (error && colonneAbsente(error, "reponse_par")) ({ data, error } = await requete(`${base}, whatsapp_conversation_id`));
+      if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete(base));
+      if (error) return null;
+      // Réponse en cours à l'heure du serveur (migration 133, agent_reponses_en_cours) : l'horloge du poste n'entre pas en compte.
+      const enCours = await this.agentReponsesEnCours(entiteId);
+      return (data || []).map((c) => (enCours ? { ...c, reponse_en_cours: enCours.has(c.id), reponse_par: enCours.get(c.id) || null } : c));
+    },
+    // Map conversation → qui attend la réponse, ou null sans la migration 133.
+    async agentReponsesEnCours(entiteId) {
+      const { data, error } = await sb.rpc("agent_reponses_en_cours", { p_entite: entiteId });
+      if (error) return null;
+      return new Map((data || []).map((x) => [x.conversation_id, x.reponse_par]));
     },
     async agentAttente(entiteId) {
       const { data, error } = await sb.from("agent_cartes").select("conversation_id, agent_conversations!inner(entite_id)").eq("statut", "proposee").eq("agent_conversations.entite_id", entiteId).limit(1000);
       return error ? [] : (data || []).map((c) => ({ conversation_id: c.conversation_id }));
     },
+    // auteur_id et decide_par (migration 133) : qui a écrit, qui a validé. Relus sans eux tant que la migration n'est pas appliquée.
     async agentFil(id) {
-      const [m, c] = await Promise.all([
-        sb.from("agent_messages").select("id, role, contenu, cree_le").eq("conversation_id", id).order("id", { ascending: true }).limit(400),
-        sb.from("agent_cartes").select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").eq("conversation_id", id).order("cree_le", { ascending: true }),
-      ]);
+      const messages = (cols) => sb.from("agent_messages").select(cols).eq("conversation_id", id).order("id", { ascending: true }).limit(400);
+      const cartes = (cols) => sb.from("agent_cartes").select(cols).eq("conversation_id", id).order("cree_le", { ascending: true });
+      const COL_CARTE = "id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le";
+      let [m, c] = await Promise.all([messages("id, role, contenu, cree_le, auteur_id"), cartes(`${COL_CARTE}, decide_par`)]);
+      if (colonneAbsente(m.error, "auteur_id")) m = await messages("id, role, contenu, cree_le");
+      if (colonneAbsente(c.error, "decide_par")) c = await cartes(COL_CARTE);
       if (m.error || c.error) throw new Error((m.error || c.error).message);
       return { messages: m.data || [], cartes: c.data || [] };
     },
@@ -724,12 +786,42 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { error } = await sb.rpc("rendre_agent_carte", { p_carte: id });
       if (error && !(error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || ""))) console.error("rendre_agent_carte", error.message);
     },
+    // Migration 133 (relecture de la PR 366) : la carte se prend en sachant qui la tient. Rend { ok } ou { ok: false, raison ('decidee',
+    // 'prise', 'expiree', 'introuvable'), par, depuis, statut }. `forcer` reprend une prise expirée. Sans la migration : la prise d'avant.
+    async agentPrendreCarteEquipe(id, { forcer = false } = {}) {
+      const { data, error } = await sb.rpc("prendre_agent_carte_equipe", { p_carte: id, p_forcer: !!forcer });
+      if (error) {
+        if (fonctionAbsente(error)) return (await this.agentPrendreCarte(id)) ? { ok: true } : { ok: false, raison: "prise" };
+        throw new Error(error.message);
+      }
+      return data || { ok: false };
+    },
+    // Juste avant d'écrire, et toutes les 45 s pendant qu'on travaille sur la carte : toujours proposée et prise par moi ? La prise se renouvelle.
+    // Sans la migration : { ok: true } (la prise d'avant suffit).
+    async agentControlerCarte(id) {
+      const { data, error } = await sb.rpc("controler_agent_carte", { p_carte: id });
+      if (error) return fonctionAbsente(error) ? { ok: true } : { ok: false, raison: "erreur" };
+      return data || { ok: false };
+    },
+    // « Écarter » : seulement une carte encore proposée, que personne d'autre ne valide en ce moment. Sans la migration : la mise à jour d'avant.
+    async agentEcarterCarte(id) {
+      const { data, error } = await sb.rpc("ecarter_agent_carte", { p_carte: id });
+      if (error) {
+        if (fonctionAbsente(error)) return { ok: true, carte: await this.agentCarte(id, "ecartee") };
+        throw new Error(error.message);
+      }
+      return data || { ok: false };
+    },
     async agentCarte(id, statut) {
-      return verifie(await sb.from("agent_cartes").update({ statut }).eq("id", id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single());
+      const COL_CARTE = "id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le";
+      let r = await sb.from("agent_cartes").update({ statut }).eq("id", id).select(`${COL_CARTE}, decide_par`).single();
+      if (colonneAbsente(r.error, "decide_par")) r = await sb.from("agent_cartes").update({ statut }).eq("id", id).select(COL_CARTE).single();
+      return verifie(r);
     },
     // Mes conversations reliées à un dossier (fiche du dossier) : la plus récente d'abord. Vide avant la migration 52.
     async agentConversationsDuDossier(dossierId) {
-      const { data, error } = await sb.from("agent_conversations").select("id, titre, maj_le").eq("dossier_id", dossierId).order("maj_le", { ascending: false }).limit(10);
+      // user_id : la propriétaire, pour dire « Conversation de Nani » sur la fiche (migration 133).
+      const { data, error } = await sb.from("agent_conversations").select("id, titre, maj_le, user_id").eq("dossier_id", dossierId).order("maj_le", { ascending: false }).limit(10);
       return error ? [] : data || [];
     },
     // ---- Apprentissages de l'agent (migration 54) ----
@@ -774,7 +866,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       try {
         const rep = await fetch(`${config.SUPABASE_URL}/functions/v1/ameliorations`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ action: "demander", ...corps }) });
         const r = await rep.json().catch(() => null);
-        return rep.ok && r ? r : { erreur: (r && r.erreur) || "indisponible", ...(r && r.motifs ? { motifs: r.motifs } : {}) };
+        return rep.ok && r ? r : { erreur: (r && r.erreur) || "indisponible", ...(r && r.motifs ? { motifs: r.motifs } : {}), ...(r && r.par ? { par: r.par } : {}), ...(r && r.depuis ? { depuis: r.depuis } : {}) };
       } catch {
         return { erreur: "hors_ligne" };
       }

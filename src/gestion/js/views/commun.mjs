@@ -180,7 +180,14 @@ export function barreFiltres({ recherche = null, puces = null, filtres = [], onc
   const v = { recherche: recherche ? recherche.valeur || "" : "", puces: puces ? puces.valeur : null };
   for (const f of filtres) v[f.cle] = f.valeur ?? f.neutre ?? "";
   const prevenir = () => onchange && onchange({ ...v });
-  const champRecherche = recherche ? h("div", { class: "champ recherche" }, h("label", { for: "filtre-recherche", class: "visuellement-cache" }, recherche.libelle || tr("Rechercher")), saisie(h("input", { id: "filtre-recherche", type: "search", placeholder: recherche.placeholder || tr("Rechercher"), value: v.recherche, oninput: (e) => ((v.recherche = e.target.value), prevenir()) }), "recherche")) : null;
+  // Une croix de 44 px efface la recherche et relance le filtre ; elle n'apparaît que sur un champ rempli (audit mobile, n° 1). La croix
+  // native du champ « search » est masquée (trop petite au doigt, absente de Firefox).
+  const champSaisie = recherche ? saisie(h("input", { id: "filtre-recherche", type: "search", placeholder: recherche.placeholder || tr("Rechercher"), value: v.recherche, oninput: (e) => ((v.recherche = e.target.value), majCroix(), prevenir()) }), "recherche") : null;
+  const croix = recherche ? h("button", { type: "button", class: "bouton-icone effacer-recherche", "aria-label": tr("Effacer la recherche"), title: tr("Effacer la recherche"), hidden: !v.recherche, onclick: () => { champSaisie.value = v.recherche = ""; majCroix(); champSaisie.focus(); prevenir(); } }, icone("fermer", 18)) : null;
+  function majCroix() {
+    if (croix) croix.hidden = !v.recherche;
+  }
+  const champRecherche = recherche ? h("div", { class: "champ recherche" }, h("label", { for: "filtre-recherche", class: "visuellement-cache" }, recherche.libelle || tr("Rechercher")), h("div", { class: "recherche-zone" }, champSaisie, croix)) : null;
   const rangeePuces = puces ? fabriquePuces({ options: puces.options, valeur: puces.valeur, libelle: puces.libelle, onchange: (x) => ((v.puces = x), prevenir()) }) : null;
   const controle = (f, id) => {
     const maj = (e) => {
@@ -220,7 +227,7 @@ export function barreFiltres({ recherche = null, puces = null, filtres = [], onc
   }
   function definir(partiel) {
     Object.assign(v, partiel);
-    if (champRecherche && "recherche" in partiel) champRecherche.querySelector("input").value = v.recherche;
+    if (champRecherche && "recherche" in partiel) ((champSaisie.value = v.recherche), majCroix());
     if (rangeePuces && "puces" in partiel) rangeePuces.definir(v.puces);
     if (enLigne) filtres.forEach((f, i) => { const c = enLigne.querySelector(`#filtre-b-${i}`); if (c) c.value = v[f.cle]; });
     miseAJourBouton();

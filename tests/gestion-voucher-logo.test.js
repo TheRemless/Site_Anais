@@ -182,7 +182,8 @@ test("Booking confirmation de Secret : seulement les transferts payés au chauff
 test("Réglages > Vouchers de Secret : les textes de la Booking confirmation existent avec leur texte du modèle", async () => {
   const { GROUPES_BOOKING_SECRET, DEFAUTS_TEXTES } = await import("../src/gestion/js/textes-voucher.mjs");
   const cles = GROUPES_BOOKING_SECRET.flatMap((g) => g.cles.map(([k]) => k));
-  assert.deepEqual(cles, ["bs_intro", "bs_info", "bs_paiement", "bs_rencontre", "bs_assistance", "bs_merci", "bs_signature"]);
+  // bs_paiement_paye (26.11.2026) : la ligne de paiement quand tout est déjà payé par avance.
+  assert.deepEqual(cles, ["bs_intro", "bs_info", "bs_paiement", "bs_paiement_paye", "bs_rencontre", "bs_assistance", "bs_merci", "bs_signature"]);
   for (const k of cles) assert.ok(String(DEFAUTS_TEXTES[k]).trim(), k);
 });
 

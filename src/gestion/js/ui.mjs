@@ -2,7 +2,8 @@
 // Petits outils d'interface partagés par les écrans.
 import { tr } from "./i18n.mjs";
 import { confirmation } from "./confirmation.mjs";
-import { hauteurClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
+import { etatClavier, ouvreClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
+import { fermeturesAuRetour, pasSuivant, PAS_MAX, entreeAjoutee, posApresChangementDAdresse, adresseApresDeplacement, entreePourOuverture, entreeApresFermeture, entreeAuDemarrage, fermeturesAuChangementDEcran } from "./fenetres-historique-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -40,15 +41,18 @@ export function champ(libelle, controle, aide) {
   return h("div", { class: "champ" }, h("label", { for: id }, libelle), controle, aide ? h("p", { class: "aide" }, aide) : null);
 }
 
-export function toast(message, erreur = false) {
+// `{ action, faire }` ajoute un bouton au message (« Annuler » après une suppression, relecture de la PR #360) : le message reste
+// alors 6 secondes pour laisser le temps de toucher, et disparaît dès que le bouton a servi.
+export function toast(message, erreur = false, { action = null, faire = null } = {}) {
   let zone = document.getElementById("toasts");
   if (!zone) {
     zone = h("div", { id: "toasts", "aria-live": "polite" });
     document.body.append(zone);
   }
-  const t = h("div", { class: erreur ? "toast erreur" : "toast", role: erreur ? "alert" : "status" }, message);
+  const bouton = action && faire ? h("button", { class: "toast-action", type: "button", onclick: () => (t.remove(), faire()) }, action) : null;
+  const t = h("div", { class: [erreur ? "toast erreur" : "toast", bouton ? "avec-action" : ""].filter(Boolean).join(" "), role: erreur ? "alert" : "status" }, bouton ? h("span", null, message) : message, bouton);
   zone.append(t);
-  setTimeout(() => t.remove(), erreur ? 6000 : 3000);
+  setTimeout(() => t.remove(), erreur || bouton ? 6000 : 3000);
 }
 
 // ---- Clavier et viewport visuel ----------------------------------------------------------------------------------
@@ -58,14 +62,32 @@ function suivreClavier() {
   const vv = typeof window !== "undefined" ? window.visualViewport : null;
   if (!vv) return;
   const racine = document.documentElement;
+  // Deux mesures (26.11.2026) : la hauteur du clavier, stable tant qu'il est ouvert, décide de la classe `clavier` (barre d'onglets cachée) ;
+  // --clavier, la distance au bas visible, place seulement les barres fixées ou collées en bas. Rien de ce qui change la hauteur de la page
+  // ne dépend du décalage d'iOS : sinon la page change de hauteur, iOS redécale, et ainsi de suite (écran qui saute, nouvelle discussion).
+  // Calcul dans mobile-calc.mjs (etatClavier) : écran tactile et champ actif seulement, une hauteur de référence par largeur.
+  const tactile = () => (navigator.maxTouchPoints || 0) > 0 || matchMedia("(any-pointer: coarse)").matches;
+  let references = new Map();
+  // Fenêtre aussi large que l'écran, en portrait comme en paysage (iOS donne les côtés de l'écran sans tenir compte de la rotation).
+  const pleineLargeur = () => [screen.width, screen.height].some((cote) => Math.abs(window.innerWidth - cote) <= 1);
+  // Appliqué tout de suite à chaque événement (contre-relecture de la PR 355) : attendre l'image suivante décalait les barres d'une image.
+  // Le calcul est léger (quelques lectures du viewport, trois variables), un événement de trop ne coûte rien.
   const maj = () => {
-    const clavier = hauteurClavier(window.innerHeight, vv);
-    racine.style.setProperty("--clavier", `${clavier}px`);
+    const e = etatClavier({ largeur: window.innerWidth, innerHeight: window.innerHeight, vv, references, tactile: tactile(), saisie: ouvreClavier(document.activeElement), telephone: Math.min(screen.width, screen.height) < 600, pleineLargeur: pleineLargeur() });
+    references = e.references;
+    racine.style.setProperty("--clavier", `${e.bas}px`);
     racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
-    racine.classList.toggle("clavier", clavier > 0);
+    // Le haut de la partie visible : iOS décale la vue pour montrer le champ, les en-têtes collés s'y accrochent (position seulement).
+    racine.style.setProperty("--haut-visible", `${e.haut}px`);
+    racine.classList.toggle("clavier", e.clavier > 0);
   };
   vv.addEventListener("resize", maj);
   vv.addEventListener("scroll", maj);
+  window.addEventListener("resize", maj);
+  window.addEventListener("orientationchange", maj);
+  // Le focus décide aussi : un champ quitté éteint la mesure, un champ touché l'allume.
+  document.addEventListener("focusin", maj);
+  document.addEventListener("focusout", () => setTimeout(maj, 0));
   maj();
 }
 suivreClavier();
@@ -85,14 +107,146 @@ export function purgerBrouillons() {
     for (const k of Object.keys(sessionStorage)) if (k.startsWith("gestion-brouillon:")) sessionStorage.removeItem(k);
   } catch {}
 }
+// ---- Fenêtres et historique (règles dans fenetres-historique-calc.mjs) -------------------------------------------
+// Le retour arrière ferme la fenêtre du dessus sans quitter l'écran ; un changement d'écran ferme les fenêtres de l'écran quitté.
+// Avant (preview groupée, PR 365) : la feuille restait affichée par-dessus l'écran suivant.
+const pileFenetres = [];
+let numeroFenetre = 0;
+let rangHist = Date.now();
+let avalerHashchange = false;
+let pasEnCours = null;
+// Sans navigateur (tests node qui importent ce module) : ni historique ni écouteurs.
+const navigateur = typeof window !== "undefined" && typeof history !== "undefined";
+const etatHist = () => (navigateur && history.state) || {};
+const ouvertesHist = () => pileFenetres.map((f) => f.n);
+const remplacerNatif = navigateur ? history.replaceState.bind(history) : () => {};
+const ajouterNatif = navigateur ? history.pushState.bind(history) : () => {};
+let etatVu = etatHist();
+let adresseVue = navigateur ? location.href : "";
+let longueurVue = navigateur ? history.length : 0;
+let deplacementEnCours = false;
+const marquerVu = () => ((etatVu = etatHist()), (adresseVue = location.href), (longueurVue = history.length));
+if (navigateur) {
+  // Un écran réécrit son adresse (filtre, Assistant #/agent/nouvelle puis #/agent/<id>) pendant qu'une fenêtre est ouverte : ses
+  // fenêtres suivent, un hashchange simulé (rafraîchir) ne les ferme pas. app.mjs enveloppe ensuite replaceState (numéro d'entrée).
+  history.replaceState = (etat, titre, url) => {
+    const avant = location.hash;
+    // Un état vide (store-supabase.mjs, réécritures d'adresse) garde celui de l'entrée : sa position et son étiquette ne se perdent pas.
+    remplacerNatif(etat ?? history.state, titre, url);
+    if (location.hash !== avant) for (const f of pileFenetres) if (f.hash === avant) f.hash = location.hash;
+    marquerVu();
+  };
+  // Toute entrée ajoutée (visionneuse comprise) prend un rang croissant : le sens d'un déplacement se lit toujours.
+  history.pushState = (etat, titre, url) => (ajouterNatif(entreeAjoutee(etat, ++rangHist, etatHist()), titre, url), marquerVu());
+  // Rechargement avec une fenêtre ouverte (mise à jour automatique) : son entrée devient un fantôme, un seul retour quitte l'écran.
+  // Lancement (app installée, lien, nouvel onglet) : l'entrée est la position 0 de Gestion, aucun pas automatique ne repart en arrière
+  // d'ici. Un rechargement garde les positions déjà posées.
+  const lancement = (performance.getEntriesByType?.("navigation")[0] || {}).type === "navigate";
+  const depart = entreeAuDemarrage(history.state, lancement);
+  if (depart) (remplacerNatif(depart, ""), marquerVu());
+}
+const etiquetteEcran = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+function entrerHistorique(n) {
+  try {
+    const { etiquetterEcran, remplacer, etat } = entreePourOuverture(etatHist(), n, ouvertesHist(), ++rangHist, etiquetteEcran(), photoOuverte());
+    if (etiquetterEcran && !remplacer) remplacerNatif({ ...etatHist(), ecran: etat.ecran }, "");
+    if (remplacer) remplacerNatif(etat, "");
+    else ajouterNatif(etat, "");
+    marquerVu();
+    return etat.ecran;
+  } catch {
+    return null; // historique refusé (rare) : Fermer, Échap et le glissement suffisent
+  }
+}
+// Fermée autrement que par le retour : l'entrée de la fenêtre devient un fantôme, sans history.back() (qui se mêlait aux navigations).
+function sortirHistorique(n) {
+  try {
+    const e = entreeApresFermeture(etatHist(), n);
+    if (e) (remplacerNatif(e, ""), marquerVu());
+  } catch {
+    // idem
+  }
+}
+const fenetreNumero = (n) => pileFenetres.find((x) => x.n === n);
+const photoOuverte = () => Boolean(document.querySelector(".modal-fond.visionneuse"));
+if (navigateur) {
+  window.addEventListener("popstate", (e) => {
+    const quitte = etatVu;
+    // Chrome et Safari envoient aussi popstate pour un lien (location.hash) ou un location.replace : l'entrée neuve, à l'état vide,
+    // reçoit ici sa position. Un vrai retour ou Avancer arrive toujours sur une entrée qui a un état (app.mjs y pose gestionEntree).
+    const neuve = e.state === null || e.state === undefined;
+    if (neuve) {
+      const pos = posApresChangementDAdresse(etatVu, longueurVue, history.length);
+      if (pos !== undefined) remplacerNatif({ pos }, "");
+    }
+    const atteint = etatHist();
+    // Pas automatique en cours (fantôme traversé) : son sens est gardé ; toute autre issue l'arrête.
+    const suite = pasEnCours && Date.now() - pasEnCours.le < 1000 ? pasEnCours : null;
+    pasEnCours = null;
+    // Un hashchange qui suit un déplacement dans l'historique : l'entrée atteinte a déjà sa position.
+    deplacementEnCours = !neuve && location.hash !== new URL(adresseVue || location.href).hash;
+    const adresse = adresseApresDeplacement(quitte, atteint, adresseVue, location.href);
+    if (adresse !== location.href) {
+      // Même écran : l'adresse réécrite par un filtre reste ; le hashchange qui suit n'est pas un changement d'écran.
+      if (new URL(adresse).hash !== location.hash) avalerHashchange = true;
+      remplacerNatif(history.state, "", adresse);
+    }
+    marquerVu();
+    const { quitter, fermer, demander } = fermeturesAuRetour(pileFenetres.map((f) => ({ n: f.n, ecran: f.ecran, modifie: f.modifie() })), atteint);
+    for (const n of quitter) fenetreNumero(n)?.quitterEcran();
+    for (const n of fermer) fenetreNumero(n)?.fermer();
+    if (demander) {
+      const f = fenetreNumero(demander);
+      // La feuille reprend une entrée avant la confirmation : le retour suivant ne ferme que la confirmation (« Continuer la saisie »).
+      if (f) (entrerHistorique(f.n), f.demander());
+      return;
+    }
+    if (quitter.length || fermer.length) return;
+    // Rien n'a changé à l'écran (fantôme d'une fenêtre fermée) : un pas de plus, dans le sens du premier déplacement.
+    const pas = pasSuivant(quitte, atteint, ouvertesHist(), suite && suite.sens, photoOuverte());
+    const fait = suite ? suite.fait + 1 : 1;
+    pasEnCours = pas && fait <= PAS_MAX ? { sens: pas, fait, le: Date.now() } : null;
+    if (!pasEnCours) return;
+    if (pas === "retour") history.back();
+    else history.forward();
+  });
+  // Avant le routeur (ui.mjs est chargé avant app.mjs).
+  window.addEventListener("hashchange", (e) => {
+    if (avalerHashchange && e.newURL) {
+      avalerHashchange = false;
+      deplacementEnCours = false;
+      e.stopImmediatePropagation();
+      return;
+    }
+    // Lien ou location.replace (Réglages non enregistrés) : l'entrée reçoit sa position, même remplacée par un état vide.
+    if (e.newURL && !deplacementEnCours) {
+      const pos = posApresChangementDAdresse(etatVu, longueurVue, history.length);
+      const courant = etatHist();
+      if (courant.pos !== pos) {
+        const neuf = { ...courant };
+        if (pos === undefined) delete neuf.pos;
+        else neuf.pos = pos;
+        remplacerNatif(neuf, "");
+      }
+    }
+    deplacementEnCours = false;
+    marquerVu();
+    if (!e.newURL) return; // hashchange simulé (rafraîchir l'écran) : on reste sur le même écran
+    for (const n of fermeturesAuChangementDEcran(pileFenetres, location.hash)) fenetreNumero(n)?.quitterEcran();
+  });
+}
+
 const valeurDe = (c) => (c.type === "checkbox" || c.type === "radio" ? (c.checked ? "1" : "0") : c.value);
 const CHAMPS = "input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]):not([type=search]), textarea, select";
 // `cache` : la fenêtre travaille sans se montrer (une carte de l'agent validée d'un geste passe par la fiche de création sans l'afficher).
-export function modal(titre, contenu, { large = false, feuille = false, protege = true, brouillon = null, ferme: apres = null, cache = false } = {}) {
+// `plein` (26.11.2026) : sur téléphone, une feuille plein écran au-dessus du clavier ; le contenu gère lui-même ce qui défile (une liste
+// longue qui défile seule sous une recherche fixe, comme l'ajout d'un service). Sur ordinateur, une grande fenêtre de hauteur fixe.
+export function modal(titre, contenu, { large = false, feuille = false, plein = false, protege = true, brouillon = null, ferme: apres = null, cache = false } = {}) {
   const precedent = document.activeElement;
   let close = false;
   let touche = false;
   let confirmation = false;
+  let placeDansPile = null;
   const champs = () => [...corps.querySelectorAll(CHAMPS)];
   let depart = [];
   const fermer = (garder = false) => {
@@ -100,6 +254,8 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
     close = true;
     if (brouillon && !garder) effacer();
     fond.remove();
+    const i = pileFenetres.indexOf(placeDansPile);
+    if (i >= 0) (pileFenetres.splice(i, 1), sortirHistorique(placeDansPile.n));
     document.removeEventListener("keydown", surTouche);
     ouvertes = Math.max(0, ouvertes - 1);
     if (!ouvertes) document.documentElement.classList.remove("modal-ouverte");
@@ -168,7 +324,7 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
   const corps = h("div", { class: "modal-defile" }, contenu);
   const boite = h(
     "div",
-    { class: ["modal", large && "large", feuille && "feuille"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
+    { class: ["modal", large && "large", feuille && "feuille", plein && "plein"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
     poignee,
     h("div", { class: "modal-tete" }, h("h2", null, titre), h("button", { class: "bouton-icone lien", type: "button", onclick: demanderFermeture, "aria-label": tr("Fermer"), title: tr("Fermer") }, icone("fermer", 20))),
     corps
@@ -210,6 +366,12 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
     }
   }
   if (cache) return fermer;
+  // Une entrée d'historique par fenêtre : le retour arrière la ferme (avec confirmation si une saisie est en cours) ; un changement
+  // d'écran la ferme en gardant la saisie en brouillon quand la fenêtre en a un.
+  const n = ++numeroFenetre;
+  const ecran = entrerHistorique(n);
+  placeDansPile = { n, ecran, hash: location.hash, modifie, demander: demanderFermeture, fermer: () => fermer(), quitterEcran: () => (modifie() ? (garderBrouillon(), fermer(true)) : fermer()) };
+  pileFenetres.push(placeDansPile);
   // Au doigt, ouvrir le clavier tout de suite cacherait la feuille : on ne met le focus que sur un bouton, sauf champ marqué data-autofocus.
   const tactile = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
   const premier = tactile ? boite.querySelector("[data-autofocus], button.principal") : boite.querySelector("[data-autofocus], input:not([type=hidden]), select, textarea, button.principal");
@@ -280,7 +442,21 @@ export function focusPremiereErreur(racine) {
 // Enregistrer, Annuler : toujours visible en bas d'un écran de saisie. Au téléphone elle est fixée au-dessus de la barre d'onglets,
 // et quand le clavier s'ouvre elle monte juste au-dessus de lui (la barre d'onglets se cache). Un espace est réservé à la fin
 // du contenu pour que le dernier champ ne passe jamais dessous. Sur ordinateur elle colle en bas de la zone de contenu.
+// Dernier argument `{ seulementMobile: true }` : la barre ne se montre que sous 720 px (classe `seulement-mobile`) et `a-barre-action`
+// (qui remonte les toasts) ne se pose qu'à cette largeur ; elle suit la rotation (relecture de la PR #360, iPad en portrait).
 export function barreAction(...enfants) {
+  const dernier = enfants[enfants.length - 1];
+  const options = dernier && !(dernier instanceof Node) && typeof dernier === "object" && !Array.isArray(dernier) ? enfants.pop() : {};
+  if (options.seulementMobile) {
+    const etroit = window.matchMedia("(max-width: 719px)");
+    const groupe = h("div", { class: "barre-action-groupe seulement-mobile" }, h("div", { class: "barre-action", role: "group", "aria-label": tr("Actions") }, enfants), h("div", { class: "barre-action-espace", "aria-hidden": "true" }));
+    const poser = () => document.documentElement.classList.toggle("a-barre-action", etroit.matches);
+    // Écran quitté (app.mjs retire déjà la classe à la navigation) : on cesse d'écouter sans toucher à la classe.
+    const surChangement = () => (groupe.isConnected ? poser() : etroit.removeEventListener("change", surChangement));
+    etroit.addEventListener("change", surChangement);
+    poser();
+    return groupe;
+  }
   document.documentElement.classList.add("a-barre-action");
   return h("div", { class: "barre-action-groupe" }, h("div", { class: "barre-action", role: "group", "aria-label": tr("Actions") }, enfants), h("div", { class: "barre-action-espace", "aria-hidden": "true" }));
 }

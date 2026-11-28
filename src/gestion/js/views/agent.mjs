@@ -4,7 +4,7 @@
 // par le code habituel de l'outil (fiche de création du dossier, confirmation de course, formulaire de réservation), sans le réécrire : la
 // fenêtre ne s'ouvre que s'il manque quelque chose ; la carte garde alors le motif. « Tout valider » fait de même pour toutes les cartes.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
-import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe } from "../etat.mjs";
+import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, reglagesDe, voitToutDans } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { separerResume, siegesAVerifier, siegesAChoisir, siegesDeCarte, lieuxAVerifier, lieuxManquants, avecLieuxSaisis, sansLien } from "../agent-calc.mjs";
@@ -12,6 +12,8 @@ import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCart
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { lireMessage } from "../demande-calc.mjs";
+import { numeroAffiche } from "../demandes-site-calc.mjs";
+import { libelleUnite } from "../partenaires-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -26,15 +28,17 @@ import { CLE_DEMANDE_AGENT, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "
 import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
+import { conversationDansEntreprise } from "../telephone-carte-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 import { boutonPasBien } from "./agent-retour.mjs";
 import { blocDevis, donneesAvecDevis } from "./devis-carte.mjs";
 import { preparation, preparationComplete, optionsCarte, enregistrerReservation, ajouterParCarte, validerUnifie } from "./agent-valider.mjs";
-import { textesDeNani, bornesEchange } from "../devis-calc.mjs";
+import { textesDeNani, bornesEchange, auteursDesTextes } from "../devis-calc.mjs";
 import { suivreFil } from "../fil-defilement.mjs";
+import { voitEquipe, CLE_FILTRE_EQUIPE, filtreLu, conversationsFiltrees, aMoi, prenomEquipe, proprietaireAffichee, auteurAffiche, reponseEnCours } from "../agent-equipe-calc.mjs";
 // Le nom du champ d'une carte « Modification » (22.11.2026 : sièges par type, bagages, remarque du voucher, note interne).
-const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne") };
+const LIBELLES_MODIF = { vol: N_("Numéro de vol"), sieges: N_("Sièges enfant"), sieges_bebe: N_("Sièges bébé"), sans_siege: N_("Aucun siège enfant ni bébé"), bagages: N_("Bagages"), drop_off: N_("Dépose"), remarque_voucher: N_("Remarque sur le voucher"), note_interne: N_("Note interne"), remarque: N_("Note interne"), option: N_("Option") };
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -56,6 +60,8 @@ const ERREURS = {
   coupure: N_("La connexion a coupé pendant la réponse : rouvrez la conversation."),
   migration_manquante: N_("Les conversations ne sont pas encore installées dans la base."),
   conversation_introuvable: N_("Cette conversation n'existe plus."),
+  // Migration 133 : une réponse est déjà en cours dans cette conversation (autre personne, autre onglet). Rien n'est parti.
+  conversation_occupee: N_("L'assistant répond déjà dans cette conversation. Votre message n'est pas parti : il reste dans la zone de saisie, renvoyez-le dans un instant."),
   message_invalide: N_("Le message est vide ou trop long."),
 };
 // Le plafond du mois atteint : la fonction dit combien a été dépensé et quand l'assistant reprend.
@@ -78,6 +84,9 @@ const ERREURS_AMELIORATION = {
   texte_refuse: N_("Le texte sera public : retirez les noms, numéros, montants et liens, puis renvoyez."),
   non_configure: N_("Les demandes d'amélioration ne sont pas encore activées sur le serveur."),
   github_indisponible: N_("GitHub ne répond pas : rien n'est parti, réessayez plus tard."),
+  // Migration 133 : la carte est tenue par une autre personne (validation en cours ailleurs).
+  carte_prise: N_("Cette carte est en cours de validation ailleurs : rien n'est parti, réessayez dans un instant."),
+  carte_expiree: N_("Cette carte a été laissée en cours par une autre personne : rien n'est parti."),
   migration_manquante: N_("Les demandes d'amélioration ne sont pas encore installées dans la base."),
   hors_ligne: N_("Pas de connexion : la demande n'est pas partie."),
 };
@@ -127,6 +136,9 @@ const AVERTISSEMENTS = {
   // Relecture de la PR 332 : un transfert sans pickup ou sans dépose, rien n'est deviné (la fonction et l'écran, lieuxAVerifier).
   pickup_a_verifier: N_("Pickup à vérifier : la carte n'a pas de lieu de prise en charge. Remplissez-le sous le service."),
   dropoff_a_verifier: N_("Drop-off à vérifier : la carte n'a pas de lieu de dépose. Remplissez-le sous le service."),
+  // Options d'un service (26.11.2026).
+  option_seule: N_("Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part."),
+  option_inconnue: N_("Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise."),
   lieu_a_verifier: N_("Un lien Google Maps de la conversation n'a pas pu être lu, ou un lieu portait un lien : vérifiez la prise en charge et la dépose."),
   remarque_voucher_interne: N_("La remarque prévue pour le voucher citait un net, une commission ou un partenaire : elle reste en note interne."),
   vol_sans_source: N_("Un numéro de vol proposé n'était pas écrit dans la conversation : il a été laissé vide."),
@@ -145,6 +157,8 @@ function texteAvertissement(a) {
   if (code === "montant_illisible") return tr("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.");
   if (code === "controle_impossible") return tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.");
   if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
+  // Migration 133 : une alerte à relire, qui ne bloque ni la copie ni l'envoi.
+  if (code === "mention_reprise") return tr("Vérifiez : la réponse semble parler du changement de personne (« {v} »).", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }
 
@@ -180,7 +194,10 @@ const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && p
 
 // Le suivi du défilement du fil affiché (fil-defilement.mjs) : un seul à la fois, arrêté quand l'écran est refait.
 let suiviAgent = null;
+// L'Assistant en équipe en direct (migration 133) : un seul abonnement à la fois, arrêté quand l'écran est refait ou quitté.
+let arretDirectAgent = null;
 export async function vueAgent(idOuvert = "") {
+  if (arretDirectAgent) (arretDirectAgent(), (arretDirectAgent = null));
   if (!disponible()) {
     const racine = h("div", { "data-titre": tr("Assistant") });
     racine.append(
@@ -194,9 +211,26 @@ export async function vueAgent(idOuvert = "") {
   // Conversations et demandes d'amélioration (administratrices) lues ensemble.
   // Espace unifié (migration 63) : pour qui travaille dans Secret et Taxi, les conversations des deux entreprises, chacune avec son badge.
   const unifie = espaceUnifie({ entites: entitesAccessibles(), activeId: etat.entiteId, permissionsDe, agentActif: (id) => agentActif(reglagesDe(id)) });
-  const [convLues, ameliorationsLues, convAutre] = await Promise.all([etat.store.agentConversations(etat.entiteId), estAdmin() ? etat.store.ameliorations(etat.entiteId) : null, unifie ? etat.store.agentConversations(unifie.autre.id).catch(() => null) : null]);
+  // L'Assistant en équipe (migration 133) : l'administration de l'entreprise voit les conversations de toute l'équipe (la base les rend,
+  // l'écran les filtre) et y écrit comme la propriétaire. « Les miennes » reste la liste d'avant ; le choix est gardé dans le navigateur.
+  const moi = (etat.moi && etat.moi.user_id) || "";
+  const equipeDans = (id) => voitEquipe(permissionsDe(id), voitToutDans(id));
+  const avecEquipe = equipeDans(etat.entiteId) || (!!unifie && equipeDans(unifie.autre.id));
+  let filtreEquipe = "miennes";
+  try {
+    filtreEquipe = filtreLu(localStorage.getItem(CLE_FILTRE_EQUIPE));
+  } catch {
+    // stockage refusé : « Les miennes »
+  }
+  // Les prénoms se lisent pour tout le monde (equipe_de, ouverte à chaque membre) : Nani voit « écrit par Jérémy » dans sa conversation.
+  const lireEquipe = (id) => (etat.store.equipe ? etat.store.equipe(id).catch(() => []) : Promise.resolve([]));
+  const [convLues, ameliorationsLues, convAutre, equipeLue, equipeAutreLue] = await Promise.all([etat.store.agentConversations(etat.entiteId), estAdmin() ? etat.store.ameliorations(etat.entiteId) : null, unifie ? etat.store.agentConversations(unifie.autre.id).catch(() => null) : null, lireEquipe(etat.entiteId), unifie ? lireEquipe(unifie.autre.id) : []]);
   let conversations = convLues ?? null;
-  const conversationsAutre = convAutre || [];
+  let conversationsAutre = convAutre || [];
+  // Les prénoms de l'équipe (equipe_de), des deux entreprises en espace unifié : la propriétaire d'une conversation, l'auteur d'un message.
+  const equipe = [...(equipeLue || []), ...(equipeAutreLue || [])];
+  // Une personne absente de la liste de l'équipe (compte retiré, autre organisation) : jamais un nom deviné.
+  const optsEquipe = { moi, equipe, inconnue: tr("une personne de l'équipe") };
   let attente = new Map();
   let archives = false;
   const rafraichirAttente = async () => {
@@ -227,8 +261,9 @@ export async function vueAgent(idOuvert = "") {
 
   // ---- Liste ----------------------------------------------------------------------------------------------------------------------
   function listeDessinee() {
-    const propres = conversations ? listeConversations(conversations, { enAttente: attente, archives }) : [];
-    const toutes = unifie ? conversationsDesDeux([{ entite: unifie.active, conversations: propres }, { entite: unifie.autre, conversations: listeConversations(conversationsAutre, { archives }) }]) : propres;
+    const vues = (liste, id) => conversationsFiltrees(liste, { moi, filtre: filtreEquipe, equipe: equipeDans(id) });
+    const propres = conversations ? listeConversations(vues(conversations, etat.entiteId), { enAttente: attente, archives }) : [];
+    const toutes = unifie ? conversationsDesDeux([{ entite: unifie.active, conversations: propres }, { entite: unifie.autre, conversations: listeConversations(vues(conversationsAutre, unifie.autre.id), { archives }) }]) : propres;
     const liste = chercherConversations(toutes, recherche, (c) => `${titreDe(c)} ${c.titre || ""} ${c.apercu || ""} ${refDe(c)}`);
     // Une conversation de l'autre entreprise : on y passe (entreprise active), puis elle s'ouvre. La ligne touchée se marque tout de suite.
     const allerA = (c) => (e) => {
@@ -240,7 +275,7 @@ export async function vueAgent(idOuvert = "") {
       naviguer(`#/agent/${c.id}`);
     };
     if (conversations === null) return h("p", { class: "aide agent-liste-vide" }, erreurTexte("migration_manquante"));
-    if (!liste.length) return h("p", { class: "aide agent-liste-vide" }, recherche.trim() ? tr("Aucune conversation pour « {q} ».", { q: recherche.trim() }) : archives ? tr("Aucune conversation archivée.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre."));
+    if (!liste.length) return h("p", { class: "aide agent-liste-vide" }, recherche.trim() ? tr("Aucune conversation pour « {q} ».", { q: recherche.trim() }) : archives ? tr("Aucune conversation archivée.") : filtreEquipe === "equipe" && avecEquipe ? tr("Aucune conversation dans l'équipe.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre."));
     return h(
       "ul",
       { class: "agent-conversations" },
@@ -252,11 +287,13 @@ export async function vueAgent(idOuvert = "") {
             "a",
             { href: `#/agent/${c.id}`, class: "agent-conv", "aria-current": c.id === idOuvert ? "page" : null, onclick: allerA(c) },
             h("span", { class: "agent-conv-ligne" }, h("strong", null, titreDe(c) || tr("Nouvelle conversation")), h("time", { datetime: c.maj_le }, quand(c.maj_le, { langue: langueActive() }))),
-            unifie || c.whatsapp_conversation_id
+            unifie || c.whatsapp_conversation_id || !aMoi(c, moi)
               ? h(
                   "span",
                   { class: "agent-conv-marques" },
                   unifie ? h("span", { class: `agent-conv-entreprise ${marqueUnifiee(entitesAccessibles().find((x) => x.id === c.entite_id)) || ""}` }, c.entreprise) : null,
+                  // « Toute l'équipe » : le prénom de la propriétaire (migration 133).
+                  !aMoi(c, moi) ? h("span", { class: "agent-conv-proprio", title: tr("Conversation de {prenom}", { prenom: proprietaireAffichee(c, optsEquipe) }) }, proprietaireAffichee(c, optsEquipe)) : null,
                   c.whatsapp_conversation_id ? h("span", { class: "agent-conv-wa" }, icone("whatsapp", 14), tr("WhatsApp")) : null
                 )
               : null,
@@ -272,11 +309,29 @@ export async function vueAgent(idOuvert = "") {
     const avecRecherche = !!conversations && conversations.length + conversationsAutre.length > 1;
     ajouter(colonneListe, [
       h("div", { class: "agent-liste-tete" }, h("h1", null, tr("Assistant")), h("button", { class: "principal", type: "button", onclick: () => ouvrir("") }, icone("ajouter", 18), tr("Nouvelle"))),
+      filtreEquipeDessine(),
       avecRecherche ? champRecherche : null,
       listeDessinee(),
       conversations && conversations.some((c) => c.statut === "archivee") ? h("button", { class: "lien agent-archives", type: "button", onclick: () => ((archives = !archives), dessinerListe()) }, archives ? tr("Conversations ouvertes") : tr("Conversations archivées")) : null,
       blocAmeliorations(),
     ]);
+  }
+
+  // « Les miennes / Toute l'équipe » (migration 133), seulement pour l'administration. Deux boutons de 44 px, l'état gardé au retour.
+  function filtreEquipeDessine() {
+    if (!avecEquipe) return null;
+    const choisir = (f) => {
+      if (f === filtreEquipe) return;
+      filtreEquipe = f;
+      try {
+        localStorage.setItem(CLE_FILTRE_EQUIPE, f);
+      } catch {
+        // stockage refusé : le choix vaut pour cette visite
+      }
+      dessinerListe();
+    };
+    const bouton = (f, libelle) => h("button", { type: "button", class: "agent-filtre-bouton", "aria-pressed": filtreEquipe === f ? "true" : "false", onclick: () => choisir(f) }, libelle);
+    return h("div", { class: "agent-filtre-equipe", role: "group", "aria-label": tr("Conversations à montrer") }, bouton("miennes", tr("Les miennes")), bouton("equipe", tr("Toute l'équipe")));
   }
 
   // Demandes d'amélioration de l'outil (administratrices) : leur statut, suivi sur GitHub par la fonction « rappels ».
@@ -344,6 +399,9 @@ export async function vueAgent(idOuvert = "") {
     }
     racine.classList.add("avec-fil");
     conv = id && conversations ? conversations.find((c) => c.id === id) || null : null;
+    // Une conversation de l'équipe ouverte par un lien (#/agent/<id>, WhatsApp, fiche du dossier) : la liste passe sur « Toute l'équipe »
+    // pour la montrer, sans changer le choix gardé.
+    if (conv && !aMoi(conv, moi) && filtreEquipe !== "equipe") filtreEquipe = "equipe";
     fil = { messages: [], cartes: [] };
     if (id && !conv) {
       dessinerFil({ forcer: true });
@@ -419,6 +477,12 @@ export async function vueAgent(idOuvert = "") {
     return wc ? nomConversation(wc, wc.client_id ? (etat.brut.clients || []).find((x) => x.id === wc.client_id) || null : null) : "";
   };
   const nomWaLiee = () => nomWa(waLiee());
+  // Le numéro complet de la conversation WhatsApp liée (26.11.2026) : on sait toujours avec qui l'Assistant travaille.
+  const numeroWaLiee = () => {
+    const id = waLiee();
+    const wc = id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === id) : null;
+    return wc && wc.telephone ? numeroAffiche(wc.telephone) : "";
+  };
   function enTete() {
     const dossier = conv && conv.dossier_id ? etat.db.dossiers.find((d) => d.id === conv.dossier_id) : null;
     const lienWa = waLiee() ? lienWaLiee() : "";
@@ -433,13 +497,15 @@ export async function vueAgent(idOuvert = "") {
         "div",
         { class: "agent-fil-titre" },
         h("h2", null, conv ? titreDe(conv) : questionWa ? nomWaLiee() || tr("Nouvelle conversation") : tr("Nouvelle conversation")),
+        conv && !aMoi(conv, moi) ? h("p", { class: "agent-fil-proprio" }, tr("Conversation de {prenom} : vous écrivez à sa place, chaque message garde votre nom.", { prenom: proprietaireAffichee(conv, optsEquipe) })) : null,
         dossier || lienWa
           ? h(
               "p",
               { class: "agent-fil-liens" },
               dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
               // Liée à WhatsApp (design n° 4, PR B) : un lien pour revenir à la conversation du client.
-              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null
+              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null,
+              lienWa && numeroWaLiee() ? h("span", { class: "agent-wa-numero" }, numeroWaLiee()) : null
             )
           : null
       ),
@@ -544,6 +610,7 @@ export async function vueAgent(idOuvert = "") {
     zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map((it, i) => element(it, i)) : questionWa ? [] : [suggestions()]), questionsRapides()].filter(Boolean));
     majToutValider();
     colonneFil.replaceChildren(enTete(), zoneFil, barreTout, formulaire);
+    majOccupation();
     if (lisaitPlusHaut === null) return descendre({ forcer: true });
     zoneFil.append(boutonNouveaux);
     suiviFil().observer();
@@ -590,7 +657,7 @@ export async function vueAgent(idOuvert = "") {
       // « Demander à l'assistant » (PR B) : l'échange replié, puis la question de la personne, à droite comme ses messages.
       if (echange && echange.question) return h("div", { class: "agent-question-wa" }, bulleWhatsApp(echange), h("div", { class: "agent-bulle de-personne" }, paragraphes(echange.question)));
       if (echange) return bulleWhatsApp(echange);
-      return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
+      return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte), mentionAuteur(it.auteur));
     }
     // « Pas bien » : la raison et un extrait sans montant (la réponse à l'équipe peut citer des nets, des marges ou des gains), jamais la
     // question tapée (elle peut contenir le message d'un client collé). Relu par l'Assistant seulement, pas par la boîte WhatsApp.
@@ -600,6 +667,12 @@ export async function vueAgent(idOuvert = "") {
     // Les vouchers trouvés (trouver_vouchers) : une carte par dossier, avec l'aperçu et le bouton d'envoi.
     if (it.genre === "vouchers") return cartesVouchers(it.vouchers);
     return carte(it.carte);
+  }
+  // « écrit par Jérémy » (migration 133) : sous un message tapé par quelqu'un d'autre que la propriétaire de la conversation, discret.
+  function mentionAuteur(auteurId) {
+    const a = auteurAffiche(auteurId, conv, optsEquipe);
+    if (!a) return null;
+    return h("small", { class: "agent-auteur" }, a.moi ? tr("écrit par vous") : tr("écrit par {prenom}", { prenom: a.prenom || tr("une personne de l'équipe") }));
   }
   // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
   // Avec le nom de la conversation citée quand elle est chargée (migration 70).
@@ -659,7 +732,7 @@ export async function vueAgent(idOuvert = "") {
     }
     if (!zoneFil.querySelector(".agent-bulle, .agent-frise, .agent-carte")) zoneFil.replaceChildren();
     if (joints.length) zoneFil.append(bullePieces(joints));
-    if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
+    if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte), mentionAuteur(moi)));
     if (whatsapp) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), whatsapp.whatsapp_mode === "maj" ? tr("Mise à jour du dossier d'après la conversation WhatsApp") : tr("Dossier d'après la conversation WhatsApp")));
     if (question) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), tr("Avec les derniers messages de la conversation WhatsApp")));
     // Les fichiers choisis restent en mémoire : si l'envoi échoue, ils reviennent dans la zone de saisie.
@@ -734,6 +807,7 @@ export async function vueAgent(idOuvert = "") {
     if (r && r.erreur) {
       // Plafond ou crédit : l'assistant le dit dans le fil, comme une réponse, pour que ce soit clair et non une panne obscure.
       if (r.erreur === "plafond_du_mois" || r.erreur === "credit_epuise") zoneFil.append(h("div", { class: "agent-bulle de-agent agent-arret", role: "alert" }, h("p", null, erreurTexte(r.erreur, r))));
+      else if (r.erreur === "conversation_occupee" && r.par && r.par !== moi && prenomEquipe(equipe, r.par)) zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, tr("L'assistant répond déjà à {prenom} dans cette conversation. Votre message n'est pas parti : il reste dans la zone de saisie, renvoyez-le dans un instant.", { prenom: prenomEquipe(equipe, r.par) })));
       else zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
       // Le texte revient dans la zone, sauf après une coupure en cours de réponse : le serveur l'a déjà gardé, la relecture le montre.
       if ((!conv || r.erreur !== "coupure") && !champ.value.trim()) champ.value = texte;
@@ -758,6 +832,85 @@ export async function vueAgent(idOuvert = "") {
       dessinerListe();
       dessinerFil();
     }
+    // Un changement arrivé d'ailleurs pendant la réponse : relu maintenant.
+    if (relectureEnAttente) planifierRelecture();
+  }
+
+  // ---- En direct (migration 133) ---------------------------------------------------------------------------------------------------
+  // Une conversation ou une carte a changé (l'autre personne écrit, valide, renomme) : la liste et le fil ouvert se relisent avec la
+  // session, une demi-seconde après le dernier signal. Jamais pendant un échange ni une validation de cet écran : la relecture attend.
+  let minuteurRelecture = null;
+  let relectureEnAttente = false;
+  const empreinte = (f) => JSON.stringify([f.messages.length, f.messages.length ? f.messages[f.messages.length - 1].id : 0, f.cartes.map((c) => `${c.id}:${c.statut}`)]);
+  function planifierRelecture() {
+    clearTimeout(minuteurRelecture);
+    minuteurRelecture = setTimeout(relire, 500);
+  }
+  async function relire() {
+    if (!racine.isConnected) {
+      if (arretDirectAgent) (arretDirectAgent(), (arretDirectAgent = null));
+      return;
+    }
+    if (enCours || enValidation.size || document.querySelector(".modal-fond, dialog[open]")) {
+      relectureEnAttente = true;
+      return void (minuteurRelecture = setTimeout(relire, 2000));
+    }
+    relectureEnAttente = false;
+    const [lues, autre] = await Promise.all([etat.store.agentConversations(etat.entiteId).catch(() => null), unifie ? etat.store.agentConversations(unifie.autre.id).catch(() => null) : null]);
+    if (!racine.isConnected || enCours) return;
+    if (lues) conversations = lues;
+    if (autre) conversationsAutre = autre;
+    await rafraichirAttente().catch(() => {});
+    // La recherche en cours de frappe n'est pas coupée : seule la liste se refait.
+    if (document.activeElement === champRecherche) {
+      const liste = colonneListe.querySelector(".agent-conversations, .agent-liste-vide");
+      if (liste) liste.replaceWith(listeDessinee());
+    } else dessinerListe();
+    if (!conv) return;
+    const neuve = (conversations || []).find((c) => c.id === conv.id);
+    if (!neuve) {
+      // Supprimée ailleurs.
+      conv = null;
+      zoneFil.replaceChildren(h("p", { class: "aide" }, erreurTexte("conversation_introuvable")));
+      return;
+    }
+    conv = neuve;
+    const lu = await etat.store.agentFil(conv.id).catch(() => null);
+    if (!lu || !racine.isConnected || enCours || enValidation.size) return;
+    const change = empreinte(lu) !== empreinte(fil);
+    fil = lu;
+    if (change) dessinerFil();
+    else colonneFil.querySelector(".agent-fil-tete")?.replaceWith(enTete());
+    majOccupation();
+  }
+  // « L'assistant répond à Nani… » au-dessus de la saisie, tant qu'une réponse demandée ailleurs est en cours (verrou de la base).
+  const bandeauOccupe = h("p", { class: "agent-occupe", role: "status", hidden: true });
+  function majOccupation() {
+    const r = conv && !enCours ? reponseEnCours(conv) : null;
+    const moiAilleurs = !!r && !!r.par && r.par === moi;
+    bandeauOccupe.hidden = !r;
+    bandeauOccupe.textContent = !r ? "" : moiAilleurs ? tr("L'assistant vous répond dans un autre onglet…") : tr("L'assistant répond à {prenom}…", { prenom: quiEst(r.par) });
+    if (r && !bandeauOccupe.isConnected) formulaire.before(bandeauOccupe);
+  }
+  // Le canal se ferme dès qu'on quitte l'Assistant (changement d'adresse), pas au signal suivant : reveillerDirect ne le relance plus.
+  if (etat.store.ecouterAgent) {
+    const arreterCanal = etat.store.ecouterAgent(() => planifierRelecture());
+    const quitter = () => {
+      if (/^#\/agent(\/|$)/.test(location.hash) && racine.isConnected) return;
+      arretDirectAgent && arretDirectAgent();
+    };
+    arretDirectAgent = () => {
+      arreterCanal();
+      clearTimeout(minuteurRelecture);
+      window.removeEventListener("hashchange", quitter);
+      // Les cartes tenues (validation ou « Vérifier avant » en cours) se rendent : personne ne les attend 2 minutes (relecture n° 2).
+      for (const id of [...tenues.keys()]) {
+        lacher({ id });
+        if (!faite(id)) etat.store.agentRendreCarte(id).catch(() => {});
+      }
+      arretDirectAgent = null;
+    };
+    window.addEventListener("hashchange", quitter);
   }
 
   // ---- Frise d'une course -------------------------------------------------------------------------------------------------------
@@ -837,7 +990,29 @@ export async function vueAgent(idOuvert = "") {
   };
   const bagagesTexte = (s) => (Number(s.bagages) > 0 ? pluriel(Number(s.bagages), N_("{n} bagage"), N_("{n} bagages")) : "");
   // Les deux remarques d'un service (22.11.2026) : ce que le voucher imprime (vu par le client et le chauffeur) et ce qui reste interne.
-  const remarquesCarte = (s) => {
+  // Les options d'un service sur la carte (26.11.2026) : « + Koh Kradan extension · THB 700 », sous le service, jamais un service à part.
+// `qteSaisie(j, o)` : le champ de quantité d'une option par personne (carte proposée), ou null.
+const optionsCarte_ = (s, qteSaisie = () => null) => {
+  const opts = Array.isArray(s.options) ? s.options : [];
+  if (!opts.length) return null;
+  const devise = (reglages() || {}).devise || "THB";
+  const m = (x) => formatMontant(x, devise);
+  // Le prix comme partout : le prix unitaire et son unité (« par personne × 2 »), le total de l'option quand il y en a plusieurs.
+  const prixOption = (o) => {
+    if (o.prix === null || o.prix === undefined) return h("span", { class: "tag attention" }, tr("prix à saisir"));
+    const q = Math.max(1, Number(o.qte) || 1);
+    return q > 1 ? `${m(Math.round((o.prix / q) * 100) / 100)} ${libelleUnite(o.unite || "")} × ${q} = ${m(o.prix)}` : `${m(o.prix)} ${o.unite ? libelleUnite(o.unite) : ""}`.trim();
+  };
+  const complet = s.prix !== null && s.prix !== undefined && opts.every((o) => o.prix !== null && o.prix !== undefined);
+  return h(
+    "small",
+    { class: "agent-options" },
+    ...opts.flatMap((o, j) => [j ? h("br") : null, `+ ${o.libelle || ""} · `, prixOption(o), qteSaisie(j, o)]).filter(Boolean),
+    h("br"),
+    complet ? h("strong", null, tr("Total du service avec ses options : {montant}", { montant: m(Number(s.prix) + opts.reduce((t, o) => t + Number(o.prix), 0)) })) : h("span", { class: "tag attention" }, tr("Total à compléter : un prix manque."))
+  );
+};
+const remarquesCarte = (s) => {
     const voucher = String(s.remarque_voucher || "").trim();
     const interne = [s.note_interne, s.remarque].filter((x) => x && String(x).trim()).join(" ");
     if (!voucher && !interne) return null;
@@ -884,9 +1059,31 @@ export async function vueAgent(idOuvert = "") {
   const lieuxSaisis = new Map();
   // La carte avec ses entreprises corrigées d'un tap (espace unifié), sans les lieux saisis : ce qu'elle dit elle-même.
   const donneesBrutes = (c) => (carteUnifiee(c.donnees) ? avecCorrections(c.donnees, corrections.get(c.id) || {}) : c.donnees);
-  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(donneesBrutes(c), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
+  // La quantité d'une option par personne changée sur la carte (relecture de la PR 359, N5) : carte -> « service:option » -> quantité. Le prix
+  // de l'option suit (prix unitaire × quantité). Un seul plongeur sur deux prend la plongée en plus.
+  const qtesSaisies = new Map();
+  const avecQtes = (donnees, edits) => {
+    if (!edits || !donnees) return donnees;
+    const maj = (sv, i) =>
+      sv && Array.isArray(sv.options)
+        ? { ...sv, options: sv.options.map((o, j) => { const q = edits[`${i}:${j}`]; if (!q) return o; const q0 = Math.max(1, Number(o.qte) || 1); return { ...o, qte: q, prix: o.prix === null || o.prix === undefined ? o.prix : Math.round((Number(o.prix) / q0) * q * 100) / 100 }; }) }
+        : sv;
+    return Array.isArray(donnees.services) ? { ...donnees, services: donnees.services.map(maj) } : donnees.service ? { ...donnees, service: maj(donnees.service, 0) } : donnees;
+  };
+  const donneesCarte = (c) => donneesAvecDevis(c.id, avecLieuxSaisis(avecQtes(donneesBrutes(c), qtesSaisies.get(c.id)), "dossier", lieuxSaisis.get(c.id)), { marque: marqueFil() });
   // Une carte « reservation » avec les lieux remplis sur elle.
-  const donneesReservation = (c) => avecLieuxSaisis(c.donnees, "reservation", lieuxSaisis.get(c.id));
+  const donneesReservation = (c) => avecLieuxSaisis(avecQtes(c.donnees, qtesSaisies.get(c.id)), "reservation", lieuxSaisis.get(c.id));
+  // Le champ de quantité d'une option par personne, sur une carte encore proposée.
+  const champQteOption = (c, i) => (j, o) => {
+    if (c.statut !== "proposee" || !["pp", "ad"].includes(o.unite)) return null;
+    const input = h("input", { type: "number", min: "1", step: "1", inputmode: "numeric", class: "agent-option-qte", value: Math.max(1, Number(o.qte) || 1), "aria-label": tr("Quantité de l'option {nom}", { nom: o.libelle || "" }) });
+    input.addEventListener("change", () => {
+      const q = Math.max(1, Math.round(Number(input.value) || 1));
+      qtesSaisies.set(c.id, { ...(qtesSaisies.get(c.id) || {}), [`${i}:${j}`]: q });
+      redessiner(c);
+    });
+    return h("label", { class: "agent-option-qte-champ" }, " ", tr("Quantité"), " ", input);
+  };
   const entrepriseDe = (id) => entitesAccessibles().find((e) => e.id === id) || null;
   const libelleEntreprise = (id) => {
     const e = entrepriseDe(id);
@@ -967,6 +1164,19 @@ export async function vueAgent(idOuvert = "") {
   const VALIDABLES = ["dossier", "reservation", "modification", "temps"];
   const enAttente = () => fil.cartes.filter((c) => c.statut === "proposee" && VALIDABLES.includes(c.genre));
 
+  // Qui a écrit les nombres lus par le devis (migration 133) : la personne connectée ({ moi }), une seule autre personne ({ prenom }), ou
+  // « l'équipe » quand plusieurs ont écrit. Un message sans auteur (d'avant) est celui de la propriétaire.
+  function auteurDevis(c) {
+    const ids = [...new Set(auteursDesTextes(fil.messages, bornesEchange(c, fil.cartes)).map((a) => a || (conv && conv.user_id) || moi))];
+    if (!ids.length) return null;
+    if (ids.length > 1) return { prenom: tr("l'équipe") };
+    return ids[0] === moi ? { moi: true } : { prenom: prenomEquipe(equipe, ids[0]) || tr("l'équipe") };
+  }
+  // « par Nani » après « Validée » : la carte a été décidée par une autre personne que moi (migration 133, decide_par posé par la base).
+  const decidePar = (c) => {
+    const p = c.decide_par && c.decide_par !== moi ? prenomEquipe(equipe, c.decide_par) : "";
+    return p ? h("span", { class: "agent-carte-par" }, ` ${tr("par {prenom}", { prenom: p })}`) : null;
+  };
   function carte(c) {
     const d = c.donnees || {};
     const corps = [];
@@ -980,7 +1190,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, remarquesCarte(s)), prixTexte(s))))));
+      corps.push(avecChampsLieux(c, h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s, d), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null, optionsCarte_(s, champQteOption(c, i)), remarquesCarte(s)), prixTexte(s))))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -994,11 +1204,13 @@ export async function vueAgent(idOuvert = "") {
       // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
       if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
       // « Calculer le devis » (devis-carte.mjs) : lancé par Nani, seulement quand trajet, personnes et date sont connus.
-      if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil }));
+      if (c.statut === "proposee") corps.push(blocDevis(du, { id: c.id, textes: () => textesDeNani(fil.messages, bornesEchange(c, fil.cartes)), marque: marqueFil, auteur: () => auteurDevis(c) }));
     } else if (c.genre === "reservation") {
-      const s = d.service || {};
-      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), remarquesCarte(s)), prixTexte(s)))));
-      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 };
+      const s = donneesReservation(c).service || {};
+      corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), avecChampsLieux(c, h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.vol && tr("vol {v}", { v: s.vol }), siegesTexte(s), bagagesTexte(s)].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), optionsCarte_(s, champQteOption(c, 0)), remarquesCarte(s)), prixTexte(s)))));
+      // Une option sans prix bloque l'ajout, comme sur la carte « modification » (relecture de la PR 359, N3) : « Vérifier avant » reste là.
+      const optionSansPrix = (s.options || []).some((o) => o.prix === null || o.prix === undefined);
+      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) }, bloque: lieuxCarte(c).length > 0 || optionSansPrix, ...(optionSansPrix ? { motifBloque: tr("Le prix d'une option est à saisir : ouvrez « Vérifier avant ».") } : {}) };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, LIBELLES_MODIF[d.champ] ? h("span", null, tr(LIBELLES_MODIF[d.champ]), " ") : null, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
@@ -1079,16 +1291,16 @@ export async function vueAgent(idOuvert = "") {
       ...corps,
       avert,
       decidee
-        ? h("div", { class: "agent-carte-fin" }, h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée")), c.statut === "validee" ? suite(c) : null)
+        ? h("div", { class: "agent-carte-fin" }, h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée"), decidePar(c)), c.statut === "validee" ? suite(c) : null)
         : h(
             "div",
             { class: "actions gauche" },
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
-            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
+            action && action.bloque ? h("p", { class: "aide pleine-largeur" }, action.motifBloque || tr("Remplissez le pickup ou le drop-off ci-dessus pour valider.")) : null,
             action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", disabled: !!action.bloque || enValidation.has(c.id), "aria-busy": enValidation.has(c.id) ? "true" : null, onclick: (e) => agir(e.currentTarget, action) }, enValidation.has(c.id) ? tr("Création…") : action.libelle), action) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && action.puis.faire() }, action.puis.libelle) : null,
-            h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && decider(c, "ecartee") }, tr("Écarter"))
+            h("button", { class: "secondaire", type: "button", disabled: enValidation.has(c.id), onclick: () => !enValidation.has(c.id) && ecarter(c) }, tr("Écarter"))
           )
     );
   }
@@ -1164,6 +1376,91 @@ export async function vueAgent(idOuvert = "") {
     if (ancien) ancien.replaceWith(carte(c));
     majToutValider();
   }
+  // ---- Prise d'une carte en équipe (migration 133, relecture de la PR 366) -------------------------------------------------------
+  // Le prénom de qui tient ou a décidé une carte : « vous » pour moi, le prénom connu, sinon « une personne de l'équipe ».
+  const quiEst = (id) => (!id ? tr("une personne de l'équipe") : id === moi ? tr("vous") : prenomEquipe(equipe, id) || tr("une personne de l'équipe"));
+  // Le motif d'un refus de la base, dit avec le prénom.
+  // `ecart` : le refus d'un « Écarter » (rien n'est écarté).
+  function motifCarte(r, { ecart = false } = {}) {
+    if (!r) return tr("Rien n'a été enregistré.");
+    if (ecart && r.raison === "decidee") return r.statut === "ecartee" ? tr("Cette carte a déjà été écartée par {qui}.", { qui: quiEst(r.par) }) : tr("Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe.", { qui: quiEst(r.par) });
+    if (ecart && r.raison === "prise") return tr("{qui} valide cette carte en ce moment : elle ne s'écarte pas.", { qui: quiEst(r.par) });
+    if (r.raison === "envoyee") return tr("Cette demande est déjà partie sur GitHub : elle ne s'écarte plus.");
+    if (r.raison === "decidee") return r.statut === "ecartee" ? tr("Cette carte a déjà été écartée par {qui} : rien n'est créé.", { qui: quiEst(r.par) }) : tr("Cette carte a déjà été validée par {qui} : rien n'est créé une seconde fois.", { qui: quiEst(r.par) });
+    if (r.raison === "prise" && r.par === moi) return tr("Cette carte est déjà en cours de validation dans un autre onglet : rien n'est créé deux fois.");
+    if (r.raison === "prise") return tr("{qui} valide cette carte en ce moment : rien n'est créé deux fois.", { qui: quiEst(r.par) });
+    if (r.raison === "reprise") return tr("{qui} a repris cette carte pendant que vous la vérifiiez : rien n'a été enregistré de votre côté.", { qui: quiEst(r.par) });
+    if (r.raison === "libre") return tr("Cette carte n'est plus prise par vous : rien n'a été enregistré. Rouvrez-la pour la valider.");
+    if (r.raison === "introuvable") return tr("Cette proposition n'existe plus.");
+    return tr("Rien n'a été enregistré.");
+  }
+  // Prendre la carte avant tout enregistrement. Une prise d'une autre personne sans nouvelle depuis plus de 2 minutes se reprend seulement en
+  // le sachant (confirmation) ; son enregistrement à elle sera ensuite refusé (controler_agent_carte). Rend true, ou le motif du refus.
+  async function prendreCarte(c) {
+    let r = etat.store.agentPrendreCarteEquipe ? await etat.store.agentPrendreCarteEquipe(c.id) : { ok: await etat.store.agentPrendreCarte(c.id), raison: "prise" };
+    if (r && r.ok) return true;
+    if (r && r.raison === "expiree") {
+      const qui = quiEst(r.par);
+      const minutes = Math.max(2, Math.round((Date.now() - Date.parse(r.depuis || "")) / 60000) || 2);
+      if (!(await confirmer(tr("{qui} a commencé à valider cette carte il y a {n} min sans terminer. La reprendre ? Si {qui} enregistre ensuite de son côté, ce sera refusé : rien ne sera créé deux fois.", { qui, n: minutes }), tr("Reprendre la carte")))) return tr("Carte laissée à {qui} : rien n'a été enregistré.", { qui });
+      r = await etat.store.agentPrendreCarteEquipe(c.id, { forcer: true });
+      if (r && r.ok) return true;
+    }
+    if (r && r.raison === "decidee") planifierRelecture();
+    return motifCarte(r);
+  }
+  // Tant qu'on travaille sur une carte (validation, fenêtre « Vérifier avant »), la prise se renouvelle toutes les 45 s : elle n'expire pas
+  // pour les autres. Perdue (reprise ailleurs), la carte le dit tout de suite.
+  const tenues = new Map();
+  function tenir(c) {
+    lacher(c);
+    if (!etat.store.agentControlerCarte) return;
+    tenues.set(
+      c.id,
+      setInterval(async () => {
+        const r = await etat.store.agentControlerCarte(c.id).catch(() => null);
+        if (r && !r.ok && r.raison !== "erreur") {
+          lacher(c);
+          motifs.set(c.id, { motif: motifCarte(r), entreprise: null });
+          toast(motifCarte(r), true);
+          planifierRelecture();
+        }
+      }, 45_000)
+    );
+  }
+  function lacher(c) {
+    clearInterval(tenues.get(c.id));
+    tenues.delete(c.id);
+  }
+  // Juste avant d'écrire : la carte est-elle toujours proposée et prise par moi ? Rend null pour écrire, sinon le motif (rien n'est écrit).
+  async function controleAvantEcriture(c) {
+    if (!etat.store.agentControlerCarte) return null;
+    const r = await etat.store.agentControlerCarte(c.id).catch(() => ({ ok: false, raison: "erreur" }));
+    if (r && r.ok) return null;
+    lacher(c);
+    planifierRelecture();
+    return r && r.raison === "erreur" ? tr("La carte n'a pas pu être vérifiée : rien n'a été enregistré, réessayez.") : motifCarte(r);
+  }
+  // « Écarter » passe par la base : jamais une carte validée (le dossier existe) ni une carte qu'une autre personne valide en ce moment.
+  async function ecarter(c) {
+    try {
+      const r = etat.store.agentEcarterCarte ? await etat.store.agentEcarterCarte(c.id) : { ok: true, carte: await etat.store.agentCarte(c.id, "ecartee") };
+      if (!r || !r.ok) {
+        const motif = motifCarte(r, { ecart: true });
+        motifs.set(c.id, { motif, entreprise: null });
+        redessiner(c);
+        toast(motif, true);
+      }
+    } catch (err) {
+      toast(err.message, true);
+    }
+    // Le fil relu : la carte montre son vrai statut (écartée, ou validée ailleurs).
+    fil = (await etat.store.agentFil(conv.id).catch(() => null)) || fil;
+    await rafraichirAttente();
+    dessinerListe();
+    dessinerFil();
+  }
+
   async function decider(c, statut) {
     const maj = await etat.store.agentCarte(c.id, statut);
     fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));
@@ -1267,8 +1564,10 @@ export async function vueAgent(idOuvert = "") {
 
   // Conversation ouverte depuis l'écran WhatsApp (migration 61) : le dossier validé se relie à la conversation WhatsApp, avec son client
   // (et l'entreprise si elle était à trier). Une panne ici ne gêne jamais la validation ; elle est dite.
-  async function relierWhatsApp(dossier) {
-    const waId = conv && conv.whatsapp_conversation_id;
+  // `choisie` : la conversation au nom du client reprise dans « Vérifier avant » (« Reprendre ce numéro »), quand la conversation de
+  // l'Assistant n'est pas liée à WhatsApp (la conversation est restée sans client ni dossier).
+  async function relierWhatsApp(dossier, choisie = null) {
+    const waId = (conv && conv.whatsapp_conversation_id) || choisie;
     if (!waId) return;
     try {
       // Relue en base juste avant : quelqu'un a pu la relier ou la ranger ailleurs pendant la conversation avec l'Assistant.
@@ -1328,28 +1627,33 @@ export async function vueAgent(idOuvert = "") {
   }
   async function validerUneFois(c, { seule }) {
     motifs.delete(c.id);
-    // La carte se prend dans la base avant tout enregistrement : prise ailleurs (autre onglet, autre appareil) ou déjà validée, rien n'est créé.
+    // La carte se prend dans la base avant tout enregistrement : prise ailleurs (autre onglet, autre appareil, autre personne) ou déjà
+    // validée, rien n'est créé ; le motif dit qui la tient (migration 133).
     let prise = false;
     try {
-      prise = await etat.store.agentPrendreCarte(c.id);
+      prise = await prendreCarte(c);
     } catch (err) {
       motifs.set(c.id, { motif: err.message, entreprise: null });
       redessiner(c);
       if (seule) toast(err.message, true);
       return false;
     }
-    if (!prise) {
-      const motif = tr("Cette carte est déjà en cours de validation, ou déjà validée : rien n'a été créé une seconde fois.");
-      motifs.set(c.id, { motif, entreprise: null });
+    if (prise !== true) {
+      motifs.set(c.id, { motif: prise, entreprise: null });
       redessiner(c);
-      if (seule) toast(motif, true);
+      if (seule) toast(prise, true);
       return false;
     }
+    tenir(c);
     let r = { ok: false, motif: "" };
     // Un numéro de vol lu sur une pièce jointe (la fonction ne peut pas le relire) se vérifie dans la fenêtre : jamais validé d'un geste.
     const volAVerifier = (c.avertissements || []).includes("vol_piece_jointe");
+    // Contrôle final juste avant d'écrire (migration 133) : toujours proposée et prise par moi, sinon rien n'est écrit.
+    const avantCreer = () => controleAvantEcriture(c);
     try {
-      if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
+      const arret = await avantCreer();
+      if (arret) r = { ok: false, motif: arret, perdue: true };
+      else if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
       // Plus de sièges que d'enfants et de bébés (relecture de la PR 315) : jamais validé d'un geste, Nani confirme dans la fiche.
       else if (siegesAVerifier(c)) r = { ok: false, motif: tr("Plus de sièges enfant ou bébé que d'enfants et de bébés : vérifiez avec « Vérifier avant ».") };
       // Un enfant ou un bébé sans choix des sièges (Jérémy, 22.11.2026) : jamais validé d'un geste ; la fiche, elle, exige le choix.
@@ -1358,26 +1662,27 @@ export async function vueAgent(idOuvert = "") {
       // Un transfert sans pickup ou sans dépose (relecture de la PR 332) : jamais validé d'un geste, rien n'est deviné.
       else if (lieuxCarte(c).length) r = { ok: false, motif: tr("Pickup ou drop-off à compléter : remplissez le champ sur la carte.") };
       else if ((c.avertissements || []).includes("prix_sous_net")) r = { ok: false, motif: tr("Le prix écrit par le client est au niveau du net ou en dessous : fixez-le avec « Vérifier avant ».") };
-      else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
+      else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true, avantCreer });
       // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
       else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
-      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise });
-      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {} });
+      else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c, { donnees: donneesCarte(c), libelleEntreprise, whatsappLie: await conversationWaLiee(), avantCreer });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete({ ...c, donnees: donneesCarte(c) }), { auto: true, titre: c.titre, surCree: () => {}, whatsappLie: await conversationWaLiee(), avantCreer });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
       // tarifs, après contrôle du droit. Sans entreprise visée, comme avant.
-      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier.")));
+      else if (c.genre === "reservation") r = await dansEntreprise(entiteVisee(c), () => ajouterParCarte({ ...c, donnees: donneesReservation(c) }, tr("Service ajouté au dossier."), { avantEnregistrer: avantCreer }));
       else if (c.genre === "modification") {
         r = await dansEntreprise(entiteVisee(c), () => {
           const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
           // Les notes d'avant : une remarque retouchée s'apprend par ce qui a été ajouté (agent-apprendre.mjs).
-          return ancienne ? enregistrerReservation(reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
+          return ancienne ? enregistrerReservation(reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne, { avantEnregistrer: avantCreer }).then((x) => (x && x.ok ? { ...x, notesAvant: String(ancienne.notes || "") } : x)) : { ok: false, motif: tr("Ce service n'existe plus.") };
         });
-      } else if (c.genre === "temps") r = await ajouterTemps(c);
+      } else if (c.genre === "temps") r = await ajouterTemps(c, { avantCreer });
     } catch (err) {
       r = { ok: false, motif: err.message };
     }
+    lacher(c);
     if (!r || !r.ok) {
-      // Rien n'est enregistré : la carte se rend, elle peut être validée de nouveau.
+      // Rien n'est enregistré : la carte se rend (seulement si elle est encore à moi), elle peut être validée de nouveau.
       await etat.store.agentRendreCarte(c.id).catch((err) => console.error("agent : rendre la carte", err));
       motifs.set(c.id, { motif: (r && r.motif) || tr("Rien n'a été enregistré."), entreprise: (r && r.entreprise) || null });
       redessiner(c);
@@ -1392,6 +1697,7 @@ export async function vueAgent(idOuvert = "") {
   // a produit un dossier ne se reprend plus, même si une suite échoue ou si sa prise expire (relecture de la PR 337). Si la base refuse,
   // l'écran et l'onglet s'en souviennent (noterFaite) et un nouveau tap ne fait que réessayer de la noter.
   async function marquerValidee(c) {
+    lacher(c);
     noterFaite(c.id);
     try {
       await decider(c, "validee");
@@ -1412,7 +1718,7 @@ export async function vueAgent(idOuvert = "") {
       if (typeLie === "apporteur") await noterApporteur(c.donnees.apporteur, r.dossiers || [dossier]);
       else toast(tr("Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur."));
     }
-    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
+    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier, r.whatsappId || null);
     // Migration 72 : la demande du site « nouvelle » du même numéro passe « confirmée » avec ce dossier (views/demandes-whatsapp.mjs).
     if (dossier && c.genre === "dossier") await (await import("./demandes-whatsapp.mjs")).relierDemandesApresDossier(r.dossiers || [dossier]);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
@@ -1435,6 +1741,21 @@ export async function vueAgent(idOuvert = "") {
     if (maj) redessiner(maj);
   }
 
+  // La conversation WhatsApp liée, relue en base (son numéro complète celui de la carte) : null sans liaison ou en cas de panne. Même condition
+  // que le serveur (index.ts, PR 355) : rangée dans l'entreprise de l'Assistant, ou à trier chez Secret et Taxi ; jamais un apporteur.
+  async function conversationWaLiee() {
+    const waId = conv && conv.whatsapp_conversation_id;
+    if (!waId) return null;
+    let wc = null;
+    try {
+      wc = (etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null) || (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+    } catch (err) {
+      console.error("agent : conversation WhatsApp liée", err);
+      wc = (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || null;
+    }
+    const slug = ((etat.brut.entites || []).find((e) => e.id === etat.entiteId) || {}).slug || "";
+    return wc && conversationDansEntreprise(wc, etat.entiteId, slug) && !apporteurConfirme(wc) ? wc : null;
+  }
   // Le type du contact de la conversation WhatsApp liée, relu en base : null sans liaison, illisible ou sans type.
   async function typeContactLie() {
     const waId = conv && conv.whatsapp_conversation_id;
@@ -1480,21 +1801,28 @@ export async function vueAgent(idOuvert = "") {
   // ---- Vérifier avant : la fenêtre habituelle, affichée ------------------------------------------------------------------------
   // « Vérifier avant » (relecture de la PR 337) : la carte se prend aussi à l'ouverture de la fenêtre, comme d'un geste. Prise ailleurs (autre
   // onglet, autre appareil, validation en cours) ou déjà enregistrée : la fenêtre ne s'ouvre pas. Fermée sans rien créer : la carte se rend.
+  // La prise se renouvelle tant que la fenêtre est ouverte (tenir) ; l'enregistrement revérifie la prise juste avant d'écrire (avantCreer).
   async function prendrePourFenetre(c) {
     if (enValidation.has(c.id)) return false;
     const refus = (motif) => (motifs.set(c.id, { motif, entreprise: null }), redessiner(c), toast(motif, true), false);
     if (faite(c.id)) return refus(tr("Cette carte a déjà créé son dossier : rien n'est recréé."));
+    let prise = false;
     try {
-      if (await etat.store.agentPrendreCarte(c.id)) return true;
+      prise = await prendreCarte(c);
     } catch (err) {
       return refus(err.message);
     }
-    return refus(tr("Cette carte est déjà en cours de validation (autre onglet ou autre appareil) : la fenêtre ne s'ouvre pas, rien n'est créé deux fois."));
+    if (prise !== true) return refus(prise);
+    tenir(c);
+    return true;
   }
   // À la fermeture : rendue si rien n'a été créé (la création note la carte, noterFaite, avant la fin de la fenêtre).
   const rendreSiRien = (c) => () => setTimeout(() => {
+    lacher(c);
     if (!faite(c.id)) etat.store.agentRendreCarte(c.id).catch((err) => console.error("agent : rendre la carte", err));
   }, 0);
+  // Le contrôle final d'une fenêtre : le motif s'affiche dans la fenêtre, rien n'est écrit.
+  const avantFenetre = (c) => () => controleAvantEcriture(c);
   async function ouvrirDossier(c) {
     // Migration 72 : même accord qu'à la validation d'un geste avant un second dossier pour ce client.
     if (!(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) return;
@@ -1502,38 +1830,47 @@ export async function vueAgent(idOuvert = "") {
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     // `services` : ce que l'écran a fait de chaque service (prix tapé à la place de celui du catalogue), pour les apprentissages.
-    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, surCree: ({ dossier, services }) => noterReussite(c, { ok: true, dossier, ecran: services }), ferme: rendreSiRien(c) });
+    const ouverte = (await import("./demande.mjs")).ouvrirDemande(null, await preparationComplete(vue), { titre: c.titre, whatsappLie: await conversationWaLiee(), surCree: ({ dossier, services, whatsappId }) => noterReussite(c, { ok: true, dossier, ecran: services, whatsappId }), ferme: rendreSiRien(c), avantCreer: avantFenetre(c) });
     if (!ouverte) rendreSiRien(c)();
   }
   async function ouvrirCourse(c) {
     // Même règle que la validation d'un geste (et que l'ancien écran) : une course depuis une confirmation se crée par une administratrice.
     if (!confirmationPermise()) return toast(tr("Une course depuis une confirmation se crée par une administratrice."), true);
     if (!(await prendrePourFenetre(c))) return;
-    (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { surCree: (fait) => noterReussite(c, { ok: true, fait }), ferme: rendreSiRien(c) });
+    (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { surCree: (fait) => noterReussite(c, { ok: true, fait }), ferme: rendreSiRien(c), avantCreer: avantFenetre(c) });
   }
-  function ouvrirReservation(c) {
-    return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {
+  // Service et modification (relecture de la PR 366) : la carte se prend aussi à l'ouverture de la fenêtre, se renouvelle tant qu'elle est
+  // ouverte, se revérifie avant d'écrire et se rend à la fermeture sans enregistrement.
+  async function ouvrirReservation(c) {
+    const id = entiteVisee(c);
+    if (id && id !== etat.entiteId && !permissionsDe(id).includes("dossiers.ecrire")) return void toast(refusDroit(id).motif, true);
+    if (!(await prendrePourFenetre(c))) return;
+    return dansFenetre(id, ({ formulaireReservation }, revenir) => {
       // « Annuler » rend null : la carte reste à valider. La fermeture ramène dans l'entreprise de la conversation.
       const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(donneesReservation(c), optionsCarte(c)), async (res) => {
         ferme();
         if (!res) return;
         toast(tr("Service ajouté au dossier."));
         await noterReussite(c, { ok: true, reservation: res });
-      }), { ferme: revenir });
+      }, { avantEnregistrer: avantFenetre(c) }), { ferme: () => (rendreSiRien(c)(), revenir()) });
       return true;
     });
   }
-  function ouvrirModification(c) {
-    return dansFenetre(entiteVisee(c), ({ formulaireReservation }, revenir) => {
+  async function ouvrirModification(c) {
+    const id = entiteVisee(c);
+    if (id && id !== etat.entiteId && !permissionsDe(id).includes("dossiers.ecrire")) return void toast(refusDroit(id).motif, true);
+    if (!etat.db.reservations.some((x) => x.id === c.donnees.reservation_id) && !id) return void toast(tr("Ce service n'existe plus."), true);
+    if (!(await prendrePourFenetre(c))) return;
+    return dansFenetre(id, ({ formulaireReservation }, revenir) => {
       const r = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
-      if (!r) return void toast(tr("Ce service n'existe plus."), true), false;
+      if (!r) return void (rendreSiRien(c)(), toast(tr("Ce service n'existe plus."), true)), false;
       // La base de la fusion est la ligne d'origine (relecture de la PR 315) : une modification concurrente n'efface pas le changement proposé.
       const ferme = modal(tr("Modifier la réservation"), formulaireReservation(reservationModifiee(r, c.donnees), async (res) => {
         ferme();
         if (!res) return;
         toast(tr("Service modifié."));
         await noterReussite(c, { ok: true, reservation: { ...res, dossier_id: res.dossier_id || r.dossier_id }, notesAvant: String(r.notes || "") });
-      }, { base: r }), { ferme: revenir });
+      }, { base: r, avantEnregistrer: avantFenetre(c) }), { ferme: () => (rendreSiRien(c)(), revenir()) });
       return true;
     });
   }
@@ -1543,9 +1880,12 @@ export async function vueAgent(idOuvert = "") {
 
 
   // Une durée donnée dans la conversation entre dans la table de référence, confirmée (Nani l'a donnée elle-même).
-  async function ajouterTemps(c) {
+  async function ajouterTemps(c, { avantCreer = null } = {}) {
     const d = c.donnees;
     try {
+      // Migration 133 : la carte revérifiée juste avant d'écrire.
+      const arret = avantCreer ? await avantCreer() : null;
+      if (arret) return { ok: false, motif: arret };
       await etat.store.enregistrerTempsTrajets(etat.entiteId, [{ de: d.de, vers: d.vers, cle: clePaire(d.de, d.vers), mode: "route", duree_min: d.duree_min, ferry: !!d.ferry, marge_min: d.marge_min || 0, source: d.source || "", source_date: new Date().toISOString().slice(0, 10), a_verifier: false, origine: "agent" }]);
       toast(tr("Durée ajoutée à la table des temps de trajet."));
       return { ok: true };
@@ -1574,15 +1914,30 @@ export async function vueAgent(idOuvert = "") {
     }
   }
   // Carte « amelioration » : envoyée telle que relue dans la carte (titre et texte), par la fonction « ameliorations ».
-  async function demanderAmelioration(c, titre, texte, bouton) {
+  async function demanderAmelioration(c, titre, texte, bouton, { forcer = false } = {}) {
     if (bouton) bouton.disabled = true;
-    const r = await etat.store.demanderAmelioration({ entite_id: etat.entiteId, carte_id: c.id, titre, texte });
+    const r = await etat.store.demanderAmelioration({ entite_id: etat.entiteId, carte_id: c.id, titre, texte, ...(forcer ? { forcer: true } : {}) });
     if (bouton) bouton.disabled = false;
+    // Une autre personne avait commencé à envoyer cette demande sans terminer (prise expirée, migration 133) : reprise seulement en le sachant.
+    if (r && r.erreur === "carte_expiree" && !forcer) {
+      const qui = quiEst(r.par);
+      const minutes = Math.max(2, Math.round((Date.now() - Date.parse(r.depuis || "")) / 60000) || 2);
+      if (await confirmer(tr("{qui} a commencé à valider cette carte il y a {n} min sans terminer. La reprendre ? Si {qui} enregistre ensuite de son côté, ce sera refusé : rien ne sera créé deux fois.", { qui, n: minutes }), tr("Reprendre la carte"))) return demanderAmelioration(c, titre, texte, bouton, { forcer: true });
+      return toast(tr("Carte laissée à {qui} : rien n'a été enregistré.", { qui }), true);
+    }
     if (!r || r.erreur) {
       const motifs = r && r.motifs ? r.motifs.map((m) => tr(MOTIFS_TEXTE[m] || N_("un texte refusé"))).join(", ") : "";
       return toast(`${tr(ERREURS_AMELIORATION[r && r.erreur] || N_("La demande n'est pas partie."))}${motifs ? ` (${motifs})` : ""}`, true);
     }
     ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
+    // Issue créée mais carte pas notée validée (relecture n° 4) : la carte reste affichée « envoyée, à confirmer » ; elle ne renverra rien.
+    if (r.a_confirmer) {
+      motifs.set(c.id, { motif: tr("Envoyée, à confirmer : la demande est partie, mais la carte n'a pas pu être notée envoyée. Rien ne repartira en double."), entreprise: null });
+      toast(tr("Demande envoyée, carte à confirmer : rien ne repartira en double."), true);
+      ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
+      dessinerListe();
+      return redessiner(c);
+    }
     toast(tr("Demande envoyée : vous verrez son avancement ici."));
     const maj = r.carte || { ...c, statut: "validee" };
     fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));
@@ -1626,7 +1981,7 @@ export async function vueAgent(idOuvert = "") {
 
   dessinerListe();
   if (idOuvert) await ouvrir(idOuvert === "nouvelle" ? "" : idOuvert);
-  else if (matchMedia("(min-width: 900px)").matches) {
+  else if (!matchMedia("not all and (min-width: 900px), (orientation: landscape) and (max-width: 960px) and (max-height: 500px) and (pointer: coarse)").matches) {
     // Ordinateur : le fil d'une nouvelle conversation est prêt à droite.
     colonneFil.replaceChildren(enTete(), zoneFil, formulaire);
     zoneFil.replaceChildren(suggestions());

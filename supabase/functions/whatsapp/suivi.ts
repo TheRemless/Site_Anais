@@ -7,6 +7,7 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { dateBangkok } from "../assistant/calc.js";
 import { iaOuverte, journalEnCours, plafondsOuverts } from "./reponse.ts";
 import { RESUME_ATTENTE_MS, lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, sansColonneConversation, signalPaiement, tachePromesse } from "./suivi.js";
+import { avecAutomatique, sansAutomatiques } from "./automatique.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
@@ -14,8 +15,9 @@ async function lire(db: SupabaseClient, conversationId: string) {
   const { data: conv } = await db.from("whatsapp_conversations").select("*").eq("id", conversationId).maybeSingle();
   if (!conv || !("resume_le" in conv)) return null; // migration 62 absente : rien à faire
   // Ligne « non transmis » (migration 100) : jamais lue par l'IA.
-  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, type, texte, medias, envoye_le, supprime_le").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(60);
-  return { conv, messages: [...(msgs || [])].reverse() };
+  // Ni le message automatique de nuit (migration 132) : il n'entre pas dans le résumé et n'est jamais « le dernier message ».
+  const { data: msgs } = await avecAutomatique((cols) => db.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(60), "id, sens, type, texte, medias, envoye_le, supprime_le");
+  return { conv, messages: [...sansAutomatiques(msgs)].reverse() };
 }
 
 export async function suiviApresMessage(db: SupabaseClient, conversationId: string, messageId: string) {

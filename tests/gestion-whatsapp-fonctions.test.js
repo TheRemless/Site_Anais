@@ -132,7 +132,8 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
     const autre = brut.whatsapp_conversations.find((c) => c.entite_id && c.entite_id !== excursions.id);
     if (autre) assert.deepEqual(await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: autre.id, whatsapp_mode: "creer", texte: "" }, () => {}), { erreur: "whatsapp_introuvable" }, "rangée ailleurs : refusée");
     await store.modifier("whatsapp_conversations", aTrier.id, { entite_id: excursions.id });
-    assert.deepEqual(await store.whatsappConversation(aTrier.id), { id: aTrier.id, entite_id: excursions.id, client_id: null, dossier_id: null }, "relue en base pour la liaison");
+    // Le numéro et le nom de la conversation sont relus aussi : ils complètent le téléphone d'une carte « dossier » ; `reponses` écarte un contact personnel.
+    assert.deepEqual(await store.whatsappConversation(aTrier.id), { id: aTrier.id, entite_id: excursions.id, client_id: null, dossier_id: null, telephone: aTrier.telephone || "", nom: aTrier.nom || "", partenaire_id: aTrier.partenaire_id || null, ...(aTrier.type_contact ? { type_contact: aTrier.type_contact } : {}), ...(aTrier.reponses ? { reponses: aTrier.reponses } : {}) }, "relue en base pour la liaison");
     const evenements = [];
     const rep = await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: aTrier.id, whatsapp_mode: "creer", texte: "" }, (ev) => evenements.push(ev));
     assert.deepEqual(rep, { ok: true });
@@ -168,12 +169,13 @@ test("branchement : boutons de l'en-tête, Assistant, voucher, paiement, résum�
   const agent = source("views/agent.mjs");
   assert.match(agent, /whatsapp_conversation_id: whatsapp\.whatsapp_conversation_id, whatsapp_mode: whatsapp\.whatsapp_mode, whatsapp_pieces: whatsapp\.whatsapp_pieces \|\| \[\], texte: ""/);
   assert.match(agent, /if \(depuisWhatsApp\) \{\n\s+depuisWhatsAppEcran = true;\n\s+return void envoyer\(\{ whatsapp: depuisWhatsApp \}\);/);
-  assert.match(agent, /if \(dossier && c\.genre === "dossier"\) await relierWhatsApp\(dossier\);/);
+  assert.match(agent, /if \(dossier && c\.genre === "dossier"\) await relierWhatsApp\(dossier, r\.whatsappId \|\| null\);/);
   assert.match(agent, /await modifier\("whatsapp_conversations", waId, patch\);/);
   assert.match(agent, /const wc = etat\.store\.whatsappConversation \? await etat\.store\.whatsappConversation\(waId\) : null;/, "relue en base, pas dans etat.brut");
   assert.match(agent, /if \(action === "demander" && !\(await confirmer\(tr\("Remplacer le dossier relié \?/);
   assert.match(source("views/dossier.mjs"), /\[\?&\]paiement=1\(&\|\$\)/, "le dossier ouvre le formulaire de paiement");
   const sb = source("store-supabase.mjs");
   assert.match(sb, /resume, resume_le, paiement_signale, promesse_le/);
-  assert.match(sb, /whatsapp_conversation_id"\);\n\s+if \(error && colonneAbsente\(error, "whatsapp_conversation_id"\)\)/, "relu sans la colonne avant la migration 61");
+  // Migration 133 : relue d'abord avec le verrou de réponse, puis sans lui, puis sans la colonne de la migration 61.
+  assert.match(sb, /whatsapp_conversation_id, reponse_par, reponse_le`\);\n\s+if \(error && colonneAbsente\(error, "reponse_par"\)\)[^\n]+\n\s+if \(error && colonneAbsente\(error, "whatsapp_conversation_id"\)\)/, "relu sans la colonne avant la migration 61");
 });

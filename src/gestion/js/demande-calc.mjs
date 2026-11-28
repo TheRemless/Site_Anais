@@ -1,7 +1,7 @@
 // Demande d'un client reçue par WhatsApp : lecture du message que rédigent les formulaires des sites Secret et Taxi, propositions de prix
 // d'après la base partenaires, et réponse prête à envoyer. Logique pure, testée avec node --test.
 // Rien n'est inventé : un prix vient d'une ligne de la base, et sans correspondance on propose seulement de chercher à la main.
-import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme, proposable, quantiteParDefaut } from "./partenaires-calc.mjs";
+import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme, proposable, quantiteParDefaut, nettoyerTelephone } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 import { PRODUITS_SITE } from "./site-produits.mjs";
@@ -258,7 +258,7 @@ const avecAnnee = (jour, mois, anneeTxt, aujourdhui) => {
 
 // Date citée dans une phrase : « 12 December », « December 12th », « le 3 janvier », « demain », « 20/12 ». Vide si rien de sûr.
 export function lireDateLibre(texte, aujourdhui, reference = "") {
-  const t = sansAcc(texte).replace(TELEPHONE, " ");
+  const t = sansAcc(nettoyerTelephone(texte)).replace(TELEPHONE, " ");
   if (/\bapres[- ]?demain\b|day after tomorrow/.test(t)) return jourPlus(aujourdhui, 2);
   if (/\bdemain\b|\btomorrow\b/.test(t)) return jourPlus(aujourdhui, 1);
   if (/\baujourd'?hui\b|\btoday\b|\bce soir\b|\btonight\b/.test(t)) return aujourdhui;
@@ -301,7 +301,7 @@ const NON_NOMS = /^(merci|thanks?|thank|hello|hi|hey|bonjour|bonsoir|salut|cordi
 // Heure citée dans une phrase : « 9am », « 9 am », « 9.30am », « 9:30 pm », « 21h », « 21h30 », « 14:45 ». Un nombre sans marqueur (« at 9 », « 22.11 »,
 // « 10 adults », une date) n'est jamais une heure.
 export function lireHeureLibre(texte) {
-  const t = sansAcc(texte).replace(TELEPHONE, " ").replace(/\b20\d\d-\d{2}-\d{2}\b/g, " ");
+  const t = sansAcc(nettoyerTelephone(texte)).replace(TELEPHONE, " ").replace(/\b20\d\d-\d{2}-\d{2}\b/g, " ");
   const deux = (n) => String(n).padStart(2, "0");
   let m = /(?<![\d.:/])(\d{1,2})(?:[:.h]([0-5]\d))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-z])/.exec(t);
   if (m) {
@@ -371,8 +371,9 @@ export function lireLibre(texte, aujourdhui) {
   const t = chiffresPourMots(sansAcc(brut));
   const d = { libre: true, marque: "", type: "", nom: "", prestation: "", de: "", vers: "", date: lireDateLibre(brut, aujourdhui), dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, hotel: "", telephone: "" };
 
-  // Téléphone : une suite de 8 à 15 chiffres qui n'est pas une date.
-  for (const m of brut.matchAll(TELEPHONE)) {
+  // Téléphone : une suite de 8 à 15 chiffres qui n'est pas une date. Le texte passe d'abord par nettoyerTelephone, comme tout numéro : un
+  // numéro copié d'un iPhone (trait d'union insécable U+2011, marques de sens) ne s'arrête plus au premier tiret (relecture de la PR 356).
+  for (const m of nettoyerTelephone(brut).matchAll(TELEPHONE)) {
     const n = m[0].replace(/\D/g, "").length;
     if (n >= 8 && n <= 15 && !/\d{4}-\d{2}-\d{2}/.test(m[0]) && (/^(\+|00|0)/.test(m[0].trim()) || n >= 9)) {
       d.telephone = m[0].trim().replace(/[\s.-]+$/, "");
@@ -728,7 +729,8 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
   }
   for (const p of prestations) {
     // Les frais de parc (à payer sur place) et les tarifs enfant se rattachent à une excursion, ils ne se proposent pas seuls.
-    if (!proposable(p, partenaires) || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup") continue;
+    // Une option d'un service (migration 130) non plus : elle se choisit sous son service.
+    if (!proposable(p, partenaires) || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup" || (Array.isArray(p.option_de) && p.option_de.length)) continue;
     const groupe = sansAccents(p.groupe || p.libelle);
     let score = 0;
     let motsCommuns = 0;

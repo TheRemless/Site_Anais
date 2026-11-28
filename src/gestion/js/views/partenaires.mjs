@@ -262,7 +262,7 @@ export function fichePartenaire(id) {
               h("h2", null, tr("Prise en charge à l'hôtel")),
               (r.pickups || []).map(tableauPickup),
               (r.pickups || []).length ? null : h("p", { class: "vide-court" }, tr("Aucune grille de pickup. Une grille donne l'heure de pickup de chaque zone pour chaque départ.")),
-              ecrit && !modeTaxi() ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Pickups et points d'embarquement"), formulaireEmbarquementPickup(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier les pickups et les points d'embarquement"))) : null
+              ecrit && !modeTaxi() ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Pickups et points d'embarquement"), formulaireEmbarquementPickup(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier les pickups"))) : null
             )
           : null,
         p.notes ? bloc(N_("Notes"), paragraphes(p.notes)) : null,

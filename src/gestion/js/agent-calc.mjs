@@ -47,9 +47,11 @@ export function filDepuis(messages = [], cartes = []) {
     } else {
       // Les pièces jointes d'un message (migration 55) : une bulle de vignettes avant son texte.
       const pieces = blocs.filter((b) => b.type === "fichier").map((b) => ({ id: b.id, nom: b.nom || "", media_type: b.media_type || "", taille: Number(b.taille) || 0 }));
-      if (pieces.length) items.push({ genre: "pieces", fichiers: pieces, t });
+      // L'auteur réel du message (migration 133) : la personne qui l'a envoyé, montré quand ce n'est pas la propriétaire de la conversation.
+      const auteur = m.auteur_id || null;
+      if (pieces.length) items.push({ genre: "pieces", fichiers: pieces, t, auteur });
       for (const b of blocs) {
-        if (b.type === "text" && b.text.trim()) items.push({ genre: "personne", texte: b.text.trim(), t });
+        if (b.type === "text" && b.text.trim()) items.push({ genre: "personne", texte: b.text.trim(), t, auteur });
         if (b.type === "tool_result" && outils.get(b.tool_use_id) === "planifier_course" && !b.is_error) {
           try {
             const plan = JSON.parse(typeof b.content === "string" ? b.content : (b.content || []).map((c) => c.text || "").join(""));
@@ -207,6 +209,8 @@ export function propositionDepuisCarte(donnees = {}) {
       prix_carte: s.offre && ["saisi", "client_non_corrige"].includes(s.origine_prix) && Number(s.prix) > 0 ? Number(s.prix) : null,
       // L'origine du prix, gardée jusqu'à la réservation (details.prix_origine) : un prix du client non corrigé ne lève jamais un net.
       prix_origine: ["saisi", "client_non_corrige"].includes(s.origine_prix) ? s.origine_prix : null,
+      // Les options du service proposées par l'Assistant (26.11.2026) : [{ id, prix }], le prix total de chaque option (null : celui du catalogue).
+      options: (Array.isArray(s.options) ? s.options : []).filter((o) => o && o.offre && o.offre.id).map((o) => ({ id: o.offre.id, prix: o.prix === null || o.prix === undefined || o.prix === "" ? null : Number(o.prix), qte: Math.max(1, Number(o.qte) || 1) })),
       // Le nombre de véhicules du devis calculé par Nani (devis-calc.mjs, appliquerDevis) : le dossier reprend le devis.
       vehicules: Number.isInteger(Number(s.vehicules)) && Number(s.vehicules) > 1 ? Number(s.vehicules) : null,
       lieu_pickup: s.lieu_pickup || "",
@@ -228,10 +232,15 @@ export function propositionDepuisCarte(donnees = {}) {
 // Même reconnaissance que la fonction (maps.js, UNE_URL) : avec schéma, en « www. », ou un domaine suivi d'un chemin (« goo.gl/x »).
 const UNE_URL = /(?:\b(?:https?:\/\/|www\.)|(?<![\w@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?=\/))[^\s<>"']+/gi;
 export const sansLien = (t) => String(t || "").replace(UNE_URL, " ").replace(/\s+/g, " ").trim();
+// Les options d'une carte « reservation » (26.11.2026) : [{ prestation_id, libelle (anglais), prix }]. Le service ajouté par carte n'a pas de
+// ligne de facture : elles sont gardées sur la réservation (details.options), que le voucher et la Booking confirmation impriment.
+export const optionsDeLaCarte = (s) =>
+  (Array.isArray(s && s.options) ? s.options : []).filter((o) => o && o.offre && o.offre.id).map((o) => ({ prestation_id: o.offre.id, libelle: String(o.libelle || ""), prix: o.prix === null || o.prix === undefined || o.prix === "" || !Number.isFinite(Number(o.prix)) ? null : Number(o.prix), qte: Math.max(1, Number(o.qte) || 1) }));
 function detailsDeCarte(s) {
   const depose = sansLien(s.vers);
+  const options = optionsDeLaCarte(s);
   const details = detailsAvecSieges(
-    { ...(depose ? { drop_off: depose } : {}), ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
+    { ...(options.length ? { options } : {}), ...(depose ? { drop_off: depose } : {}), ...(s.vol ? { vol: s.vol } : {}), ...(bagagesCarte(s) ? { bagages: bagagesCarte(s) } : {}), ...(String(s.remarque_voucher || "").trim() ? { remarques: String(s.remarque_voucher).trim() } : {}), ...(s.origine_prix === "client_non_corrige" ? { prix_origine: "client_non_corrige" } : {}) },
     siegesDeCarte(s),
   );
   return Object.keys(details).length ? { details } : {};
@@ -268,6 +277,8 @@ export function reservationDepuisCarte(donnees = {}, { partenaireId = null, surP
     montant_vente: s.prix ?? null,
     ...(s.offre && s.offre.genre === "trajet" ? { trajet_id: s.offre.id } : {}),
     ...(s.offre && s.offre.genre === "prestation" ? { prestation_id: s.offre.id } : {}),
+    // Les options du service (26.11.2026) : leur prix entre dans le montant vendu (le prix du service ne les compte pas).
+    ...(optionsDeLaCarte(s).length && s.prix !== null && s.prix !== undefined && optionsDeLaCarte(s).every((o) => o.prix !== null) ? { montant_vente: Math.round((Number(s.prix) + optionsDeLaCarte(s).reduce((t, o) => t + o.prix, 0)) * 100) / 100 } : {}),
     // L'origine d'un prix repris du client sans correction de Nani (revue de la PR 307) : relue par le contrôle (dossierPourControle).
     // Tout ce qui sert au client et au chauffeur va sur le voucher (22.11.2026) : vol, sièges par type, bagages, remarque en anglais.
     ...detailsDeCarte(s),
@@ -289,6 +300,9 @@ export function reservationModifiee(r, donnees = {}) {
       return { ...r, lieu_pickup: v };
     case "adultes":
       return { ...r, personnes: { ...p, adultes: Number(v) || 0 } };
+    // Une option ajoutée au service (26.11.2026) : la fenêtre de la réservation l'ajoute sur la facture (options-reservation.mjs).
+    case "option":
+      return donnees.option && donnees.option.offre ? { ...r, options_ajout: [{ prestation_id: donnees.option.offre.id, prix: donnees.option.prix ?? null, libelle: donnees.option.libelle || "", qte: Math.max(1, Number(donnees.option.qte) || 1) }] } : r;
     case "enfants":
       return { ...r, personnes: { ...p, enfants: Number(v) || 0 } };
     // Les sièges enfant ou bébé : dans `details.sieges` (0 les retire), ce que le voucher et la Booking confirmation impriment.

@@ -3,10 +3,12 @@
 import { aujourdhui, ajouterJours, totalDossier, sommePaiements, montantSurPlace, numeroVolTape } from "./calc.mjs";
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
+import { voitEquipe, reponseEnCours } from "./agent-equipe-calc.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
-import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { calculerNets, suiviDeclencheur, lignesOptionChangees } from "./nets-base-local.mjs";
+import { imputationDossier } from "./operations-calc.mjs";
 import { accesLocal, coursesLocales, saisieLocale } from "./courses-partenaire-calc.mjs";
 import { corrigerLocal } from "./encaisser-calc.mjs";
 import { demandesDemo, bandeauxDemo, demandesWhatsAppDemo } from "./demo-site.mjs";
@@ -21,6 +23,7 @@ import { etapeManuelleLocale, faitsDemo } from "./demo-etapes.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
+import { lireReglageNuit } from "./whatsapp-nuit-calc.mjs";
 import { refusLienDemande, refusDelier, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -287,7 +290,11 @@ export function creer() {
     const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
     if (!finances) return base;
     const doc = docs.filter((x) => x.type === "facture").pop() || devis;
-    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)), sur_place: doc ? montantSurPlace(doc.contenu) : 0 };
+    const total = totalDossier(docs);
+    const recu = sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id));
+    // Comme recalculer_dossier (migration 131) : la part du reçu imputée à chaque service payé sur place, et ce qui dépasse.
+    const imp = imputationDossier({ total, recu, reservations: data.reservations.filter((x) => x.dossier_id === d.id), annule: !!d.annule });
+    return { ...base, total, devise: (doc && doc.contenu.devise) || null, recu, sur_place: doc ? montantSurPlace(doc.contenu) : 0, parts: imp.parts, a_rembourser: imp.a_rembourser, trop_percu: imp.trop_percu };
   };
   const dossiersVisibles = () => {
     const ctx = contexte();
@@ -446,6 +453,18 @@ export function creer() {
   };
 
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
+  // Une conversation de l'Assistant lisible, comme la base (migration 133, agent_ma_conversation) : la mienne, ou celle de l'équipe pour
+  // l'administration de son entreprise, toujours dans une entreprise où j'écris des dossiers.
+  const priseRecente = (c) => !!c.prise_le && Date.now() - Date.parse(c.prise_le) < 2 * 60 * 1000;
+  const carteVisible = (id) => {
+    const c = data.agent_cartes.find((x) => x.id === id);
+    return c && data.agent_conversations.some((v) => v.id === c.conversation_id && convAgentVisible(v)) ? c : null;
+  };
+  const convAgentVisible = (c) => {
+    if (!c) return false;
+    const p = permissionsDans(contexte(), c.entite_id);
+    return p.includes("dossiers.ecrire") && (c.user_id === utilisateur.user_id || voitEquipe(p, voitTout(contexte(), c.entite_id)));
+  };
   // La carte mixte de la démonstration : seulement quand la personne travaille dans les deux entreprises (comme modeUnifie) et que la demande
   // cite une excursion en bateau et un transfert.
   function carteMixteDemo(entiteId, texte) {
@@ -831,7 +850,7 @@ export function creer() {
     },
     async whatsappConversation(id) {
       const c = conversationLue(id);
-      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, ...(c.type_contact ? { type_contact: c.type_contact } : {}) } : null;
+      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, telephone: c.telephone || "", nom: c.nom || "", partenaire_id: c.partenaire_id || null, ...(c.type_contact ? { type_contact: c.type_contact } : {}), ...(c.reponses ? { reponses: c.reponses } : {}) } : null;
     },
     // Demandes du site et WhatsApp reliés (migration 72), avec les contrôles de demande_site_relier et whatsapp_relier_apres_demande.
     async demandeSite(id) {
@@ -988,6 +1007,19 @@ export function creer() {
     async whatsappRelancerEvenements() {
       return 0;
     },
+    // Message de nuit (migration 132) : mêmes contrôles que whatsapp_regler_nuit.
+    async whatsappMessageNuit(organisationId, valeurs) {
+      const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
+      // Le droit d'écrire dans la boîte (whatsapp_ecrit), comme la base.
+      if (!r || organisationId !== monOrg() || !ecritWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      const lu = lireReglageNuit(valeurs);
+      if (lu.erreur) throw new Error(tr(lu.erreur));
+      if ((r.nuit_modifie_le || null) !== ((valeurs && valeurs.luLe) || null)) throw new Error(tr("Le message de nuit a été changé entre-temps sur un autre appareil. Rechargez la page pour voir la dernière version."));
+      const maintenant = new Date().toISOString();
+      Object.assign(r, { nuit_active: lu.valeurs.active, nuit_texte: lu.valeurs.texte, nuit_debut: lu.valeurs.debut, nuit_fin: lu.valeurs.fin, nuit_modifie_le: maintenant, updated_at: maintenant });
+      sauve();
+      return { organisation_id: r.organisation_id, nuit_active: r.nuit_active, nuit_texte: r.nuit_texte, nuit_debut: r.nuit_debut, nuit_fin: r.nuit_fin, nuit_modifie_le: r.nuit_modifie_le };
+    },
     async whatsappReception(organisationId, actif) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
       if (!r || organisationId !== monOrg() || !litWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
@@ -1012,33 +1044,34 @@ export function creer() {
     },
     // ---- Agent de l'onglet « Assistant » (migration 52) : en démonstration, un agent simulé (agent-demo.mjs), mêmes événements que la fonction.
     async agentConversations(entiteId) {
-      return structuredClone(data.agent_conversations.filter((c) => c.entite_id === entiteId && c.user_id === utilisateur.user_id));
+      // Réponse en cours, comme agent_reponses_en_cours (migration 133) : la démonstration n'a qu'une horloge.
+      return structuredClone(data.agent_conversations.filter((c) => c.entite_id === entiteId && convAgentVisible(c))).map((c) => ({ ...c, reponse_en_cours: !!reponseEnCours(c) }));
     },
     async agentAttente(entiteId) {
-      const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === entiteId && c.user_id === utilisateur.user_id).map((c) => c.id));
+      const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === entiteId && convAgentVisible(c)).map((c) => c.id));
       return data.agent_cartes.filter((c) => miennes.has(c.conversation_id) && c.statut === "proposee").map((c) => ({ conversation_id: c.conversation_id }));
     },
     async agentFil(id) {
-      const c = data.agent_conversations.find((x) => x.id === id && x.user_id === utilisateur.user_id);
+      const c = data.agent_conversations.find((x) => x.id === id && convAgentVisible(x));
       if (!c) return null;
       return { messages: structuredClone(data.agent_messages.filter((m) => m.conversation_id === id)), cartes: structuredClone(data.agent_cartes.filter((x) => x.conversation_id === id)) };
     },
     async agentMajConversation(id, patch) {
-      const c = data.agent_conversations.find((x) => x.id === id && x.user_id === utilisateur.user_id);
+      const c = data.agent_conversations.find((x) => x.id === id && convAgentVisible(x));
       if (!c) throw new Error("Conversation introuvable");
       for (const k of ["titre", "statut", "dossier_id"]) if (k in patch) c[k] = patch[k];
       sauve();
       return structuredClone(c);
     },
     async agentSupprimerConversation(id) {
-      data.agent_conversations = data.agent_conversations.filter((x) => !(x.id === id && x.user_id === utilisateur.user_id));
+      data.agent_conversations = data.agent_conversations.filter((x) => !(x.id === id && convAgentVisible(x)));
       data.agent_messages = data.agent_messages.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
       data.agent_cartes = data.agent_cartes.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
       data.agent_fichiers = data.agent_fichiers.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
       sauve();
     },
     async agentConversationsDuDossier(dossierId) {
-      return structuredClone(data.agent_conversations.filter((c) => c.dossier_id === dossierId && c.user_id === utilisateur.user_id).sort((a, b) => String(b.maj_le).localeCompare(String(a.maj_le))).slice(0, 10));
+      return structuredClone(data.agent_conversations.filter((c) => c.dossier_id === dossierId && convAgentVisible(c)).sort((a, b) => String(b.maj_le).localeCompare(String(a.maj_le))).slice(0, 10));
     },
     // Apprentissages (migration 54), comme la base : notés par qui utilise l'agent, lus par l'entreprise, supprimés par l'administration.
     async agentNoterApprentissages(entiteId, carteId, lignes) {
@@ -1087,24 +1120,60 @@ export function creer() {
     },
     // Comme la migration 120 : une carte se prend une fois (proposée, pas prise depuis moins de 2 minutes), se rend après un arrêt.
     // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou.
+    // L'ancien nom ne force jamais une prise d'une autre personne (relecture n° 2 de la PR 366) : un écran resté en cache ne passe pas outre.
     async agentPrendreCarte(id) {
-      const c = data.agent_cartes.find((x) => x.id === id);
-      if (!c) return true;
-      if (!data.agent_conversations.some((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id)) throw new Error("Carte introuvable");
-      const maintenant = Date.now();
-      if (c.statut !== "proposee" || (c.prise_le && maintenant - Date.parse(c.prise_le) < 2 * 60 * 1000)) return false;
-      c.prise_le = new Date(maintenant).toISOString();
-      sauve();
-      return true;
+      return (await this.agentPrendreCarteEquipe(id)).ok;
     },
+    // Comme la migration 133 (prendre_agent_carte_equipe, controler_agent_carte, ecarter_agent_carte) : la prise est à une personne.
+    // Une carte que la démo ne garde pas (servie à l'écran par un autre magasin, tests) : l'écran garde son propre verrou ({ ok: true }) ;
+    // une carte d'une conversation que la personne ne lit pas : « Carte introuvable », comme avant.
+    async agentPrendreCarteEquipe(id, { forcer = false } = {}) {
+      if (!data.agent_cartes.some((x) => x.id === id)) return { ok: true };
+      const c = carteVisible(id);
+      if (!c) throw new Error("Carte introuvable");
+      if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
+      if (priseRecente(c)) return { ok: false, raison: "prise", par: c.prise_par || null, depuis: c.prise_le };
+      if (c.prise_le && c.prise_par !== utilisateur.user_id && !forcer) return { ok: false, raison: "expiree", par: c.prise_par || null, depuis: c.prise_le };
+      c.prise_le = new Date().toISOString();
+      c.prise_par = utilisateur.user_id;
+      sauve();
+      return { ok: true };
+    },
+    async agentControlerCarte(id) {
+      if (!data.agent_cartes.some((x) => x.id === id)) return { ok: true };
+      const c = carteVisible(id);
+      if (!c) return { ok: false, raison: "introuvable" };
+      if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
+      if (!c.prise_le || c.prise_par !== utilisateur.user_id) return { ok: false, raison: c.prise_le ? "reprise" : "libre", par: c.prise_par || null };
+      c.prise_le = new Date().toISOString();
+      sauve();
+      return { ok: true };
+    },
+    async agentEcarterCarte(id) {
+      if (!data.agent_cartes.some((x) => x.id === id)) return { ok: true, carte: await this.agentCarte(id, "ecartee") };
+      const c = carteVisible(id);
+      if (!c) return { ok: false, raison: "introuvable" };
+      if (c.statut !== "proposee") return { ok: false, raison: "decidee", statut: c.statut, par: c.decide_par || null };
+      if (priseRecente(c) && c.prise_par !== utilisateur.user_id) return { ok: false, raison: "prise", par: c.prise_par || null };
+      // Comme agent_carte_envoyee : une demande d'amélioration partie sur GitHub ne s'écarte plus.
+      if ((data.ameliorations || []).some((a) => a.carte_id === c.id && a.issue_numero)) return { ok: false, raison: "envoyee" };
+      Object.assign(c, { statut: "ecartee", decide_le: new Date().toISOString(), decide_par: utilisateur.user_id, prise_le: null, prise_par: null });
+      sauve();
+      return { ok: true, statut: "ecartee" };
+    },
+    // Seule la personne qui a pris la carte la rend.
     async agentRendreCarte(id) {
       const c = data.agent_cartes.find((x) => x.id === id);
-      if (c && c.statut === "proposee" && c.prise_le) (c.prise_le = null), sauve();
+      if (c && c.statut === "proposee" && c.prise_le && (!c.prise_par || c.prise_par === utilisateur.user_id)) (c.prise_le = null), (c.prise_par = null), sauve();
     },
     async agentCarte(id, statut) {
       const c = data.agent_cartes.find((x) => x.id === id);
-      if (!c || !data.agent_conversations.some((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id)) throw new Error("Carte introuvable");
-      if (c.statut !== statut) (c.statut = statut), (c.decide_le = new Date().toISOString());
+      if (!c || !data.agent_conversations.some((v) => v.id === c.conversation_id && convAgentVisible(v))) throw new Error("Carte introuvable");
+      // Comme le déclencheur de la migration 133 : une carte décidée ne change plus ; une carte prise par une autre personne ne se décide pas.
+      if (c.statut !== statut && c.statut !== "proposee") throw new Error("carte_decidee");
+      if (c.statut !== statut && priseRecente(c) && c.prise_par && c.prise_par !== utilisateur.user_id) throw new Error("carte_prise");
+      // Qui décide est noté comme par la base (migration 133).
+      if (c.statut !== statut) (c.statut = statut), (c.decide_le = new Date().toISOString()), (c.decide_par = utilisateur.user_id);
       sauve();
       return structuredClone(c);
     },
@@ -1116,7 +1185,7 @@ export function creer() {
       if (!permissionsDans(contexte(), entite_id).includes("reglages.ecrire")) return { erreur: "reserve_admin" };
       const { controlerDemande } = await import("./ameliorations-calc.mjs");
       const c = data.agent_cartes.find((x) => x.id === carte_id);
-      const conv = c && data.agent_conversations.find((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id);
+      const conv = c && data.agent_conversations.find((v) => v.id === c.conversation_id && convAgentVisible(v));
       const r = controlerDemande({ permissions: permissionsDans(contexte(), entite_id), carte: c && conv ? { ...c, entite_id: conv.entite_id } : null, entiteId: entite_id, titre, texte, demandesDuJour: 0 });
       if (!r.ok) return { erreur: r.erreur, ...(r.motifs ? { motifs: r.motifs } : {}) };
       const maintenant = new Date().toISOString();
@@ -1167,7 +1236,24 @@ export function creer() {
       data.liaisons_ferry = data.liaisons_ferry.filter((l) => l.id !== id);
       sauve();
     },
+    // Une seule réponse à la fois, comme la fonction (migration 133, prendre_agent_conversation) : une conversation où une réponse est en cours
+    // (autre onglet, autre personne de la démo) est occupée ; elle est rendue à la fin, quoi qu'il arrive.
     async agentEnvoyer(corps, surEvenement) {
+      const id = corps && corps.conversation_id;
+      const c = id ? data.agent_conversations.find((x) => x.id === id && convAgentVisible(x)) : null;
+      if (c && reponseEnCours(c)) return { erreur: "conversation_occupee", ...(c.reponse_par ? { par: c.reponse_par } : {}) };
+      if (c) (c.reponse_par = utilisateur.user_id), (c.reponse_le = new Date().toISOString()), sauve();
+      try {
+        return await this.agentEnvoyerDemo(corps, surEvenement);
+      } finally {
+        const apres = c ? data.agent_conversations.find((x) => x.id === c.id) : null;
+        if (apres) (apres.reponse_par = null), (apres.reponse_le = null), sauve();
+      }
+    },
+    ecouterAgent(rappel) {
+      return this.ecouter(["agent_conversations", "agent_cartes"], rappel);
+    },
+    async agentEnvoyerDemo(corps, surEvenement) {
       const e = corps.entite_id;
       const regl = data.reglages[e] || {};
       if (!regl.agent_ia) return { erreur: "agent_eteint" };
@@ -1195,7 +1281,7 @@ export function creer() {
         // Contact personnel : refusé dans tous les modes, avant de lire un seul message.
         if (wc.reponses === "jamais") return { erreur: "contact_personnel" };
         if (suiteWa) {
-          const lie = data.agent_conversations.find((c) => c.id === corps.conversation_id && c.user_id === utilisateur.user_id);
+          const lie = data.agent_conversations.find((c) => c.id === corps.conversation_id && convAgentVisible(c));
           if (!lie || lie.entite_id !== e || lie.whatsapp_conversation_id !== wc.id) return { erreur: "conversation_introuvable" };
         }
         waEcrit = !!conversationEcrite(wc.id);
@@ -1214,7 +1300,7 @@ export function creer() {
       if (!texte && !pieces.length) return { erreur: "message_invalide" };
       if (pieces.length > 6) return { erreur: "trop_de_fichiers" };
       if (pieces.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
-      let conv = corps.conversation_id ? data.agent_conversations.find((c) => c.id === corps.conversation_id && c.user_id === utilisateur.user_id) : null;
+      let conv = corps.conversation_id ? data.agent_conversations.find((c) => c.id === corps.conversation_id && convAgentVisible(c)) : null;
       const maintenant = () => new Date(Date.now() + data.agent_messages.length).toISOString();
       if (!conv) {
         const { titreDepuis } = await import("./agent-calc.mjs");
@@ -1223,7 +1309,8 @@ export function creer() {
         conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre, apercu: "", dossier_id: (wc && modeWa === "maj" ? wc.dossier_id : null) || corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {}, ...(wc && waEcrit ? { whatsapp_conversation_id: wc.id } : {}) };
         data.agent_conversations.push(conv);
       }
-      const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant() });
+      // L'auteur réel, comme la base (migration 133) : la personne connectée, même dans la conversation d'une collègue.
+      const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant(), auteur_id: utilisateur.user_id });
       surEvenement({ t: "conversation", id: conv.id, titre: conv.titre, dossier_id: conv.dossier_id, ...(conv.whatsapp_conversation_id ? { whatsapp_conversation_id: conv.whatsapp_conversation_id } : {}) });
       // Les mots qui guident la démonstration : la question, ou l'échange du client pour « Prépare les dossiers » (PR B).
       let texteGuide = texte;
@@ -1423,7 +1510,7 @@ export function creer() {
       if (corps.usage === "brochure") {
         const b = await import("./brochure-calc.mjs");
         if (b.DROITS_BROCHURE.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
-        const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === e && c.user_id === utilisateur.user_id).map((c) => c.id));
+        const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === e && convAgentVisible(c)).map((c) => c.id));
         const fichiers = depuisAgent ? corps.fichiers_agent.map((id) => data.agent_fichiers.find((f) => f.id === id && miennes.has(f.conversation_id))) : Array.isArray(corps.fichiers) ? corps.fichiers : [];
         if (!fichiers.length || fichiers.some((f) => !f)) return { erreur: "fichiers_absents" };
         if (fichiers.length > 6) return { erreur: "trop_de_fichiers" };
@@ -1594,9 +1681,24 @@ export function creer() {
         details[k] = court(ligne[k]) && court(v) ? { avant: ligne[k] ?? null, apres: v } : "modifié";
       }
       const copie = table === "reservations" ? structuredClone(ligne) : null;
+      const contenuAvant = table === "documents" && "contenu" in patch ? structuredClone(ligne.contenu) : null;
       Object.assign(ligne, patch);
       if (Object.keys(details).length) journaliser(table, "update", ligne, details);
       if (copie) remplirNets(ligne, copie);
+      // Comme suivre_nets_options_document (migration 130) : une ligne d'option changée sur la facture ou le devis fait suivre le net.
+      if (contenuAvant && ["facture", "devis"].includes(ligne.type)) {
+        const ids = lignesOptionChangees(contenuAvant, ligne.contenu);
+        if (ids.size)
+          for (const r of data.reservations.filter((x) => x.dossier_id === ligne.dossier_id && x.statut !== "annule" && [x.ligne_id, ...((x.details && x.details.lignes_ids) || [])].some((id) => ids.has(id)))) {
+            const n = data.reservations_nets.find((y) => y.reservation_id === r.id) || null;
+            const excursions = (entiteId) => ((data.reglages || {})[entiteId] || {}).fonctionnement === "excursions";
+            const valeurs = calculerNets(r, n, { ...data, excursions }, { suivreNet: true });
+            if (!valeurs) continue;
+            if (n) Object.assign(n, valeurs);
+            // Pas encore de ligne de nets : créée, comme calculer_nets_reservation (migration 32).
+            else data.reservations_nets.push({ id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, commission_recue_moyen: null, commission_partielle_le: null, commission_ecart_motif: null, commission_ecart_note: null, ...valeurs });
+          }
+      }
       sauve();
       return structuredClone(ligne);
     },

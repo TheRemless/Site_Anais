@@ -11,12 +11,15 @@ import { aTraiter } from "./demandes-site-calc.mjs";
 import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes } from "./direct-calc.mjs";
 import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTouche } from "./saisie.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
+import { boiteDefile, finDefilement } from "./tableaux-calc.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 import { agentActif, quand } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
 import { bandeauSauvegarde } from "./views/bandeau-sauvegarde.mjs";
 import { lecteurWhatsApp, badgeWhatsApp, TABLES_WHATSAPP } from "./whatsapp-calc.mjs";
+import { CLE_RETOUR_ENTITE, entrepriseAAfficher } from "./whatsapp-relie-calc.mjs";
 import { ATTENTE_WHATSAPP_MS, intervalleRepli, signatureWhatsApp, directCoupe } from "./direct-reprise-calc.mjs";
+import { etatBoutonPlus } from "./mobile-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
@@ -128,7 +131,8 @@ function vueConnexion() {
     : null;
   // Dit une fois : après une connexion puis une déconnexion, l'écran ne parle plus de ce lien.
   etat.retour = { ...etat.retour, erreur: null };
-  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), lienPerime, form);
+  // Le titre d'abord, le choix de la langue sous le formulaire (audit mobile n° 40 : il flottait seul au-dessus du titre).
+  return h("div", { class: "connexion" }, h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), lienPerime, form, selecteurLangue());
 }
 
 // `ou` : la barre où il s'affiche (« menu », « haut », « simple »). Les deux sélecteurs (barre latérale et barre du haut) sont dans la page
@@ -279,12 +283,16 @@ function blocCompte(apres) {
   const initiales = nom.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((s) => s.charAt(0).toUpperCase()).join("");
   return h("button", { class: "compte", type: "button", title: tr("Mon compte"), "aria-label": tr("Mon compte : {nom}", { nom }), onclick: () => ouvrirMonCompte(apres) }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
+// Dans la feuille « Plus » (téléphone), les outils portent leur libellé en clair à côté de l'icône (audit mobile n° 26).
+const outil = (apres, ic, libelle, onclick, classe = "", titre = libelle) => h("button", { class: [apres ? "secondaire outil-libelle" : "bouton-icone secondaire", classe].filter(Boolean).join(" "), type: "button", onclick, "aria-label": apres ? null : libelle, title: titre }, icone(ic), apres ? h("span", null, libelle) : null);
 const outilsCompte = (apres) => [
   // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
   // Seulement pour l'administratrice de l'entreprise ouverte : la fonction n'envoie les rappels qu'à elle (Jérémy, 17.11.2026).
-  estAdmin() ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels"), title: tr("Rappels") }, icone("cloche")) : null,
-  h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
-  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
+  estAdmin() ? outil(apres, "cloche", tr("Rappels"), async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels())) : null,
+  // Les raccourcis clavier n'ont pas de sens sur un écran tactile sans clavier : le bouton n'y apparaît pas.
+  // Sur ordinateur, l'infobulle rappelle la touche qui ouvre l'aide (relecture de la PR 363).
+  outil(apres, "clavier", tr("Raccourcis clavier"), () => (apres && apres(), ouvrirAide()), "seulement-clavier", apres ? tr("Raccourcis clavier") : tr("Raccourcis clavier (?)")),
+  etat.store.mode === "supabase" ? outil(apres, "deconnexion", tr("Se déconnecter"), deconnecter) : null,
 ];
 
 // Ordinateur : barre latérale avec les écrans par section, la recherche et le compte.
@@ -335,12 +343,145 @@ function ouvrirPlus() {
 
 // Bouton « + » flottant sur les écrans de liste : un geste pour créer. La création elle-même vit dans les écrans de saisie.
 // Seulement sur les listes et l'accueil, pas sur une fiche ni un éditeur : adresses exactes.
+// Le « + » s'efface quand on descend dans une liste et revient dès qu'on remonte : il ne cache plus une action ou un montant (audit mobile n° 5).
+// Seul un défilement de la personne compte (doigt, molette, touche dans la dernière seconde) : la position remise au retour sur une liste
+// passait pour une descente et le « + » restait caché (relecture de la PR 363, etatBoutonPlus de mobile-calc.mjs).
+if (typeof window !== "undefined") {
+  let yAvant = 0;
+  let dernierGeste = 0;
+  const geste = () => (dernierGeste = Date.now());
+  for (const type of ["touchmove", "wheel", "keydown"]) window.addEventListener(type, geste, { passive: true, capture: true });
+  window.addEventListener("scroll", () => {
+    const racine = document.documentElement;
+    const e = etatBoutonPlus({ y: window.scrollY, yAvant, replie: racine.classList.contains("plus-replie"), geste: Date.now() - dernierGeste < 1000 });
+    yAvant = e.yAvant;
+    racine.classList.toggle("plus-replie", e.replie);
+  }, { passive: true });
+}
+// Rangées qui défilent de côté (puces, onglets, graphique) : une classe dit s'il reste à voir à droite ou à gauche, le CSS estompe ce bord
+// (audit mobile n° 16 : « Sans su… », « Encaissements » coupés sans indice). Posé une fois par élément, remis à jour au défilement.
+const RANGEES = ".puces, .st-puces, .st-nav, .sous-onglets, .st-graphe-defile";
+function indicesDefilement(racine) {
+  for (const el of racine.querySelectorAll(RANGEES)) {
+    // Déjà suivie : on relit seulement (graphique dessiné, période changée, contenu remplacé).
+    if (el.dataset.indice) {
+      el.dispatchEvent(new Event("scroll"));
+      continue;
+    }
+    el.dataset.indice = "1";
+    const maj = () => {
+      const reste = el.scrollWidth - el.clientWidth - el.scrollLeft;
+      el.classList.toggle("suite-droite", reste > 4);
+      el.classList.toggle("suite-gauche", el.scrollLeft > 4);
+    };
+    el.addEventListener("scroll", maj, { passive: true });
+    maj();
+    // Le graphique se dessine après coup et se cale sur aujourd'hui : on relit une fois en place.
+    setTimeout(maj, 400);
+  }
+}
+if (typeof window !== "undefined") window.addEventListener("resize", () => document.querySelectorAll(RANGEES).forEach((el) => el.dispatchEvent(new Event("scroll"))));
+
+// Après chaque ajout dans la page (écran, feuille ouverte, graphique dessiné, période des Statistiques), une seule passe à l'image suivante :
+// indices de défilement des rangées, actions grisées hors connexion, format des dates vides (relecture de la PR 363). Seuls les ajouts de
+// nœuds comptent : la frappe dans un champ ne déclenche rien.
+function apresChangement() {
+  indicesDefilement(document.body);
+  marquerHorsLigne();
+  for (const champ of document.querySelectorAll('input[type="date"]')) marquerDateVide(champ);
+  const barre = document.querySelector(".barre-action");
+  if (barre && barre.offsetHeight) document.documentElement.style.setProperty("--haut-barre-action", `${barre.offsetHeight}px`);
+}
+// Tout tableau large défile dans son conteneur au lieu d'élargir la page (900 px avec la barre latérale : Dossiers, accueil Agence,
+// À encaisser ; relecture de la PR 367). Posé avant l'affichage (rappel synchrone de l'observateur), une seule fois par tableau.
+export function envelopperTableaux(racine) {
+  const tableaux = racine.matches?.("table.tableau") ? [racine] : [...(racine.querySelectorAll?.("table.tableau") || [])];
+  for (const t of tableaux) {
+    // Déjà dans une boîte qui défile (la nôtre, ou .tableau-defilant des statistiques et de la vue d'ensemble) : rien à faire.
+    if (!t.parentNode || t.parentElement?.classList.contains("tableau-defile") || t.parentElement?.classList.contains("tableau-defilant")) continue;
+    const boite = document.createElement("div");
+    // La marge basse d'un tableau « simple » passe à la boîte : elle fusionne avec la suite comme avant (même hauteur de page).
+    boite.className = t.classList.contains("simple") ? "tableau-defile simple" : "tableau-defile";
+    t.replaceWith(boite);
+    boite.append(t);
+    if (typeof ResizeObserver !== "undefined") suiviTaille.observe(boite);
+    boite.addEventListener("scroll", () => boite.classList.toggle("fin", finDefilement({ gauche: boite.scrollLeft, largeurBoite: boite.clientWidth, largeurContenu: boite.scrollWidth })), { passive: true });
+  }
+}
+// Un tableau qui ne tient pas défile dans sa boîte (règles dans tableaux-calc.mjs) : la boîte devient alors une région prise au
+// clavier, avec un fondu au bord droit tant que la fin n'est pas atteinte. Mesuré à la pose, à chaque changement de taille de la
+// boîte et quand des lignes arrivent (relecture de la PR 367 : pas de lignes empilées sur ordinateur, le tri et la sélection restent).
+function ajusterTableau(boite) {
+  if (!boite.isConnected) return;
+  const defile = boiteDefile({ largeurContenu: boite.scrollWidth, largeurBoite: boite.clientWidth });
+  boite.classList.toggle("deborde", defile);
+  boite.classList.toggle("fin", defile && finDefilement({ gauche: boite.scrollLeft, largeurBoite: boite.clientWidth, largeurContenu: boite.scrollWidth }));
+  if (defile) {
+    boite.setAttribute("tabindex", "0");
+    boite.setAttribute("role", "region");
+    boite.setAttribute("aria-label", tr("Tableau, défiler horizontalement"));
+  } else for (const a of ["tabindex", "role", "aria-label"]) boite.removeAttribute(a);
+}
+const suiviTaille = typeof ResizeObserver !== "undefined" ? new ResizeObserver((entrees) => entrees.forEach((e) => ajusterTableau(e.target))) : null;
+if (typeof window !== "undefined" && typeof MutationObserver !== "undefined") {
+  let prevu = false;
+  envelopperTableaux(document.body);
+  new MutationObserver((changements) => {
+    const aRevoir = new Set();
+    for (const c of changements) for (const n of c.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      envelopperTableaux(n);
+      const b = n.closest?.(".tableau-defile");
+      if (b) aRevoir.add(b);
+      for (const x of n.querySelectorAll?.(".tableau-defile") || []) aRevoir.add(x);
+    }
+    // Avant l'affichage : le tableau trop large n'apparaît jamais coupé.
+    aRevoir.forEach(ajusterTableau);
+    if (prevu || !changements.some((c) => c.addedNodes.length)) return;
+    prevu = true;
+    requestAnimationFrame(() => ((prevu = false), apresChangement()));
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
+// Hors connexion, les actions d'écriture sont grisées par le CSS (html.hors-ligne) ; ici, elles sont annoncées comme indisponibles, avec la
+// raison en infobulle. Pas de blocage : le serveur refuse déjà, et son message le dit. Au retour du réseau, tout est remis comme avant.
+// Seuls les boutons : un lien n'écrit rien (WhatsApp, demandes du site) ; data-lecture exclut un bouton qui ne fait qu'ouvrir ou lire.
+const ACTIONS_ECRITURE = "button.principal:not([data-lecture]), .bouton-plus, .barre-action button:not([data-lecture])";
+function marquerHorsLigne() {
+  if (document.documentElement.classList.contains("hors-ligne")) {
+    for (const b of document.querySelectorAll(ACTIONS_ECRITURE)) {
+      if (b.dataset.horsLigne || b.id === "principal") continue;
+      b.dataset.horsLigne = b.hasAttribute("title") ? b.getAttribute("title") : "-";
+      b.setAttribute("aria-disabled", "true");
+      b.title = tr("Hors connexion : rien ne s'enregistre pour l'instant.");
+    }
+    return;
+  }
+  for (const b of document.querySelectorAll("[data-hors-ligne]")) {
+    if (b.dataset.horsLigne === "-") b.removeAttribute("title");
+    else b.title = b.dataset.horsLigne;
+    b.removeAttribute("aria-disabled");
+    delete b.dataset.horsLigne;
+  }
+}
+
+// Champ date vide : Safari sur iPhone n'y écrit rien, ni format ni placeholder. La classe « vide » et le format attendu (data-vide) laissent
+// le CSS l'afficher (relecture de la PR 363), remis à jour à chaque saisie.
+function marquerDateVide(champ) {
+  if (!champ.dataset.vide) champ.dataset.vide = tr("jj.mm.aaaa");
+  champ.classList.toggle("vide", !champ.value);
+}
+if (typeof document !== "undefined") {
+  for (const type of ["input", "change"]) document.addEventListener(type, (e) => e.target && e.target.matches && e.target.matches('input[type="date"]') && marquerDateVide(e.target), true);
+}
 const ECRANS_AVEC_PLUS = /^#?\/?$|^#\/(dossiers|clients|reservations)(\?.*)?$/;
 function boutonPlus() {
   if (!peut("dossiers.ecrire")) return null;
   return h("button", { class: "bouton-plus", type: "button", "aria-label": tr("Nouveau"), title: tr("Nouveau"), onclick: ouvrirNouveau }, icone("ajouter", 26));
 }
 function ouvrirNouveau() {
+  // Un seul choix possible (pas d'Assistant) : le bouton « + » ouvre directement le nouveau dossier (audit mobile n° 23).
+  if (!agentVisible()) return naviguer("#/dossiers/nouveau");
   let fermer;
   const va = (hash) => () => (fermer(), naviguer(hash));
   const choix = (ic, titre, detail, onclick) => h("button", { type: "button", class: "choix-nouveau", onclick }, icone(ic, 22), h("span", null, h("strong", null, titre), h("span", null, detail)));
@@ -685,9 +826,28 @@ async function afficher() {
     document.title = tr("Aucun accès - Gestion");
     return;
   }
-  // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès.
-  const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
-  if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
+  // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès. Avant elle, le
+  // retour de l'Assistant d'une autre entreprise sur la même conversation WhatsApp (contre-relecture de la PR 355) : l'entreprise d'origine
+  // revient avant que la coque soit construite, et « entite » quitte l'adresse (entrepriseAAfficher).
+  let retourBrut = null;
+  try {
+    retourBrut = sessionStorage.getItem(CLE_RETOUR_ENTITE);
+  } catch {
+    retourBrut = null;
+  }
+  const choixEntite = entrepriseAAfficher({ hash: location.hash, active: etat.entiteId, accessibles: entitesAccessibles().map((e) => e.id), retourBrut });
+  if (choixEntite.consommer) {
+    try {
+      sessionStorage.removeItem(CLE_RETOUR_ENTITE);
+    } catch {
+      // stockage refusé
+    }
+  }
+  if (choixEntite.adresse) history.replaceState(history.state, "", choixEntite.adresse);
+  if (choixEntite.entite) {
+    changerEntite(choixEntite.entite, { naviguer: false });
+    if (choixEntite.adresse) toast(tr("De retour dans {nom}.", { nom: entiteActive().nom }));
+  }
   // Une notification WhatsApp d'une conversation à trier n'a pas d'entreprise : depuis ZTP, on passe dans la première entreprise du numéro
   // où la personne lit la boîte, au lieu de retomber sur l'accueil.
   if (/^#\/whatsapp(\?|$)/.test(location.hash) && etat.brut.whatsapp_disponible === true && !whatsappVisible()) {
@@ -716,7 +876,7 @@ async function afficher() {
     return;
   }
   const principal = document.getElementById("principal");
-  document.documentElement.classList.remove("a-barre-action");
+  document.documentElement.classList.remove("a-barre-action", "plus-replie");
   const moi = ++rendu;
   let noeud;
   // Une première visite d'un écran télécharge son code : au-delà de 150 ms, un squelette tient la place plutôt qu'un écran figé.
@@ -746,6 +906,7 @@ async function afficher() {
   restaurerDefilement(hash);
   // L'écran place lui-même son défilement une fois en place, avant l'affichage (fils WhatsApp, fil-defilement.mjs).
   if (typeof noeud.apresInsertion === "function") noeud.apresInsertion();
+  indicesDefilement(principal);
   derniereVue = hash;
   majBadges();
 }
@@ -997,9 +1158,17 @@ function surveillerDonnees() {
   // L'outil n'enregistre rien sans réseau : on le dit, pour qu'une saisie ne soit pas crue sauvée.
   let hors = typeof navigator !== "undefined" && navigator.onLine === false;
   const majPastille = () => {
-    pastille.hidden = !hors && echecs < 2;
-    if (hors) pastille.textContent = tr("Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.");
+    // En démonstration, tout reste dans le navigateur : rien ne dépend du réseau, le bandeau tromperait (vu sur simulateur, où le réseau bascule).
+    pastille.hidden = etat.store.mode !== "supabase" || (!hors && echecs < 2);
+    if (hors) pastille.textContent = tr("Hors connexion : rien ne s'enregistre pour l'instant.");
     else if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
+    // Le bandeau posé sur la barre d'onglets fait remonter le « + » de sa hauteur ; hors connexion, les actions d'écriture se grisent
+    // (relecture de la PR 363).
+    const racine = document.documentElement;
+    racine.classList.toggle("synchro-visible", !pastille.hidden);
+    if (!pastille.hidden) racine.style.setProperty("--haut-synchro", `${pastille.offsetHeight}px`);
+    racine.classList.toggle("hors-ligne", !pastille.hidden && hors);
+    marquerHorsLigne();
   };
   // `force` : actualisation demandée par la personne (tirer pour actualiser), sans attendre les dix secondes ni la visibilité de l'onglet.
   // Elle renvoie ce qui s'est passé pour que l'écran le dise.

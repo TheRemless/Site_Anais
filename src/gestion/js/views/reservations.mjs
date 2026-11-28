@@ -10,7 +10,7 @@ import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, typeTra
 import { SIEGES_MAX } from "../creation-voucher-calc.mjs";
 import { siegesLus, siegesTotal, siegesChoisis, detailsAvecSieges, siegesAChoisir } from "../sieges-calc.mjs";
 import { commissionDuPartenaire } from "../courses-partenaire-calc.mjs";
-import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, bebesDemandes, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, rattachementsDepuisDocument, rolesDuService, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, bebesDemandes, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, hotelEtChambre, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient, optionsDuService, texteOptionService } from "../operations-calc.mjs";
 import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
 import { venteDuTarif } from "../demande-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
@@ -20,7 +20,7 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige } from "../partenaires-calc.mjs";
+import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige, estPrestationOption } from "../partenaires-calc.mjs";
 import { prestataires } from "../apporteurs-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
@@ -30,11 +30,12 @@ import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire } from "./prestataire.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
-import { gestePrincipal, entreesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
+import { gestePrincipal, entreesMenu, groupesMenu, comparaisonEnregistrement } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 import { saisieRapideNet } from "./saisie-net.mjs";
 import { texteCorrection } from "../encaisser-calc.mjs";
 import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
+import { blocOptionsReservation } from "./options-reservation.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -120,9 +121,18 @@ function ouvrirModification(r, apres) {
 
 // Menu « … » d'une carte : les gestes qui ne sont pas le geste principal.
 function ouvrirMenu(r, entrees) {
+  const bouton = ([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle);
   const fermer = modal(
     r.libelle,
-    h("div", { class: "modal-corps menu-gestes" }, entrees.map(([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle))),
+    h(
+      "div",
+      { class: "modal-corps menu-gestes" },
+      // `entrees` : un objet indexé par clé de geste (une liste ouvrirait un menu vide, relecture de la PR 361).
+      groupesMenu(Object.keys(entrees)).map(([titre, cles]) => {
+        const liste = cles.map((k) => bouton(entrees[k]));
+        return titre ? h("div", { class: "menu-groupe", role: "group", "aria-label": tr(titre) }, h("p", { class: "menu-groupe-titre", "aria-hidden": "true" }, tr(titre)), liste) : liste;
+      })
+    ),
     { feuille: true, protege: false }
   );
 }
@@ -182,7 +192,7 @@ async function aligner(r, ecart, apres) {
   }
 }
 
-export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null } = {}) {
+export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null, jourEnTitre = false } = {}) {
   const c = clientDe(r);
   const d = dossierDe(r);
   const n = voitNets() ? netReservation(r) : null;
@@ -204,7 +214,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye, modifie: voucherModifie } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
-    rappel: [tr("Rappel"), () => naviguer(`#/reservation/${r.id}`)],
+    rappel: [tr("Rappels avant le départ"), () => naviguer(`#/reservation/${r.id}`)],
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
@@ -214,20 +224,27 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   };
   const principal = gestePrincipal(ctx);
   const menu = entreesMenu(ctx);
-  const barre = principal || menu.length
+  const boutonMenu = menu.length ? h("button", { class: principal ? "secondaire bouton-menu" : "secondaire bouton-menu carte-menu-haut", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, Object.fromEntries(menu.map((k) => [k, GESTES[k]]))) }, icone("ellipsis", 22)) : null;
+  // Sans geste principal (frais de parc par exemple), le « … » monte sur la ligne du titre plutôt que de rester seul en bas de la carte (relecture de la PR #360).
+  const barre = principal
     ? h(
         "div",
-        { class: principal ? "carte-barre" : "carte-barre seul" },
-        principal ? h("button", { class: "principal", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]) : null,
-        menu.length ? h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null
+        { class: "carte-barre" },
+        // Dans la fiche dossier, l'étape suivante est déjà le bouton principal de la barre : la carte garde un geste secondaire (audit mobile n° 10).
+        h("button", { class: avecDossier ? "principal" : "secondaire", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]),
+        boutonMenu
       )
     : null;
   return h(
     "div",
-    { class: "carte-lien statique" },
+    { class: !principal && boutonMenu ? "carte-lien statique menu-en-haut" : "carte-lien statique" },
     h("span", { class: "carte-titre" }, avecDossier ? lienDossier(r.libelle, r.dossier_id) : r.libelle),
-    h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
+    // Groupée sous le titre de son jour, la carte ne répète pas la date (audit mobile n° 19).
+    h("span", { class: "carte-droite" }, jourEnTitre ? null : h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("à {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
+    principal ? null : boutonMenu,
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive()), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
+    // Les options du service (Koh Ha extension…) : leur nom, le nombre et le prix client, jamais le net.
+    ...optionsDuService(r, etat.db.documents, (id) => etat.db.prestations.find((x) => x.id === id) || null).map((o) => h("span", { class: "carte-sous carte-option" }, texteOptionService(o, (n) => formatMontant(n, o.devise || reglages().devise || ""), tr("offert")))),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
     // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
     enCours ? h("div", { class: "etat-en-cours", role: "status" }, dateFinService(r) === aujourdhui() ? tr("Location en cours, retour aujourd'hui") : tr("Location en cours jusqu'au {date}", { date: formatDate(dateFinService(r)) })) : null,
@@ -359,7 +376,8 @@ const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
 // Le choix des sièges est exigé pour un nouveau service, quand le nombre d'enfants et de bébés change, ou quand un choix déjà posé est effacé.
 const petitsDe = (r) => (Number(((r && r.personnes) || {}).enfants) || 0) + (Number(((r && r.personnes) || {}).bebes) || 0);
 export const siegesExiges = (base, petits) => !(base && base.id) || petits !== petitsDe(base) || siegesChoisis(siegesLus((base && base.details) || {}));
-export function formulaireReservation(r, apres, { base = r } = {}) {
+// `avantEnregistrer()` (carte de l'Assistant, migration 133) : rend le motif d'arrêt juste avant d'écrire (carte reprise ailleurs), ou null.
+export function formulaireReservation(r, apres, { base = r, avantEnregistrer = null } = {}) {
   const nets = voitNets() && peut("dossiers.ecrire");
   const n = r.id && nets ? netReservation(r) : null;
   const p = r.personnes || {};
@@ -389,6 +407,9 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   const reference = h("input", { id: "r-ref", value: r.reference_partenaire || "", placeholder: tr("Numéro donné par le partenaire") });
   const vente = saisie(h("input", { id: "r-vente", value: r.montant_vente ?? "" }), "montant");
   const venteInitiale = vente.value;
+  // Les options du service (26.11.2026) : leur prix se change ici, comme celui du service ; « Vendu au client » suit.
+  // Taxi : la course suit sa propre facture (suivreCourseTaxi), sans options à modifier ici.
+  const blocOptions = modeExcursions() && !modeTaxi() && (peut("finances.voir") || (Array.isArray(r.options_ajout) && r.options_ajout.length)) ? blocOptionsReservation(r, { vente, personnes: () => ({ adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0 }), devise: reglages().devise || "THB" }) : null;
   // Tarif du catalogue (16.11.2026) : la prestation ou le trajet d'où vient le service. Il suit le partenaire : un tarif d'un autre partenaire ne
   // reste pas attaché au service (son voucher, sa facture et sa commission seraient ceux de l'autre). Choisir un tarif reprend son nom et son prix,
   // sauf ce qu'on a tapé soi-même ici.
@@ -412,7 +433,8 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     const options = [h("option", { value: "" }, tr("Hors catalogue"))];
     if (trajetActuel && (trajetActuel.partenaire_id || null) === pid) options.push(h("option", { value: `t:${trajetActuel.id}` }, tr("Trajet : {de} → {vers}, {depart}", { de: trajetActuel.de, vers: trajetActuel.vers, depart: trajetActuel.depart || "" })));
     // Les frais réglés sur place par le client ne sont pas des services : ils restent des notes de la facture.
-    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
+    // Une option (migration 130) n'est pas un tarif du service : elle se choisit dans « Options ».
+    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && !estPrestationOption(x) && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
     for (const x of liste) options.push(h("option", { value: `p:${x.id}` }, x.prix_vente === null || x.prix_vente === undefined ? x.libelle : `${x.libelle} · ${prix(x.prix_vente)}${x.unite ? ` ${libelleUnite(x.unite)}` : ""}`));
     tarif.replaceChildren(...options);
     tarif.value = options.some((o) => o.value === avant) ? avant : "";
@@ -434,9 +456,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
       if (!libelleSaisi) libelle.value = nomTarif(choisi);
       // Une location « par jour » se compte en jours, pas en personnes.
       const quantite = choisi.unite === "day" ? Math.max(1, Number((r.details || {}).jours) || 1) : quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 });
-      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
+      // « Vendu au client » compte le service et ses options (relecture de la PR 359) : le nouveau tarif, plus les options gardées.
+      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round((Number(choisi.prix_vente) * quantite + (blocOptions ? blocOptions.somme() : 0)) * 100) / 100);
       proposerCommission();
     }
+    if (blocOptions) blocOptions.tarif(choisi ? choisi.id : null);
     majAideTarif();
   });
   const netPrevu = saisie(h("input", { id: "r-net", value: n && n.net_prevu != null ? n.net_prevu : "" }), "montant");
@@ -476,12 +500,27 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
     tarifTouche = true;
     remplirTarifs();
+    // La liste « Ajouter l'option » suit le tarif retenu pour ce partenaire (remplirTarifs ne déclenche aucun événement).
+    if (blocOptions) blocOptions.tarif(tarif.value.startsWith("p:") ? tarif.value.slice(2) : null);
     majAideTarif();
     majCommission();
     proposerCommission();
   });
   remplirTarifs();
   majAideTarif();
+  // Tant que les options d'une réservation ouverte hors de son dossier ne sont pas lues, ni le tarif ni le partenaire ne changent : « Vendu
+  // au client » les oublierait.
+  if (blocOptions && !blocOptions.pret()) {
+    tarif.disabled = true;
+    partenaire.disabled = true;
+    aideTarif.textContent = tr("Lecture des options du service…");
+    aideTarif.hidden = false;
+    blocOptions.quandPret(() => {
+      tarif.disabled = false;
+      partenaire.disabled = false;
+      majAideTarif();
+    });
+  }
   // « Vendu au client » d'un service du catalogue : sans le droit « Modifier les prix de vente », il ne se change pas (décision 3, contrôle du
   // 17.11.2026, D3). Un tarif sans prix ou un service hors catalogue se remplit toujours.
   const droitPrix = peut("partenaires.prix");
@@ -536,6 +575,11 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
   // L'heure enregistrée est celle de la grille tant qu'elle lui est égale : un autre choix de zone la remplace, une heure tapée à la main reste.
   if (zonesPickup.valeur() && zonesPickup.heure() === heure.value) heureDeGrille = heure.value;
   partenaire.addEventListener("change", () => zonesPickup.rafraichir());
+  // Un autre partenaire : les options de l'ancien partenaire quittent le service (une option est toujours du partenaire de son service).
+  if (blocOptions) partenaire.addEventListener("change", () => blocOptions.partenaire(partenaire.value || null));
+  // Une option par personne suit le nombre de personnes (sauf une quantité tapée dans le bloc).
+  // Sur `change` : effacer « Adultes » pour retaper ne fait pas passer par un « 1 » intermédiaire.
+  if (blocOptions) for (const x of [adultes, enfants]) x.addEventListener("change", () => blocOptions.personnes());
   lieu.addEventListener("change", () => zonesPickup.rafraichir());
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
@@ -668,14 +712,22 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
           }
         }
         if (focusPremiereErreur(e.target)) return;
+        if (blocOptions && blocOptions.erreur()) return toast(blocOptions.erreur(), true);
         const tarifPrestation = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
         const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
         const tarifChange = tarifTouche && ((tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null));
         const valeurs = { ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
+        // Service sans ligne de facture (ajouté par carte) : ses options vont sur la réservation, leur prix est déjà dans « Vendu au client ».
+        const optionsDetails = blocOptions ? blocOptions.detailsOptions() : null;
+        if (optionsDetails) valeurs.details = { ...valeurs.details, options: optionsDetails };
         // Course hors catalogue passée en « retour au point de départ » (ou revenue à l'aller simple) : son libellé généré suit, sauf s'il a été réécrit ici.
         if (valeurs.libelle === (r.libelle || "").trim()) {
           const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });
           if (suivi) valeurs.libelle = suivi;
+        }
+        if (avantEnregistrer) {
+          const arret = await avantEnregistrer().catch(() => tr("La carte n'a pas pu être vérifiée : rien n'a été enregistré, réessayez."));
+          if (arret) return void toast(arret, true);
         }
         // Net et commission vidés avant l'écriture du service (D4) : remis tels quels si l'écriture échoue ou est abandonnée.
         let nouvelEssaiNets = null;
@@ -693,7 +745,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
             retirer = choix === "retirer";
           }
           // Libellé, partenaire, tarif et prix changés ici : les lignes de la facture (et du devis) suivent, avec le même avertissement (16.11.2026).
-          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {};
+          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}), ...(blocOptions && blocOptions.voulues() ? { options: blocOptions.voulues(), ...(valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {}) } : {};
           const suivi = await suivreFacture(base, valeurs, { avant: cmp.avant, apres: cmp.apres, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
           if (!suivi) return;
           const { changements, ecartRestant } = suivi;
@@ -739,6 +791,7 @@ export function formulaireReservation(r, apres, { base = r } = {}) {
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
     h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), bebesDemandes(type, { trajet: !!r.trajet_id }) ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    blocOptions ? blocOptions.noeud : null,
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,
@@ -856,7 +909,7 @@ export function sectionReservationsDossier(d, doc) {
       // « Services » (audit n° 54, contrôle du 17.11.2026, D12), comme dans Nouveau dossier.
       h("h2", null, tr("Services")),
       ecrit
-        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc, { personnesDuDossier: true }), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
+        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc, { personnesDuDossier: true }), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "secondaire petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
         : null
     ),
     rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir, ecart: doc && !modeTaxi() ? (r) => ecartReservation(r, doc) : null }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))
@@ -864,6 +917,12 @@ export function sectionReservationsDossier(d, doc) {
 }
 
 // ---- Écran Réservations -------------------------------------------------------------------------------------
+// Le menu « … » de l'en-tête sur téléphone.
+function menuEntete() {
+  const geste = (libelle, fait) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle);
+  const fermer = modal(tr("Réservations"), h("div", { class: "modal-corps menu-gestes" }, geste(tr("Feuille du jour"), ouvrirFeuilleDuJour), geste(tr("Messages types"), () => naviguer("#/messages"))), { feuille: true, protege: false });
+}
+
 export function vueReservations() {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const ajd = aujourdhui();
@@ -904,14 +963,22 @@ export function vueReservations() {
     for (const jour of jours) {
       const du = rs.filter((r) => (r.date_service || "") === jour);
       const titre = jour === "" ? tr("Sans date") : jour === ajd ? tr("Aujourd'hui, {dateTexte}", { dateTexte: dateTexte(jour) }) : jour === ajouter(ajd, 1) ? tr("Demain, {dateTexte}", { dateTexte: dateTexte(jour) }) : dateTexte(jour);
-      corps.append(h("section", { class: "jour" }, h("h2", { class: "jour-titre" }, titre, h("span", { class: "tag" }, du.length)), listeReservations(du, { apres: rafraichir })));
+      corps.append(h("section", { class: "jour" }, h("h2", { class: "jour-titre" }, titre, h("span", { class: "tag" }, du.length)), listeReservations(du, { apres: rafraichir, jourEnTitre: true })));
     }
   }
   dessiner();
   return h(
     "div",
     { "data-titre": tr("Réservations") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")), h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous seulement-bureau" }, tr("Les services confirmés de vos dossiers, jour par jour."))), h(
+        "div",
+        { class: "entete-actions" },
+        h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")),
+        h("a", { class: "bouton secondaire seulement-bureau", href: "#/messages" }, tr("Messages types")),
+        // Sur téléphone, les deux passent dans le menu « … » : la liste des jours commence plus haut (audit mobile n° 19, relecture de la PR 361).
+        h("button", { class: "secondaire bouton-menu seulement-mobile", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions"), title: tr("Plus d'actions"), onclick: menuEntete }, icone("ellipsis", 22))
+      )
+    ),
     barre.noeud,
     corps
   );

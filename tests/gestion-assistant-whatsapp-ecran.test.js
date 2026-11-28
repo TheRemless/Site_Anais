@@ -196,7 +196,9 @@ test("revue 297, points 1 et 2 : contact personnel refusé dans tous les modes, 
   const f = lire("supabase/functions/agent/index.ts");
   const i403 = f.indexOf('if (wc.data.reponses === "jamais") return json({ erreur: "contact_personnel" }, 403);');
   assert.ok(i403 > 0, "contact personnel : 403");
-  assert.ok(i403 < f.indexOf('sb.from("whatsapp_messages").select("sens, texte, medias'), "refusé avant de lire un seul message");
+  // Migration 132 (PR 364) : la lecture passe par avecAutomatique ; c'est toujours la première lecture de messages.
+  const iLecture = f.indexOf('sb.from("whatsapp_messages").select(cols).eq("conversation_id", waId)');
+  assert.ok(iLecture > 0 && i403 < iLecture, "refusé avant de lire un seul message");
   assert.match(f, /"id, telephone, nom, entite_id, client_id, dossier_id, reponses",\n\];/);
   assert.match(f, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: waId \}\)/);
   assert.match(f, /if \(!waEcrit && waMode !== "question"\) return json\(\{ erreur: "whatsapp_lecture_seule" \}, 403\);/, "créer et mettre à jour refusés");
@@ -241,7 +243,11 @@ test("revue 297, point 5 : la demande de l'écran est retirée à chaque lecture
   const vue = lire("src/gestion/js/views/agent.mjs");
   assert.match(vue, /const brut = sessionStorage\.getItem\(CLE_DEMANDE_AGENT\);\n\s+sessionStorage\.removeItem\(CLE_DEMANDE_AGENT\);/, "retirée avant toute décision");
   const wa = lire("src/gestion/js/views/whatsapp.mjs");
-  assert.equal((wa.match(/le: Date\.now\(\)/g) || []).length, 2, "les deux demandes de l'écran sont datées");
+  // Chaque demande déposée par l'écran est datée : les deux demandes à l'Assistant et la mémoire du retour (relecture de la PR 355).
+  const depots = [...wa.matchAll(/sessionStorage\.setItem\((CLE_DEMANDE_AGENT|CLE_RETOUR_ENTITE), JSON\.stringify\(.*$/gm)];
+  assert.equal(depots.filter((m) => m[1] === "CLE_DEMANDE_AGENT").length, 2, "les deux demandes à l'Assistant");
+  assert.equal(depots.filter((m) => m[1] === "CLE_RETOUR_ENTITE").length, 1, "la mémoire du retour");
+  for (const m of depots) assert.match(m[0], /le: Date\.now\(\)/, `${m[1]} est datée`);
   assert.match(lire("src/gestion/js/views/whatsapp-a-faire.mjs"), /entite: e\.id, le: Date\.now\(\)/);
 });
 

@@ -5,6 +5,39 @@ import { EN_CORRECTION } from "./i18n-en-correction.mjs";
 import { EN_EXCURSION } from "./i18n-en-excursion.mjs";
 
 export const EN = {
+  // Acompte du dossier imputé aux services payés sur place (26.11.2026, migration 131)
+  "Remboursement à traiter : {montant} reçus dépassent ce qui reste dû après l'annulation. Enregistrez le remboursement quand il est fait.": "Refund to handle: {montant} received exceeds what is still due after the cancellation. Record the refund once it is made.",
+  "Trop-perçu de {montant} : le dossier a reçu plus que le prix de ses services.": "Overpayment of {montant}: the booking received more than the price of its services.",
+  "La remarque de paiement de « {service} » donne un autre montant que l'acompte enregistré ({montant}) : elle n'est pas imprimée sur le voucher.": "The payment remark of “{service}” gives another amount than the recorded deposit ({montant}): it is not printed on the voucher.",
+  "Remboursements à traiter": "Refunds to handle",
+  "Acompte réparti entre plusieurs prestataires : {detail}. Vérifiez avant d'envoyer les vouchers.": "Deposit split between several providers: {detail}. Check before sending the vouchers.",
+  "{montant} imputés à « {service} » du {date}": "{montant} assigned to “{service}” on {date}",
+  "Reçu au-delà de ce qui reste dû après une annulation : à rembourser au client, puis à enregistrer comme remboursement dans le dossier.": "Received beyond what is still due after a cancellation: to refund to the client, then to record as a refund in the booking.",
+  // Options d'un service (26.11.2026)
+  "Options": "Options",
+  "{n} option": "{n} option",
+  "{n} options": "{n} options",
+  "Prix de l'option {nom}": "Price of the option {nom}",
+  "Option {nom}": "Option {nom}",
+  "Option à ajouter": "Option to add",
+  "Option": "Option",
+  "Lecture des options du service…": "Reading the service options…",
+  "Le prix d'une option est à saisir : ouvrez « Vérifier avant ».": "An option price must be entered: open “Check first”.",
+  "Quantité de l'option {nom}": "Quantity of the option {nom}",
+  "Quantité": "Quantity",
+  "Total du service avec ses options : {montant}": "Service total with its options: {montant}",
+  "Total à compléter : un prix manque.": "Total to complete: a price is missing.",
+  "Les options de l'ancien partenaire ont été retirées de la facture : ajoutez celles du nouveau partenaire dans la réservation.": "The options of the previous partner were removed from the invoice: add those of the new partner in the booking.",
+  "Autre partenaire : {liste} retirée du service (une option est toujours du partenaire de son service).": "Other partner: {liste} removed from the service (an option always belongs to the partner of its service).",
+  "Le prix de chaque option est son prix unitaire, comme au catalogue. « Vendu au client » compte le service et ses options ; une seule réservation, un seul voucher.": "Each option's price is its unit price, as in the catalogue. “Sold to the client” counts the service and its options; one booking, one voucher.",
+  "Les options ne s'ajoutent pas à une course de Taxi : modifiez le prix de la course.": "Options are not added to a Taxi ride: change the price of the ride.",
+  "Le prix de l'option est à saisir : ouvrez « Vérifier avant ».": "The option price must be entered: open “Check first”.",
+  "Cette option est déjà sur le service.": "This option is already on the service.",
+  "Un service de la carte est l'option d'un autre : ajoutez-la sous ce service plutôt qu'en service à part.": "A service on the card is an option of another one: add it under that service rather than as a separate service.",
+  "Une option proposée n'est pas une option de ce service au catalogue : elle n'est pas reprise.": "A proposed option is not an option of this service in the catalogue: it is not kept.",
+  "les options": "the options",
+  "Ajouter l'option": "Add the option",
+  "Indiquez le prix de l'option « {nom} », 0 si elle est offerte.": "Enter the price of the option “{nom}”, 0 if it is free.",
   // « Pas bien » sur une réponse de l'Assistant (migration 74)
   "Pas bien": "Not good",
   "Ce qui ne va pas, en quelques mots": "What is wrong, in a few words",
@@ -126,6 +159,7 @@ export const EN = {
   "L'image fait plus de 5 Mo. Envoyez depuis votre téléphone.": "The image is over 5 MB. Send it from your phone.",
   "Ce voucher vient de partir dans cette conversation. Rien n'est reparti.": "This voucher was just sent in this chat. Nothing was sent again.",
   "Envoyer dans la conversation WhatsApp": "Send in the WhatsApp chat",
+  "Envoyer depuis Gestion (WhatsApp)": "Send from Gestion (WhatsApp)",
   "Vérification de la fenêtre de 24 h…": "Checking the 24-hour window…",
   "Longueur : {n} sur {max}": "Length: {n} of {max}",
   "Le client a écrit il y a moins de 24 h : l'image peut partir.": "The client wrote less than 24 h ago: the image can be sent.",
@@ -162,7 +196,7 @@ export const EN = {
   "Changer le client relié": "Change the linked client",
   "Ouvrir la fiche du client": "Open the client record",
   "Ce n'est plus un contact personnel": "No longer a personal contact",
-  "Contact personnel : rien envoyé à l'IA": "Personal contact: nothing sent to the AI",
+  "Marquer comme contact personnel (rien envoyé à l'IA)": "Mark as personal contact (nothing sent to the AI)",
   "Copié : {texte}": "Copied: {texte}",
   "{debut} au {fin}": "{debut} to {fin}",
   "{nom}, aucun dossier": "{nom}, no file",
@@ -563,6 +597,8 @@ export const EN = {
   "Changer le statut": "Change the status",
   "Plus d'actions : {libelle}": "More actions: {libelle}",
   "Plus d'actions": "More actions",
+  "Plus d'actions : {client}": "More actions: {client}",
+  "Tableau, défiler horizontalement": "Table, scroll horizontally",
   "Voucher envoyé": "Voucher sent",
   "Comment ça marche ?": "How does it work?",
   // Carnet envoyé
@@ -608,7 +644,7 @@ export const EN = {
   "Hors connexion : actualisation impossible.": "Offline: cannot refresh.",
   "Actualisation impossible : {message}": "Cannot refresh: {message}",
   "Une actualisation est déjà en cours.": "A refresh is already in progress.",
-  "Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.": "Offline: the screen shows the data as it was, and nothing is saved until the network is back.",
+  "Hors connexion : rien ne s'enregistre pour l'instant.": "Offline: nothing is saved for now.",
   // Session C (mobile) : listes et fiche dossier
   "Compagnie, date, recherche": "Company, date, search",
   "Voir {n} étape faite": "Show {n} completed step",
@@ -618,7 +654,6 @@ export const EN = {
   "Nouveau": "New",
   "Un client, un voyage, un devis": "A client, a trip, a quote",
   "Récents": "Recent",
-  "pickup": "pickup",
   "Appeler {nom}": "Call {nom}",
   "Appeler": "Call",
   "WhatsApp à {nom}": "WhatsApp {nom}",
@@ -672,6 +707,16 @@ export const EN = {
   "Rappels sur téléphone": "Phone reminders",
   "Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.": "Add the country code, for example +41, +33 or +66, in place of the leading 0.",
   "Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.": "Unreadable number: write it with its country code, for example +41 79 123 45 67.",
+  // Téléphone coupé (26.11.2026) : numéro incomplet, en double, et numéro repris de la conversation WhatsApp
+  "Ce numéro n'a pas le bon nombre de chiffres pour son pays : vérifiez qu'il est complet.": "This number does not have the right number of digits for its country: check that it is complete.",
+  "Numéro thaï sans indicatif ? Écrivez-le avec +66 : {numero}. Sinon, ajoutez l'indicatif de son pays.": "Thai number without its country code? Write it with +66: {numero}. Otherwise, add the code of its country.",
+  "La fiche de {nom} porte un autre numéro : la conversation WhatsApp de l'Assistant lui sera reliée, et le numéro de la fiche ne change pas. Corrigez-le si c'est le numéro de la conversation qui est le bon.": "{nom}'s record has another number: the Assistant's WhatsApp conversation will be linked to it, and the record's number does not change. Correct it if the conversation's number is the right one.",
+  "La fiche de {nom} porte un autre numéro : la conversation WhatsApp ne lui sera pas reliée. Corrigez d'abord le numéro de la fiche si c'est bien le même client.": "{nom}'s record has another number: the WhatsApp conversation will not be linked to it. Correct the record's number first if it is the same client.",
+  "Numéro coupé ou en double : laissez un seul numéro, complet, avec son indicatif.": "Number cut off or duplicated: leave a single, complete number with its country code.",
+  "Téléphone du client : {message}": "Client's phone: {message}",
+  "Numéro repris de la conversation WhatsApp « {nom} » : {telephone}": "Number taken from the WhatsApp conversation “{nom}”: {telephone}",
+  "Conversation WhatsApp « {nom} » : {telephone}": "WhatsApp conversation “{nom}”: {telephone}",
+  "Reprendre ce numéro": "Use this number",
   // Suivis : À vérifier, rappels, tâches, journal, feuille du jour (lot G, 17.11.2026)
   "même téléphone": "same phone",
   "même e-mail": "same e-mail",
@@ -799,7 +844,7 @@ export const EN = {
   " par adulte": " per adult",
   " par enfant": " per child",
   " par rapport à la période précédente": " compared with the previous period",
-  " par rapport à la période précédente · {nbFactures} facture(s)": " compared with the previous period · {nbFactures} invoice(s)",
+  " par rapport à la période précédente · {factures}": " compared with the previous period · {factures}",
   " puis ": " then ",
   ",": ".",
   ", {n} sans net": ", {n} without net price",
@@ -829,7 +874,10 @@ export const EN = {
   "{n} facture non soldée, à ce jour": "{n} unpaid invoice to date",
   "{n} factures non soldées, à ce jour": "{n} unpaid invoices to date",
   "{n} jours": "{n} days",
-  "{n} société(s) : {liste}": "{n} company(ies): {liste}",
+  "{n} société : {liste}": "{n} company: {liste}",
+  "{n} sociétés : {liste}": "{n} companies: {liste}",
+  "{n} facture": "{n} invoice",
+  "{n} factures": "{n} invoices",
   "{n} sur {n2}": "{n} of {n2}",
   "{n} tâche terminée": "{n} completed task",
   "{n} tâches terminées": "{n} completed tasks",
@@ -1298,6 +1346,27 @@ export const EN = {
   "Espèces": "Cash",
   "Essayez sans date, avec toutes les compagnies ou dans l'autre sens.": "Try without a date, with all the companies, or the other way round.",
   "Essayez un autre onglet ou effacez la recherche.": "Try another tab or clear the search.",
+  "Envoyer la confirmation": "Send the confirmation",
+  "Envoyer la confirmation du {date}": "Send the {date} confirmation",
+  "Envoyer le voucher du {date}": "Send the {date} voucher",
+  "Ligne supprimée.": "Line deleted.",
+  "Service et {n} option supprimés.": "Service and {n} option deleted.",
+  "Service et {n} options supprimés.": "Service and {n} options deleted.",
+  "Impossible d'annuler : le document a changé.": "Cannot undo: the document has changed.",
+  "Impossible d'annuler : les lignes ont changé entre-temps.": "Cannot undo: the lines have changed in the meantime.",
+  "Tout reçu": "All received",
+  "Écrire au client sur WhatsApp": "Message the client on WhatsApp",
+  "Déjà envoyée autrement": "Already sent another way",
+  "Déjà envoyé autrement": "Already sent another way",
+  "Aucun dossier ne correspond à « {recherche} »": "No file matches “{recherche}”",
+  "Vérifiez l'orthographe ou effacez la recherche.": "Check the spelling or clear the search.",
+  "Rechercher ou créer un client": "Search for or create a client",
+  "Facultatif : sans date, le dossier reste « Dates à fixer ».": "Optional: without a date, the file stays “Dates to be set”.",
+  "Client ou référence": "Client or reference",
+  "Client, réf. ou service": "Client, ref. or service",
+  "Client, réf. ou trajet": "Client, ref. or route",
+  "Rechercher un client": "Search for a client",
+  "Effacer la recherche": "Clear the search",
   "Essayez une autre famille, un autre partenaire ou effacez la recherche.": "Try another category, another partner or clear the search.",
   "Essayez une autre recherche.": "Try another search.",
   "Étiquette au-dessus du client (vide : aucune)": "Label above the client (empty: none)",
@@ -1601,7 +1670,6 @@ export const EN = {
   "Nom de l'entreprise": "Company name",
   "Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document.": "Name of the person, WhatsApp, e-mail, website… Whatever you want to see at the bottom of every document.",
   "Nom du champ « pays »": "Name of the \"country\" field",
-  "Nom du client, référence, pays": "Client name, reference, country",
   "Nom du rôle": "Role name",
   "Nom en thaï": "Name in Thai",
   "Nom, catégorie, personne": "Name, category, person",
@@ -1697,7 +1765,6 @@ export const EN = {
   "Personne": "Person",
   "Personnes": "People",
   "Phrase sur les conditions générales": "Sentence about the general terms",
-  "pickup {heure_pickup}": "pickup {heure_pickup}",
   "Pièces jointes": "Attachments",
   "Pied de page": "Footer",
   "Plus": "More",
@@ -1751,6 +1818,7 @@ export const EN = {
   "Qui réalise le service, si ce n'est pas vous": "Who carries out the service, if it is not you",
   "Raccourcis clavier": "Keyboard shortcuts",
   "Raccourcis clavier (?)": "Keyboard shortcuts (?)",
+  "jj.mm.aaaa": "dd.mm.yyyy",
   "Réactiver le dossier": "Reactivate the file",
   "Recherche": "Search",
   "Rechercher": "Search",
@@ -1802,6 +1870,7 @@ export const EN = {
   "Reste à encaisser": "Still to collect",
   "reste à payer": "remaining to pay",
   "Reste à payer": "Remaining to pay",
+  "acompte de {montant} déjà déduit": "{montant} deposit already deducted",
   "Rétablir": "Redo",
   "Rétablir (Ctrl+Maj+Z ou Ctrl+Y)": "Redo (Ctrl+Shift+Z or Ctrl+Y)",
   "Rétablir (ou Ctrl+Y)": "Redo (or Ctrl+Y)",
@@ -1867,6 +1936,7 @@ export const EN = {
   "Service le {date}": "Service on {date}",
   "Services": "Services",
   "Services du {debut} au {fin}": "Services from {debut} to {fin}",
+  "Courses du {debut} au {fin}": "Rides from {debut} to {fin}",
   "Ses dossiers": "Their files",
   "Seulement les dossiers dont la personne est responsable ou qu'elle a créés": "Only the files the person is in charge of or has created",
   "Seuls les administrateurs modifient les messages.": "Only administrators can edit the messages.",
@@ -2333,6 +2403,7 @@ export const EN = {
   "Ce document est déjà parti chez le client avec le numéro {numero}. Changer le numéro donne au client deux documents différents pour le même service. Le changer quand même ?": "This document has already gone to the client with number {numero}. Changing the number gives the client two different documents for the same service. Change it anyway?",
   "Prix à saisir": "Price to enter",
   "Offert": "Complimentary",
+  "offert": "complimentary",
   "{n} ligne sans prix ({lignes}) : indiquez un prix ou cochez « Offert ». La facture ne peut pas être envoyée avant.": "{n} line without a price ({lignes}): enter a price or tick “Complimentary”. The invoice cannot be sent before that.",
   "{n} lignes sans prix ({lignes}) : indiquez un prix ou cochez « Offert ». La facture ne peut pas être envoyée avant.": "{n} lines without a price ({lignes}): enter a price or tick “Complimentary”. The invoice cannot be sent before that.",
   "{n} ligne sans prix ({lignes}) : elle compte 0 dans le total.": "{n} line without a price ({lignes}): it counts as 0 in the total.",
@@ -2390,7 +2461,6 @@ export const EN = {
   "L'autorisation n'a pas été donnée.": "Permission was not granted.",
   "Rappels activés": "Reminders on",
   "Vous recevrez ici les services de demain et les clients à recontacter.": "You will get tomorrow's services and the clients to contact here.",
-  "Hier : à recontacter pour avoir leur avis": "Yesterday: contact for their feedback",
   "Commission prévue": "Expected commission",
   "{n} sans commission": "{n} without commission",
   "Reçue": "Received",
@@ -3097,8 +3167,6 @@ export const EN = {
   "Envoyer la Booking confirmation": "Send the booking confirmation",
   "Un dossier regroupe le client, la course et sa Booking confirmation.": "A file groups the client, the ride and its booking confirmation.",
   "Un dossier regroupe le client, ses services, la facture et les paiements.": "A file groups the client, their services, the invoice and the payments.",
-  "Nom du client, référence, trajet": "Client name, reference, route",
-  "Nom du client, référence, service": "Client name, reference, service",
   "Remettre le texte de départ de {remis} modèles et ajouter {ajoutes} modèles manquants ? Vos {gardes} modèles créés à part sont gardés.": "Restore the original text of {remis} templates and add {ajoutes} missing templates? Your {gardes} separately created templates are kept.",
   "Remettre le texte de départ de {remis} modèles et ajouter {ajoutes} modèles manquants ? Les modifications de ces modèles seront perdues.": "Restore the original text of {remis} templates and add {ajoutes} missing templates? Changes to these templates will be lost.",
   "Ce qui s'imprime sur la Booking confirmation en plus de la course.": "What is printed on the booking confirmation in addition to the ride.",
@@ -3122,7 +3190,6 @@ export const EN = {
   "Prix de vente de toutes les courses, famille par famille.": "Selling prices of all rides, family by family.",
   // Lot B (fiche dossier et envoi des documents, 13.11.2026)
   "Aucune variante de conditions pour les factures dans les réglages : la facture garde celle du devis. Vérifiez la phrase avant l'envoi.": "No payment terms variant for invoices in Settings: the invoice keeps the quote's. Check the wording before sending.",
-  "Accepté": "Accepted",
   "Voucher": "Voucher",
   "Envoyer la Booking confirmation : {libelle}": "Send the Booking confirmation: {libelle}",
   "Envoyer le voucher : {libelle}": "Send the voucher: {libelle}",
@@ -3255,7 +3322,7 @@ export const EN = {
   "Réactiver ce partenaire": "Bring this partner back",
   "Aucune grille de pickup. Une grille donne l'heure de pickup de chaque zone pour chaque départ.": "No pickup table. A table gives the pickup time for each area and each departure.",
   "Pickups et points d'embarquement": "Pickups and boarding points",
-  "Modifier les pickups et les points d'embarquement": "Edit pickups and boarding points",
+  "Modifier les pickups": "Edit pickups",
   "{n} trajet proposé": "{n} route offered",
   "{n} trajets proposés": "{n} routes offered",
   "{n} masqué": "{n} hidden",
@@ -3404,8 +3471,6 @@ export const EN = {
   "Rien n'est fusionné tout seul : ouvrez l'autre fiche pour comparer. La fusion demande le droit « Fusionner deux fiches du même client ».": "Nothing is merged automatically: open the other record to compare. Merging needs the right “Merge two records of the same client”.",
   "Le même client saisi deux fois : ses dossiers passent sur cette fiche, puis l'autre fiche disparaît.": "The same client entered twice: their files move to this record, then the other record is removed.",
   "Fusionner avec…": "Merge with…",
-  "Ajoutez l'indicatif du pays au téléphone du client, par exemple +41, +33 ou +66, à la place du 0 du début.": "Add the country code to the client's phone, for example +41, +33 or +66, instead of the leading 0.",
-  "Téléphone du client illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.": "The client's phone cannot be read: write it with its country code, for example +41 79 123 45 67.",
   "{n} réservation réactivée. Le prestataire n'est pas prévenu par l'outil.": "{n} booking reactivated. The tool does not notify the supplier.",
   "{n} réservations réactivées. Les prestataires ne sont pas prévenus par l'outil.": "{n} bookings reactivated. The tool does not notify the suppliers.",
   "Une réservation n'a pas pu être réactivée : {message}": "A booking could not be reactivated: {message}",
@@ -3850,7 +3915,6 @@ export const EN = {
   "Chaque service qui a une heure : un tap ouvre la réservation et son rappel.": "Each service that has a time: one tap opens the booking and its reminder.",
   "Notification sur téléphone une heure avant chaque réservation qui a une heure": "Phone notification one hour before each booking that has a time",
   "le {quand}": "on {quand}",
-  "Rappel": "Reminder",
   "Pas d'heure de pickup : pas de notification une heure avant. Le service reste dans le rappel de 18h la veille.": "No pickup time: no notification one hour before. The service stays in the 6 pm reminder the day before.",
   "Rappel en anglais, à copier dans sa conversation": "Reminder in English, to copy into their chat",
   "Rappel à copier dans sa conversation": "Reminder to copy into their chat",
@@ -4719,6 +4783,10 @@ for (const [k, v] of Object.entries(EN_TYPE)) if (!(k in EN)) EN[k] = v;
 import { EN_PARTENAIRE } from "./i18n-en-partenaire.mjs";
 for (const [k, v] of Object.entries(EN_PARTENAIRE)) if (!(k in EN)) EN[k] = v;
 
+// Audit mobile de l'accueil, des réservations et des commissions Taxi (PR 361) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_ACCUEIL } from "./i18n-en-accueil.mjs";
+for (const [k, v] of Object.entries(EN_ACCUEIL)) if (!(k in EN)) EN[k] = v;
+
 // Demandes venues d'une page du carnet de ZTP : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_CARNET } from "./i18n-en-carnet.mjs";
 for (const [k, v] of Object.entries(EN_CARNET)) if (!(k in EN)) EN[k] = v;
@@ -4731,6 +4799,14 @@ for (const [k, v] of Object.entries(EN_VOUCHER)) if (!(k in EN)) EN[k] = v;
 import { EN_TRANSFERT } from "./i18n-en-transfert.mjs";
 for (const [k, v] of Object.entries(EN_TRANSFERT)) if (!(k in EN)) EN[k] = v;
 
+// L'Assistant en équipe (migration 133) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_EQUIPE } from "./i18n-en-equipe.mjs";
+for (const [k, v] of Object.entries(EN_EQUIPE)) if (!(k in EN)) EN[k] = v;
+
 // Défilement des fils et photo en grand (23.11.2026) : traductions à part, ajoutées sans remplacer une clé déjà là.
 import { EN_DEFILEMENT } from "./i18n-en-defilement.mjs";
 for (const [k, v] of Object.entries(EN_DEFILEMENT)) if (!(k in EN)) EN[k] = v;
+
+// Message automatique de nuit (migration 132) : traductions à part, ajoutées sans remplacer une clé déjà là.
+import { EN_NUIT } from "./i18n-en-nuit.mjs";
+for (const [k, v] of Object.entries(EN_NUIT)) if (!(k in EN)) EN[k] = v;

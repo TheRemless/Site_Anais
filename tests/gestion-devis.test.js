@@ -181,7 +181,7 @@ test("contrôle de la copie : un net ou un nom de partenaire tapé dans la répo
 test("écran : le bouton est sur la carte « Nouveau dossier » en attente, le calcul ne part qu'au clic et sans IA", () => {
   const agent = lire("views/agent.mjs");
   assert.match(agent, /import \{ blocDevis, donneesAvecDevis \} from "\.\/devis-carte\.mjs";/);
-  assert.match(agent, /if \(c\.statut === "proposee"\) corps\.push\(blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil \}\)\);/);
+  assert.match(agent, /if \(c\.statut === "proposee"\) corps\.push\(blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil, auteur: \(\) => auteurDevis\(c\) \}\)\);/);
   const vue = lire("views/devis-carte.mjs");
   assert.match(vue, /if \(!\(modeTaxi\(\) \|\| modeExcursions\(\)\) \|\| !devisPossible\(donnees\)\) return null;/);
   assert.match(vue, /bouton\.addEventListener\("click"/);
@@ -265,7 +265,7 @@ test("dossier = devis : la carte, la validation et la fiche de création reprenn
   const agent = lire("views/agent.mjs");
   assert.match(agent, /const donneesCarte = \(c\) => donneesAvecDevis\(c\.id, .*\{ marque: marqueFil\(\) \}\);/);
   assert.match(agent, /preparationComplete\(\{ \.\.\.c, donnees: donneesCarte\(c\) \}\)/);
-  assert.match(agent, /blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil \}\)/);
+  assert.match(agent, /blocDevis\(du, \{ id: c\.id, textes: \(\) => textesDeNani\(fil\.messages, bornesEchange\(c, fil\.cartes\)\), marque: marqueFil, auteur: \(\) => auteurDevis\(c\) \}\)/);
   assert.match(lire("views/demande.mjs"), /qte: offre\.vehicules \|\| \(offre\.enfant/);
   assert.match(lire("views/devis-carte.mjs"), /noter\(CLE_DEVIS, id, resumeDevis\(devis, \{ marque \}\)\)/);
 });

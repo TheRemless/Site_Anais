@@ -1,5 +1,6 @@
 // Fiche client : ce qui se vérifie sans écran (testé avec node --test).
-import { normaliserTelephone } from "./partenaires-calc.mjs";
+import { normaliserTelephone, nettoyerTelephone } from "./partenaires-calc.mjs";
+import { tr } from "./i18n.mjs";
 import { separerNom } from "./demande-calc.mjs";
 import { separerChambreLigne } from "./operations-calc.mjs";
 
@@ -25,8 +26,44 @@ export function verifierTelephoneClient(saisie, ancien = "") {
   const brut = String(saisie || "").trim();
   if (!brut) return { ok: true, valeur: "", raison: "" };
   if (brut === String(ancien || "").trim()) return { ok: true, valeur: brut, raison: "" };
+  // « 81 234 5678 » : sans + ni 0, lu comme un numéro japonais (+81). Neuf chiffres qui commencent par 6, 8 ou 9 : un mobile thaï sans son
+  // indicatif, probablement ; rien n'est deviné, le numéro avec +66 est proposé (relecture de la PR 356, point 11).
+  const sansPlus = nettoyerTelephone(brut).trim();
+  const seuls = sansPlus.replace(/\D/g, "");
+  if (!/^(\+|00|0)/.test(sansPlus) && /^[689]\d{8}$/.test(seuls)) return { ok: false, valeur: brut, raison: "thai_sans_indicatif", proposition: `+66 ${seuls.slice(0, 2)} ${seuls.slice(2, 5)} ${seuls.slice(5)}` };
   const t = normaliserTelephone(brut);
-  return t.numero ? { ok: true, valeur: t.numero, raison: "" } : { ok: false, valeur: brut, raison: t.raison };
+  if (!t.numero) return { ok: false, valeur: brut, raison: t.raison };
+  // Un numéro coupé ne passe jamais (« +1555010 » enregistré pour « +1 (555) 010-4477 (trait d’union insécable) ») : tous les chiffres du champ doivent
+  // être dans le numéro lu (deux numéros, ou un caractère qui coupe, sont refusés), et un numéro d'Amérique du Nord (+1) a toujours 11 chiffres.
+  const lus = t.numero.replace(/\D/g, "");
+  const tous = nettoyerTelephone(brut).replace(/\D/g, "");
+  const attendu = tous.startsWith("00") ? tous.slice(2) : tous;
+  if (attendu !== lus) return { ok: false, valeur: brut, raison: "illisible" };
+  const longueur = LONGUEURS_INDICATIF.find(([ind]) => lus.startsWith(ind));
+  if (longueur && !longueur[1].includes(lus.length)) return { ok: false, valeur: brut, raison: "longueur" };
+  // Thaïlande : un mobile (06, 08, 09 en local) a toujours 9 chiffres après le 66.
+  if (/^66[689]/.test(lus) && lus.length !== 11) return { ok: false, valeur: brut, raison: "longueur" };
+  if (lus.length > 15) return { ok: false, valeur: brut, raison: "longueur" };
+  return { ok: true, valeur: t.numero, raison: "" };
+}
+
+// Longueur complète (indicatif compris) des numéros dont la règle est fixe, parmi les pays des clients : Amérique du Nord, France, Suisse,
+// Thaïlande (fixe 8 chiffres ou mobile 9 après le 66), Royaume-Uni (10 chiffres après le 44, quelques anciens fixes à 9).
+const LONGUEURS_INDICATIF = [
+  ["1", [11]],
+  ["33", [11]],
+  ["41", [11]],
+  ["66", [10, 11]],
+  ["44", [11, 12]],
+];
+
+// Le message à montrer pour un téléphone refusé par verifierTelephoneClient.
+export function messageTelephone(raison, proposition = "") {
+  if (raison === "thai_sans_indicatif") return tr("Numéro thaï sans indicatif ? Écrivez-le avec +66 : {numero}. Sinon, ajoutez l'indicatif de son pays.", { numero: proposition });
+  if (raison === "sans_indicatif") return tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.");
+  if (raison === "longueur") return tr("Ce numéro n'a pas le bon nombre de chiffres pour son pays : vérifiez qu'il est complet.");
+  if (raison === "illisible") return tr("Numéro coupé ou en double : laissez un seul numéro, complet, avec son indicatif.");
+  return tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.");
 }
 
 // Numéros d'un client pour les boutons Appeler et WhatsApp : l'appel accepte un numéro local tel quel, WhatsApp exige le format international.

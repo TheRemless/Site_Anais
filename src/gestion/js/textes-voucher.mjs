@@ -85,6 +85,8 @@ export const GROUPES_VOUCHER = [
       ["date_heure", "Date & Time"],
       ["remarques", "Remarks"],
       ["ref_operateur", "Operator ref."],
+      // Les options du service (26.11.2026).
+      ["options", "Options"],
     ],
   },
   {
@@ -107,6 +109,9 @@ export const GROUPES_VOUCHER = [
       ["sur_place_bateau", "Pay at Pier / Provider"],
       ["sur_place_transfert", "Pay Driver Directly"],
       ["sur_place_activite", "Pay on Arrival"],
+      // Acompte versé sur un service payé sur place (26.11.2026).
+      ["montant_verse", "Amount Already Paid"],
+      ["reste_sur_place", "Balance to Pay on Arrival"],
     ],
   },
   {
@@ -140,6 +145,9 @@ export const GROUPES_BOOKING = [
       ["b_bagages", "LUGGAGE"],
       ["b_prix", "TOTAL PRICE"],
       ["b_remarques", "REMARKS"],
+      ["b_verse", "ALREADY PAID"],
+      ["b_reste", "BALANCE TO PAY"],
+      ["b_options", "OPTIONS"],
       ["b_tous_frais", "(all fees included)"],
       ["b_contact", "CONTACT US:"],
     ],
@@ -150,6 +158,8 @@ export const GROUPES_BOOKING = [
       ["b_intro", "We’re happy to confirm your booking details as follows:"],
       ["b_paiement", "Payment will be collected in cash by the driver directly"],
       ["b_paiement_wise", "(or you can pay through Wise with a 3% fee, please inform us before)"],
+      // Tout est déjà payé (26.11.2026) : rien à payer au chauffeur.
+      ["b_paiement_paye", "Your transfer is fully paid: nothing to pay to the driver."],
       ["b_attente", "Your driver will be waiting for you at the meeting point."],
       ["b_changement", "If your plan changes, please let us know as soon as possible."],
       ["b_merci", "Thank you for choosing {ENTREPRISE} – we look forward to driving you safely and comfortably to your destination! 🚐✨"],
@@ -169,6 +179,7 @@ export const GROUPES_BOOKING_SECRET = [
       ["bs_intro", "We’re happy to confirm your transport reservation details:"],
       ["bs_info", "IMPORTANT INFORMATION & PAYMENT:"],
       ["bs_paiement", "Payment: To be paid directly in cash to your driver upon arrival/pickup."],
+      ["bs_paiement_paye", "Payment: fully paid, nothing to pay to your driver."],
       ["bs_rencontre", "Meeting Point: Your assigned driver will be holding a sign with your name at the designated meeting area."],
       ["bs_assistance", "Assistance: For any urgent changes or flight delays, please contact us immediately on WhatsApp."],
       ["bs_merci", "Thank you for booking with {ENTREPRISE}!\nWe wish you a pleasant journey. ✨"],

@@ -97,7 +97,15 @@ export function vehiculesEcrits(textes = []) {
 //     avant le bloc, et sa question (<question>) ;
 //   - un message sans bloc n'est pas lu : il peut être une demande de client collée. Dans le doute, rien.
 // `depuis` et `jusqua` (dates ISO) bornent l'échange : de la carte précédente à la carte du devis (bornesEchange).
-export function textesDeNani(messages = [], { depuis = "", jusqua = "" } = {}) {
+export function textesDeNani(messages = [], bornes = {}) {
+  return lignesDeNani(messages, bornes).map((l) => l.texte);
+}
+// Qui a envoyé chaque message lu par textesDeNani (migration 133, relecture de la PR 366) : `auteur_id` du message, ou null pour un message
+// d'avant la migration (celui de la propriétaire de la conversation). Une entrée par message qui a donné au moins un texte, sans doublon.
+export function auteursDesTextes(messages = [], bornes = {}) {
+  return [...new Set(lignesDeNani(messages, bornes).map((l) => l.auteur))];
+}
+function lignesDeNani(messages = [], { depuis = "", jusqua = "" } = {}) {
   const out = [];
   for (const m of messages || []) {
     if (!m || m.role !== "user" || !Array.isArray(m.contenu)) continue;
@@ -109,8 +117,9 @@ export function textesDeNani(messages = [], { depuis = "", jusqua = "" } = {}) {
       if (!echange) continue;
       const debut = b.text.indexOf("<conversation>");
       const tete = b.text.slice(0, debut).replace(/<\/?question>/g, " ").trim();
-      if (tete) out.push(tete);
-      for (const x of echange.messages) if (!x.deClient) out.push(x.texte);
+      const auteur = m.auteur_id || null;
+      if (tete) out.push({ texte: tete, auteur });
+      for (const x of echange.messages) if (!x.deClient) out.push({ texte: x.texte, auteur });
     }
   }
   return out;

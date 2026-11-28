@@ -7,7 +7,7 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService, langueClient, nomSansEnfant } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 import { champsReservation } from "../creation-voucher-calc.mjs";
-import { verifierTelephoneClient } from "../client-calc.mjs";
+import { verifierTelephoneClient, messageTelephone } from "../client-calc.mjs";
 import { tr } from "../i18n.mjs";
 
 // Les documents de Secret et de Taxi sont en anglais (d'après le mode de l'entreprise) : les libellés anglais des prestations sont pris quand ils existent.
@@ -47,7 +47,7 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   let telephone = (client.telephone || "").trim();
   if (!clientId) {
     const verif = verifierTelephoneClient(telephone, "");
-    if (!verif.ok) throw new Error(verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays au téléphone du client, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Téléphone du client illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
+    if (!verif.ok) throw new Error(tr("Téléphone du client : {message}", { message: messageTelephone(verif.raison, verif.proposition) }));
     telephone = verif.valeur;
   }
   if (!clientId) {

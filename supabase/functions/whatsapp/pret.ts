@@ -12,6 +12,7 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { MESSAGES_LUS, etatPret, pretChange, memeNumero } from "./pret.js";
 import { faitsAvancee, entrepriseDuMessage } from "./etapes.js";
 import { signauxPartenaire, typeADeduire } from "./type-contact.js";
+import { avecAutomatique, sansAutomatiques } from "./automatique.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 export const RATTRAPAGE_MAX = 20;
@@ -73,9 +74,10 @@ export async function pretApresMessage(db: SupabaseClient, conversationId: strin
     const conv = r.data;
     if (!conv) return;
     // origine et statut_envoi : un voucher envoyé depuis Gestion (média « voucher » rangé par whatsapp-envoi) et son résultat.
-    const { data: msgs, error: errM } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, supprime_le, statut_envoi").eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_LUS);
+    // Sans le message automatique de nuit (migration 132) : il n'annonce rien et ne répond à rien.
+    const { data: msgs, error: errM } = await avecAutomatique((cols) => db.from("whatsapp_messages").select(cols).eq("conversation_id", conversationId).neq("type", "non_transmis").order("envoye_le", { ascending: false }).limit(MESSAGES_LUS), "id, sens, origine, type, texte, medias, envoye_le, supprime_le, statut_envoi");
     if (errM) return console.error("whatsapp : prêt à réserver, messages illisibles", errM.message);
-    const messages = [...(msgs || [])].reverse();
+    const messages = [...sansAutomatiques(msgs)].reverse();
     const reservations = await reservationsDuClient(db, conv);
     const patch: Record<string, unknown> = {};
     const decision = etatPret(conv, messages, undefined, { reservations, entrepriseDu: (v: unknown[], i: number) => entrepriseDuMessage(v, i, conv) });

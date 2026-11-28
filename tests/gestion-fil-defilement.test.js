@@ -28,6 +28,9 @@ test("après un défilement : seul un geste de la personne la détache du bas ; 
   assert.deepEqual(apresDefilement({ position: 400, cible: 1000, colle: true, geste: false }), { colle: true, ecart: 0, corriger: true }, "le navigateur a bougé la page : on la remet");
   assert.deepEqual(apresDefilement({ position: 400, cible: 1000, colle: false, geste: false }), { colle: false, ecart: 0, corriger: false }, "Nani lit plus haut : rien ne la ramène");
   assert.deepEqual(apresDefilement({ position: 995, cible: 1000, colle: false, geste: true }), { colle: true, ecart: 0, corriger: false }, "revenue en bas : collée de nouveau");
+  // Clavier ouvert (26.11.2026) : iOS fait défiler la page pour montrer le champ ; le fil ne le contredit jamais, sinon les deux se renvoient
+  // la page tant que le clavier reste ouvert. Le fil reste collé : il redescend à la fermeture du clavier, au prochain message.
+  assert.deepEqual(apresDefilement({ position: 400, cible: 1000, colle: true, geste: false, clavier: true }), { colle: true, ecart: 0, corriger: false }, "clavier ouvert : aucune correction");
   assert.deepEqual(apresDefilement({ position: 1200, cible: 1000, colle: true, geste: true }), { colle: true, ecart: 200, corriger: false }, "téléphone : sous le dernier message (réponse préparée), l'écart est gardé");
 });
 

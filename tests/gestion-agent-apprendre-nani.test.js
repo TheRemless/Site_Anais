@@ -334,7 +334,7 @@ test("apprendre : un prix d'offre retapé dans « Vérifier avant » compte, un 
   assert.match(d, /prix_saisi: prixSaisiIci\(sv\)/);
   assert.match(d, /const prixSaisiIci = \(sv\) => !sv\.prixALaMainAuDepart && prixALaMain\(sv\);/);
   const v = lire("src/gestion/js/views/agent.mjs");
-  assert.match(v, /surCree: \(\{ dossier, services \}\) => noterReussite\(c, \{ ok: true, dossier, ecran: services \}\)/);
+  assert.match(v, /surCree: \(\{ dossier, services, whatsappId \}\) => noterReussite\(c, \{ ok: true, dossier, ecran: services, whatsappId \}\)/);
 });
 
 test("apprendre : une remarque retouchée compte par ce qui a été ajouté aux notes", () => {
@@ -624,7 +624,7 @@ test("constat 8 : les messages lus sont les plus récents de la fenêtre, remis 
     { id: "m1", conversation_id: "c1", sens: "sortant", origine: "app", type: "text", texte: NANI, envoye_le: iso(T0 + 600_000) },
   ];
   assert.deepEqual(await apprendreDeNani(scene({ messages }), "c1", "m1"), { rien: "rien_a_comparer" });
-  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /\.order\("envoye_le", \{ ascending: false \}\)\.limit\(200\);[\s\S]{0,120}const messages = \[\.\.\.\(recents \|\| \[\]\)\]\.reverse\(\);/);
+  assert.match(lire("supabase/functions/agent/apprendre-whatsapp.js"), /\.order\("envoye_le", \{ ascending: false \}\)\.limit\(200\)(?:, "id, sens, origine, type, texte, envoye_le, supprime_le"\))?;[\s\S]{0,120}const messages = \[\.\.\.\(recents \|\| \[\]\)\]\.reverse\(\);/);
 });
 
 test("contre-vérification : un contact typé est masqué aussi par son prénom, un nom d'un seul mot courant ne masque rien", () => {

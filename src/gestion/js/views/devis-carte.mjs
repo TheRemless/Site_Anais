@@ -60,8 +60,11 @@ const A_COMPLETER = {
 const UNITE_COMPLEMENT = { sans_tarif_enfant: N_("Prix par enfant"), enfant_non_compte: N_("Prix par enfant"), supplement_a_definir: N_("Prix par personne en plus") };
 
 // D'où vient le nombre de véhicules, dit discrètement sous le service.
-function origineVehicules(l) {
+// `auteur` : qui a écrit le nombre dans la conversation (migration 133) : { moi } ou { prenom } ; inconnu, le libellé d'avant.
+function origineVehicules(l, auteur = null) {
   if (l.vehiculesOrigine === "choix") return tr("choisi par vous");
+  if (l.vehiculesOrigine === "conversation" && auteur && auteur.moi) return tr("écrit par vous dans la conversation");
+  if (l.vehiculesOrigine === "conversation" && auteur && auteur.prenom) return tr("écrit par {prenom} dans la conversation", { prenom: auteur.prenom });
   if (l.vehiculesOrigine === "conversation") return tr("écrit par Nani dans la conversation");
   if (l.vehiculesOrigine === "suggestion") return l.bagages ? tr("suggestion : {n} personnes au plus par minivan, selon les bagages", { n: PLACES_SUGGEREES.minivan }) : tr("suggestion : {n} personnes au plus par voiture", { n: PLACES_SUGGEREES[genreVehicule(l.tarif)] || "" });
   return tr("1 par défaut : à vous de choisir");
@@ -69,12 +72,13 @@ function origineVehicules(l) {
 
 // La carte du dossier, Secret ou Taxi. `donnees` : celles de la carte (entreprises corrigées comprises). Rien si les trois éléments ne sont
 // pas connus. `textes()` : les textes de Nani dans l'échange en cours (textesDeNani), lus au clic. `marque()` : la marque de l'échange.
-export function blocDevis(donnees, { id = null, textes = () => [], marque = () => "", client = (donnees && donnees.client) || {} } = {}) {
+// `auteur()` : qui a écrit ces textes ({ moi } ou { prenom }, null si inconnu), lu au clic (migration 133).
+export function blocDevis(donnees, { id = null, textes = () => [], marque = () => "", auteur = () => null, client = (donnees && donnees.client) || {} } = {}) {
   if (!(modeTaxi() || modeExcursions()) || !devisPossible(donnees)) return null;
   const resultat = h("div", { class: "devis-resultat", "aria-live": "polite" });
   const bouton = h("button", { type: "button", class: "secondaire petit" }, tr("Calculer le devis"));
   const refaire = () => {
-    resultat.replaceChildren(...dessiner(donnees, client, refaire, id, textes(), marque()));
+    resultat.replaceChildren(...dessiner(donnees, client, refaire, id, textes(), marque(), auteur()));
     bouton.textContent = tr("Recalculer le devis");
   };
   bouton.addEventListener("click", refaire);
@@ -116,7 +120,7 @@ function blocACompleter(l, id, refaire, devise) {
   );
 }
 
-function dessiner(donnees, client, refaire, id, textes, marque) {
+function dessiner(donnees, client, refaire, id, textes, marque, auteur = null) {
   const devise = reglages().devise || "THB";
   const contexte = { prestations: etat.db.prestations || [], trajets: etat.db.trajets || [], partenaires: etat.db.partenaires || [], nomPartenaire };
   const choix = choixDe(id);
@@ -142,7 +146,7 @@ function dessiner(donnees, client, refaire, id, textes, marque) {
               "span",
               null,
               h("strong", null, l.libelle),
-              l.vehicules ? h("span", { class: "devis-ligne-vehicules" }, reglageVehicules(l, id, refaire), h("small", null, ` ${origineVehicules(l)}`)) : null,
+              l.vehicules ? h("span", { class: "devis-ligne-vehicules" }, reglageVehicules(l, id, refaire), h("small", null, ` ${origineVehicules(l, auteur)}`)) : null,
               // Un prix accepté vaut pour tout le service : le nombre de véhicules ne le change pas (il compte pour le dossier et le plancher net).
               l.prixAccepte && l.vehicules ? h("small", { class: "devis-prix-accepte" }, tr("Le prix accepté vaut pour tout le service, quel que soit le nombre de véhicules.")) : null,
               h("small", null, [l.vehicules > 1 && l.unitaire !== null ? `${l.vehicules} × ${formatMontant(l.unitaire, devise)}` : "", l.complement ? (l.complement.prix > 0 ? tr("{n} × {prix} ajoutés", { n: l.complement.qte, prix: formatMontant(l.complement.prix, devise) }) : tr("{n} offerts", { n: l.complement.qte })) : "", tr(ORIGINES[l.origine] || ORIGINES.catalogue)].filter(Boolean).join(", "))

@@ -53,7 +53,7 @@ export function blocRappel(r) {
   return h(
     "section",
     { class: "rappel-bloc", "aria-labelledby": `rappel-titre-${r.id}` },
-    h("h2", { id: `rappel-titre-${r.id}` }, tr("Rappel")),
+    h("h2", { id: `rappel-titre-${r.id}` }, tr("Rappels avant le départ")),
     heureService(r) ? null : h("p", { class: "bandeau-info", role: "status" }, tr("Pas d'heure de pickup : pas de notification une heure avant. Le service reste dans le rappel de 18h la veille.")),
     h(
       "div",
@@ -129,7 +129,7 @@ export function sectionProchainsServices() {
             h("span", { class: "carte-titre" }, r.libelle),
             h("span", { class: "carte-droite" }, h("strong", null, heureService(r)), h("span", null, minutes > 0 ? tr("dans {n} min", { n: minutes }) : tr("commencé"))),
             h("span", { class: "carte-sous" }, [personnesTexte(r.personnes, langueActive()), r.lieu_pickup].filter(Boolean).join(" · ")),
-            h("span", { class: "carte-pied" }, h("span", null, pastille(e.client, tr("Client")), r.partenaire_id ? pastille(e.partenaire, tr("Partenaire")) : null), h("span", { class: "rappel-ouvrir" }, tr("Rappel"), icone("chevron", 16)))
+            h("span", { class: "carte-pied" }, h("span", null, pastille(e.client, tr("Client")), r.partenaire_id ? pastille(e.partenaire, tr("Partenaire")) : null), h("span", { class: "rappel-ouvrir" }, tr("Rappels avant le départ"), icone("chevron", 16)))
           )
         );
       })

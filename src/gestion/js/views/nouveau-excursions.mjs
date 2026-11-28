@@ -13,7 +13,7 @@ import { creerDossierExcursions, langueDocuments, refProposee as refPropose, ref
 import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
 import { tr } from "../i18n.mjs";
-import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
+import { identiteDepuisSaisie, verifierNouveauClient, messageTelephone } from "../client-calc.mjs";
 import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet, trajetIncomplet, siegesIncomplets, avecSiegesRequis } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { ouvrirCourseLibre } from "./course-libre.mjs";
@@ -170,7 +170,7 @@ export function nouveauDossierExcursions() {
     erreurChamp(nvTel, "");
     if (selClient.nouveau) {
       const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value });
-      if (!verif.ok && verif.champ === "telephone") return erreurChamp(nvTel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.")), nvTel.focus();
+      if (!verif.ok && verif.champ === "telephone") return erreurChamp(nvTel, messageTelephone(verif.raison, verif.proposition)), nvTel.focus();
     }
     if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = tr("Ajoutez au moins un service."));
     if (!ref.value.trim()) return (erreur.textContent = taxi ? tr("Indiquez le numéro de réservation.") : tr("Indiquez le numéro de facture."));

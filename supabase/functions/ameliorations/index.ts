@@ -11,6 +11,7 @@
 // Le suivi (PR prête, en ligne, refusée) est lu sur GitHub par la fonction « rappels » ({ "type": "ameliorations" }, pg_cron).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { DEPOT, LABEL, LIMITE_JOUR_DEFAUT, controlerDemande, corpsIssue, titreIssue } from "./calc.js";
+import { envoyerAvecCarte } from "./envoi.js";
 import { dateBangkok, debutJourBangkok } from "../assistant/calc.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
@@ -81,26 +82,46 @@ Deno.serve(async (req) => {
     .single();
   if (ligne.error) return json({ erreur: manquante(ligne.error) ? "migration_manquante" : ligne.error.code === "23505" ? "deja_decidee" : "base" }, ligne.error.code === "23505" ? 409 : 500);
 
+  // La carte est prise avant GitHub et validée après l'issue (envoyerAvecCarte, envoi.js) : jamais d'issue pour une carte décidée ailleurs,
+  // jamais de carte validée sans issue.
   const fonctionnement = (reglages.data?.valeur as { fonctionnement?: string } | null)?.fonctionnement || "sur_mesure";
-  let issue: { number?: number; html_url?: string } | null = null;
-  try {
-    const rep = await fetch(`https://api.github.com/repos/${DEPOT}/issues`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${jeton}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "gestion-ameliorations", "Content-Type": "application/json" },
-      body: JSON.stringify({ title: titreIssue(controle.titre), body: corpsIssue({ id: ligne.data.id, texte: controle.texte, entreprise: ent.data?.nom || "", fonctionnement, date: dateBangkok() }), labels: [LABEL] }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (rep.ok) issue = await rep.json();
-    else console.error("ameliorations : GitHub", rep.status, (await rep.text()).slice(0, 200));
-  } catch (err) {
-    console.error("ameliorations : GitHub", err instanceof Error ? err.name : "erreur");
-  }
-  if (!issue || !issue.number || !issue.html_url) {
-    // Rien n'est parti : la ligne s'efface, la carte reste à envoyer.
-    await admin.from("ameliorations").delete().eq("id", ligne.data.id);
-    return json({ erreur: "github_indisponible" }, 502);
-  }
-  const maj = await admin.from("ameliorations").update({ issue_numero: issue.number, issue_url: issue.html_url, maj_le: new Date().toISOString() }).eq("id", ligne.data.id).select("id, entite_id, titre, texte, statut, issue_numero, issue_url, pr_url, sensible, cree_le, maj_le").single();
-  const decidee = await sb.from("agent_cartes").update({ statut: "validee" }).eq("id", c!.id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single();
-  return json({ amelioration: maj.data || ligne.data, carte: decidee.data || null });
+  const COL_AMELIORATION = "id, entite_id, titre, texte, statut, issue_numero, issue_url, pr_url, sensible, cree_le, maj_le";
+  const absente = (e: { code?: string; message?: string } | null) => !!e && (e.code === "PGRST202" || e.code === "42883" || /Could not find the function|does not exist/i.test(e.message || ""));
+  const r = await envoyerAvecCarte({
+    prendre: async () => {
+      // `forcer` : la personne a confirmé « Reprendre la carte » après une prise expirée d'une autre personne.
+      const p = await sb.rpc("prendre_agent_carte_equipe", { p_carte: c!.id, p_forcer: d.forcer === true });
+      if (p.error) return absente(p.error) ? { ok: true } : { ok: false, raison: "erreur" };
+      return p.data || { ok: false };
+    },
+    creerIssue: async () => {
+      try {
+        const rep = await fetch(`https://api.github.com/repos/${DEPOT}/issues`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jeton}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "gestion-ameliorations", "Content-Type": "application/json" },
+          body: JSON.stringify({ title: titreIssue(controle.titre), body: corpsIssue({ id: ligne.data.id, texte: controle.texte, entreprise: ent.data?.nom || "", fonctionnement, date: dateBangkok() }), labels: [LABEL] }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (rep.ok) return await rep.json();
+        console.error("ameliorations : GitHub", rep.status, (await rep.text()).slice(0, 200));
+      } catch (err) {
+        console.error("ameliorations : GitHub", err instanceof Error ? err.name : "erreur");
+      }
+      return null;
+    },
+    enregistrerIssue: async (issue: { number: number; html_url: string }) => {
+      const maj = await admin.from("ameliorations").update({ issue_numero: issue.number, issue_url: issue.html_url, maj_le: new Date().toISOString() }).eq("id", ligne.data.id).select(COL_AMELIORATION).single();
+      return maj.data || ligne.data;
+    },
+    valider: async () => (await sb.from("agent_cartes").update({ statut: "validee" }).eq("id", c!.id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single()).data || null,
+    relire: async () => (await sb.from("agent_cartes").select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").eq("id", c!.id).maybeSingle()).data || null,
+    rendre: async () => {
+      await sb.rpc("rendre_agent_carte", { p_carte: c!.id });
+    },
+    effacerLigne: async () => {
+      await admin.from("ameliorations").delete().eq("id", ligne.data.id);
+    },
+  });
+  if ("erreur" in r) return json({ erreur: r.erreur, ...("par" in r && r.par ? { par: r.par } : {}), ...("depuis" in r && r.depuis ? { depuis: r.depuis } : {}) }, r.statut);
+  return json({ amelioration: r.amelioration, carte: r.carte, ...("a_confirmer" in r && r.a_confirmer ? { a_confirmer: true } : {}) });
 });

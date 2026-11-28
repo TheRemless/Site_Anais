@@ -32,9 +32,12 @@ export function prochainChangement(messages, maintenant = Date.now()) {
   return min === null ? null : Math.max(500, min + 250);
 }
 
-// Le message de la conversation à vérifier (le plus récent), ou null.
+// Le message de la conversation à vérifier (le plus récent), ou null. Jamais le message automatique de nuit (migration 132, relecture de la
+// PR 364) : « C'est parti » solderait les réponses préparées de la conversation et « Pas parti » annoncerait un nouvel essai. Sa bulle dit
+// seulement « envoi non confirmé » ou « pas de confirmation ».
 export function envoiEnDoute(messages, maintenant = Date.now()) {
   const liste = (messages || []).filter((m) => {
+    if (m && m.automatique) return false;
     const e = envoiAVerifier(m, maintenant);
     return e === "verifier" || e === "expire";
   });

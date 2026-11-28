@@ -389,7 +389,8 @@ test("constat 4 : une discussion liée pleine est archivée et remplacée, avec 
   const rotation = f.slice(f.indexOf("let remplace"), f.indexOf("message = message ? `${resume}"));
   assert.doesNotMatch(rotation, /waLiee|waEcrit/, "le droit d'écrire n'est pas exigé");
   assert.match(f, /update\(\{ statut: "archivee" \}\)\.eq\("id", ancien\.id\)/);
-  assert.match(f, /insert\(\{ entite_id: entiteId, titre: ancien\.titre, dossier_id: ancien\.dossier_id, whatsapp_conversation_id: ancien\.whatsapp_conversation_id \}\)/);
+  // Migration 133 : la suite garde aussi la propriétaire de l'ancienne quand l'administration écrit pour elle.
+  assert.match(f, /insert\(\{ entite_id: entiteId, titre: ancien\.titre, dossier_id: ancien\.dossier_id, whatsapp_conversation_id: ancien\.whatsapp_conversation_id, \.\.\.proprietaireSuite\(ancien, userId\) \}\)/);
   assert.match(f, /message = message \? `\$\{resume\}\\n\\n\$\{message\}` : resume;/);
   assert.match(f, /if \(!conversationId \|\| remplace\) await sb\.from\("agent_conversations"\)\.delete\(\)\.eq\("id", conv!\.id\);\n\s+\/\/[^\n]*\n\s+if \(remplace\) await sb\.from\("agent_conversations"\)\.update\(\{ statut: "ouverte" \}\)\.eq\("id", remplace\);/);
   assert.match(f, /\.\.\.\(remplace \? \{ remplace, whatsapp_conversation_id: conv!\.whatsapp_conversation_id \} : \{\}\)/);

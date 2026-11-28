@@ -28,6 +28,17 @@ export function entreesMenu(ctx) {
   return [...new Set(l)].filter((k) => k !== principal);
 }
 
+// Les gestes du menu « … » par groupe : le voucher en tête, puis ce qui touche le client, puis la réservation elle-même (audit mobile
+// n° 38, relecture de la PR 361). Le titre est une clé de traduction déjà au dictionnaire, traduite par tr() dans la vue. Toute clé de entreesMenu doit être dans un groupe :
+// sinon elle disparaît du menu sans erreur (tests/gestion-carte-reservation.test.js).
+export const GROUPES_MENU = [
+  [null, ["voucher"]],
+  ["Client", ["message_client", "rappel"]],
+  ["Réservation", ["modifier", "changer", "dupliquer", "statut"]],
+];
+// Les groupes d'une liste de clés, sans groupe vide, dans l'ordre ci-dessus.
+export const groupesMenu = (cles) => GROUPES_MENU.map(([titre, liste]) => [titre, liste.filter((k) => cles.includes(k))]).filter(([, liste]) => liste.length);
+
 // ---- Enregistrement de la fiche d'une réservation (relecture de la PR 315) ---------------------------------------------------------
 // Ce qui a changé depuis la ligne d'origine `base` : la date, les personnes, le mode de règlement, l'annulation, et l'« avant » que la
 // facture compare (suivreFacture). Une carte « Modification » de l'Assistant ouvre la fiche avec la réservation déjà modifiée : la

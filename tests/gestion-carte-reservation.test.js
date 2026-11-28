@@ -49,3 +49,34 @@ test("annulée : messages, modifier et statut pour la réactiver, ni changer ni 
   const { entreesMenu } = await load();
   assert.deepEqual(entreesMenu(c({ statut: "annule", voucher: { envoye: true } })), ["message_client", "modifier", "statut"]);
 });
+
+// Relecture de la PR 361 : le menu « … » d'une carte ne doit jamais s'ouvrir vide. Chaque clé de entreesMenu, dans tous les contextes,
+// a un groupe (groupesMenu) et un geste dans la table GESTES de carteReservation, et ouvrirMenu reçoit un objet indexé par clé.
+test("menu « … » : chaque entrée a un groupe et un geste, quel que soit le contexte", async () => {
+  const { entreesMenu, gestePrincipal, groupesMenu } = await load();
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/gestion/js/views/reservations.mjs"), "utf8");
+  const table = source.slice(source.indexOf("const GESTES = {"), source.indexOf("};", source.indexOf("const GESTES = {")));
+  const gestes = new Set([...table.matchAll(/^\s+([a-z_]+): \[/gm)].map((m) => m[1]));
+  assert.ok(gestes.size >= 7, "table GESTES introuvable dans reservations.mjs");
+  assert.match(source, /ouvrirMenu\(r, Object\.fromEntries\(menu\.map\(\(k\) => \[k, GESTES\[k\]\]\)\)\)/, "ouvrirMenu attend un objet indexé par clé : une liste ouvre un menu vide");
+  const vrais = [true, false];
+  let vus = 0;
+  for (const statut of ["confirme", "a_confirmer", "annule"])
+    for (const ecrit of vrais)
+      for (const aPartenaire of vrais)
+        for (const aClient of vrais)
+          for (const liee of vrais)
+            for (const voucher of [null, { envoye: false }, { envoye: true }, { envoye: true, modifie: true }]) {
+              const ctx = { statut, ecrit, aPartenaire, aClient, voucher, liee };
+              const menu = entreesMenu(ctx);
+              const principal = gestePrincipal(ctx);
+              if (principal) assert.ok(gestes.has(principal), `geste principal sans bouton : ${principal}`);
+              for (const k of menu) assert.ok(gestes.has(k), `entrée sans geste : ${k} (${JSON.stringify(ctx)})`);
+              const affiches = groupesMenu(menu).flatMap(([, cles]) => cles);
+              assert.deepEqual([...affiches].sort(), [...menu].sort(), `entrée sans groupe : ${JSON.stringify(ctx)}`);
+              vus++;
+            }
+  assert.ok(vus > 100);
+});

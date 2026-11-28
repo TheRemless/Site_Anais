@@ -1,0 +1,47 @@
+// Traductions anglaises de l'Assistant en équipe (migration 133, 27.11.2026), à part comme i18n-en-defilement.mjs. Fusionnées dans EN à la
+// fin de i18n-en.mjs, sans jamais remplacer une traduction déjà là : le test de i18n les voit comme les autres.
+export const EN_EQUIPE = {
+  "Conversations à montrer": "Conversations to show",
+  "Les miennes": "Mine",
+  "Toute l'équipe": "Whole team",
+  "Aucune conversation dans l'équipe.": "No conversations in the team.",
+  "Conversation de {prenom}": "{prenom}'s conversation",
+  "Conversation de {prenom} : vous écrivez à sa place, chaque message garde votre nom.": "{prenom}'s conversation: you are writing in their place, each message keeps your name.",
+  "écrit par vous": "written by you",
+  "écrit par {prenom}": "written by {prenom}",
+  "par {prenom}": "by {prenom}",
+  "L'assistant répond à {prenom}…": "The assistant is answering {prenom}…",
+  "L'assistant répond déjà dans cette conversation. Votre message n'est pas parti : il reste dans la zone de saisie, renvoyez-le dans un instant.": "The assistant is already answering in this conversation. Your message was not sent: it is still in the text box, send it again in a moment.",
+  "L'assistant répond déjà à {prenom} dans cette conversation. Votre message n'est pas parti : il reste dans la zone de saisie, renvoyez-le dans un instant.": "The assistant is already answering {prenom} in this conversation. Your message was not sent: it is still in the text box, send it again in a moment.",
+  // Relecture de la PR 366 : prise des cartes en équipe, devis, fiche du dossier.
+  "une personne de l'équipe": "a team member",
+  "l'équipe": "the team",
+  vous: "you",
+  "L'assistant vous répond dans un autre onglet…": "The assistant is answering you in another tab…",
+  "Cette carte a déjà été écartée par {qui} : rien n'est créé.": "This card was already dismissed by {qui}: nothing is created.",
+  "Cette carte a déjà été validée par {qui} : rien n'est créé une seconde fois.": "This card was already approved by {qui}: nothing is created twice.",
+  "Cette carte est déjà en cours de validation dans un autre onglet : rien n'est créé deux fois.": "This card is already being approved in another tab: nothing is created twice.",
+  "{qui} valide cette carte en ce moment : rien n'est créé deux fois.": "{qui} is approving this card right now: nothing is created twice.",
+  "{qui} a repris cette carte pendant que vous la vérifiiez : rien n'a été enregistré de votre côté.": "{qui} took over this card while you were checking it: nothing was saved on your side.",
+  "Cette carte n'est plus prise par vous : rien n'a été enregistré. Rouvrez-la pour la valider.": "You no longer hold this card: nothing was saved. Open it again to approve it.",
+  "{qui} a commencé à valider cette carte il y a {n} min sans terminer. La reprendre ? Si {qui} enregistre ensuite de son côté, ce sera refusé : rien ne sera créé deux fois.": "{qui} started approving this card {n} min ago without finishing. Take it over? If {qui} saves afterwards, it will be refused: nothing will be created twice.",
+  "Reprendre la carte": "Take over the card",
+  "Carte laissée à {qui} : rien n'a été enregistré.": "Card left to {qui}: nothing was saved.",
+  "La carte n'a pas pu être vérifiée : rien n'a été enregistré, réessayez.": "The card could not be checked: nothing was saved, try again.",
+  "Conversation de {prenom} avec l'assistant": "{prenom}'s conversation with the assistant",
+  "écrit par vous dans la conversation": "written by you in the conversation",
+  "écrit par {prenom} dans la conversation": "written by {prenom} in the conversation",
+  "Cette carte a déjà été écartée par {qui}.": "This card was already dismissed by {qui}.",
+  "Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe.": "This card was already approved by {qui}: it can no longer be dismissed, the file exists.",
+  "{qui} valide cette carte en ce moment : elle ne s'écarte pas.": "{qui} is approving this card right now: it cannot be dismissed.",
+  // Relecture n° 2 de la PR 366.
+  "Vérifiez : la réponse semble parler du changement de personne (« {v} »).": "Check: the reply seems to mention the change of person (“{v}”).",
+  "Vérifiez : la réponse semble parler du changement de personne (« {valeur} »).": "Check: the reply seems to mention the change of person (“{valeur}”).",
+  "Cette carte est en cours de validation ailleurs : rien n'est parti, réessayez dans un instant.": "This card is being approved elsewhere: nothing was sent, try again in a moment.",
+  // Relecture n° 4 de la PR 366.
+  "Cette carte a été laissée en cours par une autre personne : rien n'est parti.": "This card was left in progress by someone else: nothing was sent.",
+  "Envoyée, à confirmer : la demande est partie, mais la carte n'a pas pu être notée envoyée. Rien ne repartira en double.": "Sent, to be confirmed: the request went out, but the card could not be marked as sent. Nothing will be sent twice.",
+  "Demande envoyée, carte à confirmer : rien ne repartira en double.": "Request sent, card to be confirmed: nothing will be sent twice.",
+  // Relecture n° 5 de la PR 366.
+  "Cette demande est déjà partie sur GitHub : elle ne s'écarte plus.": "This request has already gone to GitHub: it can no longer be dismissed.",
+};

@@ -40,9 +40,9 @@ export async function noterEnvoiClient(r) {
 }
 
 // Le bouton de la fenêtre d'envoi, une fois l'image prête. `fichier()` rend l'image ; `legende()` le message.
-export function boutonVoucherWhatsApp({ x, conversation, fichier, legende, noter = null, classe = "secondaire" }) {
+export function boutonVoucherWhatsApp({ x, conversation, fichier, legende, noter = null, classe = "secondaire", libelle = null }) {
   if (!conversation) return null;
-  return h("button", { class: classe, type: "button", onclick: () => fichier() && confirmerVoucherWhatsApp(x, { conversation, fichier: fichier(), legende: legende(), noter }) }, icone("whatsapp", 18), tr("Envoyer dans la conversation WhatsApp"));
+  return h("button", { class: classe, type: "button", onclick: () => fichier() && confirmerVoucherWhatsApp(x, { conversation, fichier: fichier(), legende: legende(), noter }) }, icone("whatsapp", 18), libelle || tr("Envoyer dans la conversation WhatsApp"));
 }
 
 let adresseImage = null;

@@ -122,7 +122,7 @@ test("doublons Secret et Taxi : même téléphone ou même nom, la plus ancienne
 
 test("Assistant : validation refusée sans rien écrire, écriture dans l'entreprise du dossier visé", () => {
   const agent = source("views/agent.mjs") + source("views/agent-valider.mjs");
-  assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise \}\);/);
+  assert.match(agent, /else if \(c\.genre === "dossier" && carteUnifiee\(c\.donnees\)\) r = await validerUnifie\(c, \{ donnees: donneesCarte\(c\), libelleEntreprise, whatsappLie: await conversationWaLiee\(\), avantCreer \}\);/);
   assert.match(agent, /entreprise_a_choisir: \(\) => tr\("Choisissez Secret ou Taxi"\)/);
   assert.match(agent, /lier: \(a, b\) => lierDossiers\(a, b, modifier\)/, "dossier_lie_id des deux côtés");
   assert.match(agent, /r = await dansEntreprise\(entiteVisee\(c\), \(\) => ajouterParCarte\(\{ \.\.\.c, donnees: donneesReservation\(c\) \}, /, "service ajouté au dossier de l'autre entreprise");
@@ -244,7 +244,8 @@ test("2 et 3. fenêtre dans l'autre entreprise : retour synchrone à la fermetur
   assert.doesNotMatch(agent, /setTimeout\(revenir/, "plus aucun minuteur");
   assert.doesNotMatch(agent, /entrerPourFenetre/);
   assert.match(agent, /envoyerVoucher\(x, \{ avantNavigation: revenir \}\)/);
-  assert.match(agent, /\}\), \{ ferme: revenir \}\);/, "réservation et modification reviennent dans le rappel de fermeture");
+  // Migration 133 : la carte se rend aussi à la fermeture (rendreSiRien), puis le retour, toujours dans le rappel de fermeture.
+  assert.match(agent, /\}\), \{ ferme: \(\) => \(rendreSiRien\(c\)\(\), revenir\(\)\) \}\);/, "réservation et modification reviennent dans le rappel de fermeture");
   const envoi = source("views/voucher-envoi.mjs");
   assert.ok(envoi.indexOf("if (avantNavigation) avantNavigation();") < envoi.indexOf("if (note) naviguer(location.hash);\n      },"), "le retour passe avant la navigation");
 });
