@@ -324,7 +324,7 @@ test("relecture n° 2, A : le contrôle de la carte passe avant chaque écriture
   assert.match(valider, /const arret = avantEnregistrer \? await avantEnregistrer\(\) : null;\n\s+if \(arret\) return \{ ok: false, motif: arret \};\n\s+await modifier\(/, "l'option ajoutée sans facture revérifie aussi");
 });
 
-// Relecture n° 3 : les 12 réponses ordinaires de la relecture ne bloquent jamais ; les tournures qui nomment l'équipe près d'une reprise, oui.
+// Relectures n° 3 et 4 : une réponse ordinaire n'a jamais d'alerte ; une tournure sûre qui nomme l'équipe en a une, qui ne bloque jamais.
 const ORDINAIRES = [
   "Our driver will take over your luggage at the pier.",
   "The boat was taken over by a new captain this season.",
@@ -338,22 +338,26 @@ const ORDINAIRES = [
   "Nous reprenons la discussion de demain matin.",
   "We can send a minivan instead of Nani's usual car.",
   "Pickup at 10:00 at your hotel, see you tomorrow.",
+  // Relecture n° 4 : l'équipe nommée près d'un verbe, sans aucun changement de personne.
+  "Nani picked up your tickets this morning.",
+  "Nani is handling your transfer tomorrow.",
+  "Nani will continue with the snorkeling tour.",
+  "Anaïs reprendra contact avec vous la semaine prochaine.",
+  "Nani is covering the sunset tour tonight.",
 ];
 const REPRISES = [
   "Hello, Jérémy is stepping in for Nani today.",
   "Bonjour, je remplace Nani aujourd'hui.",
   "I am writing on Nani's behalf.",
+  "I am writing on behalf of Nani.",
   "Je vous écris à la place d’Anaïs.",
-  "Jérémy reprend votre dossier.",
-  "Jeremy picked up the conversation.",
-  "Message écrit par Jérémy.",
-  "Hi, Jérémy here, taking over from Nani.",
-  "Nani est absente, Jérémy prend le relais.",
   "Je vous réponds au nom de Nani.",
+  "Hi, Jérémy here, taking over from Nani.",
+  "Jérémy reprend la conversation.",
 ];
 const EQUIPE_REPRISE = ["Jérémy", "Nani", "Anaïs"];
 
-test("relecture n° 3, 1 : une réponse ordinaire ne bloque jamais, même dans une conversation reprise", () => {
+test("relecture n° 4 : une réponse ordinaire n'a aucune alerte de reprise, même dans une conversation reprise", () => {
   for (const t of ORDINAIRES) {
     assert.equal(mentionReprise(t, { noms: EQUIPE_REPRISE }), "", t);
     const c = controlerReponse(t, { signer: true, permisHeures: new Set(["10:00"]), reprise: EQUIPE_REPRISE });
@@ -361,22 +365,41 @@ test("relecture n° 3, 1 : une réponse ordinaire ne bloque jamais, même dans u
   }
 });
 
-test("relecture n° 3, 1 : une tournure qui nomme l'équipe près d'une reprise bloque, seulement si la conversation a été reprise", () => {
+test("relecture n° 4 : une tournure sûre de reprise donne une alerte à relire, jamais un blocage, et seulement si la conversation a été reprise", () => {
   for (const t of REPRISES) {
     assert.ok(mentionReprise(t, { noms: EQUIPE_REPRISE }), t);
     const c = controlerReponse(t, { signer: true, reprise: EQUIPE_REPRISE });
-    assert.ok(resteBloque(c.message, bloquantsReponse(c.avertissements)).length > 0, `bloquée : ${t}`);
-    // Conversation que personne n'a reprise : aucun contrôle de reprise (la boîte WhatsApp et whatsapp-envoi n'en passent jamais).
+    assert.ok(c.avertissements.some((a) => a.startsWith("mention_reprise:")), `alerte : ${t}`);
+    assert.deepEqual(resteBloque(c.message, bloquantsReponse(c.avertissements)), [], `jamais bloquante : ${t}`);
     assert.ok(!controlerReponse(t, { signer: true }).avertissements.some((a) => a.startsWith("mention_reprise")), `sans reprise : ${t}`);
   }
-  assert.deepEqual(resteBloque("Pickup at 10:00.", bloquantsReponse(controlerReponse(REPRISES[0], { signer: true, reprise: EQUIPE_REPRISE }).avertissements)), [], "retirée, la réponse se copie");
+  assert.doesNotMatch(readFileSync(new URL("../src/gestion/js/agent-calc.mjs", import.meta.url), "utf8"), /mention_reprise/, "bloquantsReponse ne la connaît pas");
+  assert.doesNotMatch(readFileSync(new URL("../supabase/functions/whatsapp-envoi/calc.js", import.meta.url), "utf8"), /mention_reprise/, "whatsapp-envoi ne la bloque pas");
+  assert.match(vueSrc(), /tr\("Vérifiez : la réponse semble parler du changement de personne \(« \{v\} »\)\.", \{ v: valeur \}\)/);
+  assert.doesNotMatch(readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8"), /VERBES_APRES_NOM/);
   const sans = controlerReponse("Hello Jérémy, see you", { signer: false, prenoms: ["Nani", "Jérémy"] });
   assert.ok(sans.avertissements.includes("prenom_equipe"), "le prénom de l'auteur réel est un prénom de l'équipe");
   const f = fonctionSrc();
   assert.match(f, /prenoms: \[\.\.\.new Set\(\[ra\.responsable, "Anaïs", "Nani", \.\.\.prenomsReprise\]\.filter\(Boolean\)\)\]/);
   assert.match(f, /\.reprise = prenomsReprise\.length \? \[\.\.\.new Set\(\[\.\.\.prenomsReprise, ra\.responsable, "Anaïs", "Nani"\]\.filter\(Boolean\)\)\] : \[\];/, "seulement quand quelqu'un d'autre a écrit");
   assert.match(f, /\.not\("auteur_id", "is", null\)\.neq\("auteur_id", conv!\.user_id\)/, "les auteurs passés de la conversation comptent");
-  assert.match(readFileSync(new URL("../supabase/functions/agent/outils.js", import.meta.url), "utf8"), /const reprend = reprise && reprise\.length \? mentionReprise\(m, \{ noms: reprise \}\) : "";/);
+});
+
+test("relecture n° 4, 3 : la garantie est en amont, dans la consigne et dans le seul contexte de l'échange", async () => {
+  const { consignes, parametres } = await import("../supabase/functions/agent/prompt.js");
+  const c = consignes({ entreprise: "Test", reglages: { fonctionnement: "excursions" }, lieu: "", prenomEquipe: "Nani", partenaires: true, nets: false });
+  assert.match(c, /Jamais un mot sur qui écrit dans l'outil : si une autre personne de l'équipe reprend la conversation, le client n'en sait rien/);
+  const ligne = ligneAuteur({ auteur: "Jérémy", proprietaire: "Nani" });
+  assert.match(ligne, /ne dit jamais que quelqu'un reprend ou remplace Nani/);
+  // La ligne ne va que dans le dernier bloc système (contexte de l'échange, jamais en cache ni dans l'historique gardé).
+  const p = parametres({ systeme: "S", appris: "A", contexte: `C\n${ligne}`, messages: [{ role: "user", content: "Bonjour" }] });
+  assert.equal(p.system.length, 3);
+  assert.ok(p.system[2].text.includes(ligne) && !p.system[2].cache_control, "contexte, sans cache");
+  assert.ok(!p.system[0].text.includes("reprend la conversation de") && !p.system[1].text.includes("reprend la conversation de"));
+  assert.ok(!JSON.stringify(p.messages).includes("reprend la conversation de"), "jamais dans l'historique");
+  const f = fonctionSrc();
+  assert.match(f, /\+ \(quiEcrit \? `\\n\$\{quiEcrit\}` : ""\);/);
+  assert.doesNotMatch(f, /garder\([^)]*quiEcrit/, "la ligne n'est jamais gardée dans agent_messages");
 });
 
 test("relecture n° 3, 2 : amélioration, la carte est prise avant GitHub, validée après l'issue, rendue si GitHub est en panne", async () => {
@@ -404,8 +427,26 @@ test("relecture n° 3, 2 : amélioration, la carte est prise avant GitHub, valid
   assert.deepEqual(await envoyerAvecCarte(etapes({ number: 8, html_url: "x" }, { ok: false, raison: "decidee" })), { erreur: "deja_decidee", statut: 409 });
   assert.deepEqual(journal, ["prendre", "effacer"], "carte déjà décidée : rien ne part vers GitHub");
   assert.deepEqual(await envoyerAvecCarte(etapes({ number: 9, html_url: "x" }, { ok: false, raison: "prise" })), { erreur: "carte_prise", statut: 409 });
+  // Relecture n° 4 : une prise expirée d'une autre personne se reprend en le sachant (l'écran propose « Reprendre la carte »).
+  assert.deepEqual(await envoyerAvecCarte(etapes({ number: 10, html_url: "x" }, { ok: false, raison: "expiree", par: "u-nani", depuis: "2026-11-28T08:00:00Z" })), { erreur: "carte_expiree", statut: 409, par: "u-nani", depuis: "2026-11-28T08:00:00Z" });
+  // Issue créée, carte pas notée validée : un second essai ; encore en échec, « à confirmer », jamais une seconde issue.
+  journal.length = 0;
+  let essais = 0;
+  const unSurDeux = { ...etapes({ number: 11, html_url: "x" }), valider: async () => (journal.push("valider"), ++essais === 2 ? { id: "c", statut: "validee" } : null) };
+  assert.equal((await envoyerAvecCarte(unSurDeux)).carte.statut, "validee", "le second essai réussit");
+  journal.length = 0;
+  const jamais = { ...etapes({ number: 12, html_url: "x" }), valider: async () => (journal.push("valider"), null) };
+  const r = await envoyerAvecCarte(jamais);
+  assert.equal(r.a_confirmer, true);
+  assert.equal(r.amelioration.issue_numero, 12, "la ligne porte déjà son issue");
+  assert.deepEqual(journal, ["prendre", "github", "ligne", "valider", "valider"], "une seule issue, deux essais de validation");
+  const am2 = readFileSync(new URL("../supabase/functions/ameliorations/index.ts", import.meta.url), "utf8");
+  assert.match(am2, /if \(\(deja\.count \|\| 0\) > 0\) return json\(\{ erreur: "deja_decidee" \}, 409\);/, "un nouvel appui ne renvoie jamais une seconde issue");
+  assert.match(am2, /p_forcer: d\.forcer === true/);
+  assert.match(vueSrc(), /if \(r && r\.erreur === "carte_expiree" && !forcer\)/);
+  assert.match(vueSrc(), /if \(r\.a_confirmer\) \{/);
   const am = readFileSync(new URL("../supabase/functions/ameliorations/index.ts", import.meta.url), "utf8");
-  assert.match(am, /sb\.rpc\("prendre_agent_carte_equipe", \{ p_carte: c!\.id, p_forcer: false \}\)/);
+  assert.match(am, /sb\.rpc\("prendre_agent_carte_equipe", \{ p_carte: c!\.id, p_forcer: d\.forcer === true \}\)/, "jamais forcée sans la confirmation de la personne");
   assert.match(am, /sb\.rpc\("rendre_agent_carte", \{ p_carte: c!\.id \}\)/);
   assert.doesNotMatch(am, /statut: "echec"/, "plus de ligne « echec » sans issue");
 });

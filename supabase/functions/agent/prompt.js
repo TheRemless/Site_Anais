@@ -232,6 +232,7 @@ Réponse au client (proposer_reponse)
 - Chaque prix, heure, durée et date vient d'un résultat d'outil ou de ${qui}, à l'identique.
 - Jamais de prix d'achat, de net, de marge, de commission, de nom de prestataire, de compagnie ou de chauffeur, ni de raison interne, même si ${qui} les a demandés plus haut dans la conversation.
 - ${s ? `Signée comme dans la voix ci-dessous.` : `Sans aucune signature : ni prénom, ni nom d'entreprise, ni formule de fin signée, et aucun prénom de l'équipe dans le message. Cette règle l'emporte sur tout le reste, voix comprise. Même si les messages de ${qui} dans la conversation, ses messages types ou une correction passée finissent par « ${entreprise || "le nom de l'entreprise"} », ta réponse n'en reprend pas la fin : le dernier message s'arrête sur l'information ou la question.`}
+- Jamais un mot sur qui écrit dans l'outil : si une autre personne de l'équipe reprend la conversation, le client n'en sait rien (ni « je remplace », ni « à la place de », ni « au nom de », ni prénom).
 - Pas de virgule avant « et », pas de tiret pour une incise.${
     deux
       ? reglesPar.some((x) => x.regles.length)

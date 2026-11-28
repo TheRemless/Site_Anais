@@ -2,7 +2,10 @@
 // (prendre_agent_carte_equipe, for update) et ne passe « validée » qu'une fois l'issue créée. GitHub en panne : la carte est rendue, la
 // ligne effacée, la carte reste à envoyer et l'écran dit l'erreur. Une carte déjà décidée ou tenue par une autre personne : rien ne part.
 // Chaque étape est passée par la fonction (base, GitHub) : la logique se teste sans réseau.
-//   prendre()            → { ok } ou { ok: false, raison } ; { ok: true } sans la migration 133
+//   prendre()            → { ok } ou { ok: false, raison, par, depuis } ; { ok: true } sans la migration 133. Une prise expirée d'une autre
+//                          personne rend « carte_expiree » (avec qui) : l'écran propose « Reprendre la carte » et renvoie avec `forcer`.
+// Issue créée mais carte pas notée validée (deux essais) : { amelioration, carte: null, a_confirmer: true }. La ligne porte déjà son
+// issue_numero et une carte n'envoie qu'une demande (index.ts, « deja ») : aucune issue ne repart en double.
 //   creerIssue()         → { number, html_url } ou null (une exception compte comme une panne)
 //   enregistrerIssue(i)  → la ligne « ameliorations » à jour
 //   valider()            → la carte validée, ou null
@@ -12,6 +15,7 @@ export async function envoyerAvecCarte({ prendre, creerIssue, enregistrerIssue, 
   if (!p || p.ok !== true) {
     await effacerLigne();
     if (p && p.raison === "erreur") return { erreur: "base", statut: 500 };
+    if (p && p.raison === "expiree") return { erreur: "carte_expiree", statut: 409, ...(p.par ? { par: p.par } : {}), ...(p.depuis ? { depuis: p.depuis } : {}) };
     return { erreur: p && p.raison === "decidee" ? "deja_decidee" : "carte_prise", statut: 409 };
   }
   let issue = null;
@@ -26,6 +30,6 @@ export async function envoyerAvecCarte({ prendre, creerIssue, enregistrerIssue, 
     return { erreur: "github_indisponible", statut: 502 };
   }
   const amelioration = await enregistrerIssue(issue);
-  const carte = await valider().catch(() => null);
-  return { amelioration, carte };
+  const carte = (await valider().catch(() => null)) || (await valider().catch(() => null));
+  return carte ? { amelioration, carte } : { amelioration, carte: null, a_confirmer: true };
 }

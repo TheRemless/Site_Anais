@@ -89,7 +89,8 @@ Deno.serve(async (req) => {
   const absente = (e: { code?: string; message?: string } | null) => !!e && (e.code === "PGRST202" || e.code === "42883" || /Could not find the function|does not exist/i.test(e.message || ""));
   const r = await envoyerAvecCarte({
     prendre: async () => {
-      const p = await sb.rpc("prendre_agent_carte_equipe", { p_carte: c!.id, p_forcer: false });
+      // `forcer` : la personne a confirmé « Reprendre la carte » après une prise expirée d'une autre personne.
+      const p = await sb.rpc("prendre_agent_carte_equipe", { p_carte: c!.id, p_forcer: d.forcer === true });
       if (p.error) return absente(p.error) ? { ok: true } : { ok: false, raison: "erreur" };
       return p.data || { ok: false };
     },
@@ -120,6 +121,6 @@ Deno.serve(async (req) => {
       await admin.from("ameliorations").delete().eq("id", ligne.data.id);
     },
   });
-  if ("erreur" in r) return json({ erreur: r.erreur }, r.statut);
-  return json({ amelioration: r.amelioration, carte: r.carte });
+  if ("erreur" in r) return json({ erreur: r.erreur, ...("par" in r && r.par ? { par: r.par } : {}), ...("depuis" in r && r.depuis ? { depuis: r.depuis } : {}) }, r.statut);
+  return json({ amelioration: r.amelioration, carte: r.carte, ...("a_confirmer" in r && r.a_confirmer ? { a_confirmer: true } : {}) });
 });

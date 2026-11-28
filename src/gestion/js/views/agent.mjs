@@ -86,6 +86,7 @@ const ERREURS_AMELIORATION = {
   github_indisponible: N_("GitHub ne répond pas : rien n'est parti, réessayez plus tard."),
   // Migration 133 : la carte est tenue par une autre personne (validation en cours ailleurs).
   carte_prise: N_("Cette carte est en cours de validation ailleurs : rien n'est parti, réessayez dans un instant."),
+  carte_expiree: N_("Cette carte a été laissée en cours par une autre personne : rien n'est parti."),
   migration_manquante: N_("Les demandes d'amélioration ne sont pas encore installées dans la base."),
   hors_ligne: N_("Pas de connexion : la demande n'est pas partie."),
 };
@@ -156,8 +157,8 @@ function texteAvertissement(a) {
   if (code === "montant_illisible") return tr("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.");
   if (code === "controle_impossible") return tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.");
   if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
-  // Migration 133 : le changement d'auteur de la conversation ne va jamais au client (bloque la copie tant qu'il reste).
-  if (code === "mention_reprise") return tr("La réponse parle de qui écrit dans l'outil (« {v} ») : à retirer, le client ne doit pas le lire.", { v: valeur });
+  // Migration 133 : une alerte à relire, qui ne bloque ni la copie ni l'envoi.
+  if (code === "mention_reprise") return tr("Vérifiez : la réponse semble parler du changement de personne (« {v} »).", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }
 
@@ -1912,15 +1913,30 @@ const remarquesCarte = (s) => {
     }
   }
   // Carte « amelioration » : envoyée telle que relue dans la carte (titre et texte), par la fonction « ameliorations ».
-  async function demanderAmelioration(c, titre, texte, bouton) {
+  async function demanderAmelioration(c, titre, texte, bouton, { forcer = false } = {}) {
     if (bouton) bouton.disabled = true;
-    const r = await etat.store.demanderAmelioration({ entite_id: etat.entiteId, carte_id: c.id, titre, texte });
+    const r = await etat.store.demanderAmelioration({ entite_id: etat.entiteId, carte_id: c.id, titre, texte, ...(forcer ? { forcer: true } : {}) });
     if (bouton) bouton.disabled = false;
+    // Une autre personne avait commencé à envoyer cette demande sans terminer (prise expirée, migration 133) : reprise seulement en le sachant.
+    if (r && r.erreur === "carte_expiree" && !forcer) {
+      const qui = quiEst(r.par);
+      const minutes = Math.max(2, Math.round((Date.now() - Date.parse(r.depuis || "")) / 60000) || 2);
+      if (await confirmer(tr("{qui} a commencé à valider cette carte il y a {n} min sans terminer. La reprendre ? Si {qui} enregistre ensuite de son côté, ce sera refusé : rien ne sera créé deux fois.", { qui, n: minutes }), tr("Reprendre la carte"))) return demanderAmelioration(c, titre, texte, bouton, { forcer: true });
+      return toast(tr("Carte laissée à {qui} : rien n'a été enregistré.", { qui }), true);
+    }
     if (!r || r.erreur) {
       const motifs = r && r.motifs ? r.motifs.map((m) => tr(MOTIFS_TEXTE[m] || N_("un texte refusé"))).join(", ") : "";
       return toast(`${tr(ERREURS_AMELIORATION[r && r.erreur] || N_("La demande n'est pas partie."))}${motifs ? ` (${motifs})` : ""}`, true);
     }
     ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
+    // Issue créée mais carte pas notée validée (relecture n° 4) : la carte reste affichée « envoyée, à confirmer » ; elle ne renverra rien.
+    if (r.a_confirmer) {
+      motifs.set(c.id, { motif: tr("Envoyée, à confirmer : la demande est partie, mais la carte n'a pas pu être notée envoyée. Rien ne repartira en double."), entreprise: null });
+      toast(tr("Demande envoyée, carte à confirmer : rien ne repartira en double."), true);
+      ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
+      dessinerListe();
+      return redessiner(c);
+    }
     toast(tr("Demande envoyée : vous verrez son avancement ici."));
     const maj = r.carte || { ...c, statut: "validee" };
     fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));

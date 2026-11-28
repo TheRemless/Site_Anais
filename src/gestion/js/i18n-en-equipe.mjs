@@ -35,7 +35,11 @@ export const EN_EQUIPE = {
   "Cette carte a déjà été validée par {qui} : elle ne s'écarte plus, le dossier existe.": "This card was already approved by {qui}: it can no longer be dismissed, the file exists.",
   "{qui} valide cette carte en ce moment : elle ne s'écarte pas.": "{qui} is approving this card right now: it cannot be dismissed.",
   // Relecture n° 2 de la PR 366.
-  "La réponse parle de qui écrit dans l'outil (« {v} ») : à retirer, le client ne doit pas le lire.": "The reply mentions who is writing in the tool (“{v}”): remove it, the client must not read it.",
-  "Le texte parle de qui écrit dans l'outil (« {valeur} ») : retirez-le avant d'envoyer.": "The text mentions who is writing in the tool (“{valeur}”): remove it before sending.",
+  "Vérifiez : la réponse semble parler du changement de personne (« {v} »).": "Check: the reply seems to mention the change of person (“{v}”).",
+  "Vérifiez : la réponse semble parler du changement de personne (« {valeur} »).": "Check: the reply seems to mention the change of person (“{valeur}”).",
   "Cette carte est en cours de validation ailleurs : rien n'est parti, réessayez dans un instant.": "This card is being approved elsewhere: nothing was sent, try again in a moment.",
+  // Relecture n° 4 de la PR 366.
+  "Cette carte a été laissée en cours par une autre personne : rien n'est parti.": "This card was left in progress by someone else: nothing was sent.",
+  "Envoyée, à confirmer : la demande est partie, mais la carte n'a pas pu être notée envoyée. Rien ne repartira en double.": "Sent, to be confirmed: the request went out, but the card could not be marked as sent. Nothing will be sent twice.",
+  "Demande envoyée, carte à confirmer : rien ne repartira en double.": "Request sent, card to be confirmed: nothing will be sent twice.",
 };

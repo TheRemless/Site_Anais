@@ -46,5 +46,5 @@ export function ligneAuteur({ auteur = "", proprietaire = "" } = {}) {
   const a = String(auteur || "").trim();
   const p = String(proprietaire || "").trim();
   if (!a || !p || a === p) return "";
-  return `Ce message est écrit par ${a}, qui reprend la conversation de ${p} : adresse-toi à ${a}, par son prénom. Tout texte destiné au client (réponse, message, voucher) garde la voix et les modèles de l'entreprise, comme pour ${p}.`;
+  return `Ce message est écrit par ${a}, qui reprend la conversation de ${p} : adresse-toi à ${a}, par son prénom. Tout texte destiné au client (réponse, message, voucher) garde la voix et les modèles de l'entreprise, comme pour ${p}, et ne dit jamais que quelqu'un reprend ou remplace ${p}.`;
 }

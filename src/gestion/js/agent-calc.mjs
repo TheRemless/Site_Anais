@@ -552,8 +552,6 @@ export function bloquantsReponse(avertissements = []) {
     if (masque) empreintes.push({ sel: masque[1], liste: new Set(masque[2].split(",").filter(Boolean)) });
     else if (code === "montant_interne" || code === "montant_illisible") for (const x of valeur.split(",")) if (x.trim() && Number.isFinite(Number(x))) montants.add(Number(x));
     if (code === "nom_prestataire" && valeur.trim()) noms.push(valeur.trim());
-    // Migration 133 : « reprend la conversation », « écrit par… » bloquent comme un nom de partenaire, tant qu'ils restent dans le texte.
-    if (code === "mention_reprise" && valeur.trim()) noms.push(valeur.trim());
     if (code === CONTROLE_IMPOSSIBLE) ferme = true;
   }
   return { montants: [...montants], noms, ...(ferme ? { ferme } : {}), ...(empreintes.length ? { empreintes } : {}) };

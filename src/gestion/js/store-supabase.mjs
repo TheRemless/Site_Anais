@@ -866,7 +866,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       try {
         const rep = await fetch(`${config.SUPABASE_URL}/functions/v1/ameliorations`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ action: "demander", ...corps }) });
         const r = await rep.json().catch(() => null);
-        return rep.ok && r ? r : { erreur: (r && r.erreur) || "indisponible", ...(r && r.motifs ? { motifs: r.motifs } : {}) };
+        return rep.ok && r ? r : { erreur: (r && r.erreur) || "indisponible", ...(r && r.motifs ? { motifs: r.motifs } : {}), ...(r && r.par ? { par: r.par } : {}), ...(r && r.depuis ? { depuis: r.depuis } : {}) };
       } catch {
         return { erreur: "hors_ligne" };
       }
